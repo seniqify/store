@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { CheckCircle2, Lock, ExternalLink, Settings } from 'lucide-react';
 
 export default function StepPublish({
@@ -116,6 +117,14 @@ export default function StepPublish({
           ⚠️ {saveError}
         </div>
       )}
+
+      {/* ── Terms acceptance notice ────────────────────────────────── */}
+      <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+        By launching your store you agree to our{' '}
+        <Link to="/terms"   className="underline hover:text-gray-600" target="_blank" rel="noopener noreferrer">Terms of Service</Link>
+        {' '}and{' '}
+        <Link to="/privacy" className="underline hover:text-gray-600" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>.
+      </p>
 
       {/* ── Navigation ─────────────────────────────────────────────── */}
       <div className="flex gap-3">

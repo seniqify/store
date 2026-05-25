@@ -252,10 +252,17 @@ export default function Landing() {
       </section>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <footer className="border-t border-gray-100 px-4 py-6 text-center">
+      <footer className="border-t border-gray-100 px-4 py-6 text-center space-y-2">
         <p className="text-xs text-gray-400">
           Made for Indian businesses 🇮🇳 ·{' '}
           <span className="font-medium">WhatsApp-native commerce infrastructure</span>
+        </p>
+        <p className="text-xs text-gray-400">
+          <Link to="/terms"   className="hover:text-gray-700 transition-colors">Terms of Service</Link>
+          <span className="mx-2">·</span>
+          <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
+          <span className="mx-2">·</span>
+          <a href="mailto:seniqify@gmail.com" className="hover:text-gray-700 transition-colors">Contact</a>
         </p>
       </footer>
     </div>
