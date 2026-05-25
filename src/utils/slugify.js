@@ -4,7 +4,10 @@
  */
 
 // These paths are used by the app itself and cannot be claimed as store slugs.
-const RESERVED = new Set(['onboarding', 'landing', 'admin', 'api', 'login', 'dashboard']);
+const RESERVED = new Set([
+  'onboarding', 'landing', 'admin', 'api', 'login', 'dashboard',
+  'demo', 'terms', 'privacy', 'manage', 'store', 'app', 'help',
+]);
 
 export function slugify(name) {
   return (
