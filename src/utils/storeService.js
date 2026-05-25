@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { hashPin }  from './pinHash';
 
 /** Fetch a store config from DB by slug. Returns null if not found. */
 export async function fetchStore(slug) {
@@ -12,16 +13,17 @@ export async function fetchStore(slug) {
   return data.config;
 }
 
-/** Save a brand-new store to DB. Throws on error. */
+/** Save a brand-new store to DB. Hashes PIN before storing. Throws on error. */
 export async function createStore(config, pin) {
+  const hashedPin = await hashPin(pin);
   const { error } = await supabase
     .from('stores')
-    .insert({ slug: config.slug, config, pin: String(pin) });
+    .insert({ slug: config.slug, config, pin: hashedPin });
 
   if (error) throw new Error(error.message);
 }
 
-/** Update an existing store after PIN is verified. */
+/** Update an existing store's config after PIN is verified. */
 export async function updateStore(slug, config) {
   const { error } = await supabase
     .from('stores')
@@ -31,16 +33,30 @@ export async function updateStore(slug, config) {
   if (error) throw new Error(error.message);
 }
 
-/** Returns true if PIN matches, false otherwise. */
+/**
+ * Verify PIN via Supabase RPC (server-side comparison — PIN never sent raw).
+ * Falls back to direct query if RPC function isn't deployed yet.
+ */
 export async function verifyPin(slug, pin) {
-  const { data, error } = await supabase
-    .from('stores')
-    .select('pin')
-    .eq('slug', slug)
-    .single();
+  const hashedPin = await hashPin(pin);
 
-  if (error || !data) return false;
-  return data.pin === String(pin);
+  // Use the secure RPC function (security definer bypasses column restrictions)
+  const { data, error } = await supabase.rpc('verify_store_pin', {
+    p_slug:       slug,
+    p_hashed_pin: hashedPin,
+  });
+
+  if (error) {
+    // Fallback: direct compare (works if RPC function not yet created)
+    const { data: row } = await supabase
+      .from('stores')
+      .select('pin')
+      .eq('slug', slug)
+      .single();
+    return row?.pin === hashedPin;
+  }
+
+  return Boolean(data);
 }
 
 /** Check if a slug already exists in DB. */
@@ -49,7 +65,7 @@ export async function slugExists(slug) {
     .from('stores')
     .select('slug')
     .eq('slug', slug)
-    .single();
+    .maybeSingle();
 
   return Boolean(data);
 }

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
-import Header     from './components/layout/Header';
-import Footer     from './components/layout/Footer';
-import Home       from './pages/Home';
-import Landing    from './pages/Landing';
-import Onboarding from './pages/Onboarding';
-import ManageStore from './pages/ManageStore';
-import NotFound   from './pages/NotFound';
+import Header        from './components/layout/Header';
+import Footer        from './components/layout/Footer';
+import Home          from './pages/Home';
+import Landing       from './pages/Landing';
+import Onboarding    from './pages/Onboarding';
+import ManageStore   from './pages/ManageStore';
+import NotFound      from './pages/NotFound';
+import ErrorBoundary from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness } from './utils/BusinessLoader';
 import { applyTheme }   from './utils/theme';
@@ -74,13 +75,15 @@ function BusinessShell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/"                      element={<Landing />} />
-        <Route path="/onboarding"            element={<Onboarding />} />
-        <Route path="/:businessSlug/manage"  element={<ManageStore />} />
-        <Route path="/:businessSlug"         element={<BusinessShell />} />
-        <Route path="*"                      element={<NotFound />} />
-      </Routes>
+      <ErrorBoundary>
+        <Routes>
+          <Route path="/"                      element={<Landing />} />
+          <Route path="/onboarding"            element={<Onboarding />} />
+          <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
+          <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
+          <Route path="*"                      element={<NotFound />} />
+        </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

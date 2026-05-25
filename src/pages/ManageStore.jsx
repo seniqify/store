@@ -15,10 +15,11 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown,
 } from 'lucide-react';
-import { loadBusiness }              from '../utils/BusinessLoader';
-import { updateStore, verifyPin }    from '../utils/storeService';
-import { cacheStore }                from '../utils/businessStorage';
-import { THEME_PRESETS }             from '../utils/buildConfig';
+import { loadBusiness }             from '../utils/BusinessLoader';
+import { updateStore, verifyPin }   from '../utils/storeService';
+import { cacheStore }               from '../utils/businessStorage';
+import { THEME_PRESETS }            from '../utils/buildConfig';
+import { uploadConfigImages }       from '../utils/imageStorage';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = [
@@ -247,8 +248,12 @@ function PinGate({ slug, onVerified }) {
           </button>
         </form>
 
+        <p className="text-xs text-gray-400 text-center mt-4">
+          💡 Forgot PIN? It's the last 4 digits of your WhatsApp number.
+        </p>
+
         <Link to={`/${slug}`}
-              className="flex items-center justify-center gap-1.5 mt-5
+              className="flex items-center justify-center gap-1.5 mt-3
                          text-sm text-gray-400 hover:text-gray-600 transition-colors">
           <ArrowLeft size={14} /> Back to store
         </Link>
@@ -346,6 +351,15 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     if (editingId === id) resetForm();
   }
 
+  function toggleStock(id) {
+    onChange({
+      products: products.map(p =>
+        p.id === id ? { ...p, inStock: p.inStock === false } : p
+      ),
+    });
+    setDirty(true);
+  }
+
   function handleSave() {
     setDirty(false);
     onSave();
@@ -403,6 +417,17 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   {cat ? `${cat.emoji} ${cat.label}` : '—'} · ₹{p.price} · {p.unit}
                 </p>
               </div>
+              {/* In-stock toggle */}
+              <button type="button" onClick={() => toggleStock(p.id)}
+                      title={p.inStock === false ? 'Mark as in stock' : 'Mark as out of stock'}
+                      className={[
+                        'text-[10px] font-bold px-2 py-1 rounded-lg transition-colors flex-shrink-0',
+                        p.inStock === false
+                          ? 'bg-red-50 text-red-500 hover:bg-red-100'
+                          : 'bg-green-50 text-green-600 hover:bg-green-100',
+                      ].join(' ')}>
+                {p.inStock === false ? 'Out of stock' : 'In stock'}
+              </button>
               <button type="button" onClick={() => openEdit(p)}
                       className={[
                         'p-1.5 rounded-lg transition-colors flex-shrink-0',
@@ -966,13 +991,18 @@ export default function ManageStore() {
     setConfig(prev => ({ ...prev, ...partial }));
   }
 
-  // Save to Supabase
+  // Save to Supabase (uploads any new base64 images first)
   async function handleSave() {
     setSaveStatus('saving');
     setSaveError('');
     try {
-      await updateStore(businessSlug, config);
-      cacheStore(config);               // update local cache too
+      // Upload any base64 images added during this session
+      const uploadedProducts = await uploadConfigImages(config.products, businessSlug);
+      const finalConfig = { ...config, products: uploadedProducts };
+
+      await updateStore(businessSlug, finalConfig);
+      setConfig(finalConfig);      // update state with Storage URLs
+      cacheStore(finalConfig);
       setSaveStatus('saved');
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);

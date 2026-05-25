@@ -77,6 +77,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     price:       Number(p.price),
     mrp:         p.mrp && Number(p.mrp) > Number(p.price) ? Number(p.mrp) : undefined,
     unit:        p.unit?.trim() || 'per piece',
+    inStock:     p.inStock !== false,   // default true; false only if explicitly set
     badge:       null,
     badgeColor:  null,
   }));

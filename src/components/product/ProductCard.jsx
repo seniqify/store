@@ -13,7 +13,7 @@ export default function ProductCard({
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const discount   = discountPercent(product.price, product.mrp);
-  const outOfStock = product.stock === 0;
+  const outOfStock = product.inStock === false || product.stock === 0;
 
   function handleAdd() {
     if (outOfStock) return;

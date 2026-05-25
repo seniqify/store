@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ChevronDown, ChevronRight, ShoppingCart } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
@@ -37,6 +37,36 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
+
+  // ── SEO: update document title + meta tags for this store ────────────────
+  const prevTitle = useRef(document.title);
+  useEffect(() => {
+    const title = `${businessName} — Order via WhatsApp`;
+    document.title = title;
+
+    const setMeta = (name, content, prop = false) => {
+      const sel = prop ? `meta[property="${name}"]` : `meta[name="${name}"]`;
+      let el = document.querySelector(sel);
+      if (!el) {
+        el = document.createElement('meta');
+        prop ? el.setAttribute('property', name) : el.setAttribute('name', name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+
+    const desc = `Browse ${businessName}'s products and place orders instantly via WhatsApp. ${products.length} products available.`;
+    setMeta('description', desc);
+    setMeta('og:title',       title,        true);
+    setMeta('og:description', desc,         true);
+    setMeta('og:type',        'website',    true);
+    setMeta('twitter:card',   'summary');
+    setMeta('twitter:title',  title);
+
+    return () => {
+      document.title = prevTitle.current;
+    };
+  }, [businessName, products.length]);
 
   // ── Sync badge count ──────────────────────────────────────────────────────
   useEffect(() => {

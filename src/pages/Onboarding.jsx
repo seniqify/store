@@ -6,6 +6,8 @@ import StepPublish  from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness }        from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
+import { slugExists }          from '../utils/storeService';
+import { uploadConfigImages }  from '../utils/imageStorage';
 
 const INITIAL = {
   businessName:      '',
@@ -47,11 +49,23 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      const config = getConfig();
-      // Default PIN = last 4 digits of WhatsApp number
-      const pin = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
+      let config = getConfig();
+      const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
+
+      // ── Ensure slug is unique in DB ──────────────────────────────────────
+      let slug    = config.slug;
+      let attempt = 2;
+      while (await slugExists(slug)) {
+        slug = `${config.slug}${attempt++}`;
+      }
+      config = { ...config, slug };
+
+      // ── Upload base64 product images to Supabase Storage ────────────────
+      const uploadedProducts = await uploadConfigImages(config.products, slug);
+      config = { ...config, products: uploadedProducts };
+
       await saveBusiness(config, pin);
-      navigate(`/${config.slug}`);
+      navigate(`/${slug}`);
     } catch (err) {
       setSaveError(err.message || 'Failed to save store. Please try again.');
       setSaving(false);
