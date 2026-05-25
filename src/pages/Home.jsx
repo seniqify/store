@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { ChevronDown, ChevronRight, ShoppingCart } from 'lucide-react';
+import { ChevronRight, ShoppingCart } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
 import CartSummary from '../components/cart/CartSummary';
@@ -33,7 +33,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // Business config from context — changes when the route changes
   const config = useBusinessConfig();
-  const { products, categories, hero, features, businessName, whatsappNumber } = config;
+  const { products, categories, features, businessName, whatsappNumber, promoText } = config;
 
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
@@ -94,64 +94,22 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-brand-dark via-brand to-brand/80 text-white w-full">
-        <div className="w-full max-w-7xl mx-auto px-4 py-8 sm:py-12 text-center">
-
-          <p className="text-white/70 text-[10px] sm:text-[11px] font-semibold tracking-widest
-                        uppercase mb-2.5 truncate">
-            {hero.eyebrow}
-          </p>
-
-          <h1 className="text-xl sm:text-4xl md:text-5xl font-extrabold leading-tight
-                          mb-3 break-words tracking-tight">
-            {hero.heading}
-          </h1>
-
-          <p className="text-white/80 text-sm sm:text-base max-w-lg mx-auto mb-6 px-2">
-            {hero.subtext}
-          </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <button
-              onClick={() =>
-                document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })
-              }
-              className="inline-flex items-center gap-2
-                         bg-white text-brand-dark font-bold text-sm
-                         px-5 py-2.5 rounded-full shadow-lg hover:shadow-xl
-                         hover:bg-brand/5 transition-all duration-200 active:scale-95"
-            >
-              {hero.cta}
-              <ChevronDown size={16} />
-            </button>
-
-            <a
-              href={waLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2
-                         bg-[#25D366] hover:bg-[#1ebe5d] text-white font-bold text-sm
-                         px-5 py-2.5 rounded-full shadow-lg
-                         transition-all duration-200 active:scale-95"
-            >
-              💬 WhatsApp Order
-            </a>
-          </div>
+      {/* ── Promo banner — only shown when owner sets a message ────────────── */}
+      {promoText && (
+        <div className="w-full py-2.5 px-4 text-center text-sm font-semibold text-white
+                        bg-brand leading-snug">
+          {promoText}
         </div>
-      </div>
+      )}
 
       {/* ── Trust strip ───────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center gap-5 sm:gap-8 overflow-x-auto scrollbar-hide py-3">
-            {features.map((f) => (
-              <div key={f.title} className="flex items-center gap-2.5 flex-shrink-0">
-                <span className="text-lg leading-none">{f.emoji}</span>
-                <div>
-                  <p className="text-xs font-semibold text-gray-800 whitespace-nowrap">{f.title}</p>
-                  <p className="text-[11px] text-gray-400 whitespace-nowrap hidden sm:block">{f.desc}</p>
-                </div>
+          <div className="flex items-center gap-5 sm:gap-8 overflow-x-auto scrollbar-hide py-2.5">
+            {(features || []).map((f) => (
+              <div key={f.title} className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-base leading-none">{f.emoji}</span>
+                <p className="text-xs font-semibold text-gray-700 whitespace-nowrap">{f.title}</p>
               </div>
             ))}
           </div>

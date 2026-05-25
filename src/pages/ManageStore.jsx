@@ -901,6 +901,38 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
   return (
     <div className="space-y-6">
 
+      {/* Promo Banner */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Announcement Banner</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        <div>
+          <label className={lCls()}>
+            Promo Message
+            <span className="text-gray-400 font-normal ml-1">(optional)</span>
+          </label>
+          <input
+            type="text"
+            maxLength={100}
+            placeholder="e.g. 🎉 Free delivery this week! · 10% off on orders above ₹500"
+            value={config.promoText || ''}
+            onChange={e => update({ promoText: e.target.value })}
+            className={iCls(false)}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Shown as a colored bar at the top of your store. Leave empty to hide.
+          </p>
+          {config.promoText && (
+            <div className="mt-2 py-2 px-3 rounded-xl text-sm font-semibold text-white text-center"
+                 style={{ backgroundColor: themeColor }}>
+              {config.promoText}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Business Info */}
       <div>
         <div className="flex items-center gap-2 mb-3">
