@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { MessageCircle, Copy, Check, Phone, MapPin, Receipt } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
 
@@ -66,7 +67,7 @@ export default function Footer() {
   const config = useBusinessConfig();
   const {
     businessName, tagline, logoEmoji, logo,
-    whatsappNumber, phone, address, upi, bank, gst, cart,
+    whatsappNumber, phone, address, upi, bank, gst, cart, slug,
   } = config;
 
   const waLink = whatsappLink(whatsappNumber, businessName);
@@ -213,8 +214,20 @@ export default function Footer() {
       </div>
 
       {/* ── Bottom bar ──────────────────────────────────────────────────── */}
-      <div className="border-t border-gray-800 py-4 text-center text-xs text-gray-500">
-        © {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;|&nbsp;Made in India 🇮🇳
+      <div className="border-t border-gray-800 py-4 px-4
+                      flex flex-col sm:flex-row items-center justify-between
+                      gap-2 text-xs text-gray-500">
+        <span>© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳</span>
+        {slug && (
+          <Link
+            to={`/${slug}/manage`}
+            className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-300
+                       transition-colors duration-150"
+          >
+            <Settings size={11} />
+            <span>Manage Store</span>
+          </Link>
+        )}
       </div>
     </footer>
   );
