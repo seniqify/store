@@ -9,17 +9,17 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link }             from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Lock, ArrowLeft, Package, Tag, Settings2,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  AlertCircle, ChevronDown,
+  AlertCircle, ChevronDown, Copy, Check, Trash2,
 } from 'lucide-react';
-import { loadBusiness }                        from '../utils/BusinessLoader';
-import { updateStore, verifyPin, resetPin }    from '../utils/storeService';
-import { cacheStore }                          from '../utils/businessStorage';
-import { THEME_PRESETS }                       from '../utils/buildConfig';
-import { uploadConfigImages }                  from '../utils/imageStorage';
+import { loadBusiness }                               from '../utils/BusinessLoader';
+import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
+import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
+import { THEME_PRESETS }                              from '../utils/buildConfig';
+import { uploadConfigImages }                         from '../utils/imageStorage';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = [
@@ -862,9 +862,40 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
 }
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
-function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
+function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const [dirty, setDirty] = useState(false);
+
+  // Copy-link state for the store URL card
+  const [copied, setCopied] = useState(false);
+  function copyStoreUrl() {
+    const url = `${window.location.origin}/${config.slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  // Delete confirmation state
+  const [showDelete, setShowDelete]   = useState(false);
+  const [deletePin,  setDeletePin]    = useState('');
+  const [deleteErr,  setDeleteErr]    = useState('');
+  const [deleting,   setDeleting]     = useState(false);
+
+  async function handleDelete(e) {
+    e.preventDefault();
+    if (deletePin.length !== 4) { setDeleteErr('Enter your 4-digit PIN'); return; }
+    setDeleting(true); setDeleteErr('');
+    const ok = await verifyPin(config.slug, deletePin);
+    if (!ok) { setDeleteErr('Incorrect PIN.'); setDeleting(false); return; }
+    try {
+      await deleteStore(config.slug);
+      onDelete();   // navigate away
+    } catch (err) {
+      setDeleteErr(err.message || 'Delete failed. Please try again.');
+      setDeleting(false);
+    }
+  }
 
   // Derive editable values from config
   const digits = (config.whatsappNumber || '').replace(/\D/g,'').slice(-10);
@@ -900,6 +931,39 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
 
   return (
     <div className="space-y-6">
+
+      {/* Store Link Card */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1.5">
+          Your store link
+        </p>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/${config.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 text-sm font-mono font-semibold text-gray-800 truncate
+                       hover:text-brand transition-colors"
+          >
+            {window.location.origin}/{config.slug}
+          </a>
+          <button
+            type="button"
+            onClick={copyStoreUrl}
+            title="Copy store link"
+            className={[
+              'flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg',
+              'transition-all duration-150 flex-shrink-0',
+              copied
+                ? 'bg-green-100 text-green-600'
+                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-300',
+            ].join(' ')}
+          >
+            {copied ? <Check size={11} strokeWidth={3} /> : <Copy size={11} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
 
       {/* Promo Banner */}
       <div>
@@ -1116,6 +1180,64 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
         onSave={handleSave} dirty={dirty}
         themeColor={themeColor}
       />
+
+      {/* ── Danger Zone ───────────────────────────────────────────────────── */}
+      <div className="border-t border-red-100 pt-6">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-red-100" />
+          <span className="text-[10px] font-semibold text-red-400 uppercase tracking-widest">Danger Zone</span>
+          <div className="h-px flex-1 bg-red-100" />
+        </div>
+
+        {!showDelete ? (
+          <button
+            type="button"
+            onClick={() => setShowDelete(true)}
+            className="flex items-center gap-2 text-sm font-semibold text-red-500
+                       hover:text-red-700 border border-red-200 hover:border-red-400
+                       hover:bg-red-50 px-4 py-2.5 rounded-xl transition-all"
+          >
+            <Trash2 size={14} />
+            Delete this store
+          </button>
+        ) : (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-red-800">⚠️ This action is permanent</p>
+            <p className="text-xs text-red-600 leading-relaxed">
+              Deleting your store will remove all products, categories, and settings from our database.
+              This cannot be undone. Enter your PIN to confirm.
+            </p>
+            <form onSubmit={handleDelete} className="space-y-2">
+              <input
+                type="number" inputMode="numeric" placeholder="4-digit PIN"
+                value={deletePin}
+                onChange={e => { setDeletePin(e.target.value.replace(/\D/g,'').slice(0,4)); setDeleteErr(''); }}
+                className="w-full px-3 py-2 border border-red-200 rounded-xl text-sm text-center
+                           font-bold tracking-widest bg-white focus:outline-none focus:ring-2 focus:ring-red-300"
+                autoFocus
+              />
+              {deleteErr && <p className="text-xs text-red-600 text-center">{deleteErr}</p>}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setShowDelete(false); setDeletePin(''); setDeleteErr(''); }}
+                        className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-semibold
+                                   text-gray-500 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={deleting}
+                        className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700
+                                   text-white text-sm font-bold transition-colors disabled:opacity-60
+                                   flex items-center justify-center gap-1.5">
+                  {deleting ? (
+                    <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Deleting…</>
+                  ) : (
+                    <><Trash2 size={13} /> Delete Store</>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1123,6 +1245,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 export default function ManageStore() {
   const { businessSlug }  = useParams();
+  const navigate          = useNavigate();
   const [loading,     setLoading]     = useState(true);
   const [notFound,    setNotFound]    = useState(false);
   const [pinVerified, setPinVerified] = useState(false);
@@ -1145,6 +1268,12 @@ export default function ManageStore() {
   // Merge partial config updates
   function handleChange(partial) {
     setConfig(prev => ({ ...prev, ...partial }));
+  }
+
+  // After store is deleted — clear cache and go to homepage
+  function handleStoreDeleted() {
+    clearCachedStore(businessSlug);
+    navigate('/');
   }
 
   // Save to Supabase (uploads any new base64 images first)
@@ -1284,6 +1413,7 @@ export default function ManageStore() {
               onSave={handleSave}
               saveStatus={saveStatus}
               saveError={saveError}
+              onDelete={handleStoreDeleted}
             />
           )}
         </div>

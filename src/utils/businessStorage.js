@@ -33,6 +33,13 @@ export function cacheStore(config) {
   localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
 }
 
+/** Remove a specific store from local cache (e.g. after deletion). */
+export function clearCachedStore(slug) {
+  const cache = getCachedBusinesses();
+  delete cache[slug];
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
 /** Return just the slugs stored in local cache. */
 export function getStoredSlugs() {
   return Object.keys(getCachedBusinesses());

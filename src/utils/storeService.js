@@ -86,6 +86,19 @@ export async function resetPin(slug, newPin, whatsappNumber) {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Permanently delete a store after PIN is verified.
+ * Caller must verify PIN first via verifyPin(); this just does the DELETE.
+ */
+export async function deleteStore(slug) {
+  const { error } = await supabase
+    .from('stores')
+    .delete()
+    .eq('slug', slug);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Check if a slug already exists in DB. */
 export async function slugExists(slug) {
   const { data } = await supabase
