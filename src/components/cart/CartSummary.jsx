@@ -151,10 +151,12 @@ export default function CartSummary({
 
       {/* ── UPI hint (full only, only when upi is configured) ─────────── */}
       {!compact && upi && (
-        <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2.5 text-xs text-blue-700">
+        <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2.5 text-xs text-blue-700 overflow-hidden">
           <Tag size={13} className="flex-shrink-0 text-blue-500" />
-          Pay via UPI:&nbsp;
-          <strong className="text-blue-800">{upi}</strong>
+          <span className="min-w-0">
+            Pay via UPI:&nbsp;
+            <strong className="text-blue-800 break-all">{upi}</strong>
+          </span>
         </div>
       )}
 

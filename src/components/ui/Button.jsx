@@ -16,7 +16,7 @@ export default function Button({
   className = '',
 }) {
   const base =
-    'inline-flex items-center justify-center gap-2 font-semibold rounded-xl ' +
+    'flex items-center justify-center gap-2 font-semibold rounded-xl ' +
     'transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1';
 
   const variants = {

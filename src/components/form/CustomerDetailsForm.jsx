@@ -369,11 +369,11 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             <span>Add products to your cart above, then place your order here.</span>
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-5">
+          <div className="flex flex-col gap-4">
 
             {/* Cost breakdown */}
-            <div className="w-full sm:w-auto space-y-1.5 text-sm min-w-[200px]">
-              <div className="flex justify-between gap-8 text-gray-500">
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between text-gray-500">
                 <span>
                   Subtotal
                   <span className="text-gray-400 font-normal ml-1">
@@ -386,7 +386,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
               </div>
 
               {taxPct > 0 && (
-                <div className="flex justify-between gap-8 text-gray-500">
+                <div className="flex justify-between text-gray-500">
                   <span>GST ({taxPct}%)</span>
                   <span className="font-medium text-gray-700 tabular-nums">
                     {formatINR(tax)}
@@ -394,7 +394,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
                 </div>
               )}
 
-              <div className="flex justify-between gap-8 text-gray-500">
+              <div className="flex justify-between text-gray-500">
                 <span className="flex items-center gap-1">
                   <Truck size={12} />
                   Delivery
@@ -407,7 +407,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
                 </span>
               </div>
 
-              <div className="flex justify-between gap-8 pt-1.5 border-t border-dashed border-gray-200">
+              <div className="flex justify-between pt-1.5 border-t border-dashed border-gray-200">
                 <span className="font-bold text-gray-900">Total</span>
                 <span className="font-extrabold text-brand-dark text-base tabular-nums">
                   {formatINR(total)}
@@ -419,13 +419,13 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             <button
               type="button"
               onClick={handleSubmit}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5
+              className="w-full flex items-center justify-center gap-2.5
                          bg-[#25D366] hover:bg-[#1ebe5d] active:bg-[#17a550]
                          text-white font-bold text-base
                          px-7 py-3.5 rounded-2xl
                          shadow-lg hover:shadow-xl
                          transition-all duration-200 active:scale-[0.98]
-                         min-h-[52px] flex-shrink-0"
+                         min-h-[52px]"
             >
               <WhatsAppIcon size={21} />
               Send Order on WhatsApp

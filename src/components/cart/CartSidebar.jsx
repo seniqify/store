@@ -59,9 +59,9 @@ export default function CartSidebar({
         aria-label="Shopping cart"
         className={[
           'fixed top-0 right-0 z-50',
-          'h-full w-full sm:w-[26rem]',
+          'h-[100dvh] w-full sm:w-[26rem]',
           'bg-white shadow-2xl',
-          'flex flex-col',
+          'flex flex-col overflow-hidden',
           'transition-transform duration-300 ease-in-out',
           isOpen ? 'translate-x-0' : 'translate-x-full',
         ].join(' ')}
@@ -96,7 +96,7 @@ export default function CartSidebar({
         </div>
 
         {/* ── Item list ───────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-5">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5">
           {cart.length === 0 ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full py-16 text-center">
