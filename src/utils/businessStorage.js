@@ -1,38 +1,42 @@
 /**
- * businessStorage
- * ─────────────────────────────────────────────────────────────────────────────
- * Thin localStorage wrapper for user-created business configs.
- * All data is stored under a single versioned key so future migrations
- * can read the old format and transform it.
+ * businessStorage — now saves to Supabase DB.
+ * localStorage is kept as a fast local cache only.
  */
+import { createStore } from './storeService';
 
-const STORAGE_KEY = 'seniqify_v1';
+const CACHE_KEY = 'seniqify_v1';
 
-/** Return all user-created businesses as { slug: config } */
-export function getStoredBusinesses() {
+/** Save to DB (primary) + localStorage (cache). */
+export async function saveBusiness(config, pin = '1234') {
+  // Save to Supabase
+  await createStore(config, pin);
+  // Also cache locally so the page loads instantly right after creation
+  const cache = getCachedBusinesses();
+  cache[config.slug] = config;
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
+/** Return locally cached businesses (for instant load after creation). */
+export function getCachedBusinesses() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-/** Persist (or overwrite) a single business config. */
-export function saveBusiness(config) {
-  const all = getStoredBusinesses();
-  all[config.slug] = { ...config, _source: 'user' };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+/** Cache a config locally (used after fetching from DB). */
+export function cacheStore(config) {
+  const cache = getCachedBusinesses();
+  cache[config.slug] = config;
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
 }
 
-/** Remove a stored business by slug. */
-export function deleteStoredBusiness(slug) {
-  const all = getStoredBusinesses();
-  delete all[slug];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-}
-
-/** Return just the slugs of user-created businesses. */
+/** Return just the slugs stored in local cache. */
 export function getStoredSlugs() {
-  return Object.keys(getStoredBusinesses());
+  return Object.keys(getCachedBusinesses());
 }
+
+// Keep old export name working
+export { getCachedBusinesses as getStoredBusinesses };

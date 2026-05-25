@@ -1,0 +1,1107 @@
+/**
+ * ManageStore — Store management dashboard
+ * Route: /:businessSlug/manage
+ *
+ * Flow:
+ *  1. Load store config from DB
+ *  2. Show PIN gate
+ *  3. After verified → tabs: Products | Categories | Settings
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import { useParams, Link }             from 'react-router-dom';
+import {
+  Lock, ArrowLeft, Package, Tag, Settings2,
+  Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
+  AlertCircle, ChevronDown,
+} from 'lucide-react';
+import { loadBusiness }              from '../utils/BusinessLoader';
+import { updateStore, verifyPin }    from '../utils/storeService';
+import { cacheStore }                from '../utils/businessStorage';
+import { THEME_PRESETS }             from '../utils/buildConfig';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CAT_EMOJIS = [
+  '📦','🔌','🧵','🍽️','⚙️','📱',
+  '🏠','🎯','💻','🔧','🚗','👕',
+  '🌿','💎','🎸','🛒','🔩','🌾',
+];
+const UNIT_OPTIONS = [
+  'per piece','per kg','per metre','per litre',
+  'pack of 2','pack of 3','pack of 6','pack of 12',
+  'per box','per set','per dozen','Other…',
+];
+const STANDARD_UNITS = UNIT_OPTIONS.filter(u => u !== 'Other…');
+const THEME_OPTIONS  = [
+  { hex: '#0d9488', label: 'Teal'   },
+  { hex: '#2563eb', label: 'Blue'   },
+  { hex: '#6366f1', label: 'Indigo' },
+  { hex: '#16a34a', label: 'Green'  },
+  { hex: '#ea580c', label: 'Orange' },
+  { hex: '#9333ea', label: 'Purple' },
+  { hex: '#e11d48', label: 'Rose'   },
+];
+const PLACEHOLDERS = [
+  'https://images.unsplash.com/photo-1560472355-536de3962603?w=400&q=80',
+  'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&q=80',
+  'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80',
+  'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&q=80',
+  'https://images.unsplash.com/photo-1434494878577-86c23bcb06b9?w=400&q=80',
+];
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'' };
+const EMPTY_CAT   = { emoji:'📦', label:'' };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function iCls(err) {
+  return [
+    'w-full px-3 py-2 rounded-xl border text-sm text-gray-900',
+    'placeholder-gray-400 transition focus:outline-none focus:ring-2',
+    err ? 'border-red-400 focus:ring-red-200 bg-red-50'
+        : 'border-gray-200 focus:ring-gray-300 bg-white',
+  ].join(' ');
+}
+
+// ── ImageUploader ─────────────────────────────────────────────────────────────
+function ImageUploader({ value, onChange }) {
+  const [dragOver, setDragOver] = useState(false);
+  const [urlMode,  setUrlMode]  = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const fileRef = useRef(null);
+
+  const isBase64 = value?.startsWith('data:');
+  const hasImage = Boolean(value);
+
+  function compressAndSet(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 400;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const ratio = Math.min(MAX / width, MAX / height);
+          width  = Math.round(width  * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        onChange(canvas.toDataURL('image/jpeg', 0.82));
+        setUrlMode(false); setUrlInput('');
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if (hasImage) {
+    return (
+      <div className="flex items-start gap-3">
+        <div className="relative w-20 h-20 flex-shrink-0 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+          <img src={value} alt="" className="w-full h-full object-cover" onError={() => onChange('')} />
+        </div>
+        <div className="flex flex-col gap-1.5 pt-0.5">
+          <p className="text-xs font-semibold text-gray-700">{isBase64 ? '✅ Image uploaded' : '🔗 Image URL set'}</p>
+          <p className="text-[11px] text-gray-400 leading-snug max-w-[180px] truncate">
+            {isBase64 ? 'Compressed & ready' : value}
+          </p>
+          <div className="flex gap-2 mt-0.5">
+            <button type="button" onClick={() => fileRef.current?.click()}
+                    className="text-xs font-medium text-teal-600 hover:text-teal-800 underline underline-offset-2">
+              Change
+            </button>
+            <span className="text-gray-300">·</span>
+            <button type="button" onClick={() => onChange('')}
+                    className="text-xs font-medium text-red-400 hover:text-red-600 underline underline-offset-2">
+              Remove
+            </button>
+          </div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+               onChange={(e) => compressAndSet(e.target.files?.[0])} />
+      </div>
+    );
+  }
+
+  if (urlMode) {
+    return (
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <input type="url" autoFocus placeholder="https://example.com/product.jpg"
+                 value={urlInput}
+                 onChange={(e) => setUrlInput(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && urlInput.trim() && (onChange(urlInput.trim()), setUrlMode(false))}
+                 className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+          <button type="button" onClick={() => urlInput.trim() && (onChange(urlInput.trim()), setUrlMode(false))}
+                  className="px-3 py-2 rounded-xl bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700">
+            Set
+          </button>
+          <button type="button" onClick={() => { setUrlMode(false); setUrlInput(''); }}
+                  className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600">
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => fileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); compressAndSet(e.dataTransfer.files?.[0]); }}
+              className={[
+                'w-full rounded-xl border-2 border-dashed py-4 px-4',
+                'flex flex-col items-center gap-2 transition-all cursor-pointer',
+                dragOver ? 'border-gray-500 bg-gray-100' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50',
+              ].join(' ')}>
+        <ImagePlus size={18} className="text-gray-400" />
+        <p className="text-xs font-semibold text-gray-600">Click to upload or drag &amp; drop</p>
+      </button>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+             onChange={(e) => compressAndSet(e.target.files?.[0])} />
+      <button type="button" onClick={() => setUrlMode(true)}
+              className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 mx-auto">
+        <Link2 size={11} /> Use image URL instead
+      </button>
+    </div>
+  );
+}
+
+// ── Save toast helper ─────────────────────────────────────────────────────────
+function SaveBar({ status, error, onSave, dirty, themeColor }) {
+  if (!dirty && status !== 'saved') return null;
+  return (
+    <div className="flex items-center gap-3 pt-4 border-t border-gray-100 mt-4">
+      {status === 'saved' && (
+        <div className="flex items-center gap-1.5 text-green-600 text-sm font-semibold">
+          <CheckCircle2 size={15} />
+          Saved successfully!
+        </div>
+      )}
+      {error && <p className="text-sm text-red-500 flex-1">{error}</p>}
+      {dirty && status !== 'saved' && (
+        <button onClick={onSave} disabled={status === 'saving'}
+                className="ml-auto px-5 py-2.5 rounded-xl text-sm font-bold text-white
+                           transition-all hover:opacity-90 disabled:opacity-60 flex items-center gap-2"
+                style={{ backgroundColor: themeColor }}>
+          {status === 'saving' ? (
+            <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
+          ) : '💾 Save Changes'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── PIN Gate ─────────────────────────────────────────────────────────────────
+function PinGate({ slug, onVerified }) {
+  const [pin,      setPin]      = useState('');
+  const [error,    setError]    = useState('');
+  const [checking, setChecking] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (pin.length !== 4) { setError('Enter your 4-digit PIN'); return; }
+    setChecking(true);
+    setError('');
+    const ok = await verifyPin(slug, pin);
+    if (ok) {
+      onVerified();
+    } else {
+      setError('Incorrect PIN. Please try again.');
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 w-full max-w-sm">
+        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <Lock size={22} className="text-amber-600" />
+        </div>
+        <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Store Management</h1>
+        <p className="text-sm text-gray-500 text-center mb-6">
+          Enter your 4-digit PIN to manage your store
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="• • • •"
+            value={pin}
+            onChange={(e) => { setPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center
+                       text-2xl font-bold tracking-widest text-gray-900 bg-white
+                       focus:outline-none focus:ring-2 focus:ring-gray-300"
+            autoFocus
+          />
+          {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+          <button type="submit" disabled={checking}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                             hover:bg-gray-700 transition-colors disabled:opacity-60">
+            {checking ? 'Checking…' : 'Unlock →'}
+          </button>
+        </form>
+
+        <Link to={`/${slug}`}
+              className="flex items-center justify-center gap-1.5 mt-5
+                         text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          <ArrowLeft size={14} /> Back to store
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Products Tab ─────────────────────────────────────────────────────────────
+function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
+  const themeColor  = config.theme?.primary || '#0d9488';
+  const userCats    = (config.categories || []).filter(c => c.id !== 'all');
+  const products    = config.products || [];
+
+  const [activeForm,    setActiveForm]    = useState(null);  // 'product' | null
+  const [form,          setForm]          = useState(EMPTY_PROD);
+  const [editingId,     setEditingId]     = useState(null);
+  const [errors,        setErrors]        = useState({});
+  const [dirty,         setDirty]         = useState(false);
+
+  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setActiveForm(null); }
+
+  function openAdd() {
+    setForm(EMPTY_PROD);
+    setEditingId(null);
+    setErrors({});
+    setActiveForm('product');
+  }
+
+  function openEdit(product) {
+    const unitIsStandard = STANDARD_UNITS.includes(product.unit);
+    setForm({
+      name:        product.name        || '',
+      category:    product.category    || '',
+      price:       product.price       || '',
+      mrp:         product.mrp         || '',
+      unit:        unitIsStandard ? product.unit : 'Other…',
+      unitCustom:  unitIsStandard ? '' : (product.unit || ''),
+      description: product.description || '',
+      image:       product.image       || '',
+    });
+    setEditingId(product.id);
+    setErrors({});
+    setActiveForm('product');
+  }
+
+  function validate() {
+    const e = {};
+    if (!form.name.trim())             e.name     = 'Product name is required.';
+    if (!form.category)                e.category = 'Please select a category.';
+    if (!form.price || Number(form.price) <= 0) e.price = 'Enter a valid price.';
+    return e;
+  }
+
+  function submitProduct() {
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); return; }
+
+    const finalUnit  = form.unit === 'Other…' ? (form.unitCustom.trim() || 'per piece') : form.unit;
+    const finalImage = form.image?.trim() || '';
+
+    let newProducts;
+    if (editingId !== null) {
+      newProducts = products.map(p =>
+        p.id === editingId
+          ? { ...p, name:form.name.trim(), category:form.category,
+              price:Number(form.price),
+              mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image }
+          : p
+      );
+    } else {
+      const maxId = products.length ? Math.max(...products.map(p => p.id || 0)) : 0;
+      newProducts = [...products, {
+        id:          maxId + 1,
+        name:        form.name.trim(),
+        category:    form.category,
+        description: form.description.trim(),
+        image:       finalImage || PLACEHOLDERS[(maxId) % PLACEHOLDERS.length],
+        price:       Number(form.price),
+        mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
+        unit:        finalUnit,
+        badge:       null,
+        badgeColor:  null,
+      }];
+    }
+    onChange({ products: newProducts });
+    setDirty(true);
+    resetForm();
+  }
+
+  function removeProduct(id) {
+    onChange({ products: products.filter(p => p.id !== id) });
+    setDirty(true);
+    if (editingId === id) resetForm();
+  }
+
+  function handleSave() {
+    setDirty(false);
+    onSave();
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-700">
+          Products
+          <span className="ml-1.5 text-xs font-normal text-gray-400">({products.length})</span>
+        </p>
+        {activeForm !== 'product' && (
+          <button type="button" onClick={openAdd}
+                  className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg
+                             text-white transition-colors hover:opacity-90"
+                  style={{ backgroundColor: themeColor }}>
+            <Plus size={12} /> Add Product
+          </button>
+        )}
+      </div>
+
+      {/* Product list */}
+      {products.length === 0 && activeForm !== 'product' && (
+        <div className="text-center py-8 text-sm text-gray-400">
+          No products yet — click "Add Product" to get started.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {products.map(p => {
+          const cat = userCats.find(c => c.id === p.category);
+          const isEditing = editingId === p.id;
+          return (
+            <div key={p.id}
+                 className={[
+                   'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
+                   isEditing
+                     ? 'bg-teal-50/50 border border-teal-200/60'
+                     : 'bg-white border border-gray-100 hover:border-gray-200',
+                 ].join(' ')}>
+              {p.image ? (
+                <img src={p.image} alt={p.name}
+                     className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-300">
+                  <ImagePlus size={16} />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
+                <p className="text-xs text-gray-400">
+                  {cat ? `${cat.emoji} ${cat.label}` : '—'} · ₹{p.price} · {p.unit}
+                </p>
+              </div>
+              <button type="button" onClick={() => openEdit(p)}
+                      className={[
+                        'p-1.5 rounded-lg transition-colors flex-shrink-0',
+                        isEditing ? 'text-teal-600 bg-teal-100' : 'text-gray-300 hover:text-teal-600 hover:bg-teal-50',
+                      ].join(' ')}>
+                <Pencil size={13} />
+              </button>
+              <button type="button" onClick={() => removeProduct(p.id)}
+                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Inline product form */}
+      {activeForm === 'product' && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            {editingId !== null ? 'Edit Product' : 'New Product'}
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Name */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Product Name <span className="text-red-500">*</span>
+              </label>
+              <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
+                     value={form.name}
+                     onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
+                     className={iCls(errors.name)} />
+              {errors.name && <p className="mt-0.5 text-xs text-red-500">{errors.name}</p>}
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Category <span className="text-red-500">*</span>
+              </label>
+              <select value={form.category}
+                      onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
+                      className={iCls(errors.category)}>
+                <option value="">Select category…</option>
+                {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+              </select>
+              {errors.category && <p className="mt-0.5 text-xs text-red-500">{errors.category}</p>}
+            </div>
+
+            {/* Unit */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+              <select value={form.unit}
+                      onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
+                      className={iCls(false)}>
+                {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+              {form.unit === 'Other…' && (
+                <input type="text" placeholder="e.g. per roll, per bundle" autoFocus
+                       value={form.unitCustom}
+                       onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
+                       className={[iCls(false), 'mt-2'].join(' ')} />
+              )}
+            </div>
+
+            {/* Price */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Price ₹ <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                <input type="number" inputMode="numeric" min="0" placeholder="349"
+                       value={form.price}
+                       onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
+                       className={[iCls(errors.price), 'pl-7'].join(' ')} />
+              </div>
+              {errors.price && <p className="mt-0.5 text-xs text-red-500">{errors.price}</p>}
+            </div>
+
+            {/* MRP */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                MRP ₹ <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                <input type="number" inputMode="numeric" min="0" placeholder="499"
+                       value={form.mrp}
+                       onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
+                       className={[iCls(false), 'pl-7'].join(' ')} />
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Description <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input type="text" placeholder="Short description"
+                     value={form.description}
+                     onChange={e => setForm(p => ({...p, description:e.target.value}))}
+                     className={iCls(false)} />
+            </div>
+
+            {/* Image */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                Product Image <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={submitProduct}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                    style={{ backgroundColor: themeColor }}>
+              {editingId !== null ? 'Update Product' : 'Add Product'}
+            </button>
+            <button type="button" onClick={resetForm}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-gray-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <SaveBar
+        status={saveStatus} error={saveError}
+        onSave={handleSave} dirty={dirty}
+        themeColor={themeColor}
+      />
+    </div>
+  );
+}
+
+// ── Categories Tab ────────────────────────────────────────────────────────────
+function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
+  const themeColor = config.theme?.primary || '#0d9488';
+  const userCats   = (config.categories || []).filter(c => c.id !== 'all');
+
+  const [activeForm,  setActiveForm]  = useState(null);
+  const [form,        setForm]        = useState(EMPTY_CAT);
+  const [editingId,   setEditingId]   = useState(null);
+  const [catError,    setCatError]    = useState('');
+  const [dirty,       setDirty]       = useState(false);
+
+  function resetForm() { setForm(EMPTY_CAT); setEditingId(null); setCatError(''); setActiveForm(null); }
+
+  function openAdd() {
+    setForm(EMPTY_CAT); setEditingId(null); setCatError(''); setActiveForm('category');
+  }
+
+  function openEdit(cat) {
+    setForm({ emoji: cat.emoji, label: cat.label });
+    setEditingId(cat.id);
+    setCatError('');
+    setActiveForm('category');
+  }
+
+  function submitCategory() {
+    if (!form.label.trim()) { setCatError('Category name is required.'); return; }
+
+    let newCats;
+    if (editingId !== null) {
+      newCats = userCats.map(c =>
+        c.id === editingId ? { ...c, label: form.label.trim(), emoji: form.emoji } : c
+      );
+    } else {
+      const id = form.label.toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9]/g,'') || `cat${Date.now()}`;
+      newCats = [...userCats, { id, label: form.label.trim(), emoji: form.emoji }];
+    }
+
+    // Always keep 'all' at front
+    onChange({ categories: [{ id:'all', label:'All Products', emoji:'🛒' }, ...newCats] });
+    setDirty(true);
+    resetForm();
+  }
+
+  function removeCategory(id) {
+    const newCats = userCats.filter(c => c.id !== id);
+    // Also clear category from products that were in this category
+    const newProducts = (config.products || []).map(p =>
+      p.category === id ? { ...p, category: '' } : p
+    );
+    onChange({
+      categories: [{ id:'all', label:'All Products', emoji:'🛒' }, ...newCats],
+      products:   newProducts,
+    });
+    setDirty(true);
+    if (editingId === id) resetForm();
+  }
+
+  function handleSave() {
+    setDirty(false);
+    onSave();
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-700">
+          Categories
+          <span className="ml-1.5 text-xs font-normal text-gray-400">({userCats.length})</span>
+        </p>
+        {activeForm !== 'category' && (
+          <button type="button" onClick={openAdd}
+                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
+                             border border-dashed border-gray-300 text-gray-500
+                             hover:border-gray-400 hover:text-gray-700 transition-colors">
+            <Plus size={12} /> Add Category
+          </button>
+        )}
+      </div>
+
+      {userCats.length === 0 && activeForm !== 'category' && (
+        <div className="text-center py-6 text-sm text-gray-400">
+          No categories yet. Add one to get started.
+        </div>
+      )}
+
+      {/* Category list */}
+      <div className="space-y-2">
+        {userCats.map(cat => {
+          const productCount = (config.products || []).filter(p => p.category === cat.id).length;
+          const isEditing = editingId === cat.id;
+          return (
+            <div key={cat.id}
+                 className={[
+                   'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
+                   isEditing
+                     ? 'bg-teal-50/50 border border-teal-200/60'
+                     : 'bg-white border border-gray-100 hover:border-gray-200',
+                 ].join(' ')}>
+              <span className="text-xl flex-shrink-0">{cat.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">{cat.label}</p>
+                <p className="text-xs text-gray-400">{productCount} product{productCount !== 1 ? 's' : ''}</p>
+              </div>
+              <button type="button" onClick={() => openEdit(cat)}
+                      className={[
+                        'p-1.5 rounded-lg transition-colors flex-shrink-0',
+                        isEditing ? 'text-teal-600 bg-teal-100' : 'text-gray-300 hover:text-teal-600 hover:bg-teal-50',
+                      ].join(' ')}>
+                <Pencil size={13} />
+              </button>
+              <button type="button" onClick={() => removeCategory(cat.id)}
+                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Inline category form */}
+      {activeForm === 'category' && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            {editingId !== null ? 'Edit Category' : 'New Category'}
+          </p>
+
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">Pick an icon</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CAT_EMOJIS.map(e => (
+                <button key={e} type="button" onClick={() => setForm(p => ({...p, emoji:e}))}
+                        className={[
+                          'w-8 h-8 rounded-lg text-base flex items-center justify-center transition-all',
+                          form.emoji === e ? 'bg-gray-900' : 'bg-white border border-gray-200 hover:bg-gray-100',
+                        ].join(' ')}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <input type="text" autoFocus placeholder="Category name (e.g. Chargers, Towels)"
+                   value={form.label}
+                   onChange={e => { setForm(p => ({...p, label:e.target.value})); setCatError(''); }}
+                   onKeyDown={e => e.key === 'Enter' && submitCategory()}
+                   className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            <button type="button" onClick={submitCategory}
+                    className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700">
+              {editingId !== null ? 'Update' : 'Add'}
+            </button>
+            <button type="button" onClick={resetForm}
+                    className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600">
+              <X size={16} />
+            </button>
+          </div>
+          {catError && <p className="text-xs text-red-500">{catError}</p>}
+        </div>
+      )}
+
+      <SaveBar
+        status={saveStatus} error={saveError}
+        onSave={handleSave} dirty={dirty}
+        themeColor={themeColor}
+      />
+    </div>
+  );
+}
+
+// ── Settings Tab ──────────────────────────────────────────────────────────────
+function ManageSettings({ config, onChange, onSave, saveStatus, saveError }) {
+  const themeColor  = config.theme?.primary || '#0d9488';
+  const [dirty, setDirty] = useState(false);
+
+  // Derive editable values from config
+  const digits = (config.whatsappNumber || '').replace(/\D/g,'').slice(-10);
+
+  function update(partial) {
+    onChange(partial);
+    setDirty(true);
+  }
+
+  function updateTheme(hex) {
+    const theme = THEME_PRESETS[hex] ?? THEME_PRESETS['#0d9488'];
+    onChange({ theme });
+    setDirty(true);
+  }
+
+  function updatePhone(val) {
+    const d = val.replace(/\D/g,'').slice(0,10);
+    const formatted = d.length === 10 ? `+91 ${d.slice(0,5)} ${d.slice(5)}` : `+91 ${d}`;
+    onChange({ whatsappNumber: `91${d}`, phone: formatted });
+    setDirty(true);
+  }
+
+  function handleSave() {
+    setDirty(false);
+    onSave();
+  }
+
+  function lCls(label) {
+    return 'block text-xs font-semibold text-gray-700 mb-1.5';
+  }
+
+  const bankDetails = config.bank || {};
+
+  return (
+    <div className="space-y-6">
+
+      {/* Business Info */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Business Info</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className={lCls()}>Business Name</label>
+            <input type="text" value={config.businessName || ''}
+                   onChange={e => update({
+                     businessName: e.target.value,
+                     hero: { ...config.hero, heading: e.target.value },
+                     tagline: `Order from ${e.target.value} via WhatsApp`,
+                   })}
+                   className={iCls(false)} />
+          </div>
+
+          <div>
+            <label className={lCls()}>WhatsApp Number</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
+              <input type="tel" inputMode="numeric" maxLength={10} placeholder="98765 43210"
+                     value={digits}
+                     onChange={e => updatePhone(e.target.value)}
+                     className={[iCls(false), 'pl-12'].join(' ')} />
+            </div>
+            <p className="mt-1 text-xs text-gray-400">Orders will be sent to this number.</p>
+          </div>
+
+          {/* Store icon (logoEmoji) */}
+          <div>
+            <label className={lCls()}>Store Icon</label>
+            <div className="flex flex-wrap gap-2">
+              {['🏪','📱','🔌','⚙️','🧵','🏭','🛒','📦','💎','🌿','🔧','🍽️','🚗','💼','👕','🎯','🔩','🌾'].map(emoji => (
+                <button key={emoji} type="button"
+                        onClick={() => update({ logoEmoji: emoji })}
+                        className={[
+                          'w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all',
+                          config.logoEmoji === emoji
+                            ? 'ring-2 ring-offset-1 ring-gray-800 bg-gray-100 scale-110'
+                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200',
+                        ].join(' ')}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Brand color */}
+          <div>
+            <label className={lCls()}>Brand Color</label>
+            <div className="flex flex-wrap gap-3">
+              {THEME_OPTIONS.map(({ hex, label }) => (
+                <button key={hex} type="button" title={label}
+                        onClick={() => updateTheme(hex)}
+                        className={[
+                          'w-9 h-9 rounded-full transition-all flex items-center justify-center',
+                          config.theme?.primary === hex
+                            ? 'ring-2 ring-offset-2 ring-gray-700 scale-110'
+                            : 'hover:scale-105 opacity-80 hover:opacity-100',
+                        ].join(' ')}
+                        style={{ backgroundColor: hex }}>
+                  {config.theme?.primary === hex && (
+                    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 text-white" fill="none">
+                      <path d="M2 7l3.5 3.5L12 3.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pricing */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Pricing &amp; Delivery</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className={lCls()}>GST Rate</label>
+            <select value={config.cart?.taxRate ?? 0.05}
+                    onChange={e => update({ cart: { ...config.cart, taxRate: Number(e.target.value) } })}
+                    className={iCls(false)}>
+              <option value={0}>0% — No GST</option>
+              <option value={0.05}>5% GST</option>
+              <option value={0.12}>12% GST</option>
+              <option value={0.18}>18% GST</option>
+              <option value={0.28}>28% GST</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={lCls()}>GST Number <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="text" placeholder="33XXXXX1234Z1Z5" maxLength={15}
+                   value={config.gst || ''}
+                   onChange={e => update({ gst: e.target.value.toUpperCase() })}
+                   className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-300" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lCls()}>Delivery Charge (₹)</label>
+              <input type="number" inputMode="numeric" min={0} placeholder="49"
+                     value={config.cart?.shippingCharge ?? 49}
+                     onChange={e => update({ cart: { ...config.cart, shippingCharge: Number(e.target.value) || 0 } })}
+                     className={iCls(false)} />
+            </div>
+            <div>
+              <label className={lCls()}>Free Delivery Above (₹)</label>
+              <input type="number" inputMode="numeric" min={0} placeholder="999"
+                     value={config.cart?.freeShippingAbove ?? 999}
+                     onChange={e => update({ cart: { ...config.cart, freeShippingAbove: Number(e.target.value) || 0 } })}
+                     className={iCls(false)} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Payments */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Payment Details</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className={lCls()}>UPI ID <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="text" placeholder="yourname@upi"
+                   value={config.upi || ''}
+                   onChange={e => update({ upi: e.target.value.trim() })}
+                   className={iCls(false)} />
+          </div>
+
+          <div>
+            <label className={lCls()}>Bank Account Name</label>
+            <input type="text" placeholder="Account Holder Name"
+                   value={bankDetails.accountName || ''}
+                   onChange={e => update({ bank: { ...bankDetails, accountName: e.target.value } })}
+                   className={iCls(false)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lCls()}>Account Number</label>
+              <input type="text" inputMode="numeric" placeholder="Account Number"
+                     value={bankDetails.accountNumber || ''}
+                     onChange={e => update({ bank: { ...bankDetails, accountNumber: e.target.value.replace(/\D/g,'') } })}
+                     className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+            <div>
+              <label className={lCls()}>IFSC Code</label>
+              <input type="text" placeholder="HDFC0001234" maxLength={11}
+                     value={bankDetails.ifsc || ''}
+                     onChange={e => update({ bank: { ...bankDetails, ifsc: e.target.value.toUpperCase().replace(/\s/g,'') } })}
+                     className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+          </div>
+
+          <div>
+            <label className={lCls()}>Bank Name</label>
+            <input type="text" placeholder="HDFC Bank, SBI…"
+                   value={bankDetails.bankName || ''}
+                   onChange={e => update({ bank: { ...bankDetails, bankName: e.target.value } })}
+                   className={iCls(false)} />
+          </div>
+        </div>
+      </div>
+
+      <SaveBar
+        status={saveStatus} error={saveError}
+        onSave={handleSave} dirty={dirty}
+        themeColor={themeColor}
+      />
+    </div>
+  );
+}
+
+// ── Main ManageStore Page ─────────────────────────────────────────────────────
+export default function ManageStore() {
+  const { businessSlug }  = useParams();
+  const [loading,     setLoading]     = useState(true);
+  const [notFound,    setNotFound]    = useState(false);
+  const [pinVerified, setPinVerified] = useState(false);
+  const [config,      setConfig]      = useState(null);
+  const [tab,         setTab]         = useState('products');
+  const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
+  const [saveError,   setSaveError]   = useState('');
+  const saveTimerRef = useRef(null);
+
+  // Load store
+  useEffect(() => {
+    setLoading(true);
+    loadBusiness(businessSlug).then(cfg => {
+      if (cfg) setConfig(cfg);
+      else     setNotFound(true);
+      setLoading(false);
+    });
+  }, [businessSlug]);
+
+  // Merge partial config updates
+  function handleChange(partial) {
+    setConfig(prev => ({ ...prev, ...partial }));
+  }
+
+  // Save to Supabase
+  async function handleSave() {
+    setSaveStatus('saving');
+    setSaveError('');
+    try {
+      await updateStore(businessSlug, config);
+      cacheStore(config);               // update local cache too
+      setSaveStatus('saved');
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save. Please try again.');
+      setSaveStatus('error');
+    }
+  }
+
+  // ── Loading / not found ────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center gap-3">
+        <div className="w-8 h-8 border-4 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
+        <p className="text-sm text-gray-400">Loading store…</p>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center space-y-3">
+          <p className="text-4xl">🔍</p>
+          <p className="text-lg font-bold text-gray-800">Store not found</p>
+          <p className="text-sm text-gray-500">No store with slug "{businessSlug}" exists.</p>
+          <Link to="/" className="inline-block mt-3 text-sm text-teal-600 hover:text-teal-800 underline">
+            Back to home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ── PIN Gate ───────────────────────────────────────────────────────────────
+  if (!pinVerified) {
+    return <PinGate slug={businessSlug} onVerified={() => setPinVerified(true)} />;
+  }
+
+  // ── Management Dashboard ──────────────────────────────────────────────────
+  const themeColor = config.theme?.primary || '#0d9488';
+
+  const TABS = [
+    { key: 'products',   label: 'Products',   icon: Package  },
+    { key: 'categories', label: 'Categories', icon: Tag      },
+    { key: 'settings',   label: 'Settings',   icon: Settings2 },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+
+      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                 style={{ backgroundColor: themeColor + '20' }}>
+              {config.logoEmoji || '🏪'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900 truncate leading-none">{config.businessName}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Store Management</p>
+            </div>
+          </div>
+
+          <Link to={`/${businessSlug}`}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500
+                           hover:text-gray-800 transition-colors flex-shrink-0 border border-gray-200
+                           rounded-lg px-2.5 py-1.5 hover:bg-gray-50">
+            <ArrowLeft size={12} />
+            View Store
+          </Link>
+        </div>
+      </header>
+
+      {/* ── Tab navigation ──────────────────────────────────────────────────── */}
+      <div className="bg-white border-b border-gray-100">
+        <div className="max-w-lg mx-auto px-4 flex">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={[
+                'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold',
+                'border-b-2 transition-colors',
+                tab === key
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-400 hover:text-gray-600',
+              ].join(' ')}>
+              <Icon size={13} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tab content ─────────────────────────────────────────────────────── */}
+      <main className="max-w-lg mx-auto px-4 py-6">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          {tab === 'products' && (
+            <ManageProducts
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+            />
+          )}
+          {tab === 'categories' && (
+            <ManageCategories
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+            />
+          )}
+          {tab === 'settings' && (
+            <ManageSettings
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+            />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

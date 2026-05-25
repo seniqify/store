@@ -1,49 +1,55 @@
 /**
  * BusinessLoader
  * ─────────────────────────────────────────────────────────────────────────────
- * Resolves a URL slug → business config object.
- *
  * Resolution order:
- *   1. User-created businesses stored in localStorage (via businessStorage)
- *   2. Static demo configs shipped with the app (src/businesses/)
- *
- * Intentionally framework-agnostic — no React imports, no hooks.
+ *   1. Local cache (localStorage) — instant load for recently created stores
+ *   2. Supabase DB — the source of truth for all user-created stores
+ *   3. Static demo configs (src/businesses/) — hardcoded demo stores
  */
 
 import REGISTRY from '../businesses/index';
-import { getStoredBusinesses } from './businessStorage';
+import { getCachedBusinesses, cacheStore } from './businessStorage';
+import { fetchStore } from './storeService';
 
 /**
- * Look up a business config by its URL slug (case-insensitive).
- * Returns null if no match found in either source.
+ * Async: load a store by slug.
+ * Returns config object or null.
  */
-export function loadBusiness(slug) {
+export async function loadBusiness(slug) {
   if (!slug || typeof slug !== 'string') return null;
   const s = slug.toLowerCase();
 
-  // User-created businesses take priority over static configs.
-  const stored = getStoredBusinesses();
-  return stored[s] ?? REGISTRY[s] ?? null;
+  // 1. Check local cache first (instant)
+  const cache = getCachedBusinesses();
+  if (cache[s]) return cache[s];
+
+  // 2. Check static demo configs (instant)
+  if (REGISTRY[s]) return REGISTRY[s];
+
+  // 3. Fetch from Supabase
+  const dbConfig = await fetchStore(s);
+  if (dbConfig) {
+    cacheStore(dbConfig); // cache for next time
+    return dbConfig;
+  }
+
+  return null;
 }
 
 /**
- * Return ALL business configs: user-created first, then static demos
- * (excluding any static demo whose slug has been overridden by a user store).
+ * Sync: returns only static demo stores (for landing page previews).
+ * Does not include user-created DB stores.
  */
 export function listBusinesses() {
-  const stored      = getStoredBusinesses();
-  const storedVals  = Object.values(stored);
-  const storedSlugs = new Set(Object.keys(stored));
-  const staticVals  = Object.values(REGISTRY).filter(b => !storedSlugs.has(b.slug));
-  return [...storedVals, ...staticVals];
+  return Object.values(REGISTRY);
 }
 
 /**
- * Return all known slugs (user-created + static, deduplicated).
- * Used by the onboarding wizard to avoid duplicate slugs.
+ * Return slugs from static configs + local cache.
+ * Used by onboarding to avoid duplicate slugs.
  */
 export function listSlugs() {
-  const stored  = Object.keys(getStoredBusinesses());
+  const cached  = Object.keys(getCachedBusinesses());
   const static_ = Object.keys(REGISTRY);
-  return [...new Set([...stored, ...static_])];
+  return [...new Set([...cached, ...static_])];
 }

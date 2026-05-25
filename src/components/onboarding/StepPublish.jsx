@@ -1,42 +1,29 @@
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Lock, ExternalLink, Settings } from 'lucide-react';
 
-/**
- * StepPublish — Onboarding Step 3
- * Shows a preview of the generated store config and a "Launch" button.
- *
- * Props:
- *   data       — raw wizard data (used for display counts)
- *   config     — output of buildBusinessConfig() — fully formed store config
- *   onBack     — () => void
- *   onPublish  — () => void — saves to localStorage and navigates to the store
- */
-export default function StepPublish({ data, config, onBack, onPublish }) {
+export default function StepPublish({
+  data, config, saving, saveError,
+  onBack, onPublish, onPinChange,
+}) {
   if (!config) return null;
 
   const { businessName, whatsappNumber, logoEmoji, theme, slug } = config;
-
-  // Format the WhatsApp number for display: 91XXXXXXXXXX → +91 XXXXX XXXXX
   const digits     = whatsappNumber.replace(/\D/g, '').slice(-10);
   const phoneLabel = `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  const defaultPin = whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
 
   return (
     <div className="space-y-6">
 
       <div>
         <h2 className="text-xl font-extrabold text-gray-900">Your store is ready</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Review the details below and launch your store.
-        </p>
+        <p className="text-sm text-gray-500 mt-1">Review and launch your store.</p>
       </div>
 
-      {/* ── Store preview card ─────────────────────────────────────────── */}
+      {/* ── Store preview card ──────────────────────────────────────── */}
       <div className="border border-gray-200 rounded-2xl overflow-hidden">
-
-        {/* Simulated header bar */}
         <div className="px-4 py-3 flex items-center gap-2.5"
              style={{ backgroundColor: theme.primary }}>
-          <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center
-                          justify-center text-base">
+          <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center text-base">
             {logoEmoji}
           </div>
           <div>
@@ -45,14 +32,13 @@ export default function StepPublish({ data, config, onBack, onPublish }) {
           </div>
         </div>
 
-        {/* Info rows */}
         <div className="px-4 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'WhatsApp',   value: phoneLabel },
               { label: 'Categories', value: `${data.categories.length} categories` },
               { label: 'Products',   value: `${data.products.length} products` },
-              { label: 'Brand',      value: theme.primary,      swatch: true },
+              { label: 'Brand',      value: theme.primary, swatch: true },
             ].map(({ label, value, swatch }) => (
               <div key={label}>
                 <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -69,19 +55,6 @@ export default function StepPublish({ data, config, onBack, onPublish }) {
             ))}
           </div>
 
-          {/* Category chips */}
-          {data.categories.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {data.categories.map(c => (
-                <span key={c.id}
-                      className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5
-                                 rounded-full font-medium">
-                  {c.emoji} {c.label}
-                </span>
-              ))}
-            </div>
-          )}
-
           {/* Store URL */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
             <p className="text-xs text-gray-400 mb-0.5">Your store URL</p>
@@ -92,13 +65,43 @@ export default function StepPublish({ data, config, onBack, onPublish }) {
         </div>
       </div>
 
-      {/* ── What's included ────────────────────────────────────────────── */}
+      {/* ── PIN setup ──────────────────────────────────────────────── */}
+      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Lock size={15} className="text-amber-600" />
+          <p className="text-sm font-bold text-amber-800">Set your Store Management PIN</p>
+        </div>
+        <p className="text-xs text-amber-600 leading-relaxed">
+          Use this PIN to edit products, add categories, and update settings after launch.
+          Default is last 4 digits of your WhatsApp number.
+        </p>
+        <input
+          type="number"
+          inputMode="numeric"
+          placeholder={`Default: ${defaultPin}`}
+          maxLength={4}
+          value={data.pin}
+          onChange={(e) => onPinChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          className="w-32 px-3 py-2 border border-amber-200 rounded-xl text-center
+                     text-lg font-bold tracking-widest text-gray-900 bg-white
+                     focus:outline-none focus:ring-2 focus:ring-amber-400"
+        />
+        <p className="text-[11px] text-amber-500">
+          After launch, manage your store at:{' '}
+          <span className="font-mono font-semibold">
+            {window.location.origin}/{slug}/manage
+          </span>
+        </p>
+      </div>
+
+      {/* ── What's included ────────────────────────────────────────── */}
       <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 space-y-2">
         {[
           'Live store page with your branding',
           'Product catalogue with category filters',
           'Cart with quantity selectors',
-          'WhatsApp order flow — structured message to your number',
+          'WhatsApp order flow',
+          'Add/edit products anytime via manage page',
         ].map(item => (
           <div key={item} className="flex items-center gap-2 text-sm text-green-800">
             <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
@@ -107,21 +110,34 @@ export default function StepPublish({ data, config, onBack, onPublish }) {
         ))}
       </div>
 
-      {/* ── Navigation ─────────────────────────────────────────────────── */}
+      {/* ── Error ──────────────────────────────────────────────────── */}
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+          ⚠️ {saveError}
+        </div>
+      )}
+
+      {/* ── Navigation ─────────────────────────────────────────────── */}
       <div className="flex gap-3">
-        <button type="button" onClick={onBack}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold
-                           text-gray-600 hover:bg-gray-50 transition-colors">
+        <button type="button" onClick={onBack} disabled={saving}
+          className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold
+                     text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
           ← Back
         </button>
-        <button
-          type="button"
-          onClick={onPublish}
+        <button type="button" onClick={onPublish} disabled={saving}
           className="flex-1 py-3.5 rounded-xl text-sm font-bold text-white
-                     transition-all active:scale-[0.98] shadow-sm hover:opacity-90"
-          style={{ backgroundColor: theme.primary }}
-        >
-          🚀 Launch My Store
+                     transition-all active:scale-[0.98] shadow-sm hover:opacity-90
+                     disabled:opacity-70 flex items-center justify-center gap-2"
+          style={{ backgroundColor: theme.primary }}>
+          {saving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/40 border-t-white
+                              rounded-full animate-spin" />
+              Saving…
+            </>
+          ) : (
+            '🚀 Launch My Store'
+          )}
         </button>
       </div>
     </div>
