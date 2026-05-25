@@ -129,11 +129,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div id="products" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8 overflow-x-hidden">
-        <div className="flex flex-col lg:flex-row gap-6 xl:gap-8 items-start">
+      <div id="products" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8 overflow-hidden">
+        <div className="flex flex-col lg:flex-row gap-6 xl:gap-8 items-start w-full">
 
           {/* ── Left: Products + Order form ─────────────────────────────── */}
-          <div className="flex-1 min-w-0 space-y-8">
+          <div className="w-full lg:flex-1 min-w-0 overflow-hidden space-y-6">
 
             <ProductGrid
               products={products}

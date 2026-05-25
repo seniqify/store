@@ -24,7 +24,7 @@ export default function ProductCard({
 
   return (
     <div className={[
-      'bg-white rounded-xl border flex flex-col overflow-hidden',
+      'bg-white rounded-xl border flex flex-col overflow-hidden min-w-0',
       'transition-shadow duration-200',
       cartQty > 0 ? 'border-brand/60 shadow-md' : 'border-gray-100 shadow-sm',
     ].join(' ')}>

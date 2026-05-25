@@ -54,7 +54,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
     categories.find((c) => c.id === activeCategory)?.label ?? 'All Products';
 
   return (
-    <section className="flex-1 min-w-0">
+    <section className="w-full min-w-0 overflow-hidden">
 
       {/* Section heading */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
@@ -97,7 +97,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
             description="Try a different category or check back later."
           />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-4 w-full">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
             {filtered.map((product) => (
               <ProductCard
                 key={product.id}
