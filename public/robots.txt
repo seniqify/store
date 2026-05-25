@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Allow: /onboarding
+Allow: /terms
+Allow: /privacy
+Allow: /demo/
+
+# Don't index individual store pages — they're user content, not platform pages
+Disallow: /*/manage
