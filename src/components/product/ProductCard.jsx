@@ -45,16 +45,15 @@ export default function ProductCard({
   return (
     <div
       className={[
-        'bg-white rounded-2xl border overflow-hidden flex flex-col',
-        'transition-all duration-200',
-        'hover:shadow-lg hover:-translate-y-0.5',
+        'bg-white rounded-xl border overflow-hidden flex flex-col w-full',
+        'transition-shadow duration-200',
         cartQty > 0
-          ? 'border-brand shadow-sm shadow-brand/10'
-          : 'border-gray-100 shadow-sm',
+          ? 'border-brand shadow-md shadow-brand/10'
+          : 'border-gray-100 shadow-sm hover:shadow-md',
       ].join(' ')}
     >
       {/* ── Image ─────────────────────────────────────────────────────── */}
-      <div className="relative aspect-square bg-gray-100 overflow-hidden flex-shrink-0">
+      <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden flex-shrink-0">
 
         {/* Skeleton shimmer */}
         {!imgLoaded && (
@@ -67,42 +66,42 @@ export default function ProductCard({
           loading="lazy"
           onLoad={() => setImgLoaded(true)}
           className={[
-            'w-full h-full object-cover hover:scale-105',
-            'transition-[transform,opacity] duration-300',
+            'w-full h-full object-cover',
+            'transition-opacity duration-300',
             imgLoaded ? 'opacity-100' : 'opacity-0',
           ].join(' ')}
         />
 
-        {/* Badge (top-left) */}
+        {/* Badge top-left */}
         {product.badge && (
           <div className="absolute top-2 left-2">
             <Badge label={product.badge} colorClass={product.badgeColor} />
           </div>
         )}
 
-        {/* Discount chip (top-right, only when no badge) */}
+        {/* Discount chip top-right (only when no badge) */}
         {discount > 0 && !product.badge && (
           <div className="absolute top-2 right-2 bg-green-500 text-white
-                          text-xs font-bold px-1.5 py-0.5 rounded-md shadow-sm">
+                          text-[11px] font-bold px-1.5 py-0.5 rounded-md">
             {discount}% off
           </div>
         )}
 
-        {/* "In cart" indicator — bottom-right */}
+        {/* In-cart badge bottom-right */}
         {cartQty > 0 && (
           <div className="absolute bottom-2 right-2
                           flex items-center gap-1 bg-brand text-white
-                          text-xs font-semibold px-2 py-0.5 rounded-full shadow-md">
-            <Check size={10} strokeWidth={3} />
-            {cartQty} in cart
+                          text-[10px] font-bold px-2 py-0.5 rounded-full">
+            <Check size={9} strokeWidth={3} />
+            {cartQty}
           </div>
         )}
 
         {/* Out-of-stock overlay */}
         {outOfStock && (
-          <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
-            <span className="bg-white text-gray-800 text-sm font-semibold
-                             px-3 py-1 rounded-full shadow">
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className="bg-white text-gray-800 text-xs font-semibold
+                             px-3 py-1 rounded-full">
               Out of Stock
             </span>
           </div>
@@ -110,136 +109,110 @@ export default function ProductCard({
       </div>
 
       {/* ── Body ──────────────────────────────────────────────────────── */}
-      <div className="p-3 flex flex-col flex-1 gap-2">
+      <div className="p-2.5 sm:p-3 flex flex-col flex-1 gap-1.5">
 
-        {/* Product name */}
-        <h3 className="text-sm font-semibold text-gray-900 line-clamp-2
-                       leading-snug min-h-[2.5rem]">
+        {/* Product name — always 2 lines reserved so cards align */}
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-900
+                       line-clamp-2 leading-snug min-h-[2.4rem]">
           {product.name}
         </h3>
 
-        {/* Description */}
+        {/* Description — hidden on mobile, shows on sm+ */}
         {product.description && (
-          <p className="text-xs text-gray-400 leading-relaxed line-clamp-2 -mt-1">
+          <p className="hidden sm:block text-xs text-gray-400 leading-relaxed line-clamp-2">
             {product.description}
           </p>
         )}
 
         {/* Size + GSM chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {product.size && (
-            <span className="inline-flex items-center gap-0.5 text-xs
-                             bg-brand/10 text-brand-dark font-medium
-                             px-2 py-0.5 rounded-full">
-              <Ruler size={10} />
-              {product.size}
-            </span>
-          )}
-          {product.gsm && (
-            <span className="text-xs bg-gray-100 text-gray-500
-                             font-medium px-2 py-0.5 rounded-full">
-              {product.gsm}&nbsp;GSM
-            </span>
-          )}
-        </div>
+        {(product.size || product.gsm) && (
+          <div className="flex flex-wrap gap-1">
+            {product.size && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] sm:text-xs
+                               bg-brand/10 text-brand-dark font-medium
+                               px-1.5 py-0.5 rounded-full leading-none">
+                <Ruler size={9} />
+                {product.size}
+              </span>
+            )}
+            {product.gsm && (
+              <span className="text-[10px] sm:text-xs bg-gray-100 text-gray-500
+                               font-medium px-1.5 py-0.5 rounded-full leading-none">
+                {product.gsm}&nbsp;GSM
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Unit */}
         {product.unit && (
-          <p className="text-xs text-gray-400 -mt-1">{product.unit}</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 leading-none">
+            {product.unit}
+          </p>
         )}
 
-        {/* Price row */}
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-base font-bold text-gray-900">
+        {/* Price row — pushed to bottom */}
+        <div className="flex items-baseline gap-1 mt-auto pt-1">
+          <span className="text-sm sm:text-base font-bold text-gray-900 tabular-nums">
             {formatINR(product.price)}
           </span>
           {product.mrp > product.price && (
-            <span className="text-xs text-gray-400 line-through">
+            <span className="text-[10px] sm:text-xs text-gray-400 line-through tabular-nums">
               {formatINR(product.mrp)}
             </span>
           )}
           {discount > 0 && (
-            <span className="text-xs font-semibold text-green-600 ml-auto">
+            <span className="text-[10px] sm:text-xs font-semibold text-green-600 ml-auto">
               {discount}% off
             </span>
           )}
         </div>
 
-        {/* ── Action area ───────────────────────────────────────────────
-            cartQty === 0 → [Add to Cart] button
-            cartQty  > 0 → [−] live-qty [+] stepper
-        ─────────────────────────────────────────────────────────────── */}
-        {!outOfStock && (
-          <div className="pt-1">
-            {cartQty === 0 ? (
-              /* ── Not in cart: single Add button ── */
-              <button
-                onClick={handleAdd}
-                className={[
-                  'w-full flex items-center justify-center gap-1.5',
-                  'text-xs sm:text-sm font-semibold py-2.5 rounded-xl',
-                  'transition-all duration-200 active:scale-95 shadow-sm',
-                  justAdded
-                    ? 'bg-green-500 text-white scale-95'
-                    : 'bg-brand hover:bg-brand-dark text-white',
-                ].join(' ')}
-              >
-                {justAdded ? (
-                  <>
-                    <Check size={14} strokeWidth={3} />
-                    Added!
-                  </>
-                ) : (
-                  <>
-                    <ShoppingCart size={14} />
-                    Add to Cart
-                  </>
-                )}
+        {/* ── Action button ─────────────────────────────────────────── */}
+        <div className="pt-1">
+          {outOfStock ? (
+            <button disabled
+              className="w-full py-2 rounded-lg bg-gray-100 text-gray-400
+                         text-xs font-semibold cursor-not-allowed">
+              Unavailable
+            </button>
+          ) : cartQty === 0 ? (
+            <button
+              onClick={handleAdd}
+              className={[
+                'w-full flex items-center justify-center gap-1.5',
+                'text-xs sm:text-sm font-semibold py-2 sm:py-2.5 rounded-lg',
+                'transition-all duration-200 active:scale-95',
+                justAdded
+                  ? 'bg-green-500 text-white'
+                  : 'bg-brand hover:bg-brand-dark text-white',
+              ].join(' ')}
+            >
+              {justAdded ? (
+                <><Check size={13} strokeWidth={3} /> Added!</>
+              ) : (
+                <><ShoppingCart size={13} /> Add to Cart</>
+              )}
+            </button>
+          ) : (
+            <div className="flex items-center justify-between
+                            bg-brand rounded-lg overflow-hidden h-9">
+              <button onClick={() => onDecrease(product.id)}
+                className="w-9 h-full flex items-center justify-center
+                           text-white hover:bg-white/20 active:bg-white/30 transition-colors">
+                <Minus size={13} strokeWidth={2.5} />
               </button>
-            ) : (
-              /* ── Already in cart: qty stepper controls live cart qty ── */
-              <div className="flex items-center justify-between
-                              bg-brand rounded-xl overflow-hidden h-10">
-                <button
-                  onClick={() => onDecrease(product.id)}
-                  aria-label="Remove one from cart"
-                  className="w-10 h-full flex items-center justify-center
-                             text-white hover:bg-white/20 active:bg-white/30
-                             transition-colors"
-                >
-                  <Minus size={14} strokeWidth={2.5} />
-                </button>
-
-                <span className="text-sm font-bold text-white
-                                 tabular-nums select-none min-w-[1.5rem]
-                                 text-center">
-                  {cartQty}
-                </span>
-
-                <button
-                  onClick={() => onIncrease(product.id)}
-                  aria-label="Add one more to cart"
-                  className="w-10 h-full flex items-center justify-center
-                             text-white hover:bg-white/20 active:bg-white/30
-                             transition-colors"
-                >
-                  <Plus size={14} strokeWidth={2.5} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Out-of-stock placeholder */}
-        {outOfStock && (
-          <button
-            disabled
-            className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-400
-                       text-sm font-semibold cursor-not-allowed mt-1"
-          >
-            Unavailable
-          </button>
-        )}
+              <span className="text-sm font-bold text-white tabular-nums select-none">
+                {cartQty}
+              </span>
+              <button onClick={() => onIncrease(product.id)}
+                className="w-9 h-full flex items-center justify-center
+                           text-white hover:bg-white/20 active:bg-white/30 transition-colors">
+                <Plus size={13} strokeWidth={2.5} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

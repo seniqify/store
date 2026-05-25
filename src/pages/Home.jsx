@@ -62,22 +62,23 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   }
 
   return (
-    <div className={['min-h-screen bg-[#f8fafc]', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
+    <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-brand-dark via-brand to-brand/80 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12 text-center">
+      <div className="bg-gradient-to-br from-brand-dark via-brand to-brand/80 text-white w-full">
+        <div className="w-full max-w-7xl mx-auto px-4 py-8 sm:py-12 text-center">
 
-          <p className="text-white/70 text-[11px] font-semibold tracking-widest uppercase mb-2.5">
+          <p className="text-white/70 text-[10px] sm:text-[11px] font-semibold tracking-widest
+                        uppercase mb-2.5 truncate">
             {hero.eyebrow}
           </p>
 
-          <h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold leading-tight
-                          mb-3 whitespace-pre-line tracking-tight">
+          <h1 className="text-xl sm:text-4xl md:text-5xl font-extrabold leading-tight
+                          mb-3 break-words tracking-tight">
             {hero.heading}
           </h1>
 
-          <p className="text-white/80 text-sm sm:text-base max-w-lg mx-auto mb-6">
+          <p className="text-white/80 text-sm sm:text-base max-w-lg mx-auto mb-6 px-2">
             {hero.subtext}
           </p>
 
@@ -113,7 +114,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       {/* ── Trust strip ───────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center gap-8 overflow-x-auto scrollbar-hide py-3">
+          <div className="flex items-center gap-5 sm:gap-8 overflow-x-auto scrollbar-hide py-3">
             {features.map((f) => (
               <div key={f.title} className="flex items-center gap-2.5 flex-shrink-0">
                 <span className="text-lg leading-none">{f.emoji}</span>

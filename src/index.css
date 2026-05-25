@@ -17,6 +17,7 @@
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
   }
 
   * {
@@ -30,6 +31,7 @@
     color: #111827;
     margin: 0;
     padding: 0;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -38,6 +40,7 @@
   #root {
     width: 100%;
     min-height: 100vh;
+    overflow-x: hidden;
   }
 }
 

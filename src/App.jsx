@@ -46,7 +46,7 @@ function BusinessShell() {
     <BusinessProvider config={config}>
       <ThemeApplier />
 
-      <div className="min-h-screen flex flex-col bg-[#f8fafc]">
+      <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header
           cartCount={cartCount}
           onCartOpen={() => setCartOpen(true)}
