@@ -1,16 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
 import Header        from './components/layout/Header';
 import Footer        from './components/layout/Footer';
 import Home          from './pages/Home';
-import Landing       from './pages/Landing';
-import Onboarding    from './pages/Onboarding';
-import ManageStore   from './pages/ManageStore';
-import NotFound      from './pages/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness } from './utils/BusinessLoader';
 import { applyTheme }   from './utils/theme';
+
+// ── Code-split heavy pages — loaded only when first visited ──────────────────
+const Landing    = lazy(() => import('./pages/Landing'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const ManageStore = lazy(() => import('./pages/ManageStore'));
+const NotFound   = lazy(() => import('./pages/NotFound'));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-4 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function ThemeApplier() {
   const { theme } = useBusinessConfig();
@@ -76,13 +86,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <Routes>
-          <Route path="/"                      element={<Landing />} />
-          <Route path="/onboarding"            element={<Onboarding />} />
-          <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
-          <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
-          <Route path="*"                      element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/"                      element={<Landing />} />
+            <Route path="/onboarding"            element={<Onboarding />} />
+            <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
+            <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
+            <Route path="*"                      element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </ErrorBoundary>
     </BrowserRouter>
   );
