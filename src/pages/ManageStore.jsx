@@ -986,14 +986,26 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             className={iCls(false)}
           />
           <p className="mt-1 text-xs text-gray-400">
-            Shown as a colored bar at the top of your store. Leave empty to hide.
+            Shown as a banner card at the top of your store. Start with an emoji for best results. Leave empty to hide.
           </p>
-          {config.promoText && (
-            <div className="mt-2 py-2 px-3 rounded-xl text-sm font-semibold text-white text-center"
-                 style={{ backgroundColor: themeColor }}>
-              {config.promoText}
-            </div>
-          )}
+          {config.promoText && (() => {
+            const emoji   = config.promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null;
+            const body    = emoji ? config.promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u, '').trim() : config.promoText;
+            const primary = config.theme?.primary     ?? themeColor;
+            const dark    = config.theme?.primaryDark ?? themeColor;
+            return (
+              <div className="mt-3 rounded-2xl overflow-hidden relative"
+                   style={{ background: `linear-gradient(135deg, ${primary} 0%, ${dark} 100%)` }}>
+                <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
+                <div className="absolute -bottom-6 right-14 w-20 h-20 rounded-full bg-white/10 pointer-events-none" />
+                <div className="relative flex items-center gap-3 px-4 py-3">
+                  {emoji && <span className="text-3xl leading-none flex-shrink-0 select-none">{emoji}</span>}
+                  <p className="flex-1 text-white font-extrabold text-sm leading-snug">{body || config.promoText}</p>
+                  <ChevronDown size={16} className="flex-shrink-0 text-white/60 rotate-[-90deg]" />
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

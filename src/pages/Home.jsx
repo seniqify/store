@@ -33,7 +33,15 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // Business config from context — changes when the route changes
   const config = useBusinessConfig();
-  const { products, categories, features, businessName, whatsappNumber, promoText } = config;
+  const { products, categories, features, businessName, whatsappNumber, promoText, theme } = config;
+
+  // Split leading emoji(s) from promo text so they can render larger on the card
+  const promoEmoji = promoText
+    ? (promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null)
+    : null;
+  const promoBody  = promoText
+    ? promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u, '').trim()
+    : null;
 
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
@@ -94,11 +102,44 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
-      {/* ── Promo banner — only shown when owner sets a message ────────────── */}
+      {/* ── Promo banner — Blinkit/Zepto-style offer card ────────────────── */}
       {promoText && (
-        <div className="w-full py-2.5 px-4 text-center text-sm font-semibold text-white
-                        bg-brand leading-snug">
-          {promoText}
+        <div className="w-full px-3 sm:px-4 pt-3 pb-1">
+          <div className="max-w-7xl mx-auto">
+            <div
+              className="relative rounded-2xl overflow-hidden"
+              style={{
+                background: `linear-gradient(135deg, ${theme?.primary ?? '#0d9488'} 0%, ${theme?.primaryDark ?? '#0f766e'} 100%)`,
+              }}
+            >
+              {/* Decorative background bubbles */}
+              <div className="absolute -top-6 -right-6  w-36 h-36 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute -bottom-8 right-20 w-28 h-28 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute top-1  left-1/2  w-16 h-16 rounded-full bg-white/10 pointer-events-none" />
+
+              {/* Content */}
+              <div className="relative flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3.5 sm:py-4">
+                {/* Emoji — large */}
+                {promoEmoji && (
+                  <span className="text-3xl sm:text-4xl flex-shrink-0 leading-none select-none">
+                    {promoEmoji}
+                  </span>
+                )}
+
+                {/* Text */}
+                <p className="flex-1 min-w-0 text-white font-extrabold text-sm sm:text-[15px] leading-snug tracking-tight">
+                  {promoBody || promoText}
+                </p>
+
+                {/* Arrow chip */}
+                <ChevronRight
+                  size={18}
+                  strokeWidth={2.5}
+                  className="flex-shrink-0 text-white/60"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
