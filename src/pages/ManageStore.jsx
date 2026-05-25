@@ -15,11 +15,11 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown,
 } from 'lucide-react';
-import { loadBusiness }             from '../utils/BusinessLoader';
-import { updateStore, verifyPin }   from '../utils/storeService';
-import { cacheStore }               from '../utils/businessStorage';
-import { THEME_PRESETS }            from '../utils/buildConfig';
-import { uploadConfigImages }       from '../utils/imageStorage';
+import { loadBusiness }                        from '../utils/BusinessLoader';
+import { updateStore, verifyPin, resetPin }    from '../utils/storeService';
+import { cacheStore }                          from '../utils/businessStorage';
+import { THEME_PRESETS }                       from '../utils/buildConfig';
+import { uploadConfigImages }                  from '../utils/imageStorage';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = [
@@ -199,15 +199,22 @@ function SaveBar({ status, error, onSave, dirty, themeColor }) {
 
 // ── PIN Gate ─────────────────────────────────────────────────────────────────
 function PinGate({ slug, onVerified }) {
+  const [mode,     setMode]     = useState('login');   // 'login' | 'recover'
   const [pin,      setPin]      = useState('');
   const [error,    setError]    = useState('');
   const [checking, setChecking] = useState(false);
 
-  async function handleSubmit(e) {
+  // Recovery state
+  const [phone,    setPhone]    = useState('');
+  const [newPin,   setNewPin]   = useState('');
+  const [confPin,  setConfPin]  = useState('');
+  const [success,  setSuccess]  = useState(false);
+
+  // ── Login ──────────────────────────────────────────────────────────────────
+  async function handleLogin(e) {
     e.preventDefault();
     if (pin.length !== 4) { setError('Enter your 4-digit PIN'); return; }
-    setChecking(true);
-    setError('');
+    setChecking(true); setError('');
     const ok = await verifyPin(slug, pin);
     if (ok) {
       onVerified();
@@ -217,46 +224,163 @@ function PinGate({ slug, onVerified }) {
     }
   }
 
+  // ── Recovery ───────────────────────────────────────────────────────────────
+  async function handleRecover(e) {
+    e.preventDefault();
+    if (phone.replace(/\D/g,'').length < 10) { setError('Enter a valid 10-digit WhatsApp number'); return; }
+    if (newPin.length !== 4)  { setError('New PIN must be exactly 4 digits'); return; }
+    if (newPin !== confPin)   { setError('PINs do not match'); return; }
+    setChecking(true); setError('');
+    try {
+      await resetPin(slug, newPin, phone);
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function switchMode(m) {
+    setMode(m); setError('');
+    setPin(''); setPhone(''); setNewPin(''); setConfPin(''); setSuccess(false);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 w-full max-w-sm">
+
+        {/* Icon */}
         <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
           <Lock size={22} className="text-amber-600" />
         </div>
-        <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Store Management</h1>
-        <p className="text-sm text-gray-500 text-center mb-6">
-          Enter your 4-digit PIN to manage your store
-        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="number"
-            inputMode="numeric"
-            placeholder="• • • •"
-            value={pin}
-            onChange={(e) => { setPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center
-                       text-2xl font-bold tracking-widest text-gray-900 bg-white
-                       focus:outline-none focus:ring-2 focus:ring-gray-300"
-            autoFocus
-          />
-          {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-          <button type="submit" disabled={checking}
-                  className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                             hover:bg-gray-700 transition-colors disabled:opacity-60">
-            {checking ? 'Checking…' : 'Unlock →'}
-          </button>
-        </form>
+        {/* ── LOGIN MODE ───────────────────────────────────────────────────── */}
+        {mode === 'login' && (
+          <>
+            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Store Management</h1>
+            <p className="text-sm text-gray-500 text-center mb-6">Enter your 4-digit PIN to continue</p>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
-          💡 Forgot PIN? It's the last 4 digits of your WhatsApp number.
-        </p>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <input
+                type="number" inputMode="numeric" placeholder="• • • •"
+                value={pin}
+                onChange={(e) => { setPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center
+                           text-2xl font-bold tracking-widest text-gray-900 bg-white
+                           focus:outline-none focus:ring-2 focus:ring-gray-300"
+                autoFocus
+              />
+              {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+              <button type="submit" disabled={checking}
+                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                                 hover:bg-gray-700 transition-colors disabled:opacity-60">
+                {checking ? 'Checking…' : 'Unlock →'}
+              </button>
+            </form>
 
-        <Link to={`/${slug}`}
-              className="flex items-center justify-center gap-1.5 mt-3
-                         text-sm text-gray-400 hover:text-gray-600 transition-colors">
-          <ArrowLeft size={14} /> Back to store
-        </Link>
+            <button type="button" onClick={() => switchMode('recover')}
+                    className="w-full mt-4 text-sm text-amber-600 hover:text-amber-800
+                               font-medium transition-colors text-center">
+              Forgot PIN? Reset it →
+            </button>
+          </>
+        )}
+
+        {/* ── RECOVERY MODE ────────────────────────────────────────────────── */}
+        {mode === 'recover' && !success && (
+          <>
+            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Reset Your PIN</h1>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Enter the WhatsApp number linked to this store to verify ownership.
+            </p>
+
+            <form onSubmit={handleRecover} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  WhatsApp Number (linked to store)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
+                  <input
+                    type="tel" inputMode="numeric" placeholder="98765 43210" maxLength={10}
+                    value={phone}
+                    onChange={(e) => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setError(''); }}
+                    className="w-full pl-12 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
+                               bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">New PIN</label>
+                <input
+                  type="number" inputMode="numeric" placeholder="• • • •"
+                  value={newPin}
+                  onChange={(e) => { setNewPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
+                             text-xl font-bold tracking-widest text-gray-900 bg-white
+                             focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Confirm New PIN</label>
+                <input
+                  type="number" inputMode="numeric" placeholder="• • • •"
+                  value={confPin}
+                  onChange={(e) => { setConfPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
+                             text-xl font-bold tracking-widest text-gray-900 bg-white
+                             focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+              </div>
+
+              {error && (
+                <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">
+                  {error}
+                </p>
+              )}
+
+              <button type="submit" disabled={checking}
+                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                                 hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
+                {checking ? 'Verifying…' : 'Reset PIN →'}
+              </button>
+            </form>
+
+            <button type="button" onClick={() => switchMode('login')}
+                    className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors text-center">
+              ← Back to login
+            </button>
+          </>
+        )}
+
+        {/* ── SUCCESS ──────────────────────────────────────────────────────── */}
+        {mode === 'recover' && success && (
+          <div className="text-center space-y-4">
+            <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
+              <CheckCircle2 size={28} className="text-green-500" />
+            </div>
+            <h2 className="text-lg font-extrabold text-gray-900">PIN Reset!</h2>
+            <p className="text-sm text-gray-500">Your new PIN has been saved. Use it to log in.</p>
+            <button type="button" onClick={() => switchMode('login')}
+                    className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                               hover:bg-gray-700 transition-colors">
+              Login with new PIN →
+            </button>
+          </div>
+        )}
+
+        {/* Back to store link */}
+        {!(mode === 'recover' && success) && (
+          <Link to={`/${slug}`}
+                className="flex items-center justify-center gap-1.5 mt-5
+                           text-sm text-gray-400 hover:text-gray-600 transition-colors">
+            <ArrowLeft size={14} /> Back to store
+          </Link>
+        )}
       </div>
     </div>
   );

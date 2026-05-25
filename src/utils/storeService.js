@@ -59,6 +59,33 @@ export async function verifyPin(slug, pin) {
   return Boolean(data);
 }
 
+/**
+ * Reset PIN after verifying ownership via WhatsApp number.
+ * The store's whatsappNumber (stored in config) is the identity proof.
+ * Throws if the number doesn't match.
+ */
+export async function resetPin(slug, newPin, whatsappNumber) {
+  // Fetch the public config to verify ownership
+  const config = await fetchStore(slug);
+  if (!config) throw new Error('Store not found.');
+
+  // Normalise both to last 10 digits for comparison
+  const storedDigits = String(config.whatsappNumber || '').replace(/\D/g, '').slice(-10);
+  const inputDigits  = String(whatsappNumber).replace(/\D/g, '').slice(-10);
+
+  if (!storedDigits || storedDigits !== inputDigits) {
+    throw new Error('WhatsApp number does not match this store. Please try again.');
+  }
+
+  const hashedPin = await hashPin(newPin);
+  const { error } = await supabase
+    .from('stores')
+    .update({ pin: hashedPin, updated_at: new Date().toISOString() })
+    .eq('slug', slug);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Check if a slug already exists in DB. */
 export async function slugExists(slug) {
   const { data } = await supabase
