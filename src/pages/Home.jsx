@@ -129,7 +129,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div id="products" className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      <div id="products" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8 overflow-x-hidden">
         <div className="flex flex-col lg:flex-row gap-6 xl:gap-8 items-start">
 
           {/* ── Left: Products + Order form ─────────────────────────────── */}

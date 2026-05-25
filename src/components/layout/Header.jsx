@@ -11,29 +11,31 @@ export default function Header({ cartCount = 0, onCartOpen }) {
   const waLink = whatsappLink(whatsappNumber, businessName);
 
   return (
-    <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
+    <header className="bg-white border-b border-gray-100 sticky top-0 z-50 w-full overflow-hidden">
 
       {/* ── Top info strip ────────────────────────────────────────────────── */}
-      <div className="bg-brand text-white">
-        <div className="max-w-7xl mx-auto px-4 py-1.5 flex items-center justify-between gap-4 text-xs">
+      <div className="bg-brand text-white w-full">
+        <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-1.5
+                        flex items-center justify-between gap-2 text-xs overflow-hidden">
           <a
             href={`tel:${phone}`}
-            className="flex items-center gap-1 opacity-90 hover:opacity-100 hover:underline transition-opacity"
+            className="flex items-center gap-1 opacity-90 hover:opacity-100
+                       hover:underline transition-opacity flex-shrink-0 min-w-0 truncate"
           >
-            <Phone size={10} />
-            {phone}
+            <Phone size={10} className="flex-shrink-0" />
+            <span className="truncate">{phone}</span>
           </a>
 
-          <span className="font-medium">
+          <span className="font-medium text-center flex-shrink-0 text-[11px] sm:text-xs">
             🚚 Free delivery above ₹{cart.freeShippingAbove}
           </span>
 
-          {gst && <span className="hidden sm:block opacity-75">{gst}</span>}
+          {gst && <span className="hidden sm:block opacity-75 truncate">{gst}</span>}
         </div>
       </div>
 
       {/* ── Main row ─────────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-3 overflow-hidden">
 
         {/* Logo + name */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
