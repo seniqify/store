@@ -180,9 +180,12 @@ export default function Landing() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {demoStores.map(biz => (
-              <div
+              <Link
                 key={biz.slug}
-                className="bg-white border border-gray-200 rounded-2xl p-5"
+                to={`/demo/${biz.slug}`}
+                className="bg-white border border-gray-200 hover:border-gray-300
+                           hover:shadow-md rounded-2xl p-5 transition-all duration-150
+                           group block"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div
@@ -210,17 +213,17 @@ export default function Landing() {
                       {biz.products.length} products
                     </span>
                   </div>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: `${biz.theme.primary}15`, color: biz.theme.primary }}>
-                    DEMO
+                  <span className="text-xs font-semibold group-hover:underline underline-offset-2"
+                        style={{ color: biz.theme.primary }}>
+                    View demo →
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-4">
-            Create your store to see it live like these ↑
+            Click any demo to browse a live store ↑
           </p>
         </div>
       </section>

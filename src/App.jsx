@@ -5,7 +5,7 @@ import Footer        from './components/layout/Footer';
 import Home          from './pages/Home';
 import ErrorBoundary from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
-import { loadBusiness } from './utils/BusinessLoader';
+import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
 import { applyTheme }   from './utils/theme';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
@@ -36,6 +36,45 @@ function LoadingScreen() {
                       rounded-full animate-spin" />
       <p className="text-sm text-gray-400 font-medium">Loading store…</p>
     </div>
+  );
+}
+
+/** Demo store shell — loads config from static REGISTRY, never from DB */
+function DemoShell() {
+  const { demoSlug } = useParams();
+  const [cartOpen,  setCartOpen]  = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const handleCartCountChange = useCallback((c) => setCartCount(c), []);
+
+  // Look up the demo config from the in-memory registry (synchronous)
+  const allDemos = listBusinesses();
+  const config   = allDemos.find(b => b.slug === demoSlug) ?? null;
+
+  // Unknown demo slug — render 404 inline (NotFound is already lazy-loaded above)
+  if (!config) return <NotFound slug={demoSlug} />;
+
+  // Strip the slug so Footer doesn't show a "Manage Store" link for demo stores
+  const demoConfig = { ...config, slug: null };
+
+  return (
+    <BusinessProvider config={demoConfig}>
+      <ThemeApplier />
+      {/* Demo ribbon */}
+      <div className="w-full bg-amber-500 text-white text-center text-xs font-bold py-1.5 px-4 z-[60] relative">
+        👁️ Demo store — <a href="/onboarding" className="underline underline-offset-2">create your own free store →</a>
+      </div>
+      <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
+        <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
+        <main className="flex-1">
+          <Home
+            externalCartOpen={cartOpen}
+            onExternalCartClose={() => setCartOpen(false)}
+            onCartCountChange={handleCartCountChange}
+          />
+        </main>
+        <Footer />
+      </div>
+    </BusinessProvider>
   );
 }
 
@@ -90,6 +129,7 @@ export default function App() {
           <Routes>
             <Route path="/"                      element={<Landing />} />
             <Route path="/onboarding"            element={<Onboarding />} />
+            <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />
             <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
             <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="*"                      element={<NotFound />} />
