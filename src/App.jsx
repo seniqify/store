@@ -64,7 +64,7 @@ function DemoShell() {
       <ThemeApplier />
       {/* Demo ribbon */}
       <div className="w-full bg-amber-500 text-white text-center text-xs font-bold py-1.5 px-4 z-[60] relative">
-        👁️ Demo store — <a href="/register" className="underline underline-offset-2">create your own free store →</a>
+        👁️ Demo store — <a href="/onboarding" className="underline underline-offset-2">create your own free store →</a>
       </div>
       <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />

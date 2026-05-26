@@ -136,15 +136,12 @@ export default function Onboarding() {
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
 
-  // Gate: must have verified WhatsApp number before accessing onboarding
+  // Gate: use verified phone if available (OTP flow), otherwise proceed directly
+  // OTP gate is re-enabled once the Supabase send-otp edge function is deployed
   useEffect(() => {
     const phone = sessionStorage.getItem('ordify_verified_phone');
-    if (!phone) {
-      navigate('/register', { replace: true });
-    } else {
-      setOwnerPhone(phone);
-    }
-  }, [navigate]);
+    if (phone) setOwnerPhone(phone);
+  }, []);
 
   function update(partial) {
     setData(prev => ({ ...prev, ...partial }));

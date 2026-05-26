@@ -53,7 +53,7 @@ export default function Landing() {
             <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
             </div>
           <Link
-            to="/register"
+            to="/onboarding"
             className="inline-flex items-center gap-1.5 bg-[#25D366] hover:bg-[#1ebe5d]
                        text-white text-sm font-bold px-4 py-2 rounded-xl
                        transition-colors shadow-sm"
@@ -90,7 +90,7 @@ export default function Landing() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              to="/register"
+              to="/onboarding"
               className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d]
                          text-white font-bold text-base px-8 py-3.5 rounded-2xl
                          shadow-lg shadow-green-500/20 hover:shadow-xl
@@ -233,7 +233,7 @@ export default function Landing() {
             Just a working WhatsApp order page for your business.
           </p>
           <Link
-            to="/register"
+            to="/onboarding"
             className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d]
                        text-white font-bold text-base px-8 py-3.5 rounded-2xl
                        shadow-lg shadow-green-500/20 transition-all duration-200
