@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 
 const LAST_UPDATED = 'May 2025';
 
@@ -10,9 +10,9 @@ export default function Terms() {
       <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-36 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-36 w-auto" />
           </Link>
-          <span className="text-gray-300">·</span>
+          <span className="text-gray-300">Â·</span>
           <span className="text-sm text-gray-500">Terms of Service</span>
         </div>
       </nav>
@@ -118,8 +118,8 @@ export default function Terms() {
       </main>
 
       <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400">
-        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to PocketLink</Link>
-        <span className="mx-3">·</span>
+        <Link to="/" className="hover:text-gray-700 transition-colors">â† Back to PocketLink</Link>
+        <span className="mx-3">Â·</span>
         <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
       </footer>
     </div>

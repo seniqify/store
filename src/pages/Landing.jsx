@@ -1,30 +1,30 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
 
 /**
- * Landing — platform homepage at /
+ * Landing â€” platform homepage at /
  *
- * Intentionally has NO BusinessProvider / useBusinessConfig() —
+ * Intentionally has NO BusinessProvider / useBusinessConfig() â€”
  * this page is the shell around all stores, not a store itself.
  * All colors here are hardcoded (no CSS custom property dependency).
  */
 
 const HOW_IT_WORKS = [
   {
-    icon: '📝',
+    icon: 'ðŸ“',
     step: '01',
     title: 'Fill in your details',
     desc: 'Business name, WhatsApp number, products, and pricing. Takes about 2 minutes.',
   },
   {
-    icon: '🔗',
+    icon: 'ðŸ”—',
     step: '02',
     title: 'Get your store link',
-    desc: 'Your shareable URL goes live instantly — share it on WhatsApp, Instagram, or anywhere.',
+    desc: 'Your shareable URL goes live instantly â€” share it on WhatsApp, Instagram, or anywhere.',
   },
   {
-    icon: '📱',
+    icon: 'ðŸ“±',
     step: '03',
     title: 'Customers order via WhatsApp',
     desc: 'They browse, pick products, and tap "Send Order". A structured message lands in your WhatsApp.',
@@ -32,10 +32,10 @@ const HOW_IT_WORKS = [
 ];
 
 const PLATFORM_FEATURES = [
-  { icon: '⚡', label: 'Instant setup',    sub: 'No coding, no designers needed' },
-  { icon: '📱', label: 'Mobile-first',     sub: 'Works perfectly on any phone' },
-  { icon: '🆓', label: '100% free',        sub: 'No monthly fees, ever' },
-  { icon: '🇮🇳', label: 'Built for India', sub: 'GST-native, WhatsApp-native' },
+  { icon: 'âš¡', label: 'Instant setup',    sub: 'No coding, no designers needed' },
+  { icon: 'ðŸ“±', label: 'Mobile-first',     sub: 'Works perfectly on any phone' },
+  { icon: 'ðŸ†“', label: '100% free',        sub: 'No monthly fees, ever' },
+  { icon: 'ðŸ‡®ðŸ‡³', label: 'Built for India', sub: 'GST-native, WhatsApp-native' },
 ];
 
 export default function Landing() {
@@ -45,12 +45,12 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-white">
 
-      {/* ── Navigation ───────────────────────────────────────────────────── */}
+      {/* â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm
                       sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-40 w-auto" />
             </div>
           <Link
             to="/onboarding"
@@ -64,7 +64,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="px-4 py-16 sm:py-24 text-center
                           bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-2xl mx-auto">
@@ -73,7 +73,7 @@ export default function Landing() {
           <div className="inline-flex items-center gap-2 bg-green-50 border border-green-100
                           text-green-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            Free · 3 products · No credit card needed
+            Free Â· 3 products Â· No credit card needed
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900
@@ -84,7 +84,7 @@ export default function Landing() {
 
           <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto mb-8 leading-relaxed">
             A structured product page for your business. Customers browse, select,
-            and place orders — the message lands directly in your WhatsApp.
+            and place orders â€” the message lands directly in your WhatsApp.
             No app. No payment gateway. No Shopify.
           </p>
 
@@ -105,13 +105,13 @@ export default function Landing() {
               className="text-sm font-semibold text-gray-500 hover:text-gray-800
                          transition-colors"
             >
-              See live demos →
+              See live demos â†’
             </a>
           </div>
         </div>
       </section>
 
-      {/* ── How it works ─────────────────────────────────────────────────── */}
+      {/* â”€â”€ How it works â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="px-4 py-16 bg-white">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
@@ -143,7 +143,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Platform features strip ───────────────────────────────────────── */}
+      {/* â”€â”€ Platform features strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="px-4 py-8 bg-gray-50 border-y border-gray-100">
         <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
@@ -160,7 +160,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Live demo stores ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Live demo stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section id="demos" className="px-4 py-16">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
@@ -168,7 +168,7 @@ export default function Landing() {
               Live demo stores
             </h2>
             <p className="text-sm text-gray-400">
-              Click any store to see a real storefront — browse products, try the cart.
+              Click any store to see a real storefront â€” browse products, try the cart.
             </p>
           </div>
 
@@ -209,7 +209,7 @@ export default function Landing() {
                   </div>
                   <span className="text-xs font-semibold group-hover:underline underline-offset-2"
                         style={{ color: biz.theme.primary }}>
-                    View demo →
+                    View demo â†’
                   </span>
                 </div>
               </Link>
@@ -217,12 +217,12 @@ export default function Landing() {
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-4">
-            Click any demo to browse a live store ↑
+            Click any demo to browse a live store â†‘
           </p>
         </div>
       </section>
 
-      {/* ── Bottom CTA ───────────────────────────────────────────────────── */}
+      {/* â”€â”€ Bottom CTA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <section className="px-4 py-16 bg-gradient-to-b from-white to-gray-50 text-center">
         <div className="max-w-xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-3">
@@ -245,17 +245,17 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <footer className="border-t border-gray-100 px-4 py-6 text-center space-y-2">
         <p className="text-xs text-gray-400">
-          Made for Indian businesses 🇮🇳 ·{' '}
+          Made for Indian businesses ðŸ‡®ðŸ‡³ Â·{' '}
           <span className="font-medium">WhatsApp-native commerce infrastructure</span>
         </p>
         <p className="text-xs text-gray-400">
           <Link to="/terms"   className="hover:text-gray-700 transition-colors">Terms of Service</Link>
-          <span className="mx-2">·</span>
+          <span className="mx-2">Â·</span>
           <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
-          <span className="mx-2">·</span>
+          <span className="mx-2">Â·</span>
           <a href="mailto:hello@pocketlink.store" className="hover:text-gray-700 transition-colors">Contact</a>
         </p>
       </footer>

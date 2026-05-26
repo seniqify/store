@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
@@ -6,18 +6,18 @@ import { whatsappLink } from '../../utils/theme';
 import { showBrandBadge } from '../../utils/planLimits';
 
 /**
- * Footer — reads the active business config from context.
+ * Footer â€” reads the active business config from context.
  *
  * Columns (all optional / conditional):
- *   1. Brand — logo, tagline, WhatsApp CTA
- *   2. Categories — product category list
- *   3. Payment Details — UPI ID + Bank Transfer with copy buttons  ← replaces "Contact Us"
- *   4. Quick Info — delivery threshold, GST, returns
+ *   1. Brand â€” logo, tagline, WhatsApp CTA
+ *   2. Categories â€” product category list
+ *   3. Payment Details â€” UPI ID + Bank Transfer with copy buttons  â† replaces "Contact Us"
+ *   4. Quick Info â€” delivery threshold, GST, returns
  *
  * Phone is already shown in the Header top-strip; it is NOT repeated here.
  */
 
-// ── Copy button: copies text, shows a "Copied ✓" flash for 1.5 s ──────────
+// â”€â”€ Copy button: copies text, shows a "Copied âœ“" flash for 1.5 s â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CopyBtn({ text, label }) {
   const [copied, setCopied] = useState(false);
 
@@ -47,7 +47,7 @@ function CopyBtn({ text, label }) {
   );
 }
 
-// ── A single copyable row ─────────────────────────────────────────────────────
+// â”€â”€ A single copyable row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PayRow({ label, value, mono = false }) {
   return (
     <li className="flex items-center justify-between gap-3 py-1.5
@@ -88,7 +88,7 @@ export default function Footer() {
     <footer className="bg-gray-900 text-gray-300 mt-16">
       <div className={`max-w-7xl mx-auto px-4 py-10 grid gap-8 ${gridCls}`}>
 
-        {/* ── 1. Brand ──────────────────────────────────────────────────── */}
+        {/* â”€â”€ 1. Brand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="lg:col-span-1">
           <div className="flex items-center gap-2 mb-3">
             {logo ? (
@@ -114,12 +114,12 @@ export default function Footer() {
           </a>
         </div>
 
-        {/* ── 2. Business Details ───────────────────────────────────────── */}
+        {/* â”€â”€ 2. Business Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div>
           <h4 className="text-white font-semibold mb-3">Business Details</h4>
           <ul className="space-y-3 text-sm">
 
-            {/* Business name — always shown */}
+            {/* Business name â€” always shown */}
             <li className="flex items-start gap-2.5">
               <span className="text-base leading-none flex-shrink-0 mt-0.5">
                 {config.logoEmoji}
@@ -169,7 +169,7 @@ export default function Footer() {
           </ul>
         </div>
 
-        {/* ── 3. Payment Details ────────────────────────────────────────── */}
+        {/* â”€â”€ 3. Payment Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {hasPaymentDetails && (
           <div>
             <h4 className="text-white font-semibold mb-3">Payment Details</h4>
@@ -178,7 +178,7 @@ export default function Footer() {
             {hasUpi && (
               <div className="mb-4">
                 <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">
-                  📱 UPI / QR Code
+                  ðŸ“± UPI / QR Code
                 </p>
                 <ul>
                   <PayRow label="UPI ID" value={upi} mono />
@@ -190,7 +190,7 @@ export default function Footer() {
             {hasBank && (
               <div>
                 <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">
-                  🏦 Bank Transfer
+                  ðŸ¦ Bank Transfer
                 </p>
                 <ul>
                   {bank.accountName   && <PayRow label="Name"    value={bank.accountName} />}
@@ -203,22 +203,22 @@ export default function Footer() {
           </div>
         )}
 
-        {/* ── 4. Quick Info ─────────────────────────────────────────────── */}
+        {/* â”€â”€ 4. Quick Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div>
           <h4 className="text-white font-semibold mb-3">Quick Info</h4>
           <ul className="space-y-2 text-sm text-gray-400">
-            <li>🚚 Free delivery above ₹{cart.freeShippingAbove}</li>
-            <li>✅ 100% genuine products</li>
-            <li>🔄 Easy 7-day returns</li>
+            <li>ðŸšš Free delivery above â‚¹{cart.freeShippingAbove}</li>
+            <li>âœ… 100% genuine products</li>
+            <li>ðŸ”„ Easy 7-day returns</li>
           </ul>
         </div>
       </div>
 
-      {/* ── Bottom bar ──────────────────────────────────────────────────── */}
+      {/* â”€â”€ Bottom bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="border-t border-gray-800 py-4 px-4
                       flex flex-col sm:flex-row items-center justify-between
                       gap-2 text-xs text-gray-500">
-        <span>© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳</span>
+        <span>Â© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;Â·&nbsp;Made in India ðŸ‡®ðŸ‡³</span>
         {slug && (
           <Link
             to={`/${slug}/manage`}
@@ -231,7 +231,7 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ── "Powered by PocketLink" — shown on free plan only ───────────────── */}
+      {/* â”€â”€ "Powered by PocketLink" â€” shown on free plan only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showBrandBadge(plan) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a
@@ -241,7 +241,7 @@ export default function Footer() {
             className="inline-flex items-center gap-2 text-[11px] text-gray-600
                        hover:text-gray-400 transition-colors duration-150"
           >
-            <img src="/pocketlink-logo.png" alt="PocketLink"
+            <img src="/pocketlink-logo.svg" alt="PocketLink"
                  className="h-3.5 w-auto opacity-40" />
             <span>Powered by PocketLink</span>
           </a>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import StepBusiness from '../components/onboarding/StepBusiness';
 import StepProducts from '../components/onboarding/StepProducts';
@@ -12,7 +12,7 @@ import { uploadConfigImages }  from '../utils/imageStorage';
 const INITIAL = {
   businessName:      '',
   whatsappNumber:    '',
-  logoEmoji:         '🏪',
+  logoEmoji:         'ðŸª',
   themeColor:        '#0d9488',
   gstRate:           0.05,
   gstNumber:         '',
@@ -30,13 +30,13 @@ const INITIAL = {
 
 const STEP_LABELS = ['Your Business', 'Your Products', 'Preview & Launch'];
 
-// ── Launch Success Screen ─────────────────────────────────────────────────────
+// â”€â”€ Launch Success Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LaunchSuccess({ slug, pin, themeColor }) {
   const [copied, setCopied]     = useState(false);
   const storeUrl  = `${window.location.origin}/${slug}`;
   const manageUrl = `${window.location.origin}/${slug}/manage`;
   const waText    = encodeURIComponent(
-    `🎉 My new WhatsApp store is live!\n\nBrowse & order here:\n${storeUrl}`
+    `ðŸŽ‰ My new WhatsApp store is live!\n\nBrowse & order here:\n${storeUrl}`
   );
 
   function copyUrl() {
@@ -52,12 +52,12 @@ function LaunchSuccess({ slug, pin, themeColor }) {
 
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">🎉</div>
+          <div className="text-5xl mb-3">ðŸŽ‰</div>
           <h1 className="text-2xl font-extrabold text-gray-900">Your store is live!</h1>
           <p className="text-sm text-gray-500 mt-1">Share the link below with your customers.</p>
         </div>
 
-        {/* Store URL — big copyable box */}
+        {/* Store URL â€” big copyable box */}
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4">
           <p className="text-[11px] text-gray-400 font-medium mb-1">Your store link</p>
           <div className="flex items-center gap-2">
@@ -73,14 +73,14 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                 color: '#fff',
               }}
             >
-              {copied ? '✓ Copied!' : 'Copy'}
+              {copied ? 'âœ“ Copied!' : 'Copy'}
             </button>
           </div>
         </div>
 
         {/* Manage URL */}
         <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-6">
-          <p className="text-[11px] text-amber-600 font-medium mb-0.5">📋 Save this — your management link</p>
+          <p className="text-[11px] text-amber-600 font-medium mb-0.5">ðŸ“‹ Save this â€” your management link</p>
           <p className="font-mono text-xs text-amber-800 font-semibold break-all">{manageUrl}</p>
           <p className="text-[11px] text-amber-500 mt-1">
             PIN: <strong>{pin || 'last 4 digits of your WhatsApp number'}</strong>
@@ -97,7 +97,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                        text-sm font-bold text-white transition-all hover:opacity-90"
             style={{ backgroundColor: themeColor }}
           >
-            🛍️ Visit My Store
+            ðŸ›ï¸ Visit My Store
           </a>
 
           <a
@@ -117,7 +117,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                        text-sm font-semibold text-gray-600 border border-gray-200
                        hover:bg-gray-50 transition-colors"
           >
-            ⚙️ Go to Manage Store
+            âš™ï¸ Go to Manage Store
           </Link>
         </div>
       </div>
@@ -158,7 +158,7 @@ export default function Onboarding() {
       let config = getConfig();
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
 
-      // ── Ensure slug is unique in DB ──────────────────────────────────────
+      // â”€â”€ Ensure slug is unique in DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let slug    = config.slug;
       let attempt = 2;
       while (await slugExists(slug)) {
@@ -166,7 +166,7 @@ export default function Onboarding() {
       }
       config = { ...config, slug };
 
-      // ── Upload base64 product images to Supabase Storage ────────────────
+      // â”€â”€ Upload base64 product images to Supabase Storage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const uploadedProducts = await uploadConfigImages(config.products, slug);
       config = { ...config, products: uploadedProducts };
 
@@ -180,7 +180,7 @@ export default function Onboarding() {
     }
   }
 
-  // ── Show success screen after launch ──────────────────────────────────────
+  // â”€â”€ Show success screen after launch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (launched) {
     return (
       <LaunchSuccess
@@ -196,11 +196,11 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── Top bar ────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Top bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-40 w-auto" />
           </Link>
           <span className="text-xs text-gray-400 font-medium">
             Step {step + 1} of {STEP_LABELS.length}
@@ -208,13 +208,13 @@ export default function Onboarding() {
         </div>
       </header>
 
-      {/* ── Progress bar ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Progress bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="h-0.5 bg-gray-200">
         <div className="h-full bg-[#25D366] transition-all duration-500 ease-out"
              style={{ width: `${progress}%` }} />
       </div>
 
-      {/* ── Step pills ───────────────────────────────────────────────── */}
+      {/* â”€â”€ Step pills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-lg mx-auto px-4 flex">
           {STEP_LABELS.map((label, i) => (
@@ -227,13 +227,13 @@ export default function Onboarding() {
                   ? 'border-green-400 text-green-600'
                   : 'border-transparent text-gray-400',
               ].join(' ')}>
-              {i < step ? '✓ ' : ''}{label}
+              {i < step ? 'âœ“ ' : ''}{label}
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Step content ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Step content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <main className="max-w-lg mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
           {step === 0 && (

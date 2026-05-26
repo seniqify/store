@@ -1,16 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MessageCircle, ArrowRight, RotateCcw } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
 
 /**
- * Register — WhatsApp number + OTP verification.
+ * Register â€” WhatsApp number + OTP verification.
  * Must be completed before /onboarding is accessible.
  *
- * On success → stores verified phone in sessionStorage and redirects to /onboarding.
+ * On success â†’ stores verified phone in sessionStorage and redirects to /onboarding.
  */
 
-// ── 6-box OTP input ───────────────────────────────────────────────────────────
+// â”€â”€ 6-box OTP input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OtpInput({ value, onChange, disabled }) {
   const refs = useRef([]);
   const digits = (value + '      ').slice(0, 6).split('');
@@ -69,7 +69,7 @@ function OtpInput({ value, onChange, disabled }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Register() {
   const navigate = useNavigate();
 
@@ -87,19 +87,19 @@ export default function Register() {
   const [error,    setError]    = useState('');
   const [resendIn, setResendIn] = useState(0);
 
-  // ── Countdown timer for resend ──────────────────────────────────────────────
+  // â”€â”€ Countdown timer for resend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (resendIn <= 0) return;
     const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [resendIn]);
 
-  // ── Normalise phone to 10 digits ────────────────────────────────────────────
+  // â”€â”€ Normalise phone to 10 digits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const digits = phone.replace(/\D/g, '').slice(-10);
   const fullPhone = `91${digits}`;  // E.164 without +
   const isValidPhone = digits.length === 10;
 
-  // ── Step 1 — send OTP ───────────────────────────────────────────────────────
+  // â”€â”€ Step 1 â€” send OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleSendOtp(e) {
     e.preventDefault();
     if (!isValidPhone) { setError('Enter a valid 10-digit WhatsApp number.'); return; }
@@ -116,7 +116,7 @@ export default function Register() {
     }
   }
 
-  // ── Step 2 — verify OTP ─────────────────────────────────────────────────────
+  // â”€â”€ Step 2 â€” verify OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleVerify(e) {
     e.preventDefault();
     const code = otp.replace(/\s/g, '');
@@ -134,7 +134,7 @@ export default function Register() {
     }
   }
 
-  // ── Resend ──────────────────────────────────────────────────────────────────
+  // â”€â”€ Resend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleResend() {
     if (resendIn > 0) return;
     setLoading(true);
@@ -150,24 +150,24 @@ export default function Register() {
     }
   }
 
-  // ── Formatted display number ────────────────────────────────────────────────
+  // â”€â”€ Formatted display number â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const displayPhone = digits.length === 10
     ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
-    : '+91 …';
+    : '+91 â€¦';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
 
-      {/* ── Nav ──────────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <nav className="bg-white border-b border-gray-100">
         <div className="max-w-sm mx-auto px-4 h-14 flex items-center">
           <Link to="/">
-            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-40 w-auto" />
           </Link>
         </div>
       </nav>
 
-      {/* ── Card ─────────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-100
                         shadow-sm px-6 py-8 space-y-6">
@@ -193,14 +193,14 @@ export default function Register() {
           {phase === 'phone' && (
             <div className="flex items-center justify-center gap-1.5 bg-green-50
                             border border-green-100 rounded-xl px-3 py-2">
-              <span className="text-sm">🆓</span>
+              <span className="text-sm">ðŸ†“</span>
               <span className="text-xs font-semibold text-green-700">
-                Free forever · 3 products · No credit card
+                Free forever Â· 3 products Â· No credit card
               </span>
             </div>
           )}
 
-          {/* ── Phase: phone entry ─────────────────────────────────────────── */}
+          {/* â”€â”€ Phase: phone entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           {phase === 'phone' && (
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
@@ -213,7 +213,7 @@ export default function Register() {
                   {/* Country prefix */}
                   <div className="flex items-center gap-1.5 px-3 py-3 bg-gray-50
                                   border-r border-gray-200 flex-shrink-0">
-                    <span className="text-base leading-none">🇮🇳</span>
+                    <span className="text-base leading-none">ðŸ‡®ðŸ‡³</span>
                     <span className="text-sm font-semibold text-gray-600">+91</span>
                   </div>
                   <input
@@ -262,7 +262,7 @@ export default function Register() {
             </form>
           )}
 
-          {/* ── Phase: OTP entry ───────────────────────────────────────────── */}
+          {/* â”€â”€ Phase: OTP entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           {phase === 'otp' && (
             <form onSubmit={handleVerify} className="space-y-5">
               <OtpInput value={otp} onChange={setOtp} disabled={loading} />
