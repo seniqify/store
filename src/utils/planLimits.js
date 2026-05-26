@@ -9,7 +9,7 @@ export const PLANS = {
     price:            0,
     products:         3,
     categories:       2,
-    badge:            true,   // "Powered by Ordify" shown
+    badge:            true,   // "Powered by PocketLink" shown
     customDomain:     false,
     promoBanner:      false,
     discountCodes:    false,
@@ -83,6 +83,6 @@ export function hasFeature(plan, feature) {
   return Boolean(getPlanLimits(plan)[feature]);
 }
 
-export function showOrdifyBadge(plan) {
+export function showBrandBadge(plan) {
   return getPlanLimits(plan).badge === true;
 }

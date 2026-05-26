@@ -10,7 +10,7 @@ export default function Terms() {
       <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-36 w-auto" />
+            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-36 w-auto" />
           </Link>
           <span className="text-gray-300">·</span>
           <span className="text-sm text-gray-500">Terms of Service</span>
@@ -26,7 +26,7 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using Ordify ("the Platform"), you agree to be bound by these Terms
+              By accessing or using PocketLink ("the Platform"), you agree to be bound by these Terms
               of Service. If you do not agree, please do not use the Platform.
             </p>
           </section>
@@ -34,7 +34,7 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">2. Description of Service</h2>
             <p>
-              Ordify allows Indian businesses to create a storefront page and receive product
+              PocketLink allows Indian businesses to create a storefront page and receive product
               orders via WhatsApp. We do not process payments, hold inventory, or act as a party
               in any transaction between a store owner and their customers.
             </p>
@@ -65,7 +65,7 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">5. Intellectual Property</h2>
             <p>
-              The Ordify brand, logo, and Platform code are owned by us. Store owners retain
+              The PocketLink brand, logo, and Platform code are owned by us. Store owners retain
               ownership of the content they upload (product names, images, descriptions).
               By uploading content you grant us a non-exclusive licence to host and display it
               on the Platform.
@@ -84,7 +84,7 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">7. Limitation of Liability</h2>
             <p>
-              To the maximum extent permitted by law, Ordify shall not be liable for any
+              To the maximum extent permitted by law, PocketLink shall not be liable for any
               indirect, incidental, or consequential damages arising from your use of the Platform.
             </p>
           </section>
@@ -109,8 +109,8 @@ export default function Terms() {
             <h2 className="text-lg font-bold text-gray-900 mb-2">10. Contact</h2>
             <p>
               For questions about these Terms, contact us at{' '}
-              <a href="mailto:hello@ordify.store" className="text-teal-600 hover:underline">
-                hello@ordify.store
+              <a href="mailto:hello@pocketlink.store" className="text-teal-600 hover:underline">
+                hello@pocketlink.store
               </a>.
             </p>
           </section>
@@ -118,7 +118,7 @@ export default function Terms() {
       </main>
 
       <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400">
-        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to Ordify</Link>
+        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to PocketLink</Link>
         <span className="mx-3">·</span>
         <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
       </footer>

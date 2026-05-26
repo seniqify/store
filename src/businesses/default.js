@@ -1,19 +1,19 @@
 /**
  * Default / Demo Store — slug: default
  * Generic fallback store for the platform landing page.
- * Shows the Ordify workflow without tying to a specific business domain.
+ * Shows the PocketLink workflow without tying to a specific business domain.
  */
 
 export const defaultConfig = {
   slug:         'default',
-  businessName: 'Ordify Demo Store',
+  businessName: 'PocketLink Demo Store',
   tagline:      'A demo storefront — try the WhatsApp order workflow',
   logo:         null,
   logoEmoji:    '🏪',
 
   whatsappNumber: '919000000000',
   phone:   '+91 90000 00000',
-  email:   'hello@ordify.store',
+  email:   'hello@pocketlink.store',
   address: 'India',
   gst:     'GST registration pending',
   upi:  'demo@upi',
@@ -38,7 +38,7 @@ export const defaultConfig = {
   },
 
   hero: {
-    eyebrow: '🛒 Ordify — WhatsApp store builder',
+    eyebrow: '🛒 PocketLink — WhatsApp store builder',
     heading: 'Any Business,\nOne Platform',
     subtext:
       'This is a demo store. Browse products, try the cart, and experience the WhatsApp order workflow.',

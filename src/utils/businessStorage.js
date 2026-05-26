@@ -4,7 +4,7 @@
  */
 import { createStore } from './storeService';
 
-const CACHE_KEY = 'ordify_v1';
+const CACHE_KEY = 'pocketlink_v1';
 
 /** Save to DB (primary) + localStorage (cache). */
 export async function saveBusiness(config, pin = '1234', ownerPhone = null) {

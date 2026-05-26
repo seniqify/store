@@ -50,7 +50,7 @@ export default function Landing() {
                       sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
             </div>
           <Link
             to="/onboarding"
@@ -256,7 +256,7 @@ export default function Landing() {
           <span className="mx-2">·</span>
           <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
           <span className="mx-2">·</span>
-          <a href="mailto:hello@ordify.store" className="hover:text-gray-700 transition-colors">Contact</a>
+          <a href="mailto:hello@pocketlink.store" className="hover:text-gray-700 transition-colors">Contact</a>
         </p>
       </footer>
     </div>

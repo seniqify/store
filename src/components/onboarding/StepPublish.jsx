@@ -29,7 +29,7 @@ export default function StepPublish({
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-none">{businessName}</p>
-            <p className="text-white/70 text-xs mt-0.5">Powered by Ordify</p>
+            <p className="text-white/70 text-xs mt-0.5">Powered by PocketLink</p>
           </div>
         </div>
 

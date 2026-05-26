@@ -75,7 +75,7 @@ export default function Register() {
 
   // If already verified this session, skip straight to onboarding
   useEffect(() => {
-    if (sessionStorage.getItem('ordify_verified_phone')) {
+    if (sessionStorage.getItem('pocketlink_verified_phone')) {
       navigate('/onboarding', { replace: true });
     }
   }, [navigate]);
@@ -125,7 +125,7 @@ export default function Register() {
     setError('');
     try {
       await verifyOtp(fullPhone, code);
-      sessionStorage.setItem('ordify_verified_phone', fullPhone);
+      sessionStorage.setItem('pocketlink_verified_phone', fullPhone);
       navigate('/onboarding', { replace: true });
     } catch (err) {
       setError(err.message || 'Incorrect code. Please try again.');
@@ -162,7 +162,7 @@ export default function Register() {
       <nav className="bg-white border-b border-gray-100">
         <div className="max-w-sm mx-auto px-4 h-14 flex items-center">
           <Link to="/">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
           </Link>
         </div>
       </nav>

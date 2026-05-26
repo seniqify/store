@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
-import { showOrdifyBadge } from '../../utils/planLimits';
+import { showBrandBadge } from '../../utils/planLimits';
 
 /**
  * Footer — reads the active business config from context.
@@ -231,19 +231,19 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ── "Powered by Ordify" — shown on free plan only ───────────────── */}
-      {showOrdifyBadge(plan) && (
+      {/* ── "Powered by PocketLink" — shown on free plan only ───────────────── */}
+      {showBrandBadge(plan) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a
-            href="https://ordify.store"
+            href="https://pocketlink.store"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-[11px] text-gray-600
                        hover:text-gray-400 transition-colors duration-150"
           >
-            <img src="/ordify-logo.png" alt="Ordify"
+            <img src="/pocketlink-logo.png" alt="PocketLink"
                  className="h-3.5 w-auto opacity-40" />
-            <span>Powered by Ordify</span>
+            <span>Powered by PocketLink</span>
           </a>
         </div>
       )}

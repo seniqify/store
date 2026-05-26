@@ -139,7 +139,7 @@ export default function Onboarding() {
   // Gate: use verified phone if available (OTP flow), otherwise proceed directly
   // OTP gate is re-enabled once the Supabase send-otp edge function is deployed
   useEffect(() => {
-    const phone = sessionStorage.getItem('ordify_verified_phone');
+    const phone = sessionStorage.getItem('pocketlink_verified_phone');
     if (phone) setOwnerPhone(phone);
   }, []);
 
@@ -171,7 +171,7 @@ export default function Onboarding() {
       config = { ...config, products: uploadedProducts };
 
       await saveBusiness(config, pin, ownerPhone);
-      sessionStorage.removeItem('ordify_verified_phone'); // consumed
+      sessionStorage.removeItem('pocketlink_verified_phone'); // consumed
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {
@@ -200,7 +200,7 @@ export default function Onboarding() {
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.png" alt="PocketLink" className="h-40 w-auto" />
           </Link>
           <span className="text-xs text-gray-400 font-medium">
             Step {step + 1} of {STEP_LABELS.length}
