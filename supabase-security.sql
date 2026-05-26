@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════════════════
--- SENIQIFY STORE — SECURITY HARDENING
+-- ORDIFY — SECURITY HARDENING
 -- Run this in: Supabase Dashboard → SQL Editor
 -- ══════════════════════════════════════════════════════════════════════════
 

@@ -1,19 +1,19 @@
 /**
  * Default / Demo Store — slug: default
  * Generic fallback store for the platform landing page.
- * Shows the Seniqify Store workflow without tying to a specific business domain.
+ * Shows the Ordify workflow without tying to a specific business domain.
  */
 
 export const defaultConfig = {
   slug:         'default',
-  businessName: 'Seniqify Store Demo',
+  businessName: 'Ordify Demo Store',
   tagline:      'A demo storefront — try the WhatsApp order workflow',
   logo:         null,
   logoEmoji:    '🏪',
 
   whatsappNumber: '919000000000',
   phone:   '+91 90000 00000',
-  email:   'hello@seniqify.store',
+  email:   'hello@ordify.store',
   address: 'India',
   gst:     'GST registration pending',
   upi:  'demo@upi',
@@ -38,7 +38,7 @@ export const defaultConfig = {
   },
 
   hero: {
-    eyebrow: '🛒 Multi-business storefront platform',
+    eyebrow: '🛒 Ordify — WhatsApp store builder',
     heading: 'Any Business,\nOne Platform',
     subtext:
       'This is a demo store. Browse products, try the cart, and experience the WhatsApp order workflow.',

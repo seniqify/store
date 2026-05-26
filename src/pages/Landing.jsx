@@ -50,12 +50,12 @@ export default function Landing() {
                       sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/seniqify-logo.png" alt="Seniqify" className="h-9 w-auto" />
+            <img src="/ordify-logo.png" alt="Ordify" className="h-9 w-auto" />
             <span className="text-[13px] font-semibold tracking-[0.12em] uppercase
                              bg-gradient-to-r from-[#25D366] to-teal-400
                              bg-clip-text text-transparent hidden sm:block"
                   style={{ fontFamily: "'Poppins', sans-serif" }}>
-              WhatsApp Store
+              Ordify
             </span>
           </div>
           <Link
@@ -79,7 +79,7 @@ export default function Landing() {
           <div className="inline-flex items-center gap-2 bg-green-50 border border-green-100
                           text-green-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            Free for Indian businesses · No credit card needed
+            Free for every business · No credit card needed
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900
@@ -262,7 +262,7 @@ export default function Landing() {
           <span className="mx-2">·</span>
           <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
           <span className="mx-2">·</span>
-          <a href="mailto:seniqify@gmail.com" className="hover:text-gray-700 transition-colors">Contact</a>
+          <a href="mailto:hello@ordify.store" className="hover:text-gray-700 transition-colors">Contact</a>
         </p>
       </footer>
     </div>

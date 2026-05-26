@@ -189,12 +189,12 @@ export default function Onboarding() {
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <img src="/seniqify-logo.png" alt="Seniqify" className="h-9 w-auto" />
+            <img src="/ordify-logo.png" alt="Ordify" className="h-9 w-auto" />
             <span className="text-[13px] font-semibold tracking-[0.12em] uppercase
                              bg-gradient-to-r from-[#25D366] to-teal-400
                              bg-clip-text text-transparent hidden sm:block"
                   style={{ fontFamily: "'Poppins', sans-serif" }}>
-              WhatsApp Store
+              Ordify
             </span>
           </Link>
           <span className="text-xs text-gray-400 font-medium">

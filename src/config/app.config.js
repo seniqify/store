@@ -1,7 +1,7 @@
 // App-wide configuration constants
 
 export const APP_CONFIG = {
-  name: 'Seniqify Store',
+  name: 'Ordify',
   tagline: 'Your Trusted Online Store',
   currency: {
     symbol: '₹',
@@ -10,10 +10,10 @@ export const APP_CONFIG = {
   },
   business: {
     phone: '+91 98765 43210',
-    email: 'support@seniqify.store',
+    email: 'hello@ordify.store',
     address: 'Mumbai, Maharashtra',
     gst: 'GST No: 27XXXXX1234Z1Z5',
-    upi: 'seniqify@upi',
+    upi: 'ordify@upi',
   },
   cart: {
     taxRate: 0.18, // 18% GST
