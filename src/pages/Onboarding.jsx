@@ -189,7 +189,7 @@ export default function Onboarding() {
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-28 w-auto" />
+            <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
           </Link>
           <span className="text-xs text-gray-400 font-medium">
             Step {step + 1} of {STEP_LABELS.length}

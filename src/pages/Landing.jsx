@@ -50,7 +50,7 @@ export default function Landing() {
                       sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/ordify-logo.png" alt="Ordify" className="h-28 w-auto" />
+            <img src="/ordify-logo.png" alt="Ordify" className="h-40 w-auto" />
             </div>
           <Link
             to="/onboarding"
