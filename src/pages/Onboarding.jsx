@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import StepBusiness from '../components/onboarding/StepBusiness';
 import StepProducts from '../components/onboarding/StepProducts';
 import StepPublish  from '../components/onboarding/StepPublish';
@@ -126,12 +126,25 @@ function LaunchSuccess({ slug, pin, themeColor }) {
 }
 
 export default function Onboarding() {
-  const [step,         setStep]         = useState(0);
-  const [data,         setData]         = useState(INITIAL);
-  const [saving,       setSaving]       = useState(false);
-  const [saveError,    setSaveError]    = useState('');
-  const [launched,     setLaunched]     = useState(false);
-  const [launchedSlug, setLaunchedSlug] = useState('');
+  const navigate = useNavigate();
+
+  const [step,          setStep]          = useState(0);
+  const [data,          setData]          = useState(INITIAL);
+  const [saving,        setSaving]        = useState(false);
+  const [saveError,     setSaveError]     = useState('');
+  const [launched,      setLaunched]      = useState(false);
+  const [launchedSlug,  setLaunchedSlug]  = useState('');
+  const [ownerPhone,    setOwnerPhone]    = useState('');
+
+  // Gate: must have verified WhatsApp number before accessing onboarding
+  useEffect(() => {
+    const phone = sessionStorage.getItem('ordify_verified_phone');
+    if (!phone) {
+      navigate('/register', { replace: true });
+    } else {
+      setOwnerPhone(phone);
+    }
+  }, [navigate]);
 
   function update(partial) {
     setData(prev => ({ ...prev, ...partial }));
@@ -160,7 +173,8 @@ export default function Onboarding() {
       const uploadedProducts = await uploadConfigImages(config.products, slug);
       config = { ...config, products: uploadedProducts };
 
-      await saveBusiness(config, pin);
+      await saveBusiness(config, pin, ownerPhone);
+      sessionStorage.removeItem('ordify_verified_phone'); // consumed
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {
@@ -230,6 +244,7 @@ export default function Onboarding() {
           )}
           {step === 1 && (
             <StepProducts data={data} onChange={update} themeColor={data.themeColor}
+              plan="free"
               onNext={() => setStep(2)} onBack={() => setStep(0)} />
           )}
           {step === 2 && (

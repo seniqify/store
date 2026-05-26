@@ -7,9 +7,9 @@ import { createStore } from './storeService';
 const CACHE_KEY = 'ordify_v1';
 
 /** Save to DB (primary) + localStorage (cache). */
-export async function saveBusiness(config, pin = '1234') {
+export async function saveBusiness(config, pin = '1234', ownerPhone = null) {
   // Save to Supabase
-  await createStore(config, pin);
+  await createStore(config, pin, ownerPhone);
   // Also cache locally so the page loads instantly right after creation
   const cache = getCachedBusinesses();
   cache[config.slug] = config;

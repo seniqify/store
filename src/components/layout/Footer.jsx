@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
+import { showOrdifyBadge } from '../../utils/planLimits';
 
 /**
  * Footer — reads the active business config from context.
@@ -67,7 +68,7 @@ export default function Footer() {
   const config = useBusinessConfig();
   const {
     businessName, tagline, logoEmoji, logo,
-    whatsappNumber, phone, address, upi, bank, gst, cart, slug,
+    whatsappNumber, phone, address, upi, bank, gst, cart, slug, plan,
   } = config;
 
   const waLink = whatsappLink(whatsappNumber, businessName);
@@ -229,6 +230,23 @@ export default function Footer() {
           </Link>
         )}
       </div>
+
+      {/* ── "Powered by Ordify" — shown on free plan only ───────────────── */}
+      {showOrdifyBadge(plan) && (
+        <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
+          <a
+            href="https://ordify.store"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-[11px] text-gray-600
+                       hover:text-gray-400 transition-colors duration-150"
+          >
+            <img src="/ordify-logo.png" alt="Ordify"
+                 className="h-3.5 w-auto opacity-40" />
+            <span>Powered by Ordify</span>
+          </a>
+        </div>
+      )}
     </footer>
   );
 }

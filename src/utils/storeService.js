@@ -5,20 +5,27 @@ import { hashPin }  from './pinHash';
 export async function fetchStore(slug) {
   const { data, error } = await supabase
     .from('stores')
-    .select('config')
+    .select('config, plan')
     .eq('slug', slug)
     .single();
 
   if (error || !data) return null;
-  return data.config;
+  // Merge plan into config so it's available everywhere via useBusinessConfig()
+  return { ...data.config, plan: data.plan ?? 'free' };
 }
 
 /** Save a brand-new store to DB. Hashes PIN before storing. Throws on error. */
-export async function createStore(config, pin) {
+export async function createStore(config, pin, ownerPhone = null) {
   const hashedPin = await hashPin(pin);
   const { error } = await supabase
     .from('stores')
-    .insert({ slug: config.slug, config, pin: hashedPin });
+    .insert({
+      slug:        config.slug,
+      config,
+      pin:         hashedPin,
+      plan:        'free',
+      owner_phone: ownerPhone,
+    });
 
   if (error) throw new Error(error.message);
 }

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { Plus, X, AlertCircle, ImagePlus, Link2, Pencil } from 'lucide-react';
+import { Plus, X, AlertCircle, ImagePlus, Link2, Pencil, Lock } from 'lucide-react';
+import { getPlanLimits, canAddProduct, canAddCategory } from '../../utils/planLimits';
 
 /**
  * StepProducts — Onboarding Step 2
@@ -206,7 +207,8 @@ function ImageUploader({ value, onChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // StepProducts
 // ─────────────────────────────────────────────────────────────────────────────
-export default function StepProducts({ data, onChange, onNext, onBack, themeColor = '#0d9488' }) {
+export default function StepProducts({ data, onChange, onNext, onBack, themeColor = '#0d9488', plan = 'free' }) {
+  const limits = getPlanLimits(plan);
   const [activeForm,       setActiveForm]       = useState(null);   // 'category' | 'product' | null
   const [catForm,          setCatForm]          = useState(EMPTY_CAT_FORM);
   const [editingCatId,     setEditingCatId]     = useState(null);   // cat.id being edited
@@ -327,6 +329,11 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
   function submitProduct() {
     const errs = validateProduct();
     if (Object.keys(errs).length) { setProdErrors(errs); return; }
+    // Enforce plan product limit (only block new adds, not edits)
+    if (editingProductId === null && !canAddProduct(plan, data.products.length)) {
+      setProdErrors({ name: `Free plan limit: ${limits.products} products max. Upgrade to add more.` });
+      return;
+    }
 
     const finalUnit = productForm.unit === 'Other…'
       ? (productForm.unitCustom.trim() || 'per piece')
@@ -383,19 +390,24 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">
             Categories
-            {data.categories.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-gray-400">
-                ({data.categories.length})
-              </span>
-            )}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">
+              ({data.categories.length}/{limits.categories === Infinity ? '∞' : limits.categories})
+            </span>
           </span>
           {activeForm !== 'category' && (
-            <button type="button" onClick={openCategoryForm}
-                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
-                               border border-dashed border-gray-300 text-gray-500
-                               hover:border-gray-400 hover:text-gray-700 transition-colors">
-              <Plus size={12} /> Add Category
-            </button>
+            canAddCategory(plan, data.categories.length) ? (
+              <button type="button" onClick={openCategoryForm}
+                      className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
+                                 border border-dashed border-gray-300 text-gray-500
+                                 hover:border-gray-400 hover:text-gray-700 transition-colors">
+                <Plus size={12} /> Add Category
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-semibold text-amber-600
+                               bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">
+                <Lock size={10} /> Limit reached
+              </span>
+            )
           )}
         </div>
 
@@ -489,25 +501,52 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">
             Products
-            {data.products.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-gray-400">
-                ({data.products.length} added)
-              </span>
-            )}
+            <span className="ml-1.5 text-xs font-normal text-gray-400">
+              ({data.products.length}/{limits.products})
+            </span>
           </span>
           {activeForm !== 'product' && (
-            <button type="button" onClick={openProductForm} disabled={!hasCategories}
-                    title={!hasCategories ? 'Add a category first' : ''}
-                    className={[
-                      'flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg',
-                      'text-white transition-colors',
-                      hasCategories ? 'hover:opacity-90' : 'opacity-40 cursor-not-allowed',
-                    ].join(' ')}
-                    style={{ backgroundColor: themeColor }}>
-              <Plus size={12} /> Add Product
-            </button>
+            !canAddProduct(plan, data.products.length) ? (
+              <div className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1 text-xs font-semibold text-amber-600
+                                 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">
+                  <Lock size={10} /> {limits.products} product limit
+                </span>
+              </div>
+            ) : (
+              <button type="button" onClick={openProductForm} disabled={!hasCategories}
+                      title={!hasCategories ? 'Add a category first' : ''}
+                      className={[
+                        'flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg',
+                        'text-white transition-colors',
+                        hasCategories ? 'hover:opacity-90' : 'opacity-40 cursor-not-allowed',
+                      ].join(' ')}
+                      style={{ backgroundColor: themeColor }}>
+                <Plus size={12} /> Add Product
+              </button>
+            )
           )}
         </div>
+        {/* Upgrade nudge when at product limit */}
+        {!canAddProduct(plan, data.products.length) && (
+          <div className="mb-3 bg-gradient-to-r from-teal-50 to-emerald-50
+                          border border-teal-100 rounded-xl px-4 py-3 flex items-center
+                          justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-teal-800">
+                Free plan: {limits.products} products max
+              </p>
+              <p className="text-[11px] text-teal-600 mt-0.5">
+                Upgrade to Starter for 10 products, or Growth for 50.
+              </p>
+            </div>
+            <a href="/pricing" target="_blank"
+               className="flex-shrink-0 text-xs font-bold text-white bg-teal-600
+                          hover:bg-teal-700 px-3 py-1.5 rounded-lg transition-colors">
+              Upgrade
+            </a>
+          </div>
+        )}
 
         {/* Product list */}
         {data.products.length > 0 && (
