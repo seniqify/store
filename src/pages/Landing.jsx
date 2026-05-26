@@ -51,13 +51,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/ordify-logo.png" alt="Ordify" className="h-28 w-auto" />
-            <span className="text-[13px] font-semibold tracking-[0.12em] uppercase
-                             bg-gradient-to-r from-[#25D366] to-teal-400
-                             bg-clip-text text-transparent hidden sm:block"
-                  style={{ fontFamily: "'Poppins', sans-serif" }}>
-              Ordify
-            </span>
-          </div>
+            </div>
           <Link
             to="/onboarding"
             className="inline-flex items-center gap-1.5 bg-[#25D366] hover:bg-[#1ebe5d]
