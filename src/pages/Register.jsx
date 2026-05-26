@@ -162,7 +162,7 @@ export default function Register() {
       <nav className="bg-white border-b border-gray-100">
         <div className="max-w-sm mx-auto px-4 h-14 flex items-center">
           <Link to="/">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-40 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-80 w-auto" />
           </Link>
         </div>
       </nav>

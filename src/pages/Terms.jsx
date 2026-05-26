@@ -10,7 +10,7 @@ export default function Terms() {
       <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-36 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-72 w-auto" />
           </Link>
           <span className="text-gray-300">Â·</span>
           <span className="text-sm text-gray-500">Terms of Service</span>
