@@ -5,26 +5,26 @@ import { hashPin }  from './pinHash';
 export async function fetchStore(slug) {
   const { data, error } = await supabase
     .from('stores')
-    .select('config, plan')
+    .select('config')
     .eq('slug', slug)
     .single();
 
   if (error || !data) return null;
-  // Merge plan into config so it's available everywhere via useBusinessConfig()
-  return { ...data.config, plan: data.plan ?? 'free' };
+  // plan is stored inside config JSONB; default to 'free' if absent
+  return { ...data.config, plan: data.config?.plan ?? 'free' };
 }
 
 /** Save a brand-new store to DB. Hashes PIN before storing. Throws on error. */
 export async function createStore(config, pin, ownerPhone = null) {
   const hashedPin = await hashPin(pin);
+  // Store plan inside config JSONB (no separate column needed until migration is run)
+  const configToSave = { ...config, plan: 'free', ownerPhone };
   const { error } = await supabase
     .from('stores')
     .insert({
-      slug:        config.slug,
-      config,
-      pin:         hashedPin,
-      plan:        'free',
-      owner_phone: ownerPhone,
+      slug:   config.slug,
+      config: configToSave,
+      pin:    hashedPin,
     });
 
   if (error) throw new Error(error.message);
