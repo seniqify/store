@@ -35,13 +35,18 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const config = useBusinessConfig();
   const { products, categories, features, businessName, whatsappNumber, promoText, theme } = config;
 
-  // Split leading emoji(s) from promo text so they can render larger on the card
+  // Parse promo text into heading + subtitle
+  // Format: "Big Heading · small subtitle" or just "Big heading"
+  // Leading emoji is extracted as the right-side illustration
   const promoEmoji = promoText
     ? (promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null)
     : null;
-  const promoBody  = promoText
-    ? promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u, '').trim()
-    : null;
+  const promoWithoutEmoji = promoText
+    ? promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+\s*/u, '').trim()
+    : '';
+  const promoParts    = promoWithoutEmoji.split(/\s*[·•\-–]\s*/);
+  const promoHeading  = promoParts[0] ?? '';
+  const promoSubtext  = promoParts[1] ?? null;
 
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
@@ -102,41 +107,56 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
-      {/* ── Promo banner — Blinkit/Zepto-style offer card ────────────────── */}
+      {/* ── Promo banner — Blinkit/Zepto style ──────────────────────────── */}
       {promoText && (
         <div className="w-full px-3 sm:px-4 pt-3 pb-1">
           <div className="max-w-7xl mx-auto">
             <div
               className="relative rounded-2xl overflow-hidden"
-              style={{
-                background: `linear-gradient(135deg, ${theme?.primary ?? '#0d9488'} 0%, ${theme?.primaryDark ?? '#0f766e'} 100%)`,
-              }}
+              style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}18` }}
             >
-              {/* Decorative background bubbles */}
-              <div className="absolute -top-6 -right-6  w-36 h-36 rounded-full bg-white/10 pointer-events-none" />
-              <div className="absolute -bottom-8 right-20 w-28 h-28 rounded-full bg-white/10 pointer-events-none" />
-              <div className="absolute top-1  left-1/2  w-16 h-16 rounded-full bg-white/10 pointer-events-none" />
+              {/* Subtle brand-tinted background pattern dots */}
+              <div className="absolute inset-0 opacity-30 pointer-events-none"
+                   style={{
+                     backgroundImage: `radial-gradient(circle, ${theme?.primary ?? '#0d9488'}30 1px, transparent 1px)`,
+                     backgroundSize: '18px 18px',
+                   }} />
 
-              {/* Content */}
-              <div className="relative flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3.5 sm:py-4">
-                {/* Emoji — large */}
-                {promoEmoji && (
-                  <span className="text-3xl sm:text-4xl flex-shrink-0 leading-none select-none">
-                    {promoEmoji}
+              <div className="relative flex items-stretch min-h-[88px] sm:min-h-[96px]">
+
+                {/* ── Left: text + CTA ────────────────────────────────────── */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 px-4 sm:px-5 py-4">
+                  <p className="font-extrabold text-base sm:text-lg leading-tight text-gray-900 tracking-tight">
+                    {promoHeading}
+                  </p>
+                  {promoSubtext && (
+                    <p className="text-xs sm:text-sm text-gray-500 leading-snug">
+                      {promoSubtext}
+                    </p>
+                  )}
+                  <button
+                    onClick={() =>
+                      document.getElementById('products')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }
+                    className="mt-1 self-start text-xs font-bold text-white
+                               px-3 py-1.5 rounded-lg transition-all active:scale-95"
+                    style={{ backgroundColor: theme?.primary ?? '#0d9488' }}
+                  >
+                    Order Now →
+                  </button>
+                </div>
+
+                {/* ── Right: emoji illustration ────────────────────────────── */}
+                <div className="flex-shrink-0 w-24 sm:w-28 flex items-end justify-center pb-1 pr-2 pt-2 relative">
+                  {/* Soft circle backdrop */}
+                  <div className="absolute bottom-1 right-1 w-20 h-20 rounded-full"
+                       style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}20` }} />
+                  <span className="relative text-5xl sm:text-6xl leading-none select-none">
+                    {promoEmoji ?? '🎉'}
                   </span>
-                )}
+                </div>
 
-                {/* Text */}
-                <p className="flex-1 min-w-0 text-white font-extrabold text-sm sm:text-[15px] leading-snug tracking-tight">
-                  {promoBody || promoText}
-                </p>
-
-                {/* Arrow chip */}
-                <ChevronRight
-                  size={18}
-                  strokeWidth={2.5}
-                  className="flex-shrink-0 text-white/60"
-                />
               </div>
             </div>
           </div>

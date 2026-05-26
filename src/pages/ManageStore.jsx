@@ -986,22 +986,41 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             className={iCls(false)}
           />
           <p className="mt-1 text-xs text-gray-400">
-            Shown as a banner card at the top of your store. Start with an emoji for best results. Leave empty to hide.
+            Start with an emoji 🚚 then your heading · optional subtitle.
+            Use <strong className="text-gray-500">·</strong> to separate heading from subtitle.
+          </p>
+          <p className="mt-0.5 text-[11px] text-gray-400 italic">
+            e.g. 🚚 Free delivery today · On all orders above ₹999
           </p>
           {config.promoText && (() => {
-            const emoji   = config.promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null;
-            const body    = emoji ? config.promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u, '').trim() : config.promoText;
-            const primary = config.theme?.primary     ?? themeColor;
-            const dark    = config.theme?.primaryDark ?? themeColor;
+            const emoji    = config.promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null;
+            const noEmoji  = config.promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+\s*/u, '').trim();
+            const parts    = noEmoji.split(/\s*[·•\-–]\s*/);
+            const heading  = parts[0] ?? '';
+            const sub      = parts[1] ?? null;
+            const primary  = config.theme?.primary ?? themeColor;
             return (
               <div className="mt-3 rounded-2xl overflow-hidden relative"
-                   style={{ background: `linear-gradient(135deg, ${primary} 0%, ${dark} 100%)` }}>
-                <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
-                <div className="absolute -bottom-6 right-14 w-20 h-20 rounded-full bg-white/10 pointer-events-none" />
-                <div className="relative flex items-center gap-3 px-4 py-3">
-                  {emoji && <span className="text-3xl leading-none flex-shrink-0 select-none">{emoji}</span>}
-                  <p className="flex-1 text-white font-extrabold text-sm leading-snug">{body || config.promoText}</p>
-                  <ChevronDown size={16} className="flex-shrink-0 text-white/60 rotate-[-90deg]" />
+                   style={{ backgroundColor: `${primary}18` }}>
+                <div className="absolute inset-0 opacity-20 pointer-events-none"
+                     style={{
+                       backgroundImage: `radial-gradient(circle, ${primary}40 1px, transparent 1px)`,
+                       backgroundSize: '18px 18px',
+                     }} />
+                <div className="relative flex items-stretch min-h-[80px]">
+                  <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 px-4 py-3">
+                    <p className="font-extrabold text-sm text-gray-900 leading-tight">{heading}</p>
+                    {sub && <p className="text-xs text-gray-500">{sub}</p>}
+                    <span className="mt-1 self-start text-[10px] font-bold text-white px-2.5 py-1 rounded-lg"
+                          style={{ backgroundColor: primary }}>
+                      Order Now →
+                    </span>
+                  </div>
+                  <div className="flex-shrink-0 w-20 flex items-end justify-center pb-1 pr-1 pt-2 relative">
+                    <div className="absolute bottom-1 right-0 w-16 h-16 rounded-full"
+                         style={{ backgroundColor: `${primary}20` }} />
+                    <span className="relative text-4xl leading-none select-none">{emoji ?? '🎉'}</span>
+                  </div>
                 </div>
               </div>
             );
