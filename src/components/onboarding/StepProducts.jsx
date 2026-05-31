@@ -586,7 +586,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                     <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
                     <p className="text-xs text-gray-400">
                       {cat ? `${cat.emoji} ${cat.label}` : '—'}
-                      {' · '}₹{p.price}{' · '}{p.unit}
+                      {' · '}₹{p.price}{(mode === 'product' || mode === 'menuitem') ? ` · ${p.unit}` : ''}
                     </p>
                   </div>
 
@@ -666,22 +666,24 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 {prodErrors.category && <p className="mt-0.5 text-xs text-red-500">{prodErrors.category}</p>}
               </div>
 
-              {/* Unit */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
-                <select value={productForm.unit}
-                        onChange={e => setProductForm(p => ({ ...p, unit: e.target.value, unitCustom: '' }))}
-                        className={inputCls(false)}>
-                  {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-                {productForm.unit === 'Other…' && (
-                  <input type="text" autoFocus
-                         placeholder="Type your unit (e.g. per roll, per bundle)"
-                         value={productForm.unitCustom}
-                         onChange={e => setProductForm(p => ({ ...p, unitCustom: e.target.value }))}
-                         className={[inputCls(false), 'mt-2'].join(' ')} />
-                )}
-              </div>
+              {/* Unit — only relevant for physical products and menu items */}
+              {(mode === 'product' || mode === 'menuitem') && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+                  <select value={productForm.unit}
+                          onChange={e => setProductForm(p => ({ ...p, unit: e.target.value, unitCustom: '' }))}
+                          className={inputCls(false)}>
+                    {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  {productForm.unit === 'Other…' && (
+                    <input type="text" autoFocus
+                           placeholder="Type your unit (e.g. per roll, per bundle)"
+                           value={productForm.unitCustom}
+                           onChange={e => setProductForm(p => ({ ...p, unitCustom: e.target.value }))}
+                           className={[inputCls(false), 'mt-2'].join(' ')} />
+                  )}
+                </div>
+              )}
 
               {/* Price */}
               <div>
@@ -702,23 +704,24 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 {prodErrors.price && <p className="mt-0.5 text-xs text-red-500">{prodErrors.price}</p>}
               </div>
 
-              {/* MRP */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  MRP ₹ <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
-                                   text-gray-400 pointer-events-none">₹</span>
-                  <input type="number" inputMode="numeric" min="0" placeholder="499"
-                         value={productForm.mrp}
-                         onChange={e => setProductForm(p => ({ ...p, mrp: e.target.value }))}
-                         className={[inputCls(false), 'pl-7'].join(' ')} />
+              {/* MRP — not relevant for services or portfolio */}
+              {(mode === 'product' || mode === 'menuitem' || mode === 'room') && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {mode === 'room' ? 'Original Price ₹' : 'MRP ₹'}{' '}
+                    <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
+                                     text-gray-400 pointer-events-none">₹</span>
+                    <input type="number" inputMode="numeric" min="0" placeholder="499"
+                           value={productForm.mrp}
+                           onChange={e => setProductForm(p => ({ ...p, mrp: e.target.value }))}
+                           className={[inputCls(false), 'pl-7'].join(' ')} />
+                  </div>
+                  <p className="mt-0.5 text-xs text-gray-400">Shows strikethrough on the card.</p>
                 </div>
-                <p className="mt-0.5 text-xs text-gray-400">
-                  Shows strikethrough + discount % on the card.
-                </p>
-              </div>
+              )}
 
               {/* Description */}
               <div className="sm:col-span-2">
@@ -735,7 +738,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Image */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  Product Image <span className="text-gray-400 font-normal">(optional — placeholder used if skipped)</span>
+                  {labels.singular} Image <span className="text-gray-400 font-normal">(optional — placeholder used if skipped)</span>
                 </label>
                 <ImageUploader
                   value={productForm.image}

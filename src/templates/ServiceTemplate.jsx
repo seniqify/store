@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { openServiceInquiry } from '../utils/whatsappEngine';
 
@@ -8,6 +8,7 @@ export default function ServiceTemplate({ onCartCountChange }) {
   const [form,    setForm]    = useState(INITIAL_FORM);
   const [sending, setSending] = useState(false);
   const [sent,    setSent]    = useState(false);
+  const formRef = useRef(null);
 
   const config = useBusinessConfig();
   const { products: services = [], categories = [], features = [], businessName, tagline, theme } = config;
@@ -19,10 +20,15 @@ export default function ServiceTemplate({ onCartCountChange }) {
   }, [businessName]);
 
   function toggleService(name) {
-    setForm(f => ({
-      ...f,
-      services: f.services.includes(name) ? f.services.filter(s => s !== name) : [...f.services, name],
-    }));
+    setForm(f => {
+      const next = f.services.includes(name)
+        ? f.services.filter(s => s !== name)
+        : [...f.services, name];
+      if (next.length === 1 && !f.services.includes(name)) {
+        setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+      }
+      return { ...f, services: next };
+    });
   }
 
   function handleSubmit(e) {
@@ -111,7 +117,7 @@ export default function ServiceTemplate({ onCartCountChange }) {
         </div>
 
         {/* Inquiry form */}
-        <div>
+        <div ref={formRef}>
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px flex-1 bg-gray-200" />
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Request a Quote</span>

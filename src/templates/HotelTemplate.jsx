@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { openHotelBooking } from '../utils/whatsappEngine';
 
@@ -11,6 +11,7 @@ export default function HotelTemplate({ onCartCountChange }) {
   const [selected,  setSelected]  = useState(null);
   const [sending,   setSending]   = useState(false);
   const [sent,      setSent]      = useState(false);
+  const formRef = useRef(null);
 
   const config = useBusinessConfig();
   const { products: rooms = [], features = [], businessName, tagline, theme } = config;
@@ -24,6 +25,7 @@ export default function HotelTemplate({ onCartCountChange }) {
   function selectRoom(room) {
     setSelected(room.id ?? room.name);
     setForm(f => ({ ...f, roomType: room.name }));
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
 
   function handleSubmit(e) {
@@ -91,6 +93,10 @@ export default function HotelTemplate({ onCartCountChange }) {
                           ₹{room.price.toLocaleString('en-IN')} <span className="text-xs font-normal text-gray-400">/ night</span>
                         </p>
                       )}
+                      <div className="mt-3 text-xs font-bold py-1.5 px-3 rounded-lg text-center text-white transition-all"
+                           style={{ backgroundColor: isSelected ? '#16a34a' : (theme?.primary ?? '#0d9488') }}>
+                        {isSelected ? '✓ Selected — Fill form below' : 'Book This Room →'}
+                      </div>
                     </div>
                   </button>
                 );
@@ -100,7 +106,7 @@ export default function HotelTemplate({ onCartCountChange }) {
         )}
 
         {/* Booking form */}
-        <div>
+        <div ref={formRef}>
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px flex-1 bg-gray-200" />
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Book via WhatsApp</span>
