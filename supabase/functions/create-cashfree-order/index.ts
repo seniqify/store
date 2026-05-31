@@ -72,9 +72,10 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
+    // Always return 200 so supabase-js puts the body in `data` not `error.context`
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });
