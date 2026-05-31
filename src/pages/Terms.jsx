@@ -1,4 +1,4 @@
-﻿import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 const LAST_UPDATED = 'May 2025';
 
@@ -118,7 +118,7 @@ export default function Terms() {
       </main>
 
       <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400">
-        <Link to="/" className="hover:text-gray-700 transition-colors">â† Back to PocketLink</Link>
+        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to PocketLink</Link>
         <span className="mx-3">Â·</span>
         <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
       </footer>

@@ -1,4 +1,4 @@
-﻿import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 const LAST_UPDATED = 'May 2025';
 
@@ -12,7 +12,7 @@ export default function Privacy() {
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-72 w-auto" />
           </Link>
-          <span className="text-gray-300">Â·</span>
+          <span className="text-gray-300">·</span>
           <span className="text-sm text-gray-500">Privacy Policy</span>
         </div>
       </nav>
@@ -94,7 +94,7 @@ export default function Privacy() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">7. Security</h2>
             <p>
-              Store management PINs are hashed using SHA-256 before storage â€” we never store
+              Store management PINs are hashed using SHA-256 before storage — we never store
               raw PINs. All communication between your browser and our servers uses HTTPS.
             </p>
           </section>
@@ -120,8 +120,8 @@ export default function Privacy() {
       </main>
 
       <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400">
-        <Link to="/" className="hover:text-gray-700 transition-colors">â† Back to PocketLink</Link>
-        <span className="mx-3">Â·</span>
+        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to PocketLink</Link>
+        <span className="mx-3">·</span>
         <Link to="/terms" className="hover:text-gray-700 transition-colors">Terms of Service</Link>
       </footer>
     </div>

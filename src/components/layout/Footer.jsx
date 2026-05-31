@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
@@ -6,18 +6,18 @@ import { whatsappLink } from '../../utils/theme';
 import { showBrandBadge } from '../../utils/planLimits';
 
 /**
- * Footer â€” reads the active business config from context.
+ * Footer — reads the active business config from context.
  *
  * Columns (all optional / conditional):
- *   1. Brand â€” logo, tagline, WhatsApp CTA
- *   2. Categories â€” product category list
- *   3. Payment Details â€” UPI ID + Bank Transfer with copy buttons  â† replaces "Contact Us"
- *   4. Quick Info â€” delivery threshold, GST, returns
+ *   1. Brand — logo, tagline, WhatsApp CTA
+ *   2. Categories — product category list
+ *   3. Payment Details — UPI ID + Bank Transfer with copy buttons  â† replaces "Contact Us"
+ *   4. Quick Info — delivery threshold, GST, returns
  *
  * Phone is already shown in the Header top-strip; it is NOT repeated here.
  */
 
-// â”€â”€ Copy button: copies text, shows a "Copied âœ“" flash for 1.5 s â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Copy button: copies text, shows a "Copied ✓" flash for 1.5 s â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CopyBtn({ text, label }) {
   const [copied, setCopied] = useState(false);
 
@@ -119,7 +119,7 @@ export default function Footer() {
           <h4 className="text-white font-semibold mb-3">Business Details</h4>
           <ul className="space-y-3 text-sm">
 
-            {/* Business name â€” always shown */}
+            {/* Business name — always shown */}
             <li className="flex items-start gap-2.5">
               <span className="text-base leading-none flex-shrink-0 mt-0.5">
                 {config.logoEmoji}
@@ -178,7 +178,7 @@ export default function Footer() {
             {hasUpi && (
               <div className="mb-4">
                 <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">
-                  ðŸ“± UPI / QR Code
+                  📱 UPI / QR Code
                 </p>
                 <ul>
                   <PayRow label="UPI ID" value={upi} mono />
@@ -190,7 +190,7 @@ export default function Footer() {
             {hasBank && (
               <div>
                 <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-2">
-                  ðŸ¦ Bank Transfer
+                  🏦 Bank Transfer
                 </p>
                 <ul>
                   {bank.accountName   && <PayRow label="Name"    value={bank.accountName} />}
@@ -207,9 +207,9 @@ export default function Footer() {
         <div>
           <h4 className="text-white font-semibold mb-3">Quick Info</h4>
           <ul className="space-y-2 text-sm text-gray-400">
-            <li>ðŸšš Free delivery above â‚¹{cart.freeShippingAbove}</li>
-            <li>âœ… 100% genuine products</li>
-            <li>ðŸ”„ Easy 7-day returns</li>
+            <li>🚚 Free delivery above ₹{cart.freeShippingAbove}</li>
+            <li>✅ 100% genuine products</li>
+            <li>🔄 Easy 7-day returns</li>
           </ul>
         </div>
       </div>
@@ -218,7 +218,7 @@ export default function Footer() {
       <div className="border-t border-gray-800 py-4 px-4
                       flex flex-col sm:flex-row items-center justify-between
                       gap-2 text-xs text-gray-500">
-        <span>Â© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;Â·&nbsp;Made in India ðŸ‡®ðŸ‡³</span>
+        <span>© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳</span>
         {slug && (
           <Link
             to={`/${slug}/manage`}
@@ -231,7 +231,7 @@ export default function Footer() {
         )}
       </div>
 
-      {/* â”€â”€ "Powered by PocketLink" â€” shown on free plan only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â”€â”€ "Powered by PocketLink" — shown on free plan only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showBrandBadge(plan) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a

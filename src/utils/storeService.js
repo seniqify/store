@@ -16,8 +16,22 @@ export async function fetchStore(slug) {
 
 /** Save a brand-new store to DB. Hashes PIN before storing. Throws on error. */
 export async function createStore(config, pin, ownerPhone = null) {
+  // Block duplicate stores for the same WhatsApp number
+  const last10 = String(config.whatsappNumber || '').replace(/\D/g, '').slice(-10);
+  if (last10) {
+    const { data: existing } = await supabase
+      .from('stores')
+      .select('slug')
+      .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+      .limit(1);
+    if (existing?.length) {
+      throw new Error(
+        `A store already exists for this WhatsApp number. Visit /${existing[0].slug} to manage it.`
+      );
+    }
+  }
+
   const hashedPin = await hashPin(pin);
-  // Store plan inside config JSONB (no separate column needed until migration is run)
   const configToSave = { ...config, plan: 'free', ownerPhone };
   const { error } = await supabase
     .from('stores')

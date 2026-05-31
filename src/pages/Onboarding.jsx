@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import StepBusiness from '../components/onboarding/StepBusiness';
 import StepProducts from '../components/onboarding/StepProducts';
@@ -12,7 +12,7 @@ import { uploadConfigImages }  from '../utils/imageStorage';
 const INITIAL = {
   businessName:      '',
   whatsappNumber:    '',
-  logoEmoji:         'ðŸª',
+  logoEmoji:         '🏪',
   themeColor:        '#0d9488',
   gstRate:           0.05,
   gstNumber:         '',
@@ -36,7 +36,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
   const storeUrl  = `${window.location.origin}/${slug}`;
   const manageUrl = `${window.location.origin}/${slug}/manage`;
   const waText    = encodeURIComponent(
-    `ðŸŽ‰ My new WhatsApp store is live!\n\nBrowse & order here:\n${storeUrl}`
+    `🎉 My new WhatsApp store is live!\n\nBrowse & order here:\n${storeUrl}`
   );
 
   function copyUrl() {
@@ -52,12 +52,12 @@ function LaunchSuccess({ slug, pin, themeColor }) {
 
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">ðŸŽ‰</div>
+          <div className="text-5xl mb-3">🎉</div>
           <h1 className="text-2xl font-extrabold text-gray-900">Your store is live!</h1>
           <p className="text-sm text-gray-500 mt-1">Share the link below with your customers.</p>
         </div>
 
-        {/* Store URL â€” big copyable box */}
+        {/* Store URL — big copyable box */}
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4">
           <p className="text-[11px] text-gray-400 font-medium mb-1">Your store link</p>
           <div className="flex items-center gap-2">
@@ -73,14 +73,14 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                 color: '#fff',
               }}
             >
-              {copied ? 'âœ“ Copied!' : 'Copy'}
+              {copied ? '✓ Copied!' : 'Copy'}
             </button>
           </div>
         </div>
 
         {/* Manage URL */}
         <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-6">
-          <p className="text-[11px] text-amber-600 font-medium mb-0.5">ðŸ“‹ Save this â€” your management link</p>
+          <p className="text-[11px] text-amber-600 font-medium mb-0.5">📋 Save this — your management link</p>
           <p className="font-mono text-xs text-amber-800 font-semibold break-all">{manageUrl}</p>
           <p className="text-[11px] text-amber-500 mt-1">
             PIN: <strong>{pin || 'last 4 digits of your WhatsApp number'}</strong>
@@ -97,7 +97,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                        text-sm font-bold text-white transition-all hover:opacity-90"
             style={{ backgroundColor: themeColor }}
           >
-            ðŸ›ï¸ Visit My Store
+            🛍️ Visit My Store
           </a>
 
           <a
@@ -117,7 +117,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                        text-sm font-semibold text-gray-600 border border-gray-200
                        hover:bg-gray-50 transition-colors"
           >
-            âš™ï¸ Go to Manage Store
+            ⚙️ Go to Manage Store
           </Link>
         </div>
       </div>
@@ -227,7 +227,7 @@ export default function Onboarding() {
                   ? 'border-green-400 text-green-600'
                   : 'border-transparent text-gray-400',
               ].join(' ')}>
-              {i < step ? 'âœ“ ' : ''}{label}
+              {i < step ? '✓ ' : ''}{label}
             </div>
           ))}
         </div>

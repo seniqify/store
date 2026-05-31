@@ -1,13 +1,13 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MessageCircle, ArrowRight, RotateCcw } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
 
 /**
- * Register â€” WhatsApp number + OTP verification.
+ * Register — WhatsApp number + OTP verification.
  * Must be completed before /onboarding is accessible.
  *
- * On success â†’ stores verified phone in sessionStorage and redirects to /onboarding.
+ * On success → stores verified phone in sessionStorage and redirects to /onboarding.
  */
 
 // â”€â”€ 6-box OTP input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -99,7 +99,7 @@ export default function Register() {
   const fullPhone = `91${digits}`;  // E.164 without +
   const isValidPhone = digits.length === 10;
 
-  // â”€â”€ Step 1 â€” send OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ Step 1 — send OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleSendOtp(e) {
     e.preventDefault();
     if (!isValidPhone) { setError('Enter a valid 10-digit WhatsApp number.'); return; }
@@ -116,7 +116,7 @@ export default function Register() {
     }
   }
 
-  // â”€â”€ Step 2 â€” verify OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ Step 2 — verify OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleVerify(e) {
     e.preventDefault();
     const code = otp.replace(/\s/g, '');
@@ -153,7 +153,7 @@ export default function Register() {
   // â”€â”€ Formatted display number â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const displayPhone = digits.length === 10
     ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
-    : '+91 â€¦';
+    : '+91 …';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -193,9 +193,9 @@ export default function Register() {
           {phase === 'phone' && (
             <div className="flex items-center justify-center gap-1.5 bg-green-50
                             border border-green-100 rounded-xl px-3 py-2">
-              <span className="text-sm">ðŸ†“</span>
+              <span className="text-sm">🆓</span>
               <span className="text-xs font-semibold text-green-700">
-                Free forever Â· 3 products Â· No credit card
+                Free forever · 3 products · No credit card
               </span>
             </div>
           )}
@@ -213,7 +213,7 @@ export default function Register() {
                   {/* Country prefix */}
                   <div className="flex items-center gap-1.5 px-3 py-3 bg-gray-50
                                   border-r border-gray-200 flex-shrink-0">
-                    <span className="text-base leading-none">ðŸ‡®ðŸ‡³</span>
+                    <span className="text-base leading-none">🇮🇳</span>
                     <span className="text-sm font-semibold text-gray-600">+91</span>
                   </div>
                   <input
