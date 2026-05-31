@@ -53,12 +53,10 @@ export default function Start() {
           return;
         }
       }
-      // TODO: re-enable OTP when Seniqify WhatsApp number is approved
-      // await sendOtp(phone);
-      // setStep('otp');
-      // setTimer(RESEND_SECONDS);
-      sessionStorage.setItem('pocketlink_verified_phone', phone);
-      navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
+      // Send the OTP via WhatsApp, then move to the verify step
+      await sendOtp(phone);
+      setStep('otp');
+      setTimer(RESEND_SECONDS);
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {

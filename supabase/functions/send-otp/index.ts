@@ -6,7 +6,11 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SENIQIFY_URL = 'https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/9x3izwha06/process';
+// WhatsApp template endpoint. Override via the SENIQIFY_TEMPLATE_URL secret
+// to swap templates without a code change/redeploy. Falls back to the current
+// approved template ("otp" → 1l2rjwk8n4) when the secret isn't set.
+const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL')
+  ?? 'https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/1l2rjwk8n4/process';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
