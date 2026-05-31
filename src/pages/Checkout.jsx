@@ -1,96 +1,139 @@
 import { useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
-import { load } from '@cashfreepayments/cashfree-js';
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 const PLAN_INFO = {
-  starter: {
-    name: 'Starter',
-    price: 299,
+  pro: {
+    name:  'Pro',
     color: '#0d9488',
-    features: ['10 products', '5 categories', 'No badge', 'Order history'],
+    features: ['20 products', '5 categories', 'No badge', 'Order history'],
   },
-  growth: {
-    name: 'Growth',
-    price: 699,
+  business: {
+    name:  'Business',
     color: '#6366f1',
-    features: ['50 products', '15 categories', 'Discount codes', 'Analytics'],
+    features: ['Unlimited products', 'Unlimited categories', 'Analytics', 'Priority support'],
   },
 };
 
-const STEPS = [
-  { n: '1', title: 'Pay securely',         desc: 'UPI · Cards · Net Banking · Wallets' },
-  { n: '2', title: 'Plan activates instantly', desc: 'No manual confirmation needed'    },
-  { n: '3', title: 'Create your store',    desc: 'Jump straight into onboarding'        },
-];
+const PERIOD_LABEL = {
+  monthly:  'Monthly',
+  halfyear: '6 Months',
+  yearly:   '1 Year',
+};
+
+const CHARGES = {
+  pro:      { monthly: 551,  halfyear: 2814, yearly: 4668 },
+  business: { monthly: 1000, halfyear: 5094, yearly: 8388 },
+};
+
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) { resolve(true); return; }
+    const script    = document.createElement('script');
+    script.src      = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload   = () => resolve(true);
+    script.onerror  = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export default function Checkout() {
-  const { plan: planKey } = useParams();
+  const { plan: planKey }  = useParams();
+  const [searchParams]     = useSearchParams();
   const navigate           = useNavigate();
+  const period             = searchParams.get('period') || 'monthly';
   const plan               = PLAN_INFO[planKey];
 
   const [paying,   setPaying]   = useState(false);
   const [payError, setPayError] = useState('');
 
-  const phone = sessionStorage.getItem('pocketlink_verified_phone');
+  const phone  = sessionStorage.getItem('pocketlink_verified_phone');
+  const amount = CHARGES[planKey]?.[period];
 
-  if (!plan)  { navigate('/plans');  return null; }
-  if (!phone) { navigate('/start');  return null; }
+  if (!plan || !amount) { navigate('/plans'); return null; }
+  if (!phone)           { navigate('/start'); return null; }
 
   async function handlePay() {
     setPaying(true);
     setPayError('');
 
     try {
-      // 1. Create order on backend
-      const { data: orderData, error: orderErr } = await supabase.functions.invoke(
-        'create-cashfree-order',
-        { body: { plan: planKey, phone } },
-      );
+      // 1. Load Razorpay JS
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error('Could not load payment SDK. Check your connection.');
 
-      if (orderData?.error || !orderData?.payment_session_id) {
-        throw new Error(orderData?.error ?? 'Could not start payment. Please try again.');
-      }
-
-      // 2. Open Cashfree checkout modal
-      const cashfree = await load({ mode: 'sandbox' });
-
-      const result = await cashfree.checkout({
-        paymentSessionId: orderData.payment_session_id,
-        redirectTarget: '_modal',
+      // 2. Create order on backend
+      const { data: orderData } = await supabase.functions.invoke('create-razorpay-order', {
+        body: { plan: planKey, period, phone },
       });
 
-      if (result.error) {
-        setPayError(result.error.message ?? 'Payment was not completed. You can try again.');
-        setPaying(false);
-        return;
+      if (orderData?.error || !orderData?.order_id) {
+        throw new Error(orderData?.error ?? 'Could not create payment order.');
       }
 
-      if (result.paymentDetails) {
-        // 3. Verify server-side
-        const { data: verifyData } = await supabase.functions.invoke(
-          'verify-cashfree-payment',
-          { body: { order_id: orderData.order_id } },
-        );
+      // 3. Open Razorpay checkout
+      await new Promise((resolve, reject) => {
+        const options = {
+          key:         orderData.key_id,
+          amount:      orderData.amount * 100,
+          currency:    'INR',
+          name:        'PocketLink',
+          description: `${plan.name} Plan · ${PERIOD_LABEL[period]}`,
+          order_id:    orderData.order_id,
+          prefill:     { contact: phone.replace('91', '') },
+          theme:       { color: plan.color },
+          modal: {
+            ondismiss: () => {
+              setPaying(false);
+              setPayError('Payment was cancelled. You can try again.');
+              resolve(null);
+            },
+          },
+          handler: async (response) => {
+            try {
+              // 4. Verify signature on backend
+              const { data: verifyData } = await supabase.functions.invoke(
+                'verify-razorpay-payment',
+                {
+                  body: {
+                    razorpay_order_id:   response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature:  response.razorpay_signature,
+                  },
+                },
+              );
 
-        if (verifyData?.verified) {
-          sessionStorage.setItem('pocketlink_plan', planKey);
-          navigate('/onboarding');
-        } else {
-          setPayError('Payment verification failed. Please contact support.');
-          setPaying(false);
-        }
-      }
+              if (verifyData?.verified) {
+                sessionStorage.setItem('pocketlink_plan', planKey);
+                navigate('/onboarding');
+                resolve(true);
+              } else {
+                throw new Error(verifyData?.error ?? 'Payment verification failed.');
+              }
+            } catch (err) {
+              reject(err);
+            }
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', (resp) => {
+          reject(new Error(resp.error?.description ?? 'Payment failed. Please try again.'));
+        });
+        rzp.open();
+      });
     } catch (err) {
       setPayError(err.message ?? 'Something went wrong. Please try again.');
       setPaying(false);
     }
   }
 
+  const billingNote = period === 'monthly'
+    ? `₹${amount} billed monthly`
+    : `₹${amount.toLocaleString('en-IN')} billed ${period === 'halfyear' ? 'every 6 months' : 'yearly'}`;
+
   return (
     <div className="min-h-screen bg-gray-50">
-
-      {/* Nav */}
       <nav className="bg-white border-b border-gray-100">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <Link to="/">
@@ -108,11 +151,15 @@ export default function Checkout() {
           {/* Plan summary */}
           <div className="mb-7 pb-6 border-b border-gray-100">
             <p className="text-xs font-medium text-gray-400 mb-1">Activating plan</p>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 flex-wrap">
               <h1 className="text-2xl font-extrabold text-gray-900">{plan.name}</h1>
-              <span className="text-gray-400 text-sm">₹{plan.price}/month + GST</span>
+              <span className="text-sm font-semibold px-2 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: plan.color }}>
+                {PERIOD_LABEL[period]}
+              </span>
             </div>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <p className="text-sm text-gray-400 mt-1">{billingNote} + GST</p>
+            <div className="flex flex-wrap gap-2 mt-3">
               {plan.features.map((f) => (
                 <span key={f} className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                   {f}
@@ -121,18 +168,18 @@ export default function Checkout() {
             </div>
           </div>
 
-          {/* How it works */}
+          {/* What happens */}
           <div className="bg-gray-50 rounded-xl p-4 mb-7 space-y-3">
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">What happens</p>
-            {STEPS.map(({ n, title, desc }) => (
+            {[
+              { n: '1', title: 'Pay securely',            desc: 'UPI · Cards · Net Banking · Wallets' },
+              { n: '2', title: 'Plan activates instantly', desc: 'No manual confirmation needed'        },
+              { n: '3', title: 'Create your store',        desc: 'Jump straight into onboarding'        },
+            ].map(({ n, title, desc }) => (
               <div key={n} className="flex items-start gap-3">
-                <span
-                  className="w-5 h-5 rounded-full text-[11px] font-bold flex items-center
-                             justify-center text-white flex-shrink-0 mt-0.5"
-                  style={{ backgroundColor: plan.color }}
-                >
-                  {n}
-                </span>
+                <span className="w-5 h-5 rounded-full text-[11px] font-bold flex items-center
+                                 justify-center text-white flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: plan.color }}>{n}</span>
                 <div>
                   <p className="text-sm font-semibold text-gray-800 leading-tight">{title}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
@@ -156,7 +203,7 @@ export default function Checkout() {
                 Opening payment…
               </>
             ) : (
-              `Pay ₹${plan.price} — Activate ${plan.name}`
+              `Pay ₹${amount.toLocaleString('en-IN')} — Activate ${plan.name}`
             )}
           </button>
 
@@ -164,8 +211,8 @@ export default function Checkout() {
             <p className="mt-3 text-xs text-red-500 text-center leading-relaxed">{payError}</p>
           )}
 
-          <p className="text-center text-[11px] text-gray-400 mt-4 leading-relaxed">
-            Secured by Cashfree Payments · 256-bit SSL
+          <p className="text-center text-[11px] text-gray-400 mt-4">
+            Secured by Razorpay · 256-bit SSL · UPI · Cards · Wallets
           </p>
         </div>
       </div>

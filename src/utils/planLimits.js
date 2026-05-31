@@ -1,68 +1,64 @@
-/**
- * planLimits — defines what each plan can and cannot do.
- * Single source of truth for enforcement across onboarding + manage store.
- */
-
 export const PLANS = {
   free: {
-    name:             'Free',
-    price:            0,
-    products:         3,
-    categories:       2,
-    badge:            true,   // "Powered by PocketLink" shown
-    customDomain:     false,
-    promoBanner:      false,
-    discountCodes:    false,
-    orderHistory:     false,
-    analytics:        false,
-    variants:         false,
-    bulkUpload:       false,
-    prioritySupport:  false,
-  },
-  starter: {
-    name:             'Starter',
-    price:            299,
-    products:         10,
-    categories:       5,
-    badge:            false,
-    customDomain:     false,
-    promoBanner:      true,
-    discountCodes:    false,
-    orderHistory:     true,
-    analytics:        'basic',
-    variants:         false,
-    bulkUpload:       false,
-    prioritySupport:  false,
-  },
-  growth: {
-    name:             'Growth',
-    price:            699,
-    products:         50,
-    categories:       15,
-    badge:            false,
-    customDomain:     true,
-    promoBanner:      true,
-    discountCodes:    true,
-    orderHistory:     true,
-    analytics:        'full',
-    variants:         true,
-    bulkUpload:       true,
-    prioritySupport:  true,
+    name:            'Free',
+    products:        2,
+    categories:      1,
+    badge:           true,
+    promoBanner:     false,
+    discountCodes:   false,
+    orderHistory:    false,
+    analytics:       false,
+    variants:        false,
+    prioritySupport: false,
   },
   pro: {
-    name:             'Pro',
-    price:            1499,
-    products:         200,
-    categories:       Infinity,
-    badge:            false,
-    customDomain:     true,
-    promoBanner:      true,
-    discountCodes:    true,
-    orderHistory:     true,
-    analytics:        'full',
-    variants:         true,
-    bulkUpload:       true,
-    prioritySupport:  true,
+    name:            'Pro',
+    products:        20,
+    categories:      5,
+    badge:           false,
+    promoBanner:     true,
+    discountCodes:   false,
+    orderHistory:    true,
+    analytics:       'basic',
+    variants:        false,
+    prioritySupport: false,
+  },
+  business: {
+    name:            'Business',
+    products:        Infinity,
+    categories:      Infinity,
+    badge:           false,
+    promoBanner:     true,
+    discountCodes:   true,
+    orderHistory:    true,
+    analytics:       'full',
+    variants:        true,
+    prioritySupport: true,
+  },
+  // legacy aliases so old stores don't break
+  starter: {
+    name:            'Starter',
+    products:        10,
+    categories:      5,
+    badge:           false,
+    promoBanner:     true,
+    discountCodes:   false,
+    orderHistory:    true,
+    analytics:       'basic',
+    variants:        false,
+    prioritySupport: false,
+  },
+  growth: {
+    name:            'Growth',
+    products:        50,
+    categories:      15,
+    badge:           false,
+    promoBanner:     true,
+    discountCodes:   true,
+    orderHistory:    true,
+    analytics:       'full',
+    variants:        true,
+    prioritySupport: true,
   },
 };
 
@@ -71,7 +67,8 @@ export function getPlanLimits(plan = 'free') {
 }
 
 export function canAddProduct(plan, currentCount) {
-  return currentCount < getPlanLimits(plan).products;
+  const limit = getPlanLimits(plan).products;
+  return limit === Infinity || currentCount < limit;
 }
 
 export function canAddCategory(plan, currentCount) {

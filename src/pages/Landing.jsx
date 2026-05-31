@@ -238,19 +238,19 @@ export default function Landing() {
               {
                 name: 'Free', price: 0, popular: false, color: '#374151',
                 to: '/start', cta: 'Start Free',
-                features: ['3 products', '2 categories', 'WhatsApp orders', 'Shareable link', 'GST pricing'],
+                features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable link', 'GST pricing'],
                 caveat: '"Powered by PocketLink" badge',
               },
               {
-                name: 'Starter', price: 299, popular: true, color: '#0d9488',
-                to: '/start?plan=starter', cta: 'Get Starter',
-                features: ['10 products', '5 categories', 'No badge', 'Promo banners', 'Order history', 'Email support'],
+                name: 'Pro', price: 551, originalPrice: 699, popular: true, color: '#0d9488',
+                to: '/start?plan=pro', cta: 'Get Pro',
+                features: ['20 products · 5 categories', 'No badge', 'Zero per-order cost', 'No blocking risk', 'Order history', 'Email support'],
                 caveat: null,
               },
               {
-                name: 'Growth', price: 699, popular: false, color: '#6366f1',
-                to: '/start?plan=growth', cta: 'Get Growth',
-                features: ['50 products', '15 categories', 'No badge', 'Discount codes', 'Analytics', 'Product variants', 'Priority support'],
+                name: 'Business', price: 1000, popular: false, color: '#6366f1',
+                to: '/start?plan=business', cta: 'Get Business',
+                features: ['Unlimited products & categories', 'No badge', 'Discount codes', 'Analytics dashboard', 'Product variants', 'Priority support'],
                 caveat: null,
               },
             ].map((plan) => (
@@ -265,15 +265,20 @@ export default function Landing() {
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                     <span className="bg-teal-500 text-white text-[10px] font-bold px-3 py-1
                                      rounded-full uppercase tracking-wider shadow-sm">
-                      Most Popular
+                      Best Value
                     </span>
                   </div>
                 )}
                 <h3 className="font-extrabold text-gray-900 text-lg mb-1">{plan.name}</h3>
-                <p className="text-2xl font-extrabold text-gray-900 mb-1">
-                  {plan.price === 0 ? 'Free' : `₹${plan.price}`}
-                  {plan.price > 0 && <span className="text-sm font-normal text-gray-400">/mo</span>}
-                </p>
+                <div className="flex items-baseline gap-2 mb-0.5">
+                  <p className="text-2xl font-extrabold text-gray-900">
+                    {plan.price === 0 ? 'Free' : `₹${plan.price}`}
+                    {plan.price > 0 && <span className="text-sm font-normal text-gray-400">/mo</span>}
+                  </p>
+                  {plan.originalPrice && (
+                    <span className="text-sm text-gray-400 line-through">₹{plan.originalPrice}</span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 mb-4 pb-4 border-b border-gray-100">
                   {plan.price === 0 ? 'forever · no card needed' : '+ GST · billed monthly'}
                 </p>
@@ -295,8 +300,8 @@ export default function Landing() {
                   className="block text-center py-2.5 rounded-xl text-sm font-bold
                              transition-all hover:opacity-90 active:scale-[0.98]"
                   style={{
-                    backgroundColor: plan.popular ? plan.color : plan.name === 'Growth' ? plan.color : '#e5e7eb',
-                    color: plan.popular || plan.name === 'Growth' ? '#fff' : '#374151',
+                    backgroundColor: plan.popular ? plan.color : plan.name === 'Business' ? plan.color : '#e5e7eb',
+                    color: plan.popular || plan.name === 'Business' ? '#fff' : '#374151',
                   }}
                 >
                   {plan.cta}
@@ -305,7 +310,7 @@ export default function Landing() {
             ))}
           </div>
           <p className="text-center text-xs text-gray-400">
-            Paid plans activated within 2–4 hours · Cancel anytime from your dashboard
+            6-month & yearly plans available at checkout · Cancel anytime
           </p>
         </div>
       </section>
