@@ -58,7 +58,7 @@ export default function Checkout() {
       }
 
       // 2. Open Cashfree checkout modal
-      const cashfree = await load({ mode: 'production' });
+      const cashfree = await load({ mode: 'sandbox' });
 
       const result = await cashfree.checkout({
         paymentSessionId: orderData.payment_session_id,
