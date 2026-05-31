@@ -14,28 +14,28 @@ const HOW_IT_WORKS = [
   {
     icon: '📝',
     step: '01',
-    title: 'Fill in your details',
-    desc: 'Business name, WhatsApp number, products, and pricing. Takes about 2 minutes.',
+    title: 'Set up your shop',
+    desc: 'Add your business name, products, and pricing. No tech skills needed — done in under 2 minutes.',
   },
   {
     icon: '🔗',
     step: '02',
-    title: 'Get your store link',
-    desc: 'Your shareable URL goes live instantly — share it on WhatsApp, Instagram, or anywhere.',
+    title: 'Share your store link',
+    desc: 'Your store goes live instantly. Share the link on WhatsApp, Instagram, or anywhere your customers are.',
   },
   {
-    icon: '📱',
+    icon: '💬',
     step: '03',
-    title: 'Customers order via WhatsApp',
-    desc: 'They browse, pick products, and tap "Send Order". A structured message lands in your WhatsApp.',
+    title: 'Receive orders on WhatsApp',
+    desc: 'Customers browse, pick products, and tap "Send Order". A structured message lands straight in your WhatsApp — no app, no gateway.',
   },
 ];
 
 const PLATFORM_FEATURES = [
-  { icon: '⚡', label: 'Instant setup',    sub: 'No coding, no designers needed' },
-  { icon: '📱', label: 'Mobile-first',     sub: 'Works perfectly on any phone' },
-  { icon: '🆓', label: '100% free',        sub: 'No monthly fees, ever' },
-  { icon: '🇮🇳', label: 'Built for India', sub: 'GST-native, WhatsApp-native' },
+  { icon: '⚡', label: 'Instant setup',      sub: 'No coding, no designers needed' },
+  { icon: '📱', label: 'Mobile-first',       sub: 'Works perfectly on any phone' },
+  { icon: '🆓', label: '100% free to start', sub: 'Launch today, upgrade when you grow' },
+  { icon: '🌍', label: 'Built for everyone', sub: 'Any shop, any size, anywhere' },
 ];
 
 export default function Landing() {
@@ -73,19 +73,18 @@ export default function Landing() {
           <div className="inline-flex items-center gap-2 bg-green-50 border border-green-100
                           text-green-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            Free · 3 products · No credit card needed
+            Free · No tech skills needed · Live in minutes
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900
                          leading-tight tracking-tight mb-4">
-            Launch your WhatsApp store<br />
-            <span className="text-[#25D366]">in 2 minutes</span>
+            Your shop,<br />
+            <span className="text-[#25D366]">online in minutes</span>
           </h1>
 
           <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto mb-8 leading-relaxed">
-            A structured product page for your business. Customers browse, select,
-            and place orders — the message lands directly in your WhatsApp.
-            No app. No payment gateway. No Shopify.
+            PocketLink gives any small business a beautiful online store — shareable in one link,
+            orders straight to your WhatsApp. No app. No code. No monthly fees to get started.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -118,7 +117,7 @@ export default function Landing() {
             <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">
               How it works
             </h2>
-            <p className="text-sm text-gray-400">Three steps and your store is live.</p>
+            <p className="text-sm text-gray-400">Three steps. Your shop is online. Forever free to start.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
@@ -230,7 +229,7 @@ export default function Landing() {
               Simple, honest pricing
             </h2>
             <p className="text-sm text-gray-400">
-              Start free. Upgrade only when your business needs it.
+              Start free. No credit card. Upgrade when you outgrow the free tier.
             </p>
           </div>
 
@@ -324,9 +323,9 @@ export default function Landing() {
               { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working store with up to 3 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your store opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps "Send Order", a structured WhatsApp message lands in your inbox with their name, address, items, and total. You reply to confirm and arrange delivery.' },
-              { q: 'Can I accept UPI / online payments?', a: 'PocketLink is built for COD and in-person payments. Customers mention their payment preference in the order message. Integrated UPI payment links are on our roadmap.' },
+              { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
               { q: 'What is the "Powered by PocketLink" badge?', a: 'Free stores show a small "Powered by PocketLink" link at the bottom of the storefront. It disappears on Starter and higher plans.' },
-              { q: 'How do paid plans get activated?', a: 'Pay via UPI to pocketlink@upi, then send us a WhatsApp confirmation with your UTR number. We activate your plan within 2–4 hours. Automated payments coming soon.' },
+              { q: 'How do paid plans get activated?', a: 'Complete payment and send us a WhatsApp confirmation with your transaction ID. We activate your plan within 2–4 hours. Automated billing is on our roadmap.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your store management dashboard. All your products, settings, and store link remain exactly the same.' },
               { q: 'How do I delete my store?', a: 'Go to Settings in your store management dashboard to permanently delete your store and all associated data at any time.' },
             ].map(({ q, a }) => (
@@ -352,11 +351,11 @@ export default function Landing() {
       <section className="px-4 py-16 bg-gradient-to-b from-white to-gray-50 text-center">
         <div className="max-w-xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-3">
-            Ready to launch your store?
+            Ready to take your shop digital?
           </h2>
           <p className="text-gray-500 text-sm mb-8 leading-relaxed">
             Free forever. No credit card. No setup fee.<br />
-            Just a working WhatsApp order page for your business.
+            Give your shop a digital home and start receiving orders today.
           </p>
           <Link
             to="/start"
@@ -374,8 +373,8 @@ export default function Landing() {
       {/* â"€â"€ Footer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <footer className="border-t border-gray-100 px-4 py-6 text-center space-y-2">
         <p className="text-xs text-gray-400">
-          Made for Indian businesses 🇮🇳 ·{' '}
-          <span className="font-medium">WhatsApp-native commerce infrastructure</span>
+          Helping small businesses go digital 🌍 ·{' '}
+          <span className="font-medium">Simple online stores, WhatsApp orders</span>
         </p>
         <p className="text-xs text-gray-400">
           <Link to="/terms"   className="hover:text-gray-700 transition-colors">Terms of Service</Link>

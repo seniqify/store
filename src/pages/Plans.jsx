@@ -113,8 +113,7 @@ export default function Plans() {
             Choose your plan
           </h1>
           <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto">
-            Start free, upgrade when you grow. No contracts.
-            Cancel anytime from your dashboard.
+            Start free. Upgrade as your business grows. No contracts, cancel anytime.
           </p>
         </div>
 
@@ -221,7 +220,7 @@ export default function Plans() {
               { icon: '🏦', label: 'UPI + Bank + COD' },
               { icon: '🖼️', label: 'Product photos' },
               { icon: '⚡', label: 'Instant setup' },
-              { icon: '🇮🇳', label: 'Made for India' },
+              { icon: '🌍', label: 'Works worldwide' },
               { icon: '🔒', label: 'Secure & private' },
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-2 text-xs text-gray-500">
