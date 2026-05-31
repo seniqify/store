@@ -27,7 +27,6 @@ export default function Checkout() {
   const plan              = PLAN_INFO[planKey];
 
   const [copiedUpi, setCopiedUpi] = useState(false);
-  const [utr,       setUtr]       = useState('');
 
   const phone = sessionStorage.getItem('pocketlink_verified_phone');
 
@@ -40,7 +39,7 @@ export default function Checkout() {
   const upiDeepLink = `upi://pay?pa=${UPI_ID}&am=${plan.price}&tn=PocketLink+${plan.name}+Plan&cu=INR`;
 
   const waMessage = encodeURIComponent(
-    `Hi PocketLink!\n\nI've paid ₹${plan.price} for the ${plan.name} plan.\n\nMy WhatsApp number: ${displayPhone}\nUTR / Txn ID: ${utr || '(will share shortly)'}\n\nPlease activate my store. Thank you!`
+    `Hi PocketLink!\n\nI've paid ₹${plan.price} for the ${plan.name} plan.\n\nMy WhatsApp number: ${displayPhone}\n\nPlease activate my store. Thank you!`
   );
   const waLink = `https://wa.me/${SUPPORT_WA}?text=${waMessage}`;
 
@@ -136,31 +135,11 @@ export default function Checkout() {
             </div>
           </div>
 
-          {/* Step 2 — Enter UTR */}
+          {/* Step 2 — WhatsApp confirm */}
           <div className="space-y-2 mb-6">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center text-white flex-shrink-0"
                     style={{ backgroundColor: plan.color }}>2</span>
-              <p className="text-sm font-bold text-gray-800">
-                Note your transaction ID <span className="font-normal text-gray-400">(optional)</span>
-              </p>
-            </div>
-            <input
-              type="text"
-              placeholder="e.g. 423156789012 or T2506123456"
-              value={utr}
-              onChange={(e) => setUtr(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-teal-500/30
-                         focus:border-teal-500 transition-all bg-gray-50"
-            />
-          </div>
-
-          {/* Step 3 — WhatsApp confirm */}
-          <div className="space-y-2 mb-6">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center text-white flex-shrink-0"
-                    style={{ backgroundColor: plan.color }}>3</span>
               <p className="text-sm font-bold text-gray-800">Confirm on WhatsApp</p>
             </div>
             <a
