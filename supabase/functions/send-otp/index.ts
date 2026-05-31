@@ -1,20 +1,3 @@
-/**
- * send-otp — Supabase Edge Function
- *
- * Handles two actions:
- *   { action: "send",   phone: "919876543210" }
- *   { action: "verify", phone: "919876543210", code: "123456" }
- *
- * Provider: MSG91 WhatsApp OTP
- *
- * Required secrets (set via: npx supabase secrets set KEY=value):
- *   MSG91_AUTH_KEY      — your MSG91 API auth key
- *   MSG91_TEMPLATE_ID   — approved WhatsApp OTP template ID
- *
- * Deploy:
- *   npx supabase functions deploy send-otp
- */
-
 import { serve }        from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -22,6 +5,8 @@ const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const SENIQIFY_URL = 'https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/9x3izwha06/process';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,70 +16,52 @@ function json(body: unknown, status = 200) {
 }
 
 serve(async (req: Request) => {
-  // Preflight
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
     const { action, phone, code } = await req.json();
-
     if (!phone) return json({ error: 'phone is required' }, 400);
 
-    // ── Supabase client (service role — bypasses RLS) ──────────────────────
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // ── SEND ──────────────────────────────────────────────────────────────
+    // ── SEND ─────────────────────────────────────────────────────────────────
     if (action === 'send') {
-      // Generate 6-digit OTP
       const otp       = String(Math.floor(100000 + Math.random() * 900000));
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-      // Delete any previous OTPs for this phone
+      // Replace any previous OTP for this phone
       await supabase.from('otp_codes').delete().eq('phone', phone);
-
-      // Store new OTP
       const { error: insertErr } = await supabase
         .from('otp_codes')
         .insert({ phone, code: otp, expires_at: expiresAt });
 
       if (insertErr) throw new Error(insertErr.message);
 
-      // ── Send via MSG91 WhatsApp OTP API ─────────────────────────────────
-      const authKey    = Deno.env.get('MSG91_AUTH_KEY');
-      const templateId = Deno.env.get('MSG91_TEMPLATE_ID');
+      // ── Seniqify WhatsApp API ────────────────────────────────────────────
+      const apiKey   = Deno.env.get('SENIQIFY_API_KEY');
+      const receiver = String(phone).replace(/\D/g, ''); // e.g. 919876543210
 
-      if (!authKey || !templateId) {
-        // DEV MODE: log OTP to console when secrets not configured
-        console.log(`[DEV] OTP for ${phone}: ${otp}`);
-        return json({ success: true, dev: true });
-      }
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-      const msg91Res = await fetch('https://api.msg91.com/api/v5/otp', {
-        method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'authkey':       authKey,
-        },
-        body: JSON.stringify({
-          template_id: templateId,
-          mobile:      phone,   // full number e.g. "919876543210"
-          otp,
-        }),
+      const waRes  = await fetch(SENIQIFY_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ receiver, values: { '1': otp } }),
       });
+      const waBody = await waRes.text();
 
-      const msg91 = await msg91Res.json();
-
-      if (msg91.type !== 'success') {
-        console.error('MSG91 error:', msg91);
-        throw new Error('Failed to send WhatsApp OTP. Please try again.');
+      if (!waRes.ok) {
+        throw new Error(`Seniqify ${waRes.status}: ${waBody}`);
       }
 
       return json({ success: true });
     }
 
-    // ── VERIFY ────────────────────────────────────────────────────────────
+    // ── VERIFY ───────────────────────────────────────────────────────────────
     if (action === 'verify') {
       if (!code) return json({ error: 'code is required' }, 400);
 
@@ -102,23 +69,18 @@ serve(async (req: Request) => {
         .from('otp_codes')
         .select('*')
         .eq('phone', phone)
-        .eq('code',  code)
+        .eq('code',  String(code))
         .gt('expires_at', new Date().toISOString())
         .maybeSingle();
 
       if (fetchErr) throw new Error(fetchErr.message);
 
       if (!data) {
-        // Increment attempts for rate-limiting (best-effort)
-        await supabase.rpc('increment_otp_attempts', { p_phone: phone })
-          .catch(() => null);
-
         return json({ error: 'Invalid or expired OTP. Please try again.' }, 400);
       }
 
-      // Valid — delete the used OTP
+      // One-time use — delete after successful verify
       await supabase.from('otp_codes').delete().eq('phone', phone);
-
       return json({ success: true });
     }
 
