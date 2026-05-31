@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
@@ -17,7 +17,7 @@ import { showBrandBadge } from '../../utils/planLimits';
  * Phone is already shown in the Header top-strip; it is NOT repeated here.
  */
 
-// â”€â”€ Copy button: copies text, shows a "Copied ✓" flash for 1.5 s â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Copy button: copies text, shows a "Copied ✓" flash for 1.5 s â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function CopyBtn({ text, label }) {
   const [copied, setCopied] = useState(false);
 
@@ -47,7 +47,7 @@ function CopyBtn({ text, label }) {
   );
 }
 
-// â”€â”€ A single copyable row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ A single copyable row â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function PayRow({ label, value, mono = false }) {
   return (
     <li className="flex items-center justify-between gap-3 py-1.5
@@ -88,7 +88,7 @@ export default function Footer() {
     <footer className="bg-gray-900 text-gray-300 mt-16">
       <div className={`max-w-7xl mx-auto px-4 py-10 grid gap-8 ${gridCls}`}>
 
-        {/* â”€â”€ 1. Brand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ 1. Brand â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         <div className="lg:col-span-1">
           <div className="flex items-center gap-2 mb-3">
             {logo ? (
@@ -114,7 +114,7 @@ export default function Footer() {
           </a>
         </div>
 
-        {/* â”€â”€ 2. Business Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ 2. Business Details â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         <div>
           <h4 className="text-white font-semibold mb-3">Business Details</h4>
           <ul className="space-y-3 text-sm">
@@ -169,7 +169,7 @@ export default function Footer() {
           </ul>
         </div>
 
-        {/* â”€â”€ 3. Payment Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ 3. Payment Details â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {hasPaymentDetails && (
           <div>
             <h4 className="text-white font-semibold mb-3">Payment Details</h4>
@@ -203,7 +203,7 @@ export default function Footer() {
           </div>
         )}
 
-        {/* â”€â”€ 4. Quick Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ 4. Quick Info â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         <div>
           <h4 className="text-white font-semibold mb-3">Quick Info</h4>
           <ul className="space-y-2 text-sm text-gray-400">
@@ -214,7 +214,7 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* â”€â”€ Bottom bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Bottom bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <div className="border-t border-gray-800 py-4 px-4
                       flex flex-col sm:flex-row items-center justify-between
                       gap-2 text-xs text-gray-500">
@@ -231,7 +231,7 @@ export default function Footer() {
         )}
       </div>
 
-      {/* â”€â”€ "Powered by PocketLink" — shown on free plan only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ "Powered by PocketLink" — shown on free plan only â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       {showBrandBadge(plan) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a

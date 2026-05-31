@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
 
@@ -45,7 +45,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-white">
 
-      {/* â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Navigation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm
                       sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -64,7 +64,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      {/* â”€â”€ Hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Hero â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <section className="px-4 py-16 sm:py-24 text-center
                           bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-2xl mx-auto">
@@ -111,7 +111,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* â”€â”€ How it works â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ How it works â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <section className="px-4 py-16 bg-white">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
@@ -143,7 +143,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* â”€â”€ Platform features strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Platform features strip â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <section className="px-4 py-8 bg-gray-50 border-y border-gray-100">
         <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
@@ -160,7 +160,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* â”€â”€ Live demo stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Live demo stores â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <section id="demos" className="px-4 py-16">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
@@ -223,24 +223,24 @@ export default function Landing() {
       </section>
 
       {/* ── Pricing ── */}
-      <section id=”pricing” className=”px-4 py-16 bg-white”>
-        <div className=”max-w-5xl mx-auto”>
-          <div className=”text-center mb-12”>
-            <h2 className=”text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2”>
+      <section id="pricing" className="px-4 py-16 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">
               Simple, honest pricing
             </h2>
-            <p className=”text-sm text-gray-400”>
+            <p className="text-sm text-gray-400">
               Start free. Upgrade only when your business needs it.
             </p>
           </div>
 
-          <div className=”grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6”>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
             {[
               {
                 name: 'Free', price: 0, popular: false, color: '#374151',
                 to: '/start', cta: 'Start Free',
                 features: ['3 products', '2 categories', 'WhatsApp orders', 'Shareable link', 'GST pricing'],
-                caveat: '”Powered by PocketLink” badge',
+                caveat: '"Powered by PocketLink" badge',
               },
               {
                 name: 'Starter', price: 299, popular: true, color: '#0d9488',
@@ -263,38 +263,38 @@ export default function Landing() {
                 ].join(' ')}
               >
                 {plan.popular && (
-                  <div className=”absolute -top-3.5 left-1/2 -translate-x-1/2”>
-                    <span className=”bg-teal-500 text-white text-[10px] font-bold px-3 py-1
-                                     rounded-full uppercase tracking-wider shadow-sm”>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <span className="bg-teal-500 text-white text-[10px] font-bold px-3 py-1
+                                     rounded-full uppercase tracking-wider shadow-sm">
                       Most Popular
                     </span>
                   </div>
                 )}
-                <h3 className=”font-extrabold text-gray-900 text-lg mb-1”>{plan.name}</h3>
-                <p className=”text-2xl font-extrabold text-gray-900 mb-1”>
+                <h3 className="font-extrabold text-gray-900 text-lg mb-1">{plan.name}</h3>
+                <p className="text-2xl font-extrabold text-gray-900 mb-1">
                   {plan.price === 0 ? 'Free' : `₹${plan.price}`}
-                  {plan.price > 0 && <span className=”text-sm font-normal text-gray-400”>/mo</span>}
+                  {plan.price > 0 && <span className="text-sm font-normal text-gray-400">/mo</span>}
                 </p>
-                <p className=”text-xs text-gray-400 mb-4 pb-4 border-b border-gray-100”>
+                <p className="text-xs text-gray-400 mb-4 pb-4 border-b border-gray-100">
                   {plan.price === 0 ? 'forever · no card needed' : '+ GST · billed monthly'}
                 </p>
-                <ul className=”space-y-2 flex-1 mb-4”>
+                <ul className="space-y-2 flex-1 mb-4">
                   {plan.features.map((f) => (
-                    <li key={f} className=”flex items-center gap-2 text-sm text-gray-600”>
-                      <span className=”text-teal-500 font-bold text-xs”>✓</span> {f}
+                    <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
+                      <span className="text-teal-500 font-bold text-xs">✓</span> {f}
                     </li>
                   ))}
                   {plan.caveat && (
-                    <li className=”flex items-center gap-2 text-sm text-gray-400”>
-                      <span className=”text-gray-300 text-xs”>✗</span>
-                      <span className=”line-through”>{plan.caveat}</span>
+                    <li className="flex items-center gap-2 text-sm text-gray-400">
+                      <span className="text-gray-300 text-xs">✗</span>
+                      <span className="line-through">{plan.caveat}</span>
                     </li>
                   )}
                 </ul>
                 <Link
                   to={plan.to}
-                  className=”block text-center py-2.5 rounded-xl text-sm font-bold
-                             transition-all hover:opacity-90 active:scale-[0.98]”
+                  className="block text-center py-2.5 rounded-xl text-sm font-bold
+                             transition-all hover:opacity-90 active:scale-[0.98]"
                   style={{
                     backgroundColor: plan.popular ? plan.color : plan.name === 'Growth' ? plan.color : '#e5e7eb',
                     color: plan.popular || plan.name === 'Growth' ? '#fff' : '#374151',
@@ -305,41 +305,41 @@ export default function Landing() {
               </div>
             ))}
           </div>
-          <p className=”text-center text-xs text-gray-400”>
+          <p className="text-center text-xs text-gray-400">
             Paid plans activated within 2–4 hours · Cancel anytime from your dashboard
           </p>
         </div>
       </section>
 
       {/* ── FAQ ── */}
-      <section className=”px-4 py-16 bg-gray-50 border-t border-gray-100”>
-        <div className=”max-w-2xl mx-auto”>
-          <div className=”text-center mb-10”>
-            <h2 className=”text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2”>
+      <section className="px-4 py-16 bg-gray-50 border-t border-gray-100">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">
               Frequently asked questions
             </h2>
           </div>
-          <div className=”space-y-3”>
+          <div className="space-y-3">
             {[
               { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working store with up to 3 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your store opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
-              { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items, and total. You reply to confirm and arrange delivery.' },
+              { q: 'How do I receive orders?', a: 'When a customer taps "Send Order", a structured WhatsApp message lands in your inbox with their name, address, items, and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept UPI / online payments?', a: 'PocketLink is built for COD and in-person payments. Customers mention their payment preference in the order message. Integrated UPI payment links are on our roadmap.' },
-              { q: 'What is the “Powered by PocketLink” badge?', a: 'Free stores show a small “Powered by PocketLink” link at the bottom of the storefront. It disappears on Starter and higher plans.' },
+              { q: 'What is the "Powered by PocketLink" badge?', a: 'Free stores show a small "Powered by PocketLink" link at the bottom of the storefront. It disappears on Starter and higher plans.' },
               { q: 'How do paid plans get activated?', a: 'Pay via UPI to pocketlink@upi, then send us a WhatsApp confirmation with your UTR number. We activate your plan within 2–4 hours. Automated payments coming soon.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your store management dashboard. All your products, settings, and store link remain exactly the same.' },
               { q: 'How do I delete my store?', a: 'Go to Settings in your store management dashboard to permanently delete your store and all associated data at any time.' },
             ].map(({ q, a }) => (
-              <details key={q} className=”group bg-white border border-gray-100 rounded-xl shadow-sm”>
-                <summary className=”flex items-center justify-between px-5 py-4 cursor-pointer
+              <details key={q} className="group bg-white border border-gray-100 rounded-xl shadow-sm">
+                <summary className="flex items-center justify-between px-5 py-4 cursor-pointer
                                     font-semibold text-sm text-gray-900 list-none
-                                    [&::-webkit-details-marker]:hidden select-none”>
+                                    [&::-webkit-details-marker]:hidden select-none">
                   {q}
-                  <span className=”text-gray-400 transition-transform duration-150 group-open:rotate-45 flex-shrink-0 ml-3 text-lg leading-none”>
+                  <span className="text-gray-400 transition-transform duration-150 group-open:rotate-45 flex-shrink-0 ml-3 text-lg leading-none">
                     +
                   </span>
                 </summary>
-                <p className=”px-5 pb-4 text-sm text-gray-500 leading-relaxed”>
+                <p className="px-5 pb-4 text-sm text-gray-500 leading-relaxed">
                   {a}
                 </p>
               </details>
@@ -371,7 +371,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Footer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <footer className="border-t border-gray-100 px-4 py-6 text-center space-y-2">
         <p className="text-xs text-gray-400">
           Made for Indian businesses 🇮🇳 ·{' '}
