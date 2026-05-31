@@ -48,8 +48,10 @@ export default function Checkout() {
         { body: { plan: planKey, phone } },
       );
 
-      if (orderErr || !orderData?.payment_session_id) {
-        throw new Error(orderData?.error ?? 'Could not start payment. Please try again.');
+      // supabase-js puts non-2xx body in data even on error; extract best message
+      const cfError = orderData?.error ?? orderErr?.message ?? null;
+      if (cfError || !orderData?.payment_session_id) {
+        throw new Error(cfError ?? 'Could not start payment. Please try again.');
       }
 
       // 2. Open Cashfree checkout modal

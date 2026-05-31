@@ -23,32 +23,48 @@ serve(async (req) => {
     const orderId = `PL_${plan.toUpperCase()}_${Date.now()}`;
     const customerPhone = String(phone).replace(/\D/g, '').slice(-10);
 
+    const appId  = Deno.env.get('CASHFREE_APP_ID');
+    const secret = Deno.env.get('CASHFREE_SECRET_KEY');
+    const env    = Deno.env.get('CASHFREE_ENV');
+
+    // Surface missing-secret problems immediately
+    if (!appId || !secret) {
+      throw new Error(`Missing credentials: appId=${!!appId} secret=${!!secret} env=${env}`);
+    }
+
+    const body = {
+      order_id: orderId,
+      order_amount: amount,
+      order_currency: 'INR',
+      customer_details: {
+        customer_id: `cust_${customerPhone}`,
+        customer_phone: customerPhone,
+        customer_name: 'Customer',
+        customer_email: 'customer@pocketlink.store',
+      },
+      order_meta: {
+        return_url: `${Deno.env.get('SITE_URL') ?? 'https://pocketlink.store'}/checkout/${plan}`,
+      },
+    };
+
     const res = await fetch(`${BASE}/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-version': '2023-08-01',
-        'x-client-id': Deno.env.get('CASHFREE_APP_ID')!,
-        'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY')!,
+        'x-client-id': appId,
+        'x-client-secret': secret,
       },
-      body: JSON.stringify({
-        order_id: orderId,
-        order_amount: amount,
-        order_currency: 'INR',
-        customer_details: {
-          customer_id: `cust_${phone}`,
-          customer_phone: customerPhone,
-        },
-        order_meta: {
-          return_url: `${Deno.env.get('SITE_URL') ?? 'https://pocketlink.store'}/checkout/${plan}`,
-        },
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
 
     if (!data.payment_session_id) {
-      throw new Error(data.message ?? 'Cashfree order creation failed');
+      // Include HTTP status + full Cashfree body for debugging
+      throw new Error(
+        `Cashfree ${res.status}: ${data.message ?? data.type ?? JSON.stringify(data)}`
+      );
     }
 
     return new Response(
