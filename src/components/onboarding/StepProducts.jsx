@@ -542,16 +542,16 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                           justify-between gap-3">
             <div>
               <p className="text-xs font-bold text-teal-800">
-                Free plan: {limits.products} products max
+                {limits.products === Infinity ? '' : `Plan limit: ${limits.products} ${labels.plural.toLowerCase()} max`}
               </p>
               <p className="text-[11px] text-teal-600 mt-0.5">
-                Upgrade to Starter for 10 products, or Growth for 50.
+                Upgrade to Pro for 20, or Business for unlimited.
               </p>
             </div>
-            <a href="/pricing" target="_blank"
+            <a href="/plans" target="_blank" rel="noopener noreferrer"
                className="flex-shrink-0 text-xs font-bold text-white bg-teal-600
                           hover:bg-teal-700 px-3 py-1.5 rounded-lg transition-colors">
-              Upgrade
+              Upgrade →
             </a>
           </div>
         )}

@@ -7,9 +7,10 @@ import { findStoreByPhone } from '../utils/storeService';
 const RESEND_SECONDS = 30;
 
 export default function Start() {
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const planParam = params.get('plan') || 'free';
+  const navigate   = useNavigate();
+  const [params]   = useSearchParams();
+  const planParam  = params.get('plan') || 'free';
+  const isUpgrade  = params.get('upgrade') === '1';
 
   const [step,       setStep]       = useState('phone'); // 'phone' | 'otp' | 'exists'
   const [digits,     setDigits]     = useState('');
@@ -37,12 +38,14 @@ export default function Start() {
     setSending(true);
     setError('');
     try {
-      // Check for existing store before proceeding
-      const existingSlug = await findStoreByPhone(phone);
-      if (existingSlug) {
-        setExistSlug(existingSlug);
-        setStep('exists');
-        return;
+      // Check for existing store — skip if user is upgrading an existing store
+      if (!isUpgrade) {
+        const existingSlug = await findStoreByPhone(phone);
+        if (existingSlug) {
+          setExistSlug(existingSlug);
+          setStep('exists');
+          return;
+        }
       }
       // TODO: re-enable OTP when Seniqify WhatsApp number is approved
       // await sendOtp(phone);

@@ -75,12 +75,19 @@ export default function Plans() {
   const [period, setPeriod] = useState('monthly');
 
   function choosePlan(planKey) {
-    if (!phone) { navigate(`/start?plan=${planKey}`); return; }
     if (planKey === 'free') {
+      if (!phone) { navigate('/start'); return; }
       sessionStorage.setItem('pocketlink_plan', 'free');
       navigate('/onboarding');
-    } else {
+      return;
+    }
+    // Paid plans: go straight to checkout if phone is known,
+    // otherwise go to /start with upgrade flag so existing users aren't blocked
+    if (phone) {
       navigate(`/checkout/${planKey}?period=${period}`);
+    } else {
+      sessionStorage.setItem('pocketlink_upgrade_plan', planKey);
+      navigate(`/start?plan=${planKey}&upgrade=1`);
     }
   }
 
