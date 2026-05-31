@@ -134,10 +134,10 @@ export default function Checkout() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
+        <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-80 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
           </Link>
           <Link to="/plans" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
             ← Change plan

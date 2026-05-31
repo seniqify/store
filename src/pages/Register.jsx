@@ -156,21 +156,26 @@ export default function Register() {
     : '+91 …';
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="relative min-h-screen flex flex-col overflow-hidden bg-white">
+
+      {/* Decorative background */}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/70 via-white to-white" />
+      <div className="absolute -z-10 top-[-8rem] right-[-6rem] w-[24rem] h-[24rem] rounded-full bg-emerald-300/25 blur-3xl animate-pl-blob" />
+      <div className="absolute -z-10 bottom-[-8rem] left-[-8rem] w-[22rem] h-[22rem] rounded-full bg-teal-300/20 blur-3xl animate-pl-blob" style={{ animationDelay: '5s' }} />
 
       {/* â"€â"€ Nav â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <nav className="bg-white border-b border-gray-100">
-        <div className="max-w-sm mx-auto px-4 h-14 flex items-center">
+      <nav className="relative bg-white/70 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">
           <Link to="/">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-80 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
           </Link>
         </div>
       </nav>
 
       {/* â"€â"€ Card â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <div className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-100
-                        shadow-sm px-6 py-8 space-y-6">
+        <div className="w-full max-w-sm bg-white rounded-3xl border border-gray-100
+                        shadow-xl shadow-gray-200/50 px-6 py-8 space-y-6">
 
           {/* Header */}
           <div className="text-center space-y-1">

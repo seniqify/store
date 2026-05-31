@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Check, X, Zap } from 'lucide-react';
 
 // ── Billing periods ───────────────────────────────────────────────────────────
@@ -69,7 +69,6 @@ const UNIVERSAL = [
 
 export default function Plans() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const phone    = sessionStorage.getItem('pocketlink_verified_phone');
 
   const [period, setPeriod] = useState('monthly');
@@ -95,18 +94,22 @@ export default function Plans() {
   const biz = PRICING.business[period];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="relative min-h-screen overflow-hidden bg-white">
+
+      {/* Decorative background */}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/60 via-white to-white" />
+      <div className="absolute -z-10 top-[-6rem] left-1/2 -translate-x-1/2 w-[40rem] h-96 rounded-full bg-emerald-200/30 blur-3xl animate-pl-blob" />
 
       {/* Nav */}
-      <nav className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <nav className="bg-white/70 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-80 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
           </Link>
           {phone && (
             <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium
-                             bg-green-50 border border-green-100 text-green-700 px-3 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                             bg-emerald-50 border border-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               +91 {phone.replace('91', '').replace(/(\d{5})(\d{5})/, '$1 $2')}
             </span>
           )}
@@ -116,8 +119,9 @@ export default function Plans() {
       <div className="max-w-5xl mx-auto px-4 py-12 sm:py-16">
 
         {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3">
+        <div className="text-center mb-10 animate-pl-fade-up">
+          <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Pricing</p>
+          <h1 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">
             Choose your plan
           </h1>
           <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto">
@@ -126,14 +130,14 @@ export default function Plans() {
         </div>
 
         {/* Billing period toggle */}
-        <div className="flex justify-center mb-10">
+        <div className="flex justify-center mb-12">
           <div className="inline-flex bg-white border border-gray-200 rounded-2xl p-1 gap-1 shadow-sm">
             {PERIODS.map((p) => (
               <button
                 key={p.key}
                 onClick={() => setPeriod(p.key)}
                 className={[
-                  'relative px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150',
+                  'relative px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-150',
                   period === p.key
                     ? 'bg-gray-900 text-white shadow-sm'
                     : 'text-gray-500 hover:text-gray-800',
@@ -141,9 +145,9 @@ export default function Plans() {
               >
                 {p.label}
                 {p.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500
                                    text-white text-[9px] font-bold px-2 py-0.5 rounded-full
-                                   whitespace-nowrap">
+                                   whitespace-nowrap shadow-sm">
                     {p.badge}
                   </span>
                 )}
@@ -153,10 +157,10 @@ export default function Plans() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 items-stretch">
 
           {/* ── Free ── */}
-          <div className="flex flex-col rounded-2xl border-2 border-gray-100 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex flex-col rounded-3xl border-2 border-gray-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
             <h2 className="font-extrabold text-gray-900 text-xl mb-0.5">Free</h2>
             <p className="text-xs text-gray-400 mb-4">Get started today</p>
             <div className="mb-5 pb-5 border-b border-gray-100">
@@ -165,30 +169,32 @@ export default function Plans() {
             </div>
             <ul className="space-y-2.5 flex-1 mb-5">
               {FREE_FEATURES.map(f => (
-                <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
-                  <Check size={13} className="mt-0.5 flex-shrink-0 text-gray-400" />
+                <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
+                  <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center">
+                    <Check size={11} className="text-gray-500" strokeWidth={3} />
+                  </span>
                   {f}
                 </li>
               ))}
               {FREE_MISSING.map(f => (
-                <li key={f} className="flex items-start gap-2 text-sm text-gray-400">
-                  <X size={13} className="mt-0.5 flex-shrink-0 text-gray-300" />
+                <li key={f} className="flex items-start gap-2.5 text-sm text-gray-400">
+                  <span className="mt-0.5 flex-shrink-0"><X size={13} className="text-gray-300" /></span>
                   <span className="line-through">{f}</span>
                 </li>
               ))}
             </ul>
             <button
               onClick={() => choosePlan('free')}
-              className="mt-auto w-full py-2.5 rounded-xl text-sm font-bold
-                         bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              className="mt-auto w-full py-3 rounded-xl text-sm font-bold
+                         bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors active:scale-[0.98]"
             >
               Start Free
             </button>
           </div>
 
           {/* ── Pro ── */}
-          <div className="relative flex flex-col rounded-2xl border-2 border-teal-500
-                          bg-white p-6 shadow-xl shadow-teal-500/10">
+          <div className="relative flex flex-col rounded-3xl border-2 border-teal-500
+                          bg-white p-6 shadow-2xl shadow-teal-500/15 sm:-translate-y-2">
             {/* Badge */}
             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
               <span className="inline-flex items-center gap-1 bg-teal-500 text-white
@@ -227,8 +233,10 @@ export default function Plans() {
 
             <ul className="space-y-2.5 flex-1 mb-5">
               {PRO_FEATURES.map(f => (
-                <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
-                  <Check size={13} className="mt-0.5 flex-shrink-0 text-teal-500" />
+                <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
+                  <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-50 flex items-center justify-center">
+                    <Check size={11} className="text-teal-600" strokeWidth={3} />
+                  </span>
                   {f}
                 </li>
               ))}
@@ -236,17 +244,17 @@ export default function Plans() {
 
             <button
               onClick={() => choosePlan('pro')}
-              className="mt-auto w-full py-2.5 rounded-xl text-sm font-bold
+              className="mt-auto w-full py-3 rounded-xl text-sm font-bold
                          text-white bg-teal-500 hover:bg-teal-600 transition-colors
-                         active:scale-[0.98]"
+                         active:scale-[0.98] shadow-lg shadow-teal-500/25"
             >
               Get Pro
             </button>
           </div>
 
           {/* ── Business ── */}
-          <div className="flex flex-col rounded-2xl border-2 border-indigo-400 bg-white p-6
-                          shadow-lg shadow-indigo-500/10 hover:shadow-xl transition-shadow">
+          <div className="flex flex-col rounded-3xl border-2 border-indigo-200 bg-white p-6
+                          shadow-sm hover:shadow-lg transition-all duration-200">
             <h2 className="font-extrabold text-gray-900 text-xl mb-0.5">Business</h2>
             <p className="text-xs text-gray-400 mb-4">Unlimited, no restrictions</p>
 
@@ -264,8 +272,10 @@ export default function Plans() {
 
             <ul className="space-y-2.5 flex-1 mb-5">
               {BIZ_FEATURES.map(f => (
-                <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
-                  <Check size={13} className="mt-0.5 flex-shrink-0 text-indigo-500" />
+                <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
+                  <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                    <Check size={11} className="text-indigo-600" strokeWidth={3} />
+                  </span>
                   {f}
                 </li>
               ))}
@@ -273,29 +283,29 @@ export default function Plans() {
 
             <button
               onClick={() => choosePlan('business')}
-              className="mt-auto w-full py-2.5 rounded-xl text-sm font-bold
+              className="mt-auto w-full py-3 rounded-xl text-sm font-bold
                          text-white bg-indigo-500 hover:bg-indigo-600 transition-colors
-                         active:scale-[0.98]"
+                         active:scale-[0.98] shadow-lg shadow-indigo-500/25"
             >
               Get Business
             </button>
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mb-10">
+        <p className="text-center text-xs text-gray-400 mb-12">
           All prices exclusive of GST · Paid plans activated within 2–4 hours of payment · Free plan stays active until then
         </p>
 
         {/* Universal features */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <h3 className="font-bold text-gray-900 text-sm mb-5 text-center">
+        <div className="bg-gradient-to-b from-gray-50 to-white rounded-3xl border border-gray-100 p-7 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-sm mb-6 text-center">
             Every plan includes
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
             {UNIVERSAL.map(({ icon, text }) => (
-              <div key={text} className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="text-base leading-none">{icon}</span>
-                {text}
+              <div key={text} className="flex items-center gap-2.5 text-xs text-gray-600">
+                <span className="w-8 h-8 rounded-xl bg-white shadow-sm border border-gray-100 flex items-center justify-center text-base leading-none flex-shrink-0">{icon}</span>
+                <span className="font-medium">{text}</span>
               </div>
             ))}
           </div>

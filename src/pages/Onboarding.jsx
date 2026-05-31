@@ -219,8 +219,8 @@ export default function Onboarding() {
       {/* â"€â"€ Top bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-80 w-auto" />
+          <Link to="/" className="flex items-center transition-opacity hover:opacity-80">
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
           </Link>
           <span className="text-xs text-gray-400 font-medium">
             Step {step + 1} of {STEP_LABELS.length}
@@ -229,33 +229,46 @@ export default function Onboarding() {
       </header>
 
       {/* â"€â"€ Progress bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <div className="h-0.5 bg-gray-200">
-        <div className="h-full bg-[#25D366] transition-all duration-500 ease-out"
+      <div className="h-1 bg-gray-100">
+        <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500 ease-out"
              style={{ width: `${progress}%` }} />
       </div>
 
       {/* â"€â"€ Step pills â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <div className="bg-white border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 flex">
-          {STEP_LABELS.map((label, i) => (
-            <div key={label}
-              className={[
-                'flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition-colors',
-                i === step
-                  ? 'border-gray-900 text-gray-900'
-                  : i < step
-                  ? 'border-green-400 text-green-600'
-                  : 'border-transparent text-gray-400',
-              ].join(' ')}>
-              {i < step ? '✓ ' : ''}{label}
-            </div>
-          ))}
+        <div className="max-w-lg mx-auto px-2 sm:px-4 flex">
+          {STEP_LABELS.map((label, i) => {
+            const done   = i < step;
+            const active = i === step;
+            return (
+              <div key={label}
+                className={[
+                  'flex-1 flex items-center justify-center gap-1.5 py-3 border-b-2 transition-colors',
+                  active ? 'border-emerald-500' : done ? 'border-emerald-200' : 'border-transparent',
+                ].join(' ')}>
+                <span className={[
+                  'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 transition-colors',
+                  done   ? 'bg-emerald-500 text-white'
+                  : active ? 'bg-gray-900 text-white'
+                  : 'bg-gray-100 text-gray-400',
+                ].join(' ')}>
+                  {done ? '✓' : i + 1}
+                </span>
+                <span className={[
+                  'text-[11px] font-semibold hidden sm:block',
+                  active ? 'text-gray-900' : done ? 'text-emerald-600' : 'text-gray-400',
+                ].join(' ')}>
+                  {label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* â"€â"€ Step content â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <main className="max-w-lg mx-auto px-4 py-8">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
+        <div key={step} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 animate-pl-fade-up">
           {step === 0 && (
             <StepBusinessType
               selected={data.businessType}
