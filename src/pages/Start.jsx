@@ -37,18 +37,21 @@ export default function Start() {
     setSending(true);
     setError('');
     try {
-      // Check for existing store before sending OTP
+      // Check for existing store before proceeding
       const existingSlug = await findStoreByPhone(phone);
       if (existingSlug) {
         setExistSlug(existingSlug);
         setStep('exists');
         return;
       }
-      await sendOtp(phone);
-      setStep('otp');
-      setTimer(RESEND_SECONDS);
+      // TODO: re-enable OTP when Seniqify WhatsApp number is approved
+      // await sendOtp(phone);
+      // setStep('otp');
+      // setTimer(RESEND_SECONDS);
+      sessionStorage.setItem('pocketlink_verified_phone', phone);
+      navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
     } catch (err) {
-      setError(err.message || 'Failed to send OTP. Please try again.');
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setSending(false);
     }
