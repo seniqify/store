@@ -83,6 +83,10 @@
     60%  { opacity: 1; transform: scale(1.04); }
     100% { opacity: 1; transform: scale(1) translateY(0); }
   }
+  @keyframes pl-confetti {
+    0%   { transform: translateY(-12vh) rotate(0deg);   opacity: 1; }
+    100% { transform: translateY(108vh) rotate(720deg); opacity: 0.9; }
+  }
 
   .animate-pl-float      { animation: pl-float 6s ease-in-out infinite; }
   .animate-pl-float-slow { animation: pl-float-slow 8s ease-in-out infinite; }
@@ -90,6 +94,7 @@
   .animate-pl-fade-up    { animation: pl-fade-up 0.7s ease-out both; }
   .animate-pl-marquee    { animation: pl-marquee 30s linear infinite; }
   .animate-pl-pop        { animation: pl-pop 0.5s ease-out 0.8s both; }
+  .animate-pl-confetti   { animation: pl-confetti 3.5s linear forwards; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -98,7 +103,8 @@
   .animate-pl-blob,
   .animate-pl-marquee,
   .animate-pl-pop,
-  .animate-pl-fade-up {
+  .animate-pl-fade-up,
+  .animate-pl-confetti {
     animation: none !important;
   }
 }
