@@ -135,13 +135,15 @@ export default function Onboarding() {
   const [launched,      setLaunched]      = useState(false);
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
+  const [plan,          setPlan]          = useState('free');
 
-  // Gate: use verified phone if available (OTP flow), otherwise proceed directly
-  // OTP gate is re-enabled once the Supabase send-otp edge function is deployed
+  // Gate: require phone from /start → redirect if missing
   useEffect(() => {
     const phone = sessionStorage.getItem('pocketlink_verified_phone');
-    if (phone) setOwnerPhone(phone);
-  }, []);
+    if (!phone) { navigate('/start', { replace: true }); return; }
+    setOwnerPhone(phone);
+    setPlan(sessionStorage.getItem('pocketlink_plan') || 'free');
+  }, [navigate]);
 
   function update(partial) {
     setData(prev => ({ ...prev, ...partial }));
@@ -171,7 +173,8 @@ export default function Onboarding() {
       config = { ...config, products: uploadedProducts };
 
       await saveBusiness(config, pin, ownerPhone);
-      sessionStorage.removeItem('pocketlink_verified_phone'); // consumed
+      sessionStorage.removeItem('pocketlink_verified_phone');
+      sessionStorage.removeItem('pocketlink_plan');
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {
@@ -241,7 +244,7 @@ export default function Onboarding() {
           )}
           {step === 1 && (
             <StepProducts data={data} onChange={update} themeColor={data.themeColor}
-              plan="free"
+              plan={plan}
               onNext={() => setStep(2)} onBack={() => setStep(0)} />
           )}
           {step === 2 && (
