@@ -24,14 +24,6 @@ export const THEME_PRESETS = {
   '#e11d48': { primary: '#e11d48', primaryDark: '#be123c', accent: '#f59e0b', accentDark: '#d97706' }, // rose
 };
 
-// Rotating placeholder images used when a product has no image URL.
-const PLACEHOLDERS = [
-  'https://images.unsplash.com/photo-1560472355-536de3962603?w=400&q=80',
-  'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&q=80',
-  'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80',
-  'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&q=80',
-  'https://images.unsplash.com/photo-1434494878577-86c23bcb06b9?w=400&q=80',
-];
 
 export function buildBusinessConfig(wizardData, existingSlugs = []) {
   const {
@@ -73,7 +65,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     name:        p.name.trim(),
     category:    p.category,
     description: p.description?.trim() || '',
-    image:       p.image?.trim() || PLACEHOLDERS[i % PLACEHOLDERS.length],
+    image:       p.image?.trim() || '',
     price:       Number(p.price),
     mrp:         p.mrp && Number(p.mrp) > Number(p.price) ? Number(p.mrp) : undefined,
     unit:        p.unit?.trim() || 'per piece',

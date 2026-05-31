@@ -32,20 +32,27 @@ export default function ProductCard({
       {/* ── Image ─────────────────────────────────────────────────── */}
       <div className="relative w-full aspect-square bg-gray-100 overflow-hidden flex-shrink-0">
 
-        {!imgLoaded && (
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
+        {product.image ? (
+          <>
+            {!imgLoaded && (
+              <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
+            )}
+            <img
+              src={product.image}
+              alt={product.name}
+              loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              className={[
+                'w-full h-full object-cover transition-opacity duration-300',
+                imgLoaded ? 'opacity-100' : 'opacity-0',
+              ].join(' ')}
+            />
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-50">
+            <span className="text-4xl opacity-40">📦</span>
+          </div>
         )}
-
-        <img
-          src={product.image}
-          alt={product.name}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={[
-            'w-full h-full object-cover transition-opacity duration-300',
-            imgLoaded ? 'opacity-100' : 'opacity-0',
-          ].join(' ')}
-        />
 
         {/* Badge */}
         {product.badge && (

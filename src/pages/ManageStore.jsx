@@ -42,13 +42,6 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const PLACEHOLDERS = [
-  'https://images.unsplash.com/photo-1560472355-536de3962603?w=400&q=80',
-  'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&q=80',
-  'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80',
-  'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&q=80',
-  'https://images.unsplash.com/photo-1434494878577-86c23bcb06b9?w=400&q=80',
-];
 const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'' };
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
@@ -456,7 +449,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         name:        form.name.trim(),
         category:    form.category,
         description: form.description.trim(),
-        image:       finalImage || PLACEHOLDERS[(maxId) % PLACEHOLDERS.length],
+        image:       finalImage || '',
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         unit:        finalUnit,
