@@ -120,6 +120,18 @@ export async function deleteStore(slug) {
   if (error) throw new Error(error.message);
 }
 
+/** Check if a store exists for a given phone number. Returns slug or null. */
+export async function findStoreByPhone(phone) {
+  const last10 = String(phone).replace(/\D/g, '').slice(-10);
+  if (!last10) return null;
+  const { data } = await supabase
+    .from('stores')
+    .select('slug')
+    .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+    .limit(1);
+  return data?.[0]?.slug ?? null;
+}
+
 /** Check if a slug already exists in DB. */
 export async function slugExists(slug) {
   const { data } = await supabase

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
+import { findStoreByPhone } from '../utils/storeService';
 
 const RESEND_SECONDS = 30;
 
@@ -10,13 +11,14 @@ export default function Start() {
   const [params] = useSearchParams();
   const planParam = params.get('plan') || 'free';
 
-  const [step,      setStep]      = useState('phone'); // 'phone' | 'otp'
-  const [digits,    setDigits]    = useState('');
-  const [otp,       setOtp]       = useState('');
-  const [sending,   setSending]   = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [error,     setError]     = useState('');
-  const [timer,     setTimer]     = useState(0);
+  const [step,       setStep]       = useState('phone'); // 'phone' | 'otp' | 'exists'
+  const [digits,     setDigits]     = useState('');
+  const [otp,        setOtp]        = useState('');
+  const [sending,    setSending]    = useState(false);
+  const [verifying,  setVerifying]  = useState(false);
+  const [error,      setError]      = useState('');
+  const [timer,      setTimer]      = useState(0);
+  const [existSlug,  setExistSlug]  = useState('');
   const timerRef = useRef(null);
 
   const isValidPhone = digits.replace(/\D/g, '').length === 10;
@@ -35,6 +37,13 @@ export default function Start() {
     setSending(true);
     setError('');
     try {
+      // Check for existing store before sending OTP
+      const existingSlug = await findStoreByPhone(phone);
+      if (existingSlug) {
+        setExistSlug(existingSlug);
+        setStep('exists');
+        return;
+      }
       await sendOtp(phone);
       setStep('otp');
       setTimer(RESEND_SECONDS);
@@ -76,6 +85,35 @@ export default function Start() {
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-4">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-8 space-y-6">
+
+            {/* ── Store already exists ── */}
+            {step === 'exists' && (
+              <div className="text-center space-y-5">
+                <div className="text-4xl">🏪</div>
+                <div>
+                  <h1 className="text-xl font-extrabold text-gray-900">
+                    Store already linked
+                  </h1>
+                  <p className="text-sm text-gray-500 mt-2 leading-snug">
+                    This WhatsApp number already has a store.
+                  </p>
+                </div>
+                <a
+                  href={`/${existSlug}/manage`}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl
+                             text-sm font-bold text-white bg-[#25D366] hover:bg-[#1ebe5d]
+                             transition-colors"
+                >
+                  Go to My Store →
+                </a>
+                <button
+                  onClick={() => { setStep('phone'); setDigits(''); setExistSlug(''); }}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Use a different number
+                </button>
+              </div>
+            )}
 
             {/* ── Step 1: Phone entry ── */}
             {step === 'phone' && (
