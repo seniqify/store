@@ -60,7 +60,7 @@ export default function CartSidebar({
         className={[
           'fixed top-0 right-0 z-50',
           'h-[100dvh] w-full sm:w-[26rem]',
-          'bg-white shadow-2xl',
+          'bg-white shadow-2xl sm:rounded-l-3xl',
           'flex flex-col overflow-hidden',
           'transition-transform duration-300 ease-in-out',
           isOpen ? 'translate-x-0' : 'translate-x-full',
@@ -69,26 +69,26 @@ export default function CartSidebar({
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-brand/10 rounded-lg flex items-center justify-center">
-              <ShoppingBag size={17} className="text-brand" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-brand/10 rounded-xl flex items-center justify-center">
+              <ShoppingBag size={18} className="text-brand" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900 leading-none">
+              <h2 className="text-base font-extrabold text-gray-900 leading-none tracking-tight">
                 Your Cart
               </h2>
-              {itemCount > 0 && (
-                <p className="text-xs text-brand-dark font-medium leading-none mt-0.5">
-                  {itemCount} {itemCount === 1 ? 'item' : 'items'}
-                </p>
-              )}
+              <p className="text-xs text-gray-400 font-medium leading-none mt-1">
+                {itemCount > 0
+                  ? <span className="text-brand-dark">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                  : 'No items yet'}
+              </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
             aria-label="Close cart"
-            className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400
+            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400
                        hover:text-gray-700 transition-colors"
           >
             <X size={20} />
@@ -100,21 +100,22 @@ export default function CartSidebar({
           {cart.length === 0 ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <PackageOpen size={36} className="text-gray-300" />
+              <div className="w-24 h-24 bg-gradient-to-br from-brand/10 to-brand/5 rounded-3xl flex items-center justify-center mb-5">
+                <PackageOpen size={40} className="text-brand/50" />
               </div>
-              <p className="font-semibold text-gray-700 text-base mb-1">
+              <p className="font-bold text-gray-800 text-base mb-1">
                 Your cart is empty
               </p>
-              <p className="text-sm text-gray-400 max-w-[200px]">
-                Browse products and add items to get started
+              <p className="text-sm text-gray-400 max-w-[210px] leading-relaxed">
+                Browse products and add your favourites to get started.
               </p>
               <button
                 onClick={onClose}
-                className="mt-6 text-sm font-semibold text-brand hover:text-brand-dark
-                           underline underline-offset-2 transition-colors"
+                className="mt-6 inline-flex items-center gap-1.5 bg-brand hover:bg-brand-dark
+                           text-white text-sm font-bold px-5 py-2.5 rounded-xl
+                           transition-colors active:scale-[0.98] shadow-sm"
               >
-                Continue Shopping
+                Start Shopping
               </button>
             </div>
           ) : (

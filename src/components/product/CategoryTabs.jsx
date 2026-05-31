@@ -99,10 +99,10 @@ export default function CategoryTabs({ categories = [], products = [], selected,
                 'transition-colors duration-200 select-none',
                 // per-state colours
                 isActive
-                  ? 'text-brand'
+                  ? 'bg-brand/5 text-brand font-semibold'
                   : isEmpty
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-500 hover:text-gray-800',
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
               ].join(' ')}
             >
               {/* Emoji */}
@@ -132,7 +132,7 @@ export default function CategoryTabs({ categories = [], products = [], selected,
         {/* Positioned at the bottom of the tab bar, moves via JS transform */}
         <div
           ref={barRef}
-          className="absolute bottom-0 left-0 h-0.5 bg-brand rounded-full
+          className="absolute bottom-0 left-0 h-[3px] bg-brand rounded-full
                      transition-all duration-250 ease-in-out pointer-events-none"
           style={{ width: 0 }}
           aria-hidden="true"

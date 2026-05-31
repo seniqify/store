@@ -97,7 +97,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
             description="Try a different category or check back later."
           />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 w-full max-w-full">
             {filtered.map((product) => (
               <ProductCard
                 key={product.id}

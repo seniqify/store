@@ -14,6 +14,7 @@ export default function ProductCard({
 
   const discount   = discountPercent(product.price, product.mrp);
   const outOfStock = product.inStock === false || product.stock === 0;
+  const inCart     = cartQty > 0;
 
   function handleAdd() {
     if (outOfStock) return;
@@ -24,13 +25,15 @@ export default function ProductCard({
 
   return (
     <div className={[
-      'bg-white rounded-xl border flex flex-col overflow-hidden min-w-0',
-      'transition-shadow duration-200',
-      cartQty > 0 ? 'border-brand/60 shadow-md' : 'border-gray-100 shadow-sm',
+      'group bg-white rounded-2xl border flex flex-col overflow-hidden min-w-0',
+      'transition-all duration-200',
+      inCart
+        ? 'border-brand/40 ring-1 ring-brand/30 shadow-md'
+        : 'border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5',
     ].join(' ')}>
 
       {/* ── Image ─────────────────────────────────────────────────── */}
-      <div className="relative w-full aspect-square bg-gray-100 overflow-hidden flex-shrink-0">
+      <div className="relative w-full aspect-square bg-gray-50 overflow-hidden flex-shrink-0">
 
         {product.image ? (
           <>
@@ -43,22 +46,23 @@ export default function ProductCard({
               loading="lazy"
               onLoad={() => setImgLoaded(true)}
               className={[
-                'w-full h-full object-cover transition-opacity duration-300',
+                'w-full h-full object-cover transition-all duration-500',
+                'group-hover:scale-[1.06]',
                 imgLoaded ? 'opacity-100' : 'opacity-0',
               ].join(' ')}
             />
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-50">
-            <span className="text-4xl opacity-40">📦</span>
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+            <span className="text-4xl opacity-30">📦</span>
           </div>
         )}
 
         {/* Badge */}
         {product.badge && (
           <span className={[
-            'absolute top-1.5 left-1.5 text-white text-[10px] font-bold',
-            'px-1.5 py-0.5 rounded-md leading-none',
+            'absolute top-2 left-2 text-white text-[10px] font-bold',
+            'px-2 py-0.5 rounded-full leading-none shadow-sm',
             product.badgeColor ?? 'bg-brand',
           ].join(' ')}>
             {product.badge}
@@ -67,27 +71,27 @@ export default function ProductCard({
 
         {/* Discount chip — only when no badge */}
         {discount > 0 && !product.badge && (
-          <span className="absolute top-1.5 left-1.5 bg-green-500 text-white
-                           text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none">
-            {discount}% off
+          <span className="absolute top-2 left-2 bg-green-500 text-white
+                           text-[10px] font-bold px-2 py-0.5 rounded-full leading-none shadow-sm">
+            {discount}% OFF
           </span>
         )}
 
         {/* In-cart pill */}
-        {cartQty > 0 && (
-          <span className="absolute bottom-1.5 right-1.5 bg-brand text-white
+        {inCart && !outOfStock && (
+          <span className="absolute top-2 right-2 bg-brand text-white
                            text-[10px] font-bold px-2 py-0.5 rounded-full
-                           flex items-center gap-0.5 leading-none">
-            <Check size={8} strokeWidth={3} />
-            {cartQty}
+                           flex items-center gap-0.5 leading-none shadow-sm">
+            <Check size={9} strokeWidth={3} />
+            {cartQty} in cart
           </span>
         )}
 
         {/* Out-of-stock overlay */}
         {outOfStock && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <span className="bg-white text-gray-700 text-[11px] font-semibold
-                             px-2.5 py-1 rounded-full">
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
+            <span className="bg-gray-900 text-white text-[11px] font-bold
+                             px-3 py-1 rounded-full shadow-sm">
               Out of Stock
             </span>
           </div>
@@ -95,11 +99,11 @@ export default function ProductCard({
       </div>
 
       {/* ── Info ──────────────────────────────────────────────────── */}
-      <div className="p-2 flex flex-col flex-1 gap-1">
+      <div className="p-2.5 flex flex-col flex-1 gap-1">
 
         {/* Name — fixed 2-line height keeps grid aligned */}
-        <p className="text-[11px] sm:text-xs font-semibold text-gray-800
-                      line-clamp-2 leading-snug" style={{ minHeight: '2.4em' }}>
+        <p className="text-[12px] sm:text-[13px] font-semibold text-gray-800
+                      line-clamp-2 leading-snug" style={{ minHeight: '2.5em' }}>
           {product.name}
         </p>
 
@@ -109,13 +113,18 @@ export default function ProductCard({
         )}
 
         {/* Price */}
-        <div className="flex items-baseline gap-1 flex-wrap mt-auto">
-          <span className="text-sm font-extrabold text-gray-900 tabular-nums">
+        <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-0.5">
+          <span className="text-base font-extrabold text-gray-900 tabular-nums tracking-tight">
             {formatINR(product.price)}
           </span>
           {product.mrp > product.price && (
-            <span className="text-[10px] text-gray-400 line-through tabular-nums">
+            <span className="text-[11px] text-gray-400 line-through tabular-nums">
               {formatINR(product.mrp)}
+            </span>
+          )}
+          {discount > 0 && (
+            <span className="text-[10px] font-bold text-green-600 leading-none">
+              {discount}% off
             </span>
           )}
         </div>
@@ -123,7 +132,7 @@ export default function ProductCard({
         {/* ── Action ────────────────────────────────────────────── */}
         {outOfStock ? (
           <button disabled
-            className="w-full mt-1 py-1.5 rounded-lg bg-gray-100
+            className="w-full mt-1.5 py-2 rounded-xl bg-gray-100
                        text-[11px] font-semibold text-gray-400 cursor-not-allowed">
             Unavailable
           </button>
@@ -131,34 +140,36 @@ export default function ProductCard({
           <button
             onClick={handleAdd}
             className={[
-              'w-full mt-1 flex items-center justify-center gap-1',
-              'text-[11px] sm:text-xs font-bold py-1.5 sm:py-2 rounded-lg',
-              'transition-all duration-150 active:scale-95',
+              'w-full mt-1.5 flex items-center justify-center gap-1.5',
+              'text-[11px] sm:text-xs font-bold py-2 sm:py-2.5 rounded-xl',
+              'transition-all duration-150 active:scale-95 shadow-sm',
               justAdded
                 ? 'bg-green-500 text-white'
                 : 'bg-brand hover:bg-brand-dark text-white',
             ].join(' ')}
           >
             {justAdded
-              ? <><Check size={11} strokeWidth={3} /> Added!</>
-              : <><ShoppingCart size={11} /> Add to Cart</>
+              ? <><Check size={13} strokeWidth={3} /> Added!</>
+              : <><ShoppingCart size={12} /> Add</>
             }
           </button>
         ) : (
-          <div className="w-full mt-1 flex items-center justify-between
-                          bg-brand rounded-lg overflow-hidden h-8">
+          <div className="w-full mt-1.5 flex items-center justify-between
+                          bg-brand rounded-xl overflow-hidden h-9 shadow-sm">
             <button onClick={() => onDecrease(product.id)}
-              className="w-8 h-full flex items-center justify-center
+              aria-label="Decrease quantity"
+              className="w-9 h-full flex items-center justify-center
                          text-white hover:bg-white/20 active:bg-white/30 transition-colors">
-              <Minus size={12} strokeWidth={2.5} />
+              <Minus size={14} strokeWidth={2.5} />
             </button>
-            <span className="text-xs font-bold text-white tabular-nums select-none">
+            <span className="text-sm font-bold text-white tabular-nums select-none">
               {cartQty}
             </span>
             <button onClick={() => onIncrease(product.id)}
-              className="w-8 h-full flex items-center justify-center
+              aria-label="Increase quantity"
+              className="w-9 h-full flex items-center justify-center
                          text-white hover:bg-white/20 active:bg-white/30 transition-colors">
-              <Plus size={12} strokeWidth={2.5} />
+              <Plus size={14} strokeWidth={2.5} />
             </button>
           </div>
         )}

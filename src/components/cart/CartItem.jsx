@@ -4,17 +4,17 @@ import { formatINR } from '../../utils/currency';
 
 /**
  * CartItem
- * ─────────��───────────────────────��───────────────────────────────────────
+ * ─────────────────────────────────────────────────────────────────────────
  * Renders a single line in the cart with four required data points:
  *
  *   • Name      — product name (2-line clamp)
  *   • Quantity  — inline stepper with − / qty / + controls
- *   • Price     — unit price (₹/piece)
+ *   • Price     — unit price (₹ each)
  *   • Subtotal  — price × qty, shown prominently
  *
  * Interactions:
  *   • Decrease below 1 triggers remove (handled by decreaseQty in useCart)
- *   • Delete button animates the row out (150 ms) before calling onRemove
+ *   • Delete button animates the row out (260 ms) before calling onRemove
  *
  * Props:
  *   item        CartItem   — { id, name, image, price, mrp?, unit, size?, gsm?, qty }
@@ -40,11 +40,10 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
         removing ? 'opacity-0 -translate-x-3 scale-[0.97]' : 'opacity-100 translate-x-0 scale-100',
       ].join(' ')}
     >
-      {/* ── Top row: image + info ───���────────────────────────────────── */}
       <div className="flex gap-3">
 
         {/* Thumbnail */}
-        <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 shadow-sm">
+        <div className="w-[4.5rem] h-[4.5rem] rounded-2xl overflow-hidden bg-gray-100 flex-shrink-0 shadow-sm ring-1 ring-gray-100">
           <img
             src={item.image}
             alt={item.name}
@@ -53,104 +52,88 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
           />
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
+        {/* Info + controls */}
+        <div className="flex-1 min-w-0 flex flex-col">
 
-          {/* Name */}
-          <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
-            {item.name}
-          </p>
+          {/* Top: name + delete */}
+          <div className="flex items-start gap-2">
+            <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 flex-1">
+              {item.name}
+            </p>
+            <button
+              onClick={handleRemove}
+              aria-label={`Remove ${item.name}`}
+              className="-mt-0.5 -mr-1 p-1.5 rounded-lg text-gray-300
+                         hover:text-red-500 hover:bg-red-50
+                         transition-colors flex-shrink-0"
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
 
           {/* Meta chips: size + gsm */}
-          <div className="flex flex-wrap items-center gap-1 mt-1">
-            {item.size && (
-              <span className="inline-flex items-center gap-0.5 text-xs
-                               bg-brand/10 text-brand-dark font-medium
-                               px-1.5 py-0.5 rounded-full leading-none">
-                <Ruler size={9} />
-                {item.size}
-              </span>
-            )}
-            {item.gsm && (
-              <span className="text-xs bg-gray-100 text-gray-500
-                               font-medium px-1.5 py-0.5 rounded-full leading-none">
-                {item.gsm} GSM
-              </span>
-            )}
-          </div>
-
-          {/* Unit */}
-          {item.unit && (
-            <p className="text-xs text-gray-400 mt-0.5">{item.unit}</p>
+          {(item.size || item.gsm) && (
+            <div className="flex flex-wrap items-center gap-1 mt-1">
+              {item.size && (
+                <span className="inline-flex items-center gap-0.5 text-[11px]
+                                 bg-brand/10 text-brand-dark font-medium
+                                 px-1.5 py-0.5 rounded-full leading-none">
+                  <Ruler size={9} />
+                  {item.size}
+                </span>
+              )}
+              {item.gsm && (
+                <span className="text-[11px] bg-gray-100 text-gray-500
+                                 font-medium px-1.5 py-0.5 rounded-full leading-none">
+                  {item.gsm} GSM
+                </span>
+              )}
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* ── Bottom row: price × stepper = subtotal + delete ─────────── */}
-      <div className="flex items-center gap-2 mt-3 pl-0">
+          {/* Unit price */}
+          <p className="text-xs text-gray-400 mt-1 tabular-nums">
+            {formatINR(item.price)} <span className="text-gray-300">each</span>
+            {item.unit && <span className="text-gray-400"> · {item.unit}</span>}
+          </p>
 
-        {/* Unit price */}
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-400 leading-none mb-0.5">Price</span>
-          <span className="text-sm font-semibold text-gray-700">
-            {formatINR(item.price)}
-          </span>
-        </div>
+          {/* Bottom: stepper + subtotal */}
+          <div className="flex items-center justify-between mt-2.5">
+            {/* Quantity stepper */}
+            <div className="flex items-center bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
+              <button
+                onClick={() => onDecrease(item.id)}
+                aria-label="Decrease quantity"
+                className="w-8 h-8 flex items-center justify-center
+                           text-gray-600 hover:bg-gray-100 active:bg-gray-200
+                           transition-colors"
+              >
+                <Minus size={13} strokeWidth={2.5} />
+              </button>
 
-        {/* Multiply symbol */}
-        <span className="text-gray-300 text-sm font-light mx-0.5 self-end mb-0.5">×</span>
+              <span className="w-8 text-center text-sm font-bold text-gray-900 select-none tabular-nums">
+                {item.qty}
+              </span>
 
-        {/* Quantity stepper */}
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-400 leading-none mb-0.5">Qty</span>
-          <div className="flex items-center bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-            <button
-              onClick={() => onDecrease(item.id)}
-              aria-label="Decrease quantity"
-              className="w-7 h-7 flex items-center justify-center
-                         text-gray-600 hover:bg-gray-200 active:bg-gray-300
-                         transition-colors"
-            >
-              <Minus size={12} strokeWidth={2.5} />
-            </button>
+              <button
+                onClick={() => onIncrease(item.id)}
+                aria-label="Increase quantity"
+                className="w-8 h-8 flex items-center justify-center
+                           text-gray-600 hover:bg-gray-100 active:bg-gray-200
+                           transition-colors"
+              >
+                <Plus size={13} strokeWidth={2.5} />
+              </button>
+            </div>
 
-            <span className="w-7 text-center text-sm font-bold text-gray-900 select-none tabular-nums">
-              {item.qty}
-            </span>
-
-            <button
-              onClick={() => onIncrease(item.id)}
-              aria-label="Increase quantity"
-              className="w-7 h-7 flex items-center justify-center
-                         text-gray-600 hover:bg-gray-200 active:bg-gray-300
-                         transition-colors"
-            >
-              <Plus size={12} strokeWidth={2.5} />
-            </button>
+            {/* Subtotal */}
+            <div className="text-right">
+              <span className="text-base font-extrabold text-brand-dark tabular-nums tracking-tight">
+                {formatINR(unitSubtotal)}
+              </span>
+            </div>
           </div>
         </div>
-
-        {/* Equals symbol */}
-        <span className="text-gray-300 text-sm font-light mx-0.5 self-end mb-0.5">=</span>
-
-        {/* Subtotal */}
-        <div className="flex flex-col flex-1 min-w-0">
-          <span className="text-xs text-gray-400 leading-none mb-0.5">Subtotal</span>
-          <span className="text-sm font-bold text-brand-dark tabular-nums">
-            {formatINR(unitSubtotal)}
-          </span>
-        </div>
-
-        {/* Delete button */}
-        <button
-          onClick={handleRemove}
-          aria-label={`Remove ${item.name}`}
-          className="self-end mb-0.5 p-1.5 rounded-lg text-gray-300
-                     hover:text-red-500 hover:bg-red-50
-                     transition-colors flex-shrink-0"
-        >
-          <Trash2 size={15} />
-        </button>
       </div>
     </div>
   );
