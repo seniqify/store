@@ -55,4 +55,50 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  /* ── Landing-page motion (transform/opacity only, GPU-friendly) ─────── */
+  @keyframes pl-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-12px); }
+  }
+  @keyframes pl-float-slow {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-20px); }
+  }
+  @keyframes pl-blob {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(24px, -32px) scale(1.12); }
+    66%      { transform: translate(-18px, 18px) scale(0.94); }
+  }
+  @keyframes pl-fade-up {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pl-marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  @keyframes pl-pop {
+    0%   { opacity: 0; transform: scale(0.8) translateY(8px); }
+    60%  { opacity: 1; transform: scale(1.04); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .animate-pl-float      { animation: pl-float 6s ease-in-out infinite; }
+  .animate-pl-float-slow { animation: pl-float-slow 8s ease-in-out infinite; }
+  .animate-pl-blob       { animation: pl-blob 16s ease-in-out infinite; }
+  .animate-pl-fade-up    { animation: pl-fade-up 0.7s ease-out both; }
+  .animate-pl-marquee    { animation: pl-marquee 30s linear infinite; }
+  .animate-pl-pop        { animation: pl-pop 0.5s ease-out 0.8s both; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pl-float,
+  .animate-pl-float-slow,
+  .animate-pl-blob,
+  .animate-pl-marquee,
+  .animate-pl-pop,
+  .animate-pl-fade-up {
+    animation: none !important;
+  }
 }
