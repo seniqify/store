@@ -241,12 +241,16 @@ function PinGate({ slug, onVerified }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-white">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/70 via-white to-white" />
+      <div className="absolute -z-10 top-[-8rem] right-[-6rem] w-[24rem] h-[24rem] rounded-full bg-emerald-300/25 blur-3xl animate-pl-blob" />
+      <div className="absolute -z-10 bottom-[-8rem] left-[-8rem] w-[22rem] h-[22rem] rounded-full bg-teal-300/20 blur-3xl animate-pl-blob" style={{ animationDelay: '5s' }} />
+
+      <div className="relative bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 p-8 w-full max-w-sm animate-pl-fade-up">
 
         {/* Icon */}
-        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Lock size={22} className="text-amber-600" />
+        <div className="w-14 h-14 bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-1 ring-amber-100">
+          <Lock size={24} className="text-amber-600" />
         </div>
 
         {/* ── LOGIN MODE ───────────────────────────────────────────────────── */}
@@ -531,12 +535,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           const isEditing = editingId === p.id;
           return (
             <div key={p.id}
-                 className={[
-                   'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
-                   isEditing
-                     ? 'bg-teal-50/50 border border-teal-200/60'
-                     : 'bg-white border border-gray-100 hover:border-gray-200',
-                 ].join(' ')}>
+                 className={['flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors border',
+                   isEditing ? '' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}
+                 style={isEditing ? { backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}55` } : undefined}>
               {p.image ? (
                 <img src={p.image} alt={p.name}
                      className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
@@ -563,10 +564,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 {p.inStock === false ? 'Out of stock' : 'In stock'}
               </button>
               <button type="button" onClick={() => openEdit(p)}
-                      className={[
-                        'p-1.5 rounded-lg transition-colors flex-shrink-0',
-                        isEditing ? 'text-teal-600 bg-teal-100' : 'text-gray-300 hover:text-teal-600 hover:bg-teal-50',
-                      ].join(' ')}>
+                      className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
+                      style={isEditing ? { color: themeColor, backgroundColor: `${themeColor}1a` } : undefined}>
                 <Pencil size={13} />
               </button>
               <button type="button" onClick={() => removeProduct(p.id)}
@@ -810,22 +809,17 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
           const isEditing = editingId === cat.id;
           return (
             <div key={cat.id}
-                 className={[
-                   'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
-                   isEditing
-                     ? 'bg-teal-50/50 border border-teal-200/60'
-                     : 'bg-white border border-gray-100 hover:border-gray-200',
-                 ].join(' ')}>
+                 className={['flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors border',
+                   isEditing ? '' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}
+                 style={isEditing ? { backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}55` } : undefined}>
               <span className="text-xl flex-shrink-0">{cat.emoji}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900">{cat.label}</p>
                 <p className="text-xs text-gray-400">{productCount} product{productCount !== 1 ? 's' : ''}</p>
               </div>
               <button type="button" onClick={() => openEdit(cat)}
-                      className={[
-                        'p-1.5 rounded-lg transition-colors flex-shrink-0',
-                        isEditing ? 'text-teal-600 bg-teal-100' : 'text-gray-300 hover:text-teal-600 hover:bg-teal-50',
-                      ].join(' ')}>
+                      className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
+                      style={isEditing ? { color: themeColor, backgroundColor: `${themeColor}1a` } : undefined}>
                 <Pencil size={13} />
               </button>
               <button type="button" onClick={() => removeCategory(cat.id)}
@@ -958,36 +952,55 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
   return (
     <div className="space-y-6">
 
-      {/* Store Link Card */}
-      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-1.5">
-          Your store link
-        </p>
-        <div className="flex items-center gap-2">
+      {/* Share-your-store hero card */}
+      <div className="relative rounded-2xl p-4 text-white overflow-hidden shadow-lg"
+           style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}d0)` }}>
+        <div className="absolute inset-0 opacity-20 pointer-events-none"
+             style={{ backgroundImage: 'radial-gradient(circle, #ffffff55 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+        <div className="relative">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/80 mb-1.5 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            Your store is live — share it
+          </p>
           <a
             href={`/${config.slug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 text-sm font-mono font-semibold text-gray-800 truncate
-                       hover:text-brand transition-colors"
+            className="block text-sm font-mono font-bold truncate hover:underline mb-3"
           >
             {window.location.origin}/{config.slug}
           </a>
-          <button
-            type="button"
-            onClick={copyStoreUrl}
-            title="Copy store link"
-            className={[
-              'flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg',
-              'transition-all duration-150 flex-shrink-0',
-              copied
-                ? 'bg-green-100 text-green-600'
-                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-300',
-            ].join(' ')}
-          >
-            {copied ? <Check size={11} strokeWidth={3} /> : <Copy size={11} />}
-            {copied ? 'Copied!' : 'Copy'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={copyStoreUrl}
+              title="Copy store link"
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
+                         bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-colors"
+            >
+              {copied ? <Check size={13} strokeWidth={3} /> : <Copy size={13} />}
+              {copied ? 'Copied!' : 'Copy link'}
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(`Check out my store: ${window.location.origin}/${config.slug}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
+                         bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-colors"
+            >
+              Share on WhatsApp
+            </a>
+            <a
+              href={`/${config.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg
+                         bg-white hover:opacity-90 transition-opacity"
+              style={{ color: themeColor }}
+            >
+              Open →
+            </a>
+          </div>
         </div>
       </div>
 
@@ -1357,22 +1370,24 @@ export default function ManageStore() {
   // ── Loading / not found ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center gap-3">
-        <div className="w-8 h-8 border-4 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
-        <p className="text-sm text-gray-400">Loading store…</p>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/50 flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-[3px] border-gray-200 border-t-gray-800 rounded-full animate-spin" />
+        <p className="text-sm font-medium text-gray-400">Loading your store…</p>
       </div>
     );
   }
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="text-center space-y-3">
-          <p className="text-4xl">🔍</p>
-          <p className="text-lg font-bold text-gray-800">Store not found</p>
-          <p className="text-sm text-gray-500">No store with slug "{businessSlug}" exists.</p>
-          <Link to="/" className="inline-block mt-3 text-sm text-teal-600 hover:text-teal-800 underline">
-            Back to home
+      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-white">
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/60 via-white to-white" />
+        <div className="absolute -z-10 top-[-6rem] right-[-6rem] w-96 h-96 rounded-full bg-emerald-300/20 blur-3xl animate-pl-blob" />
+        <div className="text-center space-y-3 animate-pl-fade-up">
+          <p className="text-5xl">🔍</p>
+          <p className="text-xl font-extrabold text-gray-900">Store not found</p>
+          <p className="text-sm text-gray-500">No store with slug “{businessSlug}” exists.</p>
+          <Link to="/" className="inline-flex items-center gap-1.5 mt-3 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+            <ArrowLeft size={14} /> Back to home
           </Link>
         </div>
       </div>
@@ -1394,26 +1409,30 @@ export default function ManageStore() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40">
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
+        <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow-sm"
                  style={{ backgroundColor: themeColor + '20' }}>
               {config.logoEmoji || '🏪'}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-gray-900 truncate leading-none">{config.businessName}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Store Management</p>
+              <p className="text-sm font-bold text-gray-900 truncate leading-tight">{config.businessName}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Store live · Management
+              </p>
             </div>
           </div>
 
           <Link to={`/${businessSlug}`}
-                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500
-                           hover:text-gray-800 transition-colors flex-shrink-0 border border-gray-200
-                           rounded-lg px-2.5 py-1.5 hover:bg-gray-50">
+                className="flex items-center gap-1.5 text-xs font-bold text-white
+                           transition-all flex-shrink-0 rounded-lg px-3 py-2
+                           hover:opacity-90 active:scale-95 shadow-sm"
+                style={{ backgroundColor: themeColor }}>
             <ArrowLeft size={12} />
             View Store
           </Link>
@@ -1421,30 +1440,32 @@ export default function ManageStore() {
       </header>
 
       {/* ── Tab navigation ──────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-100">
+      <div className="bg-white border-b border-gray-100 sticky top-16 z-10">
         <div className="max-w-lg mx-auto px-4 flex">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={[
-                'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold',
-                'border-b-2 transition-colors',
-                tab === key
-                  ? 'border-gray-900 text-gray-900'
-                  : 'border-transparent text-gray-400 hover:text-gray-600',
-              ].join(' ')}>
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
+          {TABS.map(({ key, label, icon: Icon }) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={[
+                  'flex-1 flex items-center justify-center gap-1.5 py-3.5 text-xs font-semibold',
+                  'border-b-2 transition-colors',
+                  active ? '' : 'border-transparent text-gray-400 hover:text-gray-600',
+                ].join(' ')}
+                style={active ? { borderColor: themeColor, color: themeColor } : undefined}>
+                <Icon size={14} />
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
       <main className="max-w-lg mx-auto px-4 py-6">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
           {tab === 'products' && (
             <ManageProducts
               config={config}
