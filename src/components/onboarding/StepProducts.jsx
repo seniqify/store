@@ -207,7 +207,15 @@ function ImageUploader({ value, onChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // StepProducts
 // ─────────────────────────────────────────────────────────────────────────────
-export default function StepProducts({ data, onChange, onNext, onBack, themeColor = '#0d9488', plan = 'free' }) {
+const MODE_LABELS = {
+  product:  { plural: 'Products',   singular: 'Product',   add: 'Add Product'    },
+  menuitem: { plural: 'Menu Items', singular: 'Menu Item', add: 'Add Menu Item'  },
+  service:  { plural: 'Services',   singular: 'Service',   add: 'Add Service'    },
+  room:     { plural: 'Rooms',      singular: 'Room',      add: 'Add Room'       },
+};
+
+export default function StepProducts({ data, onChange, onNext, onBack, themeColor = '#0d9488', plan = 'free', mode = 'product' }) {
+  const labels = MODE_LABELS[mode] ?? MODE_LABELS.product;
   const limits = getPlanLimits(plan);
   const [activeForm,       setActiveForm]       = useState(null);   // 'category' | 'product' | null
   const [catForm,          setCatForm]          = useState(EMPTY_CAT_FORM);
@@ -500,7 +508,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">
-            Products
+            {labels.plural}
             <span className="ml-1.5 text-xs font-normal text-gray-400">
               ({data.products.length}/{limits.products})
             </span>
@@ -522,7 +530,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                         hasCategories ? 'hover:opacity-90' : 'opacity-40 cursor-not-allowed',
                       ].join(' ')}
                       style={{ backgroundColor: themeColor }}>
-                <Plus size={12} /> Add Product
+                <Plus size={12} /> {labels.add}
               </button>
             )
           )}
@@ -609,7 +617,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
 
         {data.products.length === 0 && activeForm !== 'product' && hasCategories && (
           <p className="text-xs text-gray-400 text-center py-2">
-            No products yet — click "Add Product" above.
+            No {labels.plural.toLowerCase()} yet — click "{labels.add}" above.
           </p>
         )}
 
@@ -617,7 +625,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         {activeForm === 'product' && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {isEditingProd ? 'Edit Product' : 'New Product'}
+              {isEditingProd ? `Edit ${labels.singular}` : `New ${labels.singular}`}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -741,7 +749,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white
                                  transition-colors hover:opacity-90"
                       style={{ backgroundColor: themeColor }}>
-                {isEditingProd ? 'Update Product' : 'Add Product'}
+                {isEditingProd ? `Update ${labels.singular}` : labels.add}
               </button>
               <button type="button" onClick={resetForms}
                       className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm

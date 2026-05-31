@@ -1,8 +1,9 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import StepBusiness from '../components/onboarding/StepBusiness';
-import StepProducts from '../components/onboarding/StepProducts';
-import StepPublish  from '../components/onboarding/StepPublish';
+import StepBusinessType from '../components/onboarding/StepBusinessType';
+import StepBusiness     from '../components/onboarding/StepBusiness';
+import StepProducts     from '../components/onboarding/StepProducts';
+import StepPublish      from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness }        from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
@@ -10,6 +11,7 @@ import { slugExists }          from '../utils/storeService';
 import { uploadConfigImages }  from '../utils/imageStorage';
 
 const INITIAL = {
+  businessType:      '',   // set in step 0
   businessName:      '',
   whatsappNumber:    '',
   logoEmoji:         '🏪',
@@ -23,12 +25,21 @@ const INITIAL = {
   bankAccountNumber: '',
   bankIfsc:          '',
   bankName:          '',
-  pin:               '',   // 4-digit store management PIN
+  pin:               '',
   categories:        [],
   products:          [],
 };
 
-const STEP_LABELS = ['Your Business', 'Your Products', 'Preview & Launch'];
+const STEP_LABELS = ['Business Type', 'Your Business', 'Your Products', 'Preview & Launch'];
+
+// Labels shown in StepProducts based on business type
+const PRODUCT_MODE = {
+  product:    'product',
+  restaurant: 'menuitem',
+  service:    'service',
+  hotel:      'room',
+  portfolio:  'service',
+};
 
 // â"€â"€ Launch Success Screen â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function LaunchSuccess({ slug, pin, themeColor }) {
@@ -157,7 +168,7 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      let config = getConfig();
+      let config = { ...getConfig(), businessType: data.businessType || 'product' };
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
 
       // â"€â"€ Ensure slug is unique in DB â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -240,20 +251,28 @@ export default function Onboarding() {
       <main className="max-w-lg mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
           {step === 0 && (
-            <StepBusiness data={data} onChange={update} onNext={() => setStep(1)} />
+            <StepBusinessType
+              selected={data.businessType}
+              onSelect={(type) => update({ businessType: type })}
+              onNext={() => setStep(1)}
+            />
           )}
           {step === 1 && (
-            <StepProducts data={data} onChange={update} themeColor={data.themeColor}
-              plan={plan}
-              onNext={() => setStep(2)} onBack={() => setStep(0)} />
+            <StepBusiness data={data} onChange={update} onNext={() => setStep(2)} onBack={() => setStep(0)} />
           )}
           {step === 2 && (
+            <StepProducts data={data} onChange={update} themeColor={data.themeColor}
+              plan={plan}
+              mode={PRODUCT_MODE[data.businessType] ?? 'product'}
+              onNext={() => setStep(3)} onBack={() => setStep(1)} />
+          )}
+          {step === 3 && (
             <StepPublish
               data={data}
               config={getConfig()}
               saving={saving}
               saveError={saveError}
-              onBack={() => setStep(1)}
+              onBack={() => setStep(2)}
               onPublish={handlePublish}
               onPinChange={(pin) => update({ pin })}
             />

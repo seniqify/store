@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
-import Header        from './components/layout/Header';
-import Footer        from './components/layout/Footer';
-import Home          from './pages/Home';
-import ErrorBoundary from './components/ErrorBoundary';
+import Header           from './components/layout/Header';
+import Footer           from './components/layout/Footer';
+import TemplateRenderer from './templates/TemplateRenderer';
+import ErrorBoundary    from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
 import { applyTheme }   from './utils/theme';
@@ -72,7 +72,7 @@ function DemoShell() {
       <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
         <main className="flex-1">
-          <Home
+          <TemplateRenderer
             externalCartOpen={cartOpen}
             onExternalCartClose={() => setCartOpen(false)}
             onCartCountChange={handleCartCountChange}
@@ -115,7 +115,7 @@ function BusinessShell() {
       <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
         <main className="flex-1">
-          <Home
+          <TemplateRenderer
             externalCartOpen={cartOpen}
             onExternalCartClose={() => setCartOpen(false)}
             onCartCountChange={handleCartCountChange}
