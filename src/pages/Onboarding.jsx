@@ -8,11 +8,13 @@ import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness }        from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists }          from '../utils/storeService';
-import { uploadConfigImages }  from '../utils/imageStorage';
+import { uploadConfigImages, uploadSingleImage } from '../utils/imageStorage';
 
 const INITIAL = {
-  businessType:      '',   // set in step 0
+  businessType:      '',
   businessName:      '',
+  logo:              '',
+  coverImage:        '',
   whatsappNumber:    '',
   logoEmoji:         '🏪',
   themeColor:        '#0d9488',
@@ -180,8 +182,12 @@ export default function Onboarding() {
       config = { ...config, slug };
 
       // â"€â"€ Upload base64 product images to Supabase Storage â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-      const uploadedProducts = await uploadConfigImages(config.products, slug);
-      config = { ...config, products: uploadedProducts };
+      const [uploadedProducts, uploadedLogo, uploadedCover] = await Promise.all([
+        uploadConfigImages(config.products, slug),
+        uploadSingleImage(config.logo, slug, 'logo'),
+        uploadSingleImage(config.coverImage, slug, 'cover'),
+      ]);
+      config = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
 
       await saveBusiness(config, pin, ownerPhone);
       sessionStorage.removeItem('pocketlink_verified_phone');

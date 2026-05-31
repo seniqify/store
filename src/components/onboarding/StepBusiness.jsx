@@ -22,8 +22,15 @@ const THEME_OPTIONS = [
   { hex: '#e11d48', label: 'Rose'   },
 ];
 
-export default function StepBusiness({ data, onChange, onNext }) {
+export default function StepBusiness({ data, onChange, onNext, onBack }) {
   const [errors, setErrors] = useState({});
+
+  function readImage(file, key) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange({ [key]: reader.result });
+    reader.readAsDataURL(file);
+  }
 
   function validate() {
     const errs = {};
@@ -136,6 +143,32 @@ export default function StepBusiness({ data, onChange, onNext }) {
         </div>
       </div>
 
+      {/* Logo image upload (optional — overrides emoji) */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Logo Image <span className="font-normal text-gray-400">(optional — replaces emoji)</span>
+        </label>
+        <div className="flex items-center gap-3">
+          {data.logo ? (
+            <div className="relative flex-shrink-0">
+              <img src={data.logo} alt="logo" className="w-16 h-16 rounded-2xl object-cover border border-gray-200" />
+              <button type="button" onClick={() => onChange({ logo: '' })}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold leading-none">×</button>
+            </div>
+          ) : (
+            <label className="w-16 h-16 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-gray-400 transition-colors bg-gray-50 flex-shrink-0">
+              <span className="text-xl mb-0.5">📷</span>
+              <span className="text-[10px] text-gray-400">Upload</span>
+              <input type="file" accept="image/*" className="hidden"
+                onChange={e => readImage(e.target.files[0], 'logo')} />
+            </label>
+          )}
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Square image recommended.<br />PNG, JPG, WebP.
+          </p>
+        </div>
+      </div>
+
       {/* Brand color */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -168,6 +201,28 @@ export default function StepBusiness({ data, onChange, onNext }) {
         <p className="mt-1.5 text-xs text-gray-400">
           Used for buttons and highlights on your store page.
         </p>
+      </div>
+
+      {/* Cover image */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">
+          Store Cover Photo <span className="font-normal text-gray-400">(optional)</span>
+        </label>
+        {data.coverImage ? (
+          <div className="relative">
+            <img src={data.coverImage} alt="cover" className="w-full h-32 object-cover rounded-2xl border border-gray-200" />
+            <button type="button" onClick={() => onChange({ coverImage: '' })}
+              className="absolute top-2 right-2 w-6 h-6 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold">×</button>
+          </div>
+        ) : (
+          <label className="w-full h-32 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-gray-400 transition-colors bg-gray-50">
+            <span className="text-2xl mb-1">🖼️</span>
+            <span className="text-xs font-semibold text-gray-500">Upload cover photo</span>
+            <span className="text-[11px] text-gray-400 mt-0.5">Wide image — 16:9 recommended</span>
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => readImage(e.target.files[0], 'coverImage')} />
+          </label>
+        )}
       </div>
 
       {/* ── Divider ─────────────────────────────────────────────────────── */}
@@ -339,15 +394,25 @@ export default function StepBusiness({ data, onChange, onNext }) {
       </div>
 
       {/* CTA */}
-      <button
-        type="button"
-        onClick={handleNext}
-        className="w-full py-3 rounded-xl font-bold text-white text-sm
-                   transition-all active:scale-[0.98] shadow-sm hover:opacity-90"
-        style={{ backgroundColor: data.themeColor || '#0d9488' }}
-      >
-        Continue — Add Products →
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold
+                     text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          ← Back
+        </button>
+        <button
+          type="button"
+          onClick={handleNext}
+          className="flex-[2] py-3 rounded-xl font-bold text-white text-sm
+                     transition-all active:scale-[0.98] shadow-sm hover:opacity-90"
+          style={{ backgroundColor: data.themeColor || '#0d9488' }}
+        >
+          Continue — Add Products →
+        </button>
+      </div>
     </div>
   );
 }

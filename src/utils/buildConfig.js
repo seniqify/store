@@ -30,6 +30,8 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     businessName,
     whatsappNumber,
     logoEmoji          = '🏪',
+    logo               = '',
+    coverImage         = '',
     themeColor         = '#0d9488',
     gstRate            = 0.05,
     gstNumber          = '',
@@ -78,7 +80,8 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     slug,
     businessName: businessName.trim(),
     tagline:      `Order from ${businessName.trim()} via WhatsApp`,
-    logo:         null,
+    logo:         logo?.trim() || null,
+    coverImage:   coverImage?.trim() || null,
     logoEmoji,
 
     whatsappNumber: `91${digits}`,

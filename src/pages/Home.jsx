@@ -33,20 +33,18 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // Business config from context — changes when the route changes
   const config = useBusinessConfig();
-  const { products, categories, features, businessName, whatsappNumber, promoText, theme } = config;
+  const { products, categories, features, businessName, tagline, whatsappNumber, promoText, theme, logo, logoEmoji, coverImage } = config;
 
-  // Parse promo text into heading + subtitle
-  // Format: "Big Heading · small subtitle" or just "Big heading"
-  // Leading emoji is extracted as the right-side illustration
+  // Parse promo text for the offer ribbon
   const promoEmoji = promoText
     ? (promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null)
     : null;
   const promoWithoutEmoji = promoText
     ? promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+\s*/u, '').trim()
     : '';
-  const promoParts    = promoWithoutEmoji.split(/\s*[·•\-–]\s*/);
-  const promoHeading  = promoParts[0] ?? '';
-  const promoSubtext  = promoParts[1] ?? null;
+  const promoParts   = promoWithoutEmoji.split(/\s*[·•\-–]\s*/);
+  const promoHeading = promoParts[0] ?? '';
+  const promoSubtext = promoParts[1] ?? null;
 
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
@@ -107,57 +105,69 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
-      {/* ── Promo banner — Blinkit/Zepto style ──────────────────────────── */}
-      {promoText && (
-        <div className="w-full px-3 sm:px-4 pt-3 pb-1">
-          <div className="max-w-7xl mx-auto">
-            <div
-              className="relative rounded-2xl overflow-hidden"
-              style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}18` }}
-            >
-              {/* Subtle brand-tinted background pattern dots */}
-              <div className="absolute inset-0 opacity-30 pointer-events-none"
-                   style={{
-                     backgroundImage: `radial-gradient(circle, ${theme?.primary ?? '#0d9488'}30 1px, transparent 1px)`,
-                     backgroundSize: '18px 18px',
-                   }} />
-
-              <div className="relative flex items-stretch min-h-[88px] sm:min-h-[96px]">
-
-                {/* ── Left: text + CTA ────────────────────────────────────── */}
-                <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 px-4 sm:px-5 py-4">
-                  <p className="font-extrabold text-base sm:text-lg leading-tight text-gray-900 tracking-tight">
-                    {promoHeading}
-                  </p>
-                  {promoSubtext && (
-                    <p className="text-xs sm:text-sm text-gray-500 leading-snug">
-                      {promoSubtext}
-                    </p>
-                  )}
-                  <button
-                    onClick={() =>
-                      document.getElementById('products')
-                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }
-                    className="mt-1 self-start text-xs font-bold text-white
-                               px-3 py-1.5 rounded-lg transition-all active:scale-95"
-                    style={{ backgroundColor: theme?.primary ?? '#0d9488' }}
-                  >
-                    Order Now →
-                  </button>
+      {/* ── Hero: cover image OR simple store header ────────────────────── */}
+      {coverImage ? (
+        <div className="relative w-full h-44 sm:h-60 overflow-hidden flex-shrink-0">
+          <img src={coverImage} alt={businessName}
+            className="w-full h-full object-cover" />
+          <div className="absolute inset-0"
+               style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.15) 50%, transparent 100%)' }} />
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-4">
+            <div className="flex items-center gap-3 max-w-7xl mx-auto">
+              {logo ? (
+                <img src={logo} alt={businessName}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-white shadow-lg flex-shrink-0" />
+              ) : (
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center
+                                text-2xl border-2 border-white shadow-lg flex-shrink-0"
+                     style={{ backgroundColor: theme?.primary ?? '#0d9488' }}>
+                  {logoEmoji ?? '🏪'}
                 </div>
-
-                {/* ── Right: emoji illustration ────────────────────────────── */}
-                <div className="flex-shrink-0 w-24 sm:w-28 flex items-end justify-center pb-1 pr-2 pt-2 relative">
-                  {/* Soft circle backdrop */}
-                  <div className="absolute bottom-1 right-1 w-20 h-20 rounded-full"
-                       style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}20` }} />
-                  <span className="relative text-5xl sm:text-6xl leading-none select-none">
-                    {promoEmoji ?? '🎉'}
-                  </span>
-                </div>
-
+              )}
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-extrabold text-white leading-tight truncate">{businessName}</h1>
+                {tagline && <p className="text-xs text-white/75 mt-0.5 truncate">{tagline}</p>}
               </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full px-3 sm:px-4 pt-4 pb-1">
+          <div className="max-w-7xl mx-auto flex items-center gap-3">
+            {logo ? (
+              <img src={logo} alt={businessName}
+                className="w-12 h-12 rounded-2xl object-cover border border-gray-100 shadow-sm flex-shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+                   style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}18` }}>
+                {logoEmoji ?? '🏪'}
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1 className="font-extrabold text-gray-900 text-base sm:text-lg leading-tight truncate">{businessName}</h1>
+              {tagline && <p className="text-xs text-gray-400 mt-0.5 truncate">{tagline}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Offer ribbon ─────────────────────────────────────────────────── */}
+      {promoText && (
+        <div className="w-full px-3 sm:px-4 pt-2 pb-0">
+          <div className="max-w-7xl mx-auto rounded-2xl overflow-hidden"
+               style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}12`, border: `1px solid ${theme?.primary ?? '#0d9488'}25` }}>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span className="text-xl flex-shrink-0">{promoEmoji ?? '🎉'}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-sm text-gray-900 leading-tight">{promoHeading}</p>
+                {promoSubtext && <p className="text-xs text-gray-500 mt-0.5 leading-snug">{promoSubtext}</p>}
+              </div>
+              <button
+                onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="flex-shrink-0 text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-all active:scale-95"
+                style={{ backgroundColor: theme?.primary ?? '#0d9488' }}>
+                Shop →
+              </button>
             </div>
           </div>
         </div>

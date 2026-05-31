@@ -40,6 +40,29 @@ export function isBase64Image(value) {
 }
 
 /**
+ * Upload a single base64 image (logo or cover) to Supabase Storage.
+ * Returns the public URL, or the original value if it's already a URL.
+ */
+export async function uploadSingleImage(base64DataUrl, slug, name = 'image') {
+  if (!isBase64Image(base64DataUrl)) return base64DataUrl;
+  try {
+    const res  = await fetch(base64DataUrl);
+    const blob = await res.blob();
+    const ext  = blob.type.includes('jpeg') ? 'jpg' : 'png';
+    const path = `${slug}/${name}-${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, blob, { contentType: blob.type, upsert: true });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
+    return urlData.publicUrl;
+  } catch (err) {
+    console.warn(`${name} upload skipped:`, err.message);
+    return base64DataUrl;
+  }
+}
+
+/**
  * Upload all base64 product images for a config.
  * Returns updated products array with Storage URLs.
  * Keeps original value on any per-image failure.

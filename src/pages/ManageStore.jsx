@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { canAddProduct, canAddCategory, getPlanLimits } from '../utils/planLimits';
 import {
   Lock, ArrowLeft, Package, Tag, Settings2,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
@@ -384,6 +385,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const userCats    = (config.categories || []).filter(c => c.id !== 'all');
   const products    = config.products || [];
+  const plan        = config.plan || 'free';
+  const limits      = getPlanLimits(plan);
+  const atProdLimit = !canAddProduct(plan, products.length);
 
   const [activeForm,    setActiveForm]    = useState(null);  // 'product' | null
   const [form,          setForm]          = useState(EMPTY_PROD);
@@ -492,12 +496,25 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           <span className="ml-1.5 text-xs font-normal text-gray-400">({products.length})</span>
         </p>
         {activeForm !== 'product' && (
-          <button type="button" onClick={openAdd}
-                  className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg
-                             text-white transition-colors hover:opacity-90"
-                  style={{ backgroundColor: themeColor }}>
-            <Plus size={12} /> Add Product
-          </button>
+          atProdLimit ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+                Limit: {limits.products} products
+              </span>
+              <a href="/plans" target="_blank" rel="noopener noreferrer"
+                 className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
+                 style={{ backgroundColor: themeColor }}>
+                Upgrade →
+              </a>
+            </div>
+          ) : (
+            <button type="button" onClick={openAdd}
+                    className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg
+                               text-white transition-colors hover:opacity-90"
+                    style={{ backgroundColor: themeColor }}>
+              <Plus size={12} /> Add Product
+            </button>
+          )
         )}
       </div>
 
@@ -687,6 +704,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
 function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
   const themeColor = config.theme?.primary || '#0d9488';
   const userCats   = (config.categories || []).filter(c => c.id !== 'all');
+  const plan       = config.plan || 'free';
+  const limits     = getPlanLimits(plan);
+  const atCatLimit = !canAddCategory(plan, userCats.length);
 
   const [activeForm,  setActiveForm]  = useState(null);
   const [form,        setForm]        = useState(EMPTY_CAT);
@@ -755,12 +775,25 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
           <span className="ml-1.5 text-xs font-normal text-gray-400">({userCats.length})</span>
         </p>
         {activeForm !== 'category' && (
-          <button type="button" onClick={openAdd}
-                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
-                             border border-dashed border-gray-300 text-gray-500
-                             hover:border-gray-400 hover:text-gray-700 transition-colors">
-            <Plus size={12} /> Add Category
-          </button>
+          atCatLimit ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+                Limit: {limits.categories} categor{limits.categories === 1 ? 'y' : 'ies'}
+              </span>
+              <a href="/plans" target="_blank" rel="noopener noreferrer"
+                 className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
+                 style={{ backgroundColor: themeColor }}>
+                Upgrade →
+              </a>
+            </div>
+          ) : (
+            <button type="button" onClick={openAdd}
+                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
+                               border border-dashed border-gray-300 text-gray-500
+                               hover:border-gray-400 hover:text-gray-700 transition-colors">
+              <Plus size={12} /> Add Category
+            </button>
+          )
         )}
       </div>
 
