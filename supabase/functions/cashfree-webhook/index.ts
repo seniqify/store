@@ -29,7 +29,10 @@ serve(async (req) => {
     const computed  = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
 
     if (computed !== signature) {
-      return new Response('Invalid signature', { status: 401 });
+      // Return 200 so Cashfree considers the endpoint reachable,
+      // but don't process the event — it's either a test ping or a forged request.
+      console.warn('Webhook signature mismatch — ignoring event');
+      return new Response('ok', { status: 200 });
     }
 
     // ── Parse event ──────────────────────────────────────────────────────────
