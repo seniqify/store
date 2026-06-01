@@ -20,7 +20,11 @@ import EmptyState from '../ui/EmptyState';
  *   cart        CartItem[]    — for "in cart" state on each card
  *   onAddToCart (product, qty) => void
  */
-export default function ProductGrid({ products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease }) {
+export default function ProductGrid({
+  products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease,
+  heading = 'Our Products', nounSingular = 'product', nounPlural = 'products',
+  searchPlaceholder = 'Search products…',
+}) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [fading, setFading]                 = useState(false);
   const [query, setQuery]                   = useState('');
@@ -67,7 +71,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
         <div className="min-w-0">
           <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2.5">
             <span className="w-1.5 h-6 rounded-full bg-brand inline-block flex-shrink-0" />
-            Our Products
+            {heading}
           </h2>
           <p className="text-sm text-gray-500 mt-1 ml-4">
             <span
@@ -75,7 +79,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
               className="inline-block animate-in fade-in duration-300"
             >
               <span className="font-semibold text-brand-dark">{filtered.length}</span>
-              {' '}{filtered.length === 1 ? 'product' : 'products'}
+              {' '}{filtered.length === 1 ? nounSingular : nounPlural}
               {q
                 ? <> matching “{query.trim()}”</>
                 : <> in <span className="font-medium text-gray-700">{activeCatLabel}</span></>}
@@ -90,7 +94,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search products…"
+            placeholder={searchPlaceholder}
             className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm
                        text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2
                        focus:ring-brand/30 focus:border-brand transition-all"
@@ -124,7 +128,7 @@ export default function ProductGrid({ products = [], categories = [], cart = [],
         {filtered.length === 0 ? (
           <EmptyState
             icon="🔍"
-            title={q ? `No products match “${query.trim()}”` : 'No products in this category'}
+            title={q ? `No ${nounPlural} match “${query.trim()}”` : `No ${nounPlural} in this category`}
             description={q ? 'Try a different search term.' : 'Try a different category or check back later.'}
           />
         ) : (
