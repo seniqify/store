@@ -458,33 +458,42 @@ export default function Landing() {
       <section id="how" className="px-4 py-16 sm:py-20 bg-white">
         <div className="max-w-4xl mx-auto">
           <Reveal className="text-center mb-14">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">How it works</p>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">How it works</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Three steps. You're online.
             </h2>
             <p className="text-sm sm:text-base text-gray-500">No designers, no developers, no monthly fee to start.</p>
           </Reveal>
 
-          <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-10 sm:gap-8">
-            {/* connecting dotted line (desktop) */}
-            <div className="hidden sm:block absolute top-7 left-[16%] right-[16%] h-px border-t-2 border-dashed border-gray-200" />
+          <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-6">
+            {/* connecting gradient line (desktop) */}
+            <div className="hidden sm:block absolute top-[4.5rem] left-[18%] right-[18%] h-0.5
+                            bg-gradient-to-r from-emerald-200 via-emerald-300 to-emerald-200" />
 
-            {HOW_IT_WORKS.map(({ icon, step, title, desc }) => (
-              <div key={step} className="relative text-center">
+            {HOW_IT_WORKS.map(({ icon, step, title, desc }, idx) => (
+              <Reveal key={step} delay={idx * 0.12}
+                className="group relative text-center bg-white rounded-3xl border border-gray-100 p-7
+                           shadow-sm hover:shadow-xl hover:border-emerald-100 hover:-translate-y-1 transition-all duration-300">
                 <div className="relative inline-block mb-5">
-                  <div className="w-16 h-16 bg-white border border-gray-100 rounded-2xl
-                                  flex items-center justify-center text-3xl shadow-md shadow-gray-100 relative z-10">
+                  {/* glow ring */}
+                  <div className="absolute inset-0 rounded-2xl bg-emerald-400/30 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="relative w-[4.5rem] h-[4.5rem] rounded-2xl flex items-center justify-center text-3xl z-10
+                                  bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
+                                  group-hover:scale-105 transition-transform duration-300">
                     {icon}
                   </div>
-                  <span className="absolute -top-2 -right-2 z-20 w-6 h-6 bg-emerald-500 text-white
-                                   text-[11px] font-bold rounded-full flex items-center
-                                   justify-center leading-none shadow-sm ring-2 ring-white">
+                  <span className="absolute -top-2.5 -right-2.5 z-20 w-7 h-7
+                                   bg-gradient-to-br from-emerald-500 to-teal-600 text-white
+                                   text-xs font-extrabold rounded-full flex items-center
+                                   justify-center leading-none shadow-lg shadow-emerald-500/30 ring-2 ring-white">
                     {step}
                   </span>
                 </div>
-                <h3 className="font-bold text-gray-900 mb-2 text-base">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">{desc}</p>
-              </div>
+                <h3 className="font-extrabold text-gray-900 mb-2 text-lg tracking-tight">{title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -494,7 +503,9 @@ export default function Landing() {
       <section id="features" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
         <div className="max-w-5xl mx-auto">
           <Reveal className="text-center mb-14">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Why PocketLink</p>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Why PocketLink</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Everything a small shop needs.<br className="hidden sm:block" /> Nothing it doesn't.
             </h2>
@@ -503,20 +514,24 @@ export default function Landing() {
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {VALUE_PROPS.map(({ icon, title, desc }, idx) => (
               <Reveal
                 key={title}
                 delay={(idx % 3) * 0.08}
-                className="group bg-white border border-gray-100 rounded-2xl p-6 shadow-sm
-                           hover:shadow-lg hover:border-emerald-100 hover:-translate-y-1 transition-all duration-200"
+                className="group relative bg-white border border-gray-100 rounded-2xl p-6 shadow-sm overflow-hidden
+                           hover:shadow-xl hover:border-emerald-100 hover:-translate-y-1.5 transition-all duration-300"
               >
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl mb-4
-                                group-hover:scale-110 transition-transform duration-200">
+                {/* corner glow on hover */}
+                <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-emerald-300/20 blur-2xl
+                                opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4
+                                bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
+                                group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300">
                   {icon}
                 </div>
-                <h3 className="font-bold text-gray-900 mb-1.5">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+                <h3 className="relative font-extrabold text-gray-900 mb-1.5 text-[15px]">{title}</h3>
+                <p className="relative text-sm text-gray-500 leading-relaxed">{desc}</p>
               </Reveal>
             ))}
           </div>
@@ -526,37 +541,40 @@ export default function Landing() {
       {/* ── Use cases ────────────────────────────────────────────────────── */}
       <section className="px-4 py-16 sm:py-20 bg-white">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Built for every business</p>
+          <Reveal className="text-center mb-12">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Built for every business</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               One platform, five tailored pages
             </h2>
             <p className="text-sm sm:text-base text-gray-500">
               Pick your business type and PocketLink sets up the right layout and ordering flow.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {USE_CASES.map(({ emoji, label, desc, color }) => (
-              <div
+            {USE_CASES.map(({ emoji, label, desc, color }, idx) => (
+              <Reveal
                 key={label}
-                className="relative rounded-2xl border border-gray-100 bg-white p-5 text-center
-                           shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden group"
+                delay={idx * 0.07}
+                className="group relative rounded-2xl border border-gray-100 bg-white p-5 text-center
+                           shadow-sm hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 overflow-hidden cursor-default"
               >
+                {/* color wash that floods up on hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                     style={{ background: `linear-gradient(to bottom, ${color}0d, transparent)` }} />
+                <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: color }} />
                 <div
-                  className="absolute inset-x-0 top-0 h-1 opacity-80"
-                  style={{ backgroundColor: color }}
-                />
-                <div
-                  className="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center text-2xl mb-3
-                             group-hover:scale-110 transition-transform duration-200"
-                  style={{ backgroundColor: `${color}15` }}
+                  className="relative w-14 h-14 mx-auto rounded-2xl flex items-center justify-center text-2xl mb-3
+                             group-hover:scale-110 transition-transform duration-300 shadow-sm"
+                  style={{ backgroundColor: `${color}15`, boxShadow: `0 4px 14px ${color}22` }}
                 >
                   {emoji}
                 </div>
-                <h3 className="font-bold text-gray-900 text-sm leading-tight mb-1">{label}</h3>
-                <p className="text-[11px] text-gray-400 leading-snug">{desc}</p>
-              </div>
+                <h3 className="relative font-extrabold text-gray-900 text-sm leading-tight mb-1">{label}</h3>
+                <p className="relative text-[11px] text-gray-400 leading-snug">{desc}</p>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -565,15 +583,17 @@ export default function Landing() {
       {/* ── Live demo stores ─────────────────────────────────────────────── */}
       <section id="demos" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">See it in action</p>
+          <Reveal className="text-center mb-12">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">See it in action</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Browse live examples
             </h2>
             <p className="text-sm sm:text-base text-gray-500">
               Tap any page to explore a real, live example — exactly what your customers see.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             {demoStores.map((biz) => (
@@ -623,32 +643,40 @@ export default function Landing() {
       {/* ── Testimonials ─────────────────────────────────────────────────── */}
       <section className="px-4 py-16 sm:py-20 bg-white">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Loved by shop owners</p>
+          <Reveal className="text-center mb-12">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Loved by shop owners</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
               Real shops, real orders
             </h2>
-          </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            {TESTIMONIALS.map(({ emoji, name, biz, quote }) => (
-              <div key={name} className="bg-gradient-to-b from-gray-50 to-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col">
-                <div className="flex items-center gap-0.5 mb-3">
+            {TESTIMONIALS.map(({ emoji, name, biz, quote }, idx) => (
+              <Reveal key={name} delay={idx * 0.1}
+                className="group relative bg-white border border-gray-100 rounded-3xl p-7 shadow-sm flex flex-col
+                           hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+                {/* oversized quote mark */}
+                <span className="absolute -top-3 right-4 text-7xl font-serif text-emerald-100 select-none leading-none
+                                 group-hover:text-emerald-200 transition-colors">”</span>
+                <div className="relative flex items-center gap-0.5 mb-3">
                   {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={14} className="text-amber-400 fill-amber-400" />
+                    <Star key={i} size={15} className="text-amber-400 fill-amber-400" />
                   ))}
                 </div>
-                <p className="text-sm text-gray-600 leading-relaxed flex-1">“{quote}”</p>
-                <div className="flex items-center gap-3 mt-5 pt-4 border-t border-gray-100">
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-xl flex-shrink-0">
+                <p className="relative text-sm text-gray-700 leading-relaxed flex-1">{quote}</p>
+                <div className="relative flex items-center gap-3 mt-5 pt-4 border-t border-gray-100">
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
+                                  flex items-center justify-center text-xl flex-shrink-0">
                     {emoji}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-gray-900 text-sm leading-tight truncate">{name}</p>
+                    <p className="font-extrabold text-gray-900 text-sm leading-tight truncate">{name}</p>
                     <p className="text-xs text-gray-400 truncate">{biz}</p>
                   </div>
                 </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -657,15 +685,17 @@ export default function Landing() {
       {/* ── Pricing ──────────────────────────────────────────────────────── */}
       <section id="pricing" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Pricing</p>
+          <Reveal className="text-center mb-12">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Pricing</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Simple, honest pricing
             </h2>
             <p className="text-sm sm:text-base text-gray-500">
               Start free. No credit card. Upgrade only when you outgrow the free tier.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6 items-stretch">
             {[
@@ -756,12 +786,14 @@ export default function Landing() {
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
       <section className="px-4 py-16 sm:py-20 bg-white">
         <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-10">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">FAQ</p>
+          <Reveal className="text-center mb-10">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
+                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">FAQ</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
               Frequently asked questions
             </h2>
-          </div>
+          </Reveal>
           <div className="space-y-3">
             {[
               { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working page with up to 2 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
