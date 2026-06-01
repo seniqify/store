@@ -1,0 +1,234 @@
+<!doctype html>
+<!--
+  OG share-card template for PocketLink (1200x630).
+  Regenerate the PNG with:  node scripts/gen-og.mjs
+  Edit copy/design here, then re-run. Do not hand-edit public/og-image.png.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1200px; height: 630px; overflow: hidden;
+    font-family: 'Poppins', system-ui, sans-serif;
+  }
+  .card {
+    position: relative; width: 1200px; height: 630px;
+    background:
+      radial-gradient(900px 520px at 88% -8%, rgba(37,211,102,0.20), transparent 60%),
+      radial-gradient(760px 600px at 6% 116%, rgba(13,148,136,0.28), transparent 58%),
+      linear-gradient(135deg, #07110d 0%, #0a1622 52%, #081512 100%);
+    overflow: hidden;
+  }
+  /* faint grid texture */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at 30% 40%, #000, transparent 78%);
+  }
+  /* glow blobs */
+  .blob { position: absolute; border-radius: 50%; filter: blur(60px); }
+  .b1 { width: 360px; height: 360px; top: -120px; right: 60px; background: rgba(37,211,102,0.30); }
+  .b2 { width: 320px; height: 320px; bottom: -140px; left: -40px; background: rgba(16,185,129,0.26); }
+
+  .inner { position: relative; height: 100%; display: flex; align-items: center; }
+
+  /* ---- LEFT: copy ---- */
+  .left { width: 660px; padding: 0 0 0 76px; }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 40px; }
+  .logo {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(150deg, #25D366, #0d9488);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 30px rgba(37,211,102,0.35);
+  }
+  .logo svg { width: 30px; height: 30px; }
+  .brand-name { color: #fff; font-weight: 800; font-size: 30px; letter-spacing: -0.5px; }
+  .brand-name b { color: #34e57f; }
+
+  h1 {
+    color: #fff; font-weight: 800; font-size: 64px; line-height: 1.04;
+    letter-spacing: -1.8px;
+  }
+  .wa { position: relative; color: #34e57f; white-space: nowrap; }
+  .wa svg.ul { position: absolute; left: 0; bottom: -16px; width: 100%; height: 18px; }
+  h1 .sub-mark { display: inline-block; }
+
+  .sub {
+    margin-top: 42px; color: #c9d6d1; font-family: 'Inter', sans-serif;
+    font-size: 25px; font-weight: 400; line-height: 1.45; max-width: 540px;
+  }
+  .sub b { color: #fff; font-weight: 600; }
+
+  .chips { display: flex; gap: 12px; margin-top: 34px; }
+  .chip {
+    display: flex; align-items: center; gap: 9px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: #e6efeb; font-family: 'Inter', sans-serif; font-weight: 500;
+    font-size: 18px; padding: 11px 18px; border-radius: 999px;
+    backdrop-filter: blur(4px);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #34e57f; box-shadow: 0 0 10px #34e57f; }
+
+  .url {
+    margin-top: 44px; display: inline-flex; align-items: center; gap: 11px;
+    color: #9fb4ad; font-family: 'Inter', sans-serif; font-size: 21px; font-weight: 500;
+  }
+  .url b { color: #fff; font-weight: 600; }
+
+  /* ---- RIGHT: phone ---- */
+  .right { flex: 1; position: relative; height: 100%; }
+  .phone {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-46%, -50%) rotate(6deg);
+    width: 300px; height: 600px; border-radius: 46px;
+    background: #0b1320; padding: 13px;
+    box-shadow: 0 40px 90px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,255,255,0.06),
+                0 0 60px rgba(37,211,102,0.18);
+  }
+  .screen {
+    width: 100%; height: 100%; border-radius: 34px; overflow: hidden;
+    background: #f6f8f7; position: relative;
+  }
+  .notch {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 96px; height: 22px; background: #0b1320; border-radius: 999px; z-index: 5;
+  }
+  .shead {
+    background: linear-gradient(135deg, #0d9488, #25D366); padding: 30px 18px 16px;
+    color: #fff;
+  }
+  .shop { display: flex; align-items: center; gap: 11px; }
+  .savatar {
+    width: 42px; height: 42px; border-radius: 13px; background: rgba(255,255,255,0.22);
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+  }
+  .sname { font-family: 'Poppins'; font-weight: 700; font-size: 17px; }
+  .smeta { font-family: 'Inter'; font-size: 11.5px; opacity: 0.92; margin-top: 2px; display:flex; align-items:center; gap:5px;}
+  .open-dot { width:7px; height:7px; border-radius:50%; background:#bbf7d0; box-shadow:0 0 6px #bbf7d0;}
+
+  .promo {
+    margin: 12px; padding: 9px 12px; border-radius: 12px;
+    background: linear-gradient(90deg, #fef3c7, #fde68a);
+    color: #92400e; font-family: 'Inter'; font-weight: 600; font-size: 12px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .prods { padding: 4px 12px; display: flex; flex-direction: column; gap: 11px; }
+  .pcard {
+    background: #fff; border: 1px solid #eef1f0; border-radius: 16px; padding: 11px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 6px 16px rgba(13,148,136,0.06);
+  }
+  .pthumb {
+    width: 54px; height: 54px; border-radius: 13px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+  }
+  .t1 { background: linear-gradient(135deg,#fff7ed,#ffedd5); }
+  .t2 { background: linear-gradient(135deg,#ecfdf5,#d1fae5); }
+  .pinfo { flex: 1; }
+  .ptitle { font-family: 'Poppins'; font-weight: 600; font-size: 14px; color: #0f172a; }
+  .pprice { font-family: 'Inter'; font-weight: 700; font-size: 14px; color: #0d9488; margin-top: 3px; }
+  .padd {
+    width: 30px; height: 30px; border-radius: 10px; background: #0d9488; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+    font-family: 'Inter'; font-weight: 500;
+  }
+  .sbar {
+    position: absolute; bottom: 14px; left: 14px; right: 14px;
+    background: #25D366; color: #fff; border-radius: 16px; padding: 13px;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    font-family: 'Poppins'; font-weight: 700; font-size: 15px;
+    box-shadow: 0 10px 24px rgba(37,211,102,0.45);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="grid"></div>
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+
+    <div class="inner">
+      <div class="left">
+        <div class="brand">
+          <div class="logo">
+            <!-- simple link/chat mark -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+          </div>
+          <div class="brand-name">Pocket<b>Link</b></div>
+        </div>
+
+        <h1>
+          Give your business<br/>
+          a page on
+          <span class="wa">WhatsApp<svg class="ul" viewBox="0 0 300 18" preserveAspectRatio="none">
+            <path d="M4 12 C 80 4, 220 4, 296 11" stroke="#34e57f" stroke-width="5" fill="none" stroke-linecap="round"/>
+          </svg></span>
+        </h1>
+
+        <p class="sub">A free storefront in <b>2 minutes</b> &mdash; catalog, cart &amp; orders, all on WhatsApp. <b>No app. No code.</b></p>
+
+        <div class="chips">
+          <div class="chip"><span class="dot"></span>Catalog</div>
+          <div class="chip"><span class="dot"></span>Cart</div>
+          <div class="chip"><span class="dot"></span>Orders on WhatsApp</div>
+        </div>
+
+        <div class="url">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34e57f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span><b>pocketlink.store</b></span>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="phone">
+          <div class="screen">
+            <div class="notch"></div>
+            <div class="shead">
+              <div class="shop">
+                <div class="savatar">🍱</div>
+                <div>
+                  <div class="sname">Anjali&rsquo;s Kitchen</div>
+                  <div class="smeta"><span class="open-dot"></span>Home-style meals &middot; Open now</div>
+                </div>
+              </div>
+            </div>
+            <div class="promo">🎉 Festive offer &middot; 20% off today</div>
+            <div class="prods">
+              <div class="pcard">
+                <div class="pthumb t1">🍛</div>
+                <div class="pinfo">
+                  <div class="ptitle">Paneer Thali</div>
+                  <div class="pprice">₹180</div>
+                </div>
+                <div class="padd">+</div>
+              </div>
+              <div class="pcard">
+                <div class="pthumb t2">🥗</div>
+                <div class="pinfo">
+                  <div class="ptitle">Veg Biryani</div>
+                  <div class="pprice">₹150</div>
+                </div>
+                <div class="padd">+</div>
+              </div>
+            </div>
+            <div class="sbar">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-2.6.7.7-2.5-.2-.3A8 8 0 0 1 12 4z"/></svg>
+              Order on WhatsApp
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
