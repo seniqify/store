@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, MessageCircle, Check, Star, Zap,
@@ -82,6 +83,80 @@ const MARQUEE = [
   { emoji: '🎨', label: 'Designers' },
 ];
 
+/* ── Reveal-on-scroll wrapper (fades + rises into view once) ──────────── */
+function Reveal({ children, delay = 0, className = '' }) {
+  const supported = typeof IntersectionObserver !== 'undefined';
+  const [el, setEl]       = useState(null);
+  const [shown, setShown] = useState(!supported);   // show immediately if unsupported
+
+  useEffect(() => {
+    if (!el || !supported) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setShown(true); obs.disconnect(); } },
+      { threshold: 0.15 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [el, supported]);
+
+  return (
+    <div
+      ref={setEl}
+      className={className}
+      style={{
+        opacity: shown ? 1 : 0,
+        transform: shown ? 'translateY(0)' : 'translateY(34px)',
+        transition: `opacity 0.7s ease-out ${delay}s, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}s`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ── Headline word that cycles through business types ────────────────── */
+const ROTATING = [
+  { word: 'shop',       color: '#34d399' },
+  { word: 'restaurant', color: '#fbbf24' },
+  { word: 'boutique',   color: '#f472b6' },
+  { word: 'salon',      color: '#a78bfa' },
+  { word: 'hotel',      color: '#38bdf8' },
+  { word: 'studio',     color: '#5eead4' },
+];
+
+function RotatingWord() {
+  const [i, setI]       = useState(0);
+  const [show, setShow] = useState(true);
+
+  useEffect(() => {
+    const swap = setInterval(() => {
+      setShow(false);                                   // fade/slide out
+      setTimeout(() => {
+        setI(prev => (prev + 1) % ROTATING.length);     // advance
+        setShow(true);                                  // fade/slide in
+      }, 280);
+    }, 2200);
+    return () => clearInterval(swap);
+  }, []);
+
+  const { word, color } = ROTATING[i];
+  return (
+    <span className="relative inline-block align-baseline">
+      <span
+        className="inline-block transition-all duration-300 ease-out"
+        style={{
+          color,
+          opacity: show ? 1 : 0,
+          transform: show ? 'translateY(0)' : 'translateY(0.35em)',
+          textShadow: `0 0 28px ${color}66`,
+        }}
+      >
+        {word}
+      </span>
+    </span>
+  );
+}
+
 /* ── A live mini-storefront rendered inside a phone frame ─────────────── */
 function PhoneMockup() {
   return (
@@ -160,20 +235,33 @@ function PhoneMockup() {
         </div>
       </div>
 
-      {/* Floating rating chip */}
-      <div className="absolute -left-6 top-24 hidden sm:flex animate-pl-float-slow items-center gap-1.5 bg-white rounded-2xl shadow-xl ring-1 ring-black/5 px-3 py-2">
-        <div className="flex">
-          {[...Array(5)].map((_, i) => (
-            <Star key={i} size={11} className="text-amber-400 fill-amber-400" />
-          ))}
+      {/* Floating "new order" chip — top left */}
+      <div className="absolute -left-8 top-20 hidden sm:flex animate-pl-float-slow items-center gap-2 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2">
+        <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-60 animate-ping" />
+          <span className="relative text-sm">🛒</span>
+        </span>
+        <div className="leading-tight">
+          <p className="text-[11px] font-extrabold text-gray-800">New order!</p>
+          <p className="text-[10px] text-gray-400">just now</p>
         </div>
-        <span className="text-[11px] font-bold text-gray-700">Loved by shops</span>
       </div>
 
-      {/* Floating "no commission" chip */}
-      <div className="absolute -right-5 bottom-24 hidden sm:flex animate-pl-float items-center gap-1.5 bg-white rounded-2xl shadow-xl ring-1 ring-black/5 px-3 py-2">
+      {/* Floating "0% commission" chip — bottom right */}
+      <div className="absolute -right-6 bottom-28 hidden sm:flex animate-pl-float items-center gap-1.5 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2">
         <span className="text-base">💸</span>
         <span className="text-[11px] font-bold text-gray-700">0% commission</span>
+      </div>
+
+      {/* Floating rating chip — right top */}
+      <div className="absolute -right-4 top-8 hidden sm:flex animate-pl-float-slow items-center gap-1.5 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2"
+           style={{ animationDelay: '2s' }}>
+        <div className="flex">
+          {[...Array(5)].map((_, i) => (
+            <Star key={i} size={10} className="text-amber-400 fill-amber-400" />
+          ))}
+        </div>
+        <span className="text-[11px] font-bold text-gray-700">4.9</span>
       </div>
     </div>
   );
@@ -249,14 +337,23 @@ export default function Landing() {
                 </div>
 
                 <h1 className="text-[2.6rem] sm:text-6xl lg:text-[4.1rem] font-extrabold
-                               leading-[1.02] tracking-tight mb-6 pl-rise"
+                               leading-[1.04] tracking-tight mb-6 pl-rise"
                     style={{ animationDelay: '0.12s' }}>
-                  <span className="text-white">Your business,</span><br />
-                  <span className="pl-shimmer-text bg-clip-text text-transparent"
-                        style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
-                    beautifully online
-                  </span><br />
-                  <span className="text-white">in two minutes.</span>
+                  <span className="text-white">Give your </span>
+                  <RotatingWord />
+                  <br />
+                  <span className="text-white">a page on </span>
+                  <span className="relative inline-block">
+                    <span className="pl-shimmer-text bg-clip-text text-transparent"
+                          style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
+                      WhatsApp
+                    </span>
+                    {/* hand-drawn underline (glowing on dark) */}
+                    <svg className="absolute -bottom-2.5 left-0 w-full overflow-visible" height="14" viewBox="0 0 220 14" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M3 9 Q 55 3, 110 7 T 217 6" stroke="#25D366" strokeWidth="4" fill="none" strokeLinecap="round"
+                            style={{ filter: 'drop-shadow(0 0 6px rgba(37,211,102,0.7))' }} />
+                    </svg>
+                  </span>
                 </h1>
 
                 <p className="text-white/60 text-base sm:text-lg max-w-xl mx-auto lg:mx-0 mb-9 leading-relaxed pl-rise"
@@ -357,13 +454,13 @@ export default function Landing() {
       {/* ── How it works ─────────────────────────────────────────────────── */}
       <section id="how" className="px-4 py-16 sm:py-20 bg-white">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">How it works</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Three steps. You're online.
             </h2>
             <p className="text-sm sm:text-base text-gray-500">No designers, no developers, no monthly fee to start.</p>
-          </div>
+          </Reveal>
 
           <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-10 sm:gap-8">
             {/* connecting dotted line (desktop) */}
@@ -393,7 +490,7 @@ export default function Landing() {
       {/* ── Why PocketLink (value props) ─────────────────────────────────── */}
       <section id="features" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Why PocketLink</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
               Everything a small shop needs.<br className="hidden sm:block" /> Nothing it doesn't.
@@ -401,12 +498,13 @@ export default function Landing() {
             <p className="text-sm sm:text-base text-gray-500 max-w-xl mx-auto">
               Built for Indian businesses that sell on WhatsApp — fast, fair and genuinely free to start.
             </p>
-          </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {VALUE_PROPS.map(({ icon, title, desc }) => (
-              <div
+            {VALUE_PROPS.map(({ icon, title, desc }, idx) => (
+              <Reveal
                 key={title}
+                delay={(idx % 3) * 0.08}
                 className="group bg-white border border-gray-100 rounded-2xl p-6 shadow-sm
                            hover:shadow-lg hover:border-emerald-100 hover:-translate-y-1 transition-all duration-200"
               >
@@ -416,7 +514,7 @@ export default function Landing() {
                 </div>
                 <h3 className="font-bold text-gray-900 mb-1.5">{title}</h3>
                 <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
