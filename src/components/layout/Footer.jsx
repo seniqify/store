@@ -68,10 +68,27 @@ export default function Footer() {
   const config = useBusinessConfig();
   const {
     businessName, tagline, logoEmoji, logo,
-    whatsappNumber, phone, address, upi, bank, gst, cart, slug, plan,
+    whatsappNumber, phone, address, upi, bank, gst, cart, slug, plan, businessType,
   } = config;
 
   const waLink = whatsappLink(whatsappNumber, businessName);
+
+  // Footer copy adapts to the kind of business (default keeps the product-store wording).
+  const waCtaLabel = {
+    hotel: 'Book on WhatsApp', service: 'Message on WhatsApp',
+    portfolio: 'Message on WhatsApp', restaurant: 'Order on WhatsApp',
+  }[businessType] ?? 'Order on WhatsApp';
+
+  const quickInfo = {
+    hotel:      ['🛎️ Bookings confirmed on WhatsApp', '🕐 Flexible check-in & check-out', '🔒 No advance payment needed'],
+    service:    ['💬 Free consultation on WhatsApp', '✅ Trusted local professional', '🗓️ Flexible scheduling'],
+    portfolio:  ['💬 Quick replies on WhatsApp', '✅ Custom work welcome', '🤝 Open to collaborations'],
+    restaurant: ['🍽️ Order on WhatsApp', '🔥 Freshly prepared', '📍 Pickup & delivery'],
+  }[businessType] ?? [
+    `🚚 Free delivery above ₹${cart.freeShippingAbove}`,
+    '✅ 100% genuine products',
+    '🔄 Easy 7-day returns',
+  ];
 
   const hasUpi            = Boolean(upi);
   const hasBank           = Boolean(bank?.accountNumber);
@@ -110,7 +127,7 @@ export default function Footer() {
                        text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
           >
             <MessageCircle size={15} />
-            Order on WhatsApp
+            {waCtaLabel}
           </a>
         </div>
 
@@ -207,9 +224,7 @@ export default function Footer() {
         <div>
           <h4 className="text-white font-semibold mb-3">Quick Info</h4>
           <ul className="space-y-2 text-sm text-gray-400">
-            <li>🚚 Free delivery above ₹{cart.freeShippingAbove}</li>
-            <li>✅ 100% genuine products</li>
-            <li>🔄 Easy 7-day returns</li>
+            {quickInfo.map((line) => <li key={line}>{line}</li>)}
           </ul>
         </div>
       </div>

@@ -7,8 +7,16 @@ import { whatsappLink } from '../../utils/theme';
  * No props needed for business data; only cart state comes from outside.
  */
 export default function Header({ cartCount = 0, onCartOpen }) {
-  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst } = useBusinessConfig();
+  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType } = useBusinessConfig();
   const waLink = whatsappLink(whatsappNumber, businessName);
+
+  // Top-strip message adapts to the business type (default: product store).
+  const infoStrip = {
+    hotel:      '🛎️ Bookings confirmed instantly on WhatsApp',
+    service:    '💬 Free consultation on WhatsApp',
+    portfolio:  '💬 Quick replies on WhatsApp',
+    restaurant: '🍽️ Order — confirmed on WhatsApp',
+  }[businessType] ?? `🚚 Free delivery above ₹${cart.freeShippingAbove}`;
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50 w-full overflow-hidden">
@@ -27,7 +35,7 @@ export default function Header({ cartCount = 0, onCartOpen }) {
           </a>
 
           <span className="font-medium text-center flex-shrink-0 text-[11px] sm:text-xs">
-            🚚 Free delivery above ₹{cart.freeShippingAbove}
+            {infoStrip}
           </span>
 
           {gst && <span className="hidden sm:block opacity-75 truncate">{gst}</span>}
