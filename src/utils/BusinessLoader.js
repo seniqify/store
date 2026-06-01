@@ -11,7 +11,9 @@
 
 import REGISTRY from '../businesses/index';
 import { getCachedBusinesses, cacheStore } from './businessStorage';
-import { fetchStore } from './storeService';
+// NOTE: storeService (and the Supabase client it pulls in, ~120 KB) is imported
+// dynamically inside loadBusiness() so it stays OUT of the entry chunk. The
+// landing page and demo routes never hit the DB, so they never download it.
 
 /**
  * Async: load a store by slug.
@@ -26,7 +28,9 @@ export async function loadBusiness(slug) {
   const cache = getCachedBusinesses();
   if (cache[s]) return cache[s];
 
-  // 2. Fetch from Supabase (source of truth)
+  // 2. Fetch from Supabase (source of truth) — loaded on demand so the
+  //    Supabase client isn't bundled into the entry chunk.
+  const { fetchStore } = await import('./storeService');
   const dbConfig = await fetchStore(s);
   if (dbConfig) {
     cacheStore(dbConfig); // cache for next time

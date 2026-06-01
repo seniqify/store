@@ -1,14 +1,18 @@
 /**
  * businessStorage — now saves to Supabase DB.
  * localStorage is kept as a fast local cache only.
+ *
+ * storeService (and the Supabase client) is imported dynamically in
+ * saveBusiness() so it stays out of the entry chunk — getCachedBusinesses()
+ * and the cache helpers below are pure localStorage and ship in the entry.
  */
-import { createStore } from './storeService';
 
 const CACHE_KEY = 'pocketlink_v1';
 
 /** Save to DB (primary) + localStorage (cache). */
 export async function saveBusiness(config, pin = '1234', ownerPhone = null) {
-  // Save to Supabase
+  // Save to Supabase (loaded on demand)
+  const { createStore } = await import('./storeService');
   await createStore(config, pin, ownerPhone);
   // Also cache locally so the page loads instantly right after creation
   const cache = getCachedBusinesses();
