@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { ChevronRight, ShoppingCart } from 'lucide-react';
+import { ChevronRight, ShoppingCart, MessageCircle, Check } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
 import CartSummary from '../components/cart/CartSummary';
@@ -34,6 +34,10 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   // Business config from context — changes when the route changes
   const config = useBusinessConfig();
   const { products, categories, features, businessName, tagline, whatsappNumber, promoText, theme, logo, logoEmoji, coverImage } = config;
+
+  const primary     = theme?.primary ?? '#0d9488';
+  const primaryDark = theme?.primaryDark ?? '#0f766e';
+  const freeAbove   = config.cart?.freeShippingAbove ?? 0;
 
   // Parse promo text for the offer ribbon
   const promoEmoji = promoText
@@ -105,87 +109,127 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
 
-      {/* ── Hero: cover image OR simple store header ────────────────────── */}
-      {coverImage ? (
-        <div className="relative w-full h-44 sm:h-60 overflow-hidden flex-shrink-0">
-          <img src={coverImage} alt={businessName}
-            className="w-full h-full object-cover" />
-          <div className="absolute inset-0"
-               style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.15) 50%, transparent 100%)' }} />
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-4">
-            <div className="flex items-center gap-3 max-w-7xl mx-auto">
+      {/* ── Store hero: cover image OR branded gradient + overlapping card ── */}
+      <header className="relative w-full">
+        <div className="relative w-full h-40 sm:h-56 overflow-hidden">
+          {coverImage ? (
+            <img src={coverImage} alt={businessName} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full relative"
+                 style={{ background: `linear-gradient(135deg, ${primary} 0%, ${primaryDark} 100%)` }}>
+              <div className="absolute -top-12 -right-8 w-60 h-60 rounded-full"
+                   style={{ background: '#fff', opacity: 0.15, filter: 'blur(50px)' }} />
+              <div className="absolute -bottom-20 left-1/4 w-56 h-56 rounded-full"
+                   style={{ background: '#000', opacity: 0.18, filter: 'blur(50px)' }} />
+              <div className="absolute inset-0"
+                   style={{ opacity: 0.08, backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
+            </div>
+          )}
+          {coverImage && (
+            <div className="absolute inset-0"
+                 style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 55%)' }} />
+          )}
+        </div>
+
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="relative z-10 -mt-12 sm:-mt-16 bg-white rounded-3xl border border-gray-100
+                          shadow-xl shadow-gray-300/30 p-4 sm:p-6">
+            <div className="flex items-start gap-3 sm:gap-5">
+              {/* Avatar */}
               {logo ? (
                 <img src={logo} alt={businessName}
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-white shadow-lg flex-shrink-0" />
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-white
+                             shadow-md flex-shrink-0 -mt-10 sm:-mt-14 bg-white" />
               ) : (
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center
-                                text-2xl border-2 border-white shadow-lg flex-shrink-0"
-                     style={{ backgroundColor: theme?.primary ?? '#0d9488' }}>
-                  {logoEmoji ?? '🏪'}
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center
+                                text-3xl sm:text-4xl ring-4 ring-white shadow-md flex-shrink-0 -mt-10 sm:-mt-14"
+                     style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
+                  <span className="drop-shadow-sm">{logoEmoji ?? '🏪'}</span>
                 </div>
               )}
-              <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-extrabold text-white leading-tight truncate">{businessName}</h1>
-                {tagline && <p className="text-xs text-white/75 mt-0.5 truncate">{tagline}</p>}
+
+              <div className="flex-1 min-w-0 pt-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg sm:text-2xl font-extrabold text-gray-900 leading-tight">{businessName}</h1>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
+                                   px-2 py-0.5 rounded-full flex-shrink-0">
+                    <Check size={10} strokeWidth={3} /> Verified
+                  </span>
+                </div>
+                {tagline && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{tagline}</p>}
+
+                {/* Trust chips */}
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <Chip>🛍️ {products.length} products</Chip>
+                  <Chip>💬 Order on WhatsApp</Chip>
+                  {freeAbove > 0 && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                </div>
               </div>
+
+              {/* WhatsApp CTA (desktop) */}
+              <a href={waLink} target="_blank" rel="noopener noreferrer"
+                 className="hidden sm:inline-flex items-center gap-2 flex-shrink-0 bg-[#25D366] hover:bg-[#1ebe5d]
+                            text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-emerald-500/25
+                            transition-all active:scale-95">
+                <MessageCircle size={16} /> Order on WhatsApp
+              </a>
             </div>
+
+            {/* WhatsApp CTA (mobile) */}
+            <a href={waLink} target="_blank" rel="noopener noreferrer"
+               className="sm:hidden mt-4 flex items-center justify-center gap-2 bg-[#25D366]
+                          text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99]">
+              <MessageCircle size={16} /> Order on WhatsApp
+            </a>
           </div>
         </div>
-      ) : (
-        <div className="w-full px-3 sm:px-4 pt-4 pb-1">
-          <div className="max-w-7xl mx-auto flex items-center gap-3">
-            {logo ? (
-              <img src={logo} alt={businessName}
-                className="w-12 h-12 rounded-2xl object-cover border border-gray-100 shadow-sm flex-shrink-0" />
-            ) : (
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-                   style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}18` }}>
-                {logoEmoji ?? '🏪'}
-              </div>
-            )}
-            <div className="min-w-0">
-              <h1 className="font-extrabold text-gray-900 text-base sm:text-lg leading-tight truncate">{businessName}</h1>
-              {tagline && <p className="text-xs text-gray-400 mt-0.5 truncate">{tagline}</p>}
-            </div>
-          </div>
-        </div>
-      )}
+      </header>
 
       {/* ── Offer ribbon ─────────────────────────────────────────────────── */}
       {promoText && (
-        <div className="w-full px-3 sm:px-4 pt-2 pb-0">
-          <div className="max-w-7xl mx-auto rounded-2xl overflow-hidden"
-               style={{ backgroundColor: `${theme?.primary ?? '#0d9488'}12`, border: `1px solid ${theme?.primary ?? '#0d9488'}25` }}>
-            <div className="flex items-center gap-3 px-4 py-3">
-              <span className="text-xl flex-shrink-0">{promoEmoji ?? '🎉'}</span>
+        <div className="w-full px-3 sm:px-4 mt-4">
+          <div className="max-w-7xl mx-auto relative overflow-hidden rounded-2xl shadow-sm"
+               style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
+            <div className="absolute inset-0"
+                 style={{ opacity: 0.18, backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
+            <div className="relative flex items-center gap-3 px-4 py-3">
+              <span className="text-2xl flex-shrink-0 drop-shadow-sm">{promoEmoji ?? '🎉'}</span>
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-sm text-gray-900 leading-tight">{promoHeading}</p>
-                {promoSubtext && <p className="text-xs text-gray-500 mt-0.5 leading-snug">{promoSubtext}</p>}
+                <p className="font-bold text-sm text-white leading-tight">{promoHeading}</p>
+                {promoSubtext && <p className="text-xs text-white/80 mt-0.5 leading-snug">{promoSubtext}</p>}
               </div>
               <button
                 onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="flex-shrink-0 text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-all active:scale-95"
-                style={{ backgroundColor: theme?.primary ?? '#0d9488' }}>
-                Shop →
+                className="flex-shrink-0 text-xs font-bold px-3.5 py-2 rounded-lg bg-white transition-all active:scale-95 shadow-sm"
+                style={{ color: primaryDark }}>
+                Shop now →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Trust strip ───────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center gap-5 sm:gap-8 overflow-x-auto scrollbar-hide py-2.5">
-            {(features || []).map((f) => (
-              <div key={f.title} className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-base leading-none">{f.emoji}</span>
-                <p className="text-xs font-semibold text-gray-700 whitespace-nowrap">{f.title}</p>
+      {/* ── Feature chips ─────────────────────────────────────────────────── */}
+      {features?.length > 0 && (
+        <div className="w-full px-3 sm:px-4 mt-4">
+          <div className="max-w-7xl mx-auto flex items-stretch gap-2.5 overflow-x-auto scrollbar-hide pb-1">
+            {features.map((f) => (
+              <div key={f.title}
+                className="flex items-center gap-2.5 flex-shrink-0 bg-white border border-gray-100
+                           rounded-2xl pl-2.5 pr-4 py-2 shadow-sm">
+                <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
+                      style={{ background: `${primary}14` }}>
+                  {f.emoji}
+                </span>
+                <div className="leading-tight">
+                  <p className="text-xs font-bold text-gray-800 whitespace-nowrap">{f.title}</p>
+                  {f.desc && <p className="text-[10px] text-gray-400 whitespace-nowrap">{f.desc}</p>}
+                </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div id="products" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8 overflow-hidden">
@@ -337,5 +381,15 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       )}
     </div>
+  );
+}
+
+// Small rounded trust chip used in the store hero.
+function Chip({ children }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600
+                     bg-gray-50 border border-gray-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+      {children}
+    </span>
   );
 }
