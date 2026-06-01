@@ -6,6 +6,12 @@ import { findStoreByPhone } from '../utils/storeService';
 
 const RESEND_SECONDS = 30;
 
+// TEMP: WhatsApp OTP disabled while Seniqify / WhatsApp delivery is down.
+// Flip OTP_ENABLED back to true to restore the send-OTP -> verify flow.
+// The phone is still captured and passed on, so plan selection / onboarding /
+// payment / store creation are all unchanged. (Mirror of the flag in Register.jsx.)
+const OTP_ENABLED = false;
+
 const SIDE_BENEFITS = [
   { icon: '🆓', title: 'Free forever to start',  desc: 'A real, working page — no credit card needed.' },
   { icon: '💬', title: 'Orders on WhatsApp',     desc: 'Every order lands in your chat, neatly itemised.' },
@@ -53,6 +59,14 @@ export default function Start() {
           return;
         }
       }
+      // TEMP: OTP disabled — skip verification, capture the number, continue
+      // to the same place a successful verify would (plan selection).
+      if (!OTP_ENABLED) {
+        sessionStorage.setItem('pocketlink_verified_phone', phone);
+        navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
+        return;
+      }
+
       // Send the OTP via WhatsApp, then move to the verify step
       await sendOtp(phone);
       setStep('otp');
@@ -216,7 +230,7 @@ export default function Start() {
                       {sending ? (
                         <>
                           <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Sending OTP…
+                          {OTP_ENABLED ? 'Sending OTP…' : 'Please wait…'}
                         </>
                       ) : (
                         <>Continue <ArrowRight size={15} /></>
