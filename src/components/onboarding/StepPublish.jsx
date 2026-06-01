@@ -58,7 +58,7 @@ export default function StepPublish({
 
           {/* Store URL */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
-            <p className="text-xs text-gray-400 mb-0.5">Your store URL</p>
+            <p className="text-xs text-gray-400 mb-0.5">Your page URL</p>
             <p className="font-mono text-sm font-semibold text-gray-800">
               {window.location.origin}/<span style={{ color: theme.primary }}>{slug}</span>
             </p>
@@ -70,7 +70,7 @@ export default function StepPublish({
       <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-4 space-y-3">
         <div className="flex items-center gap-2">
           <Lock size={15} className="text-amber-600" />
-          <p className="text-sm font-bold text-amber-800">Set your Store Management PIN</p>
+          <p className="text-sm font-bold text-amber-800">Set your Page Management PIN</p>
         </div>
         <p className="text-xs text-amber-600 leading-relaxed">
           Use this PIN to edit products, add categories, and update settings after launch.
@@ -88,7 +88,7 @@ export default function StepPublish({
                      focus:outline-none focus:ring-2 focus:ring-amber-400"
         />
         <p className="text-[11px] text-amber-500">
-          After launch, manage your store at:{' '}
+          After launch, manage your page at:{' '}
           <span className="font-mono font-semibold">
             {window.location.origin}/{slug}/manage
           </span>
@@ -98,7 +98,7 @@ export default function StepPublish({
       {/* ── What's included ────────────────────────────────────────── */}
       <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 space-y-2">
         {[
-          'Live store page with your branding',
+          'Live business page with your branding',
           'Product catalogue with category filters',
           'Cart with quantity selectors',
           'WhatsApp order flow',
@@ -120,7 +120,7 @@ export default function StepPublish({
 
       {/* ── Terms acceptance notice ────────────────────────────────── */}
       <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-        By launching your store you agree to our{' '}
+        By launching your page you agree to our{' '}
         <Link to="/terms"   className="underline hover:text-gray-600" target="_blank" rel="noopener noreferrer">Terms of Service</Link>
         {' '}and{' '}
         <Link to="/privacy" className="underline hover:text-gray-600" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>.
@@ -145,7 +145,7 @@ export default function StepPublish({
               Saving…
             </>
           ) : (
-            '🚀 Launch My Store'
+            '🚀 Launch My Page'
           )}
         </button>
       </div>

@@ -168,7 +168,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
                  className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold
                             text-white transition-all hover:opacity-90 active:scale-[0.98] shadow-sm"
                  style={{ backgroundColor: themeColor }}>
-                🛍️ Visit store
+                🛍️ Visit page
               </a>
               <Link to={`/${slug}/manage`}
                     className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold

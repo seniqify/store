@@ -775,7 +775,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white
                            transition-all active:scale-[0.98] hover:opacity-90"
                 style={{ backgroundColor: themeColor }}>
-          Preview Store →
+          Preview Page →
         </button>
       </div>
     </div>

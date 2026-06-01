@@ -982,7 +982,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
               {copied ? 'Copied!' : 'Copy link'}
             </button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`Check out my store: ${window.location.origin}/${config.slug}`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(`Check out my page: ${window.location.origin}/${config.slug}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
@@ -1372,7 +1372,7 @@ export default function ManageStore() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/50 flex flex-col items-center justify-center gap-4">
         <div className="w-10 h-10 border-[3px] border-gray-200 border-t-gray-800 rounded-full animate-spin" />
-        <p className="text-sm font-medium text-gray-400">Loading your store…</p>
+        <p className="text-sm font-medium text-gray-400">Loading your page…</p>
       </div>
     );
   }

@@ -76,7 +76,7 @@ export default function NotFound({ slug }) {
                        rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/25"
             style={{ backgroundColor: '#25D366' }}
           >
-            <MessageCircle size={15} /> Create your free store
+            <MessageCircle size={15} /> Create your free page
           </Link>
         </div>
 

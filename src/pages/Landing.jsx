@@ -657,7 +657,7 @@ export default function Landing() {
                            px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200
                            active:scale-[0.98] hover:bg-emerald-50"
               >
-                Create My Free Store
+                Create My Free Page
                 <ArrowRight size={17} />
               </Link>
               <p className="text-emerald-100/80 text-xs mt-4">Join shops across India already selling on WhatsApp</p>
@@ -688,7 +688,7 @@ export default function Landing() {
             <div>
               <p className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Get started</p>
               <ul className="space-y-2 text-sm text-gray-500">
-                <li><Link to="/start" className="hover:text-gray-900 transition-colors">Create free store</Link></li>
+                <li><Link to="/start" className="hover:text-gray-900 transition-colors">Create free page</Link></li>
                 <li><Link to="/plans" className="hover:text-gray-900 transition-colors">Plans</Link></li>
               </ul>
             </div>

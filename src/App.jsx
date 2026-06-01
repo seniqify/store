@@ -40,7 +40,7 @@ function LoadingScreen() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-4">
       <div className="w-10 h-10 border-4 border-brand border-t-transparent
                       rounded-full animate-spin" />
-      <p className="text-sm text-gray-400 font-medium">Loading store…</p>
+      <p className="text-sm text-gray-400 font-medium">Loading page…</p>
     </div>
   );
 }
