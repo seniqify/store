@@ -524,17 +524,28 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Why PocketLink (value props) ─────────────────────────────────── */}
-      <section id="features" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
+      {/* ── Why PocketLink (value props) — DARK ──────────────────────────── */}
+      <section id="features" className="relative px-4 py-20 sm:py-28 bg-[#050a09] text-white overflow-hidden">
+        {/* aurora + grid backdrop */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute top-[-8rem] right-[-6rem] w-[36rem] h-[28rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.34), transparent 65%)' }} />
+          <div className="absolute bottom-[-10rem] left-[-6rem] w-[32rem] h-[30rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.28), transparent 65%)', animationDelay: '6s' }} />
+          <div className="absolute inset-0 opacity-[0.14]"
+               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 35%, black, transparent 75%)' }} />
+        </div>
+
         <div className="max-w-5xl mx-auto">
           <Reveal className="text-center mb-14">
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
-                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
-                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Why PocketLink</p>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              Everything a small shop needs.<br className="hidden sm:block" /> Nothing it doesn't.
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300
+                          bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">Why PocketLink</p>
+            <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
+              Everything a small shop needs.<br className="hidden sm:block" />
+              <span className="text-white/45">Nothing it doesn't.</span>
             </h2>
-            <p className="text-sm sm:text-base text-gray-500 max-w-xl mx-auto">
+            <p className="text-sm sm:text-base text-white/55 max-w-xl mx-auto">
               Built for Indian businesses that sell on WhatsApp — fast, fair and genuinely free to start.
             </p>
           </Reveal>
@@ -544,19 +555,19 @@ export default function Landing() {
               <Reveal
                 key={title}
                 delay={(idx % 3) * 0.08}
-                className="group relative bg-white border border-gray-100 rounded-2xl p-6 shadow-sm overflow-hidden
-                           hover:shadow-xl hover:border-emerald-100 hover:-translate-y-1.5 transition-all duration-300"
+                className="group relative bg-white/[0.04] border border-white/10 rounded-2xl p-6 backdrop-blur-sm overflow-hidden
+                           hover:bg-white/[0.07] hover:border-emerald-400/30 hover:-translate-y-1.5 transition-all duration-300"
               >
                 {/* corner glow on hover */}
-                <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-emerald-300/20 blur-2xl
+                <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-emerald-400/25 blur-2xl
                                 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="relative w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4
-                                bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
+                                bg-emerald-400/10 border border-emerald-400/25
                                 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300">
                   {icon}
                 </div>
-                <h3 className="relative font-extrabold text-gray-900 mb-1.5 text-[15px]">{title}</h3>
-                <p className="relative text-sm text-gray-500 leading-relaxed">{desc}</p>
+                <h3 className="relative font-extrabold text-white mb-1.5 text-[15px]">{title}</h3>
+                <p className="relative text-sm text-white/55 leading-relaxed">{desc}</p>
               </Reveal>
             ))}
           </div>
@@ -605,17 +616,31 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Live demo stores ─────────────────────────────────────────────── */}
-      <section id="demos" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
+      {/* ── Live demo stores — DARK ──────────────────────────────────────── */}
+      <section id="demos" className="relative px-4 py-20 sm:py-28 bg-[#050a09] text-white overflow-hidden">
+        {/* aurora + grid backdrop */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute top-[-8rem] left-[-6rem] w-[34rem] h-[28rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.32), transparent 65%)' }} />
+          <div className="absolute bottom-[-10rem] right-[-6rem] w-[32rem] h-[30rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.28), transparent 65%)', animationDelay: '6s' }} />
+          <div className="absolute inset-0 opacity-[0.14]"
+               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 35%, black, transparent 75%)' }} />
+        </div>
+
         <div className="max-w-5xl mx-auto">
           <Reveal className="text-center mb-12">
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
-                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
-                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">See it in action</p>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              Browse live examples
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300
+                          bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">See it in action</p>
+            <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
+              Browse{' '}
+              <span className="pl-shimmer-text bg-clip-text text-transparent"
+                    style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
+                live examples
+              </span>
             </h2>
-            <p className="text-sm sm:text-base text-gray-500">
+            <p className="text-sm sm:text-base text-white/55">
               Tap any page to explore a real, live example — exactly what your customers see.
             </p>
           </Reveal>
@@ -625,9 +650,9 @@ export default function Landing() {
               <Link
                 key={biz.slug}
                 to={`/demo/${biz.slug}`}
-                className="group bg-white border border-gray-100 hover:border-emerald-200
-                           hover:shadow-xl hover:-translate-y-1 rounded-2xl overflow-hidden
-                           transition-all duration-200 block"
+                className="group bg-white/[0.04] border border-white/10 backdrop-blur-sm hover:border-emerald-400/30
+                           hover:bg-white/[0.07] hover:-translate-y-1 rounded-2xl overflow-hidden
+                           transition-all duration-300 block"
               >
                 {/* Mini cover */}
                 <div
@@ -642,19 +667,18 @@ export default function Landing() {
                 </div>
 
                 <div className="p-5 -mt-8 relative">
-                  <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center text-2xl mb-3 ring-1 ring-gray-100">
+                  <div className="w-12 h-12 rounded-2xl bg-[#0c1512] shadow-lg flex items-center justify-center text-2xl mb-3 ring-1 ring-white/10">
                     {biz.logoEmoji}
                   </div>
-                  <p className="font-bold text-gray-900 text-sm leading-tight truncate">{biz.businessName}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 truncate leading-tight">{biz.tagline}</p>
+                  <p className="font-bold text-white text-sm leading-tight truncate">{biz.businessName}</p>
+                  <p className="text-xs text-white/45 mt-0.5 truncate leading-tight">{biz.tagline}</p>
 
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
                       <ShoppingBag size={13} style={{ color: biz.theme.primary }} />
                       {biz.products.length} products
                     </span>
-                    <span className="inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all"
-                          style={{ color: biz.theme.primary }}>
+                    <span className="inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all text-emerald-300">
                       View <ChevronRight size={13} />
                     </span>
                   </div>
