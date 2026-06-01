@@ -183,111 +183,248 @@ function RotatingWord() {
   );
 }
 
-/* ── A live mini-storefront rendered inside a phone frame ─────────────── */
-function PhoneMockup() {
+/* ══ LIVE PAGE BUILDER ════════════════════════════════════════════════════
+ * The hero's signature interactive: the visitor types their business name and
+ * their storefront materializes inside the phone — themed to their industry
+ * (detected from keywords), with matching products. Idle → auto-demos.
+ * ─────────────────────────────────────────────────────────────────────────*/
+
+// Industry "recipes" — keyword-detected. Each themes the whole phone preview.
+const BIZ_RECIPES = [
+  {
+    key: 'sweets', match: ['sweet', 'mithai', 'bakery', 'cake', 'dessert', 'chocolat'],
+    emoji: '🍬', tagline: 'Fresh sweets, made daily', from: '#f472b6', to: '#db2777',
+    promo: '🎉 Festival Special · 20% off boxes', accent: '#db2777',
+    products: [
+      { e: '🍰', n: 'Kaju Katli', p: '₹450' }, { e: '🧁', n: 'Motichoor', p: '₹380' },
+      { e: '🍮', n: 'Rasmalai', p: '₹260' },  { e: '🍩', n: 'Gulab Jamun', p: '₹220' },
+    ],
+  },
+  {
+    key: 'salon', match: ['salon', 'beauty', 'spa', 'hair', 'glow', 'nails', 'makeup'],
+    emoji: '💇', tagline: 'Look your best, every day', from: '#a78bfa', to: '#7c3aed',
+    promo: '✨ This week · 15% off first visit', accent: '#7c3aed',
+    products: [
+      { e: '💇', n: 'Haircut & Style', p: '₹399' }, { e: '💅', n: 'Manicure', p: '₹299' },
+      { e: '🧖', n: 'Facial', p: '₹699' },          { e: '💆', n: 'Head Massage', p: '₹349' },
+    ],
+  },
+  {
+    key: 'hotel', match: ['hotel', 'stay', 'lodge', 'resort', 'inn', 'rooms', 'homestay', 'sunset'],
+    emoji: '🏨', tagline: 'Your home away from home', from: '#38bdf8', to: '#0284c7',
+    promo: '🌙 Early-bird · 25% off bookings', accent: '#0284c7',
+    products: [
+      { e: '🛏️', n: 'Deluxe Room', p: '₹2,400' }, { e: '🏊', n: 'Pool Suite', p: '₹4,800' },
+      { e: '🌅', n: 'Sea View', p: '₹3,600' },     { e: '👨‍👩‍👧', n: 'Family Room', p: '₹3,200' },
+    ],
+  },
+  {
+    key: 'food', match: ['restaurant', 'cafe', 'kitchen', 'food', 'biryani', 'pizza', 'dhaba', 'tiffin', 'tea'],
+    emoji: '🍽️', tagline: 'Hot & fresh, made to order', from: '#fb923c', to: '#ea580c',
+    promo: '🚚 Free delivery above ₹299', accent: '#ea580c',
+    products: [
+      { e: '🍛', n: 'Veg Biryani', p: '₹180' },  { e: '🍕', n: 'Margherita', p: '₹249' },
+      { e: '🍔', n: 'Paneer Burger', p: '₹149' }, { e: '🥤', n: 'Cold Coffee', p: '₹99' },
+    ],
+  },
+  {
+    key: 'electronics', match: ['electronic', 'mobile', 'gadget', 'computer', 'tech', 'repair', 'digital'],
+    emoji: '📱', tagline: 'Latest tech, best prices', from: '#34d399', to: '#0d9488',
+    promo: '⚡ Mega Sale · up to 40% off', accent: '#0d9488',
+    products: [
+      { e: '🎧', n: 'Earbuds Pro', p: '₹1,999' }, { e: '🔌', n: '65W Charger', p: '₹899' },
+      { e: '⌚', n: 'Smart Watch', p: '₹2,499' },  { e: '🔋', n: 'Power Bank', p: '₹1,299' },
+    ],
+  },
+  {
+    key: 'fashion', match: ['boutique', 'fashion', 'cloth', 'apparel', 'saree', 'wear', 'textile', 'style'],
+    emoji: '👗', tagline: 'Style that speaks for you', from: '#f472b6', to: '#be185d',
+    promo: '🛍️ New arrivals · flat 30% off', accent: '#be185d',
+    products: [
+      { e: '👗', n: 'Anarkali Set', p: '₹1,499' }, { e: '🥻', n: 'Silk Saree', p: '₹2,799' },
+      { e: '👕', n: 'Cotton Kurta', p: '₹799' },   { e: '👜', n: 'Clutch Bag', p: '₹599' },
+    ],
+  },
+];
+
+// Default shown before the user types (also the first auto-demo)
+const DEFAULT_RECIPE = BIZ_RECIPES[0];
+// Names the builder auto-types when idle
+const DEMO_NAMES = ['Sharma Sweets', 'Glow Salon', 'Sunset Hotel', 'Spice Kitchen', 'TechHub Mobiles', 'Bloom Boutique'];
+
+function recipeFor(name) {
+  const n = name.toLowerCase();
+  for (const r of BIZ_RECIPES) {
+    if (r.match.some(k => n.includes(k))) return r;
+  }
+  return null;
+}
+
+function LivePageBuilder() {
+  const [typed, setTyped]     = useState('');     // what's in the input
+  const [auto, setAuto]       = useState(true);   // idle auto-demo running?
+
+  // Auto-demo: type a name, hold, delete, advance to next — until user interacts
+  useEffect(() => {
+    if (!auto) return;
+    let nameIdx = 0, charIdx = 0, mode = 'typing', timer;
+    const tick = () => {
+      const name = DEMO_NAMES[nameIdx];
+      if (mode === 'typing') {
+        charIdx++;
+        setTyped(name.slice(0, charIdx));
+        if (charIdx >= name.length) { mode = 'hold'; timer = setTimeout(tick, 1900); return; }
+        timer = setTimeout(tick, 95);
+      } else if (mode === 'hold') {
+        mode = 'deleting'; timer = setTimeout(tick, 380);
+      } else {
+        charIdx--;
+        setTyped(name.slice(0, Math.max(0, charIdx)));
+        if (charIdx <= 0) { nameIdx = (nameIdx + 1) % DEMO_NAMES.length; mode = 'typing'; timer = setTimeout(tick, 380); return; }
+        timer = setTimeout(tick, 45);
+      }
+    };
+    timer = setTimeout(tick, 700);
+    return () => clearTimeout(timer);
+  }, [auto]);
+
+  const name    = typed.trim();
+  const matched = name ? recipeFor(name) : null;
+  const r       = matched || DEFAULT_RECIPE;
+  const display = name || 'Your Business';
+  const tagline = matched ? r.tagline : 'Type your business name…';
+
   return (
-    <div className="relative mx-auto w-[270px] sm:w-[300px] animate-pl-float">
-      {/* Pulsing glow halo behind the phone */}
-      <div className="absolute -inset-10 rounded-[4rem] blur-3xl animate-pl-glow"
-           style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.55), rgba(45,212,191,0.25) 45%, transparent 70%)' }} />
+    <div className="relative mx-auto w-full max-w-[320px]">
+      {/* Pulsing glow halo */}
+      <div className="absolute -inset-10 rounded-[4rem] blur-3xl animate-pl-glow -z-10"
+           style={{ background: `radial-gradient(circle, ${r.accent}66, rgba(45,212,191,0.18) 45%, transparent 70%)`, transition: 'background 0.6s ease' }} />
 
-      {/* Phone frame */}
-      <div className="relative rounded-[2.6rem] bg-gray-900 p-2.5 shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10">
-        {/* Notch */}
-        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 w-28 h-5 bg-gray-900 rounded-b-2xl" />
+      {/* ── The magic input ─────────────────────────────────────────────── */}
+      <div className="mb-4">
+        <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300/80 mb-2 justify-center lg:justify-start">
+          <Sparkles size={12} /> Try it — type your business name
+        </label>
+        <div className="relative group">
+          <input
+            value={typed}
+            onChange={(e) => { setAuto(false); setTyped(e.target.value.slice(0, 28)); }}
+            onFocus={() => { setAuto(false); setTyped(''); }}
+            placeholder="e.g. Sharma Sweets"
+            aria-label="Type your business name to preview your page"
+            className="w-full bg-white/[0.06] border border-white/20 focus:border-emerald-400/60 rounded-2xl
+                       px-4 py-3 pr-11 text-white placeholder-white/30 text-base font-semibold
+                       backdrop-blur-sm outline-none transition-colors focus:bg-white/[0.09]"
+          />
+          {/* live caret pulse / sparkle */}
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-300 transition-transform group-focus-within:scale-110">
+            {auto
+              ? <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              : <Sparkles size={16} />}
+          </span>
+        </div>
+        {/* detected-industry chip */}
+        <div className="h-5 mt-2 text-center lg:text-left">
+          {matched && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300 animate-pl-fade-up">
+              <Check size={12} /> Detected: {r.key} page — building it live →
+            </span>
+          )}
+        </div>
+      </div>
 
-        {/* Screen */}
-        <div className="relative rounded-[2.1rem] overflow-hidden bg-[#f8fafc] h-[540px]">
+      {/* ── The phone, themed live ──────────────────────────────────────── */}
+      <div className="relative animate-pl-float">
+        <div className="relative rounded-[2.6rem] bg-gray-900 p-2.5 shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10">
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 w-28 h-5 bg-gray-900 rounded-b-2xl" />
 
-          {/* Glass reflection sweep */}
-          <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden rounded-[2.1rem]">
-            <div className="absolute -top-1/2 -left-1/4 w-1/2 h-[200%] bg-gradient-to-r from-transparent via-white/15 to-transparent pl-sheen" />
-          </div>
+          <div className="relative rounded-[2.1rem] overflow-hidden bg-[#f8fafc] h-[520px]">
+            {/* Glass reflection sweep */}
+            <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden rounded-[2.1rem]">
+              <div className="absolute -top-1/2 -left-1/4 w-1/2 h-[200%] bg-gradient-to-r from-transparent via-white/15 to-transparent pl-sheen" />
+            </div>
 
-          {/* Store cover + header */}
-          <div className="relative h-28 bg-gradient-to-br from-emerald-500 to-teal-600">
-            <div className="absolute inset-0 opacity-25"
-                 style={{ backgroundImage: 'radial-gradient(circle, #ffffff55 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
-            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2.5">
-              <div className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center text-xl shadow-lg flex-shrink-0">
-                🍬
+            {/* Cover + header (themed) */}
+            <div className="relative h-28" style={{ background: `linear-gradient(135deg, ${r.from}, ${r.to})`, transition: 'background 0.6s ease' }}>
+              <div className="absolute inset-0 opacity-25"
+                   style={{ backgroundImage: 'radial-gradient(circle, #ffffff55 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
+              <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2.5">
+                <div key={r.key} className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center text-xl shadow-lg flex-shrink-0 animate-pl-pop"
+                     style={{ animationDelay: '0s' }}>
+                  {r.emoji}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white font-extrabold text-sm leading-tight truncate">{display}</p>
+                  <p className="text-white/80 text-[10px] truncate">{tagline}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-white font-extrabold text-sm leading-tight truncate">Sharma Sweets</p>
-                <p className="text-white/80 text-[10px] truncate">Fresh sweets, made daily</p>
+            </div>
+
+            {/* Promo ribbon (themed) */}
+            <div className="mx-3 mt-3 rounded-xl px-3 py-2 flex items-center gap-2 border transition-colors"
+                 style={{ backgroundColor: `${r.accent}12`, borderColor: `${r.accent}30` }}>
+              <span className="text-base">{r.promo.match(/^\S+/)?.[0]}</span>
+              <p className="text-[11px] font-bold leading-tight" style={{ color: r.accent }}>
+                {r.promo.replace(/^\S+\s/, '')}
+              </p>
+            </div>
+
+            {/* Products (themed, re-animate on change) */}
+            <div key={r.key} className="px-3 mt-3 grid grid-cols-2 gap-2.5">
+              {r.products.map((it, idx) => (
+                <div key={it.n} className="rounded-xl bg-white border border-gray-100 p-2 shadow-sm animate-pl-fade-up"
+                     style={{ animationDelay: `${idx * 0.06}s` }}>
+                  <div className="h-14 rounded-lg flex items-center justify-center text-2xl mb-1.5"
+                       style={{ background: `linear-gradient(135deg, ${r.accent}12, ${r.accent}04)` }}>
+                    {it.e}
+                  </div>
+                  <p className="text-[11px] font-bold text-gray-800 leading-tight truncate">{it.n}</p>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <span className="text-[11px] font-extrabold text-gray-900">{it.p}</span>
+                    <span className="w-5 h-5 rounded-md text-white flex items-center justify-center text-xs font-bold leading-none"
+                          style={{ backgroundColor: r.accent }}>+</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* WhatsApp order confirmation */}
+            <div className="absolute bottom-4 left-3 right-3 animate-pl-pop">
+              <div className="rounded-2xl bg-[#25D366] px-3.5 py-3 shadow-xl shadow-emerald-900/30 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <MessageCircle size={16} className="text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-white font-bold text-[11px] leading-tight">Order sent to WhatsApp ✓</p>
+                  <p className="text-white/80 text-[10px] leading-tight truncate">New order for {display}</p>
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Promo ribbon */}
-          <div className="mx-3 mt-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 flex items-center gap-2">
-            <span className="text-base">🎉</span>
-            <p className="text-[11px] font-bold text-amber-800 leading-tight">Diwali Special · 20% off boxes</p>
+        {/* Floating "new order" chip */}
+        <div className="absolute -left-8 top-20 hidden sm:flex animate-pl-float-slow items-center gap-2 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2">
+          <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-60 animate-ping" />
+            <span className="relative text-sm">🛒</span>
+          </span>
+          <div className="leading-tight">
+            <p className="text-[11px] font-extrabold text-gray-800">New order!</p>
+            <p className="text-[10px] text-gray-400">just now</p>
           </div>
+        </div>
 
-          {/* Products */}
-          <div className="px-3 mt-3 grid grid-cols-2 gap-2.5">
-            {[
-              { e: '🍰', n: 'Kaju Katli', p: '₹450' },
-              { e: '🧁', n: 'Motichoor',  p: '₹380' },
-              { e: '🍮', n: 'Rasmalai',   p: '₹260' },
-              { e: '🍩', n: 'Gulab Jamun',p: '₹220' },
-            ].map((it) => (
-              <div key={it.n} className="rounded-xl bg-white border border-gray-100 p-2 shadow-sm">
-                <div className="h-14 rounded-lg bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center text-2xl mb-1.5">
-                  {it.e}
-                </div>
-                <p className="text-[11px] font-bold text-gray-800 leading-tight truncate">{it.n}</p>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className="text-[11px] font-extrabold text-gray-900">{it.p}</span>
-                  <span className="w-5 h-5 rounded-md bg-emerald-500 text-white flex items-center justify-center text-xs font-bold leading-none">+</span>
-                </div>
-              </div>
+        {/* Floating rating chip */}
+        <div className="absolute -right-4 top-8 hidden sm:flex animate-pl-float-slow items-center gap-1.5 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2"
+             style={{ animationDelay: '2s' }}>
+          <div className="flex">
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} size={10} className="text-amber-400 fill-amber-400" />
             ))}
           </div>
-
-          {/* Floating WhatsApp order confirmation */}
-          <div className="absolute bottom-4 left-3 right-3 animate-pl-pop">
-            <div className="rounded-2xl bg-[#25D366] px-3.5 py-3 shadow-xl shadow-emerald-900/30 flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <MessageCircle size={16} className="text-white" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-white font-bold text-[11px] leading-tight">Order sent to WhatsApp ✓</p>
-                <p className="text-white/80 text-[10px] leading-tight truncate">3 items · ₹1,090 · awaiting reply</p>
-              </div>
-            </div>
-          </div>
+          <span className="text-[11px] font-bold text-gray-700">4.9</span>
         </div>
-      </div>
-
-      {/* Floating "new order" chip — top left */}
-      <div className="absolute -left-8 top-20 hidden sm:flex animate-pl-float-slow items-center gap-2 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2">
-        <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-60 animate-ping" />
-          <span className="relative text-sm">🛒</span>
-        </span>
-        <div className="leading-tight">
-          <p className="text-[11px] font-extrabold text-gray-800">New order!</p>
-          <p className="text-[10px] text-gray-400">just now</p>
-        </div>
-      </div>
-
-      {/* Floating "0% commission" chip — bottom right */}
-      <div className="absolute -right-6 bottom-28 hidden sm:flex animate-pl-float items-center gap-1.5 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2">
-        <span className="text-base">💸</span>
-        <span className="text-[11px] font-bold text-gray-700">0% commission</span>
-      </div>
-
-      {/* Floating rating chip — right top */}
-      <div className="absolute -right-4 top-8 hidden sm:flex animate-pl-float-slow items-center gap-1.5 bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 px-3 py-2"
-           style={{ animationDelay: '2s' }}>
-        <div className="flex">
-          {[...Array(5)].map((_, i) => (
-            <Star key={i} size={10} className="text-amber-400 fill-amber-400" />
-          ))}
-        </div>
-        <span className="text-[11px] font-bold text-gray-700">4.9</span>
       </div>
     </div>
   );
@@ -437,9 +574,9 @@ export default function Landing() {
                 </div>
               </div>
 
-              {/* Right: phone */}
+              {/* Right: live page builder */}
               <div className="flex justify-center lg:justify-end pl-rise" style={{ animationDelay: '0.24s' }}>
-                <PhoneMockup />
+                <LivePageBuilder />
               </div>
             </div>
           </div>
