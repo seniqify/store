@@ -25,25 +25,25 @@ export default function Privacy() {
 
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">1. What We Collect</h2>
-            <p><strong>Store owners</strong> provide:</p>
+            <p><strong>Business owners</strong> provide:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Business name, WhatsApp number, and store details entered during onboarding.</li>
+              <li>Business name, WhatsApp number, and business details entered during onboarding.</li>
               <li>Product images (uploaded to our cloud storage).</li>
-              <li>A hashed store management PIN (we never store your raw PIN).</li>
+              <li>A hashed page management PIN (we never store your raw PIN).</li>
             </ul>
             <p className="mt-3"><strong>Customers</strong> who place orders provide:</p>
             <ul className="list-disc list-inside space-y-1">
               <li>Name, mobile number, delivery destination, and payment preference.</li>
-              <li>This data is sent directly to the store owner via WhatsApp. We do not store it.</li>
+              <li>This data is sent directly to the business owner via WhatsApp. We do not store it.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">2. How We Use Your Data</h2>
             <ul className="list-disc list-inside space-y-1">
-              <li>To create and serve your store page.</li>
-              <li>To send product orders to your WhatsApp.</li>
-              <li>To authenticate access to your store management dashboard (PIN).</li>
+              <li>To create and serve your page.</li>
+              <li>To send orders to your WhatsApp.</li>
+              <li>To authenticate access to your dashboard (PIN).</li>
             </ul>
             <p className="mt-2">We do not sell your data or use it for advertising.</p>
           </section>
@@ -51,7 +51,7 @@ export default function Privacy() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">3. Data Storage</h2>
             <p>
-              Store configuration data (business name, products, pricing) is stored in a Supabase
+              Page configuration data (business name, products, pricing) is stored in a Supabase
               PostgreSQL database. Product images are stored in Supabase Object Storage.
               Both services are hosted on AWS infrastructure.
             </p>
@@ -69,7 +69,7 @@ export default function Privacy() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">5. Cookies & Local Storage</h2>
             <p>
-              We use browser localStorage to cache store configuration for faster page loads.
+              We use browser localStorage to cache page configuration for faster page loads.
               We do not use third-party tracking cookies.
             </p>
           </section>
@@ -78,11 +78,11 @@ export default function Privacy() {
             <h2 className="text-lg font-bold text-gray-900 mb-2">6. Your Rights</h2>
             <ul className="list-disc list-inside space-y-1">
               <li>
-                <strong>Delete your store:</strong> You can permanently delete your store and all
-                associated data from the "Settings" tab in your store management dashboard.
+                <strong>Delete your page:</strong> You can permanently delete your page and all
+                associated data from the "Settings" tab in your dashboard.
               </li>
               <li>
-                <strong>Update your data:</strong> Edit your store details anytime from the
+                <strong>Update your data:</strong> Edit your page details anytime from the
                 management dashboard.
               </li>
               <li>
@@ -94,7 +94,7 @@ export default function Privacy() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">7. Security</h2>
             <p>
-              Store management PINs are hashed using SHA-256 before storage — we never store
+              Page management PINs are hashed using SHA-256 before storage — we never store
               raw PINs. All communication between your browser and our servers uses HTTPS.
             </p>
           </section>

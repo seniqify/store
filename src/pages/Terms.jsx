@@ -34,20 +34,20 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">2. Description of Service</h2>
             <p>
-              PocketLink allows Indian businesses to create a storefront page and receive product
+              PocketLink allows Indian businesses to create a business page and receive
               orders via WhatsApp. We do not process payments, hold inventory, or act as a party
-              in any transaction between a store owner and their customers.
+              in any transaction between a business owner and their customers.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">3. Store Owner Responsibilities</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">3. Business Owner Responsibilities</h2>
             <ul className="list-disc list-inside space-y-1">
-              <li>You are solely responsible for the accuracy of your store's content.</li>
+              <li>You are solely responsible for the accuracy of your page's content.</li>
               <li>You must comply with all applicable Indian laws and GST regulations.</li>
               <li>You must not list prohibited or illegal products.</li>
-              <li>You are responsible for fulfilling orders placed through your store.</li>
-              <li>Keep your store management PIN confidential.</li>
+              <li>You are responsible for fulfilling orders placed through your page.</li>
+              <li>Keep your page management PIN confidential.</li>
             </ul>
           </section>
 
@@ -58,14 +58,14 @@ export default function Terms() {
               <li>Sell counterfeit, illegal, or harmful products.</li>
               <li>Spam, deceive, or defraud customers.</li>
               <li>Attempt to hack, overload, or reverse-engineer the Platform.</li>
-              <li>Create stores with misleading brand names or impersonate others.</li>
+              <li>Create pages with misleading brand names or impersonate others.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">5. Intellectual Property</h2>
             <p>
-              The PocketLink brand, logo, and Platform code are owned by us. Store owners retain
+              The PocketLink brand, logo, and Platform code are owned by us. Business owners retain
               ownership of the content they upload (product names, images, descriptions).
               By uploading content you grant us a non-exclusive licence to host and display it
               on the Platform.
@@ -92,7 +92,7 @@ export default function Terms() {
           <section>
             <h2 className="text-lg font-bold text-gray-900 mb-2">8. Termination</h2>
             <p>
-              We reserve the right to suspend or terminate any store that violates these Terms,
+              We reserve the right to suspend or terminate any page that violates these Terms,
               with or without notice.
             </p>
           </section>

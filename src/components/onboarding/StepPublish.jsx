@@ -16,8 +16,8 @@ export default function StepPublish({
     <div className="space-y-6">
 
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">Your store is ready</h2>
-        <p className="text-sm text-gray-500 mt-1">Review and launch your store.</p>
+        <h2 className="text-xl font-extrabold text-gray-900">Your page is ready</h2>
+        <p className="text-sm text-gray-500 mt-1">Review and launch your business page.</p>
       </div>
 
       {/* ── Store preview card ──────────────────────────────────────── */}

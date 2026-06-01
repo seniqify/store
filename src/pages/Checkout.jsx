@@ -174,7 +174,7 @@ export default function Checkout() {
             {[
               { n: '1', title: 'Pay securely',            desc: 'UPI · Cards · Net Banking · Wallets' },
               { n: '2', title: 'Plan activates instantly', desc: 'No manual confirmation needed'        },
-              { n: '3', title: 'Create your store',        desc: 'Jump straight into onboarding'        },
+              { n: '3', title: 'Create your page',         desc: 'Jump straight into onboarding'        },
             ].map(({ n, title, desc }) => (
               <div key={n} className="flex items-start gap-3">
                 <span className="w-5 h-5 rounded-full text-[11px] font-bold flex items-center

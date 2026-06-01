@@ -64,7 +64,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
       <div>
         <h2 className="text-xl font-extrabold text-gray-900">Your business</h2>
         <p className="text-sm text-gray-500 mt-1">
-          This is what customers will see on your store page.
+          This is what customers will see on your page.
         </p>
       </div>
 
@@ -122,7 +122,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
       {/* Store icon */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Store Icon
+          Business Icon
         </label>
         <div className="flex flex-wrap gap-2">
           {LOGO_EMOJIS.map(emoji => (
@@ -199,14 +199,14 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
           ))}
         </div>
         <p className="mt-1.5 text-xs text-gray-400">
-          Used for buttons and highlights on your store page.
+          Used for buttons and highlights on your page.
         </p>
       </div>
 
       {/* Cover image */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Store Cover Photo <span className="font-normal text-gray-400">(optional)</span>
+          Cover Photo <span className="font-normal text-gray-400">(optional)</span>
         </label>
         {data.coverImage ? (
           <div className="relative">
@@ -272,7 +272,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
                      focus:ring-2 focus:ring-gray-300 font-mono tracking-wide"
         />
         <p className="mt-1 text-xs text-gray-400">
-          Shown in your store footer for customer reference.
+          Shown in your page footer for customer reference.
         </p>
       </div>
 

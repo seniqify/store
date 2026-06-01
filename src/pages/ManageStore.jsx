@@ -256,7 +256,7 @@ function PinGate({ slug, onVerified }) {
         {/* ── LOGIN MODE ───────────────────────────────────────────────────── */}
         {mode === 'login' && (
           <>
-            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Store Management</h1>
+            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Page Management</h1>
             <p className="text-sm text-gray-500 text-center mb-6">Enter your 4-digit PIN to continue</p>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -290,7 +290,7 @@ function PinGate({ slug, onVerified }) {
           <>
             <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Reset Your PIN</h1>
             <p className="text-sm text-gray-500 text-center mb-6">
-              Enter the WhatsApp number linked to this store to verify ownership.
+              Enter the WhatsApp number linked to this page to verify ownership.
             </p>
 
             <form onSubmit={handleRecover} className="space-y-3">
@@ -376,7 +376,7 @@ function PinGate({ slug, onVerified }) {
           <Link to={`/${slug}`}
                 className="flex items-center justify-center gap-1.5 mt-5
                            text-sm text-gray-400 hover:text-gray-600 transition-colors">
-            <ArrowLeft size={14} /> Back to store
+            <ArrowLeft size={14} /> Back to page
           </Link>
         )}
       </div>
@@ -960,7 +960,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         <div className="relative">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-white/80 mb-1.5 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-            Your store is live — share it
+            Your page is live — share it
           </p>
           <a
             href={`/${config.slug}`}
@@ -974,7 +974,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             <button
               type="button"
               onClick={copyStoreUrl}
-              title="Copy store link"
+              title="Copy page link"
               className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
                          bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-colors"
             >
@@ -1101,7 +1101,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
           {/* Store icon (logoEmoji) */}
           <div>
-            <label className={lCls()}>Store Icon</label>
+            <label className={lCls()}>Business Icon</label>
             <div className="flex flex-wrap gap-2">
               {['🏪','📱','🔌','⚙️','🧵','🏭','🛒','📦','💎','🌿','🔧','🍽️','🚗','💼','👕','🎯','🔩','🌾'].map(emoji => (
                 <button key={emoji} type="button"
@@ -1268,13 +1268,13 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
                        hover:bg-red-50 px-4 py-2.5 rounded-xl transition-all"
           >
             <Trash2 size={14} />
-            Delete this store
+            Delete this page
           </button>
         ) : (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
             <p className="text-sm font-semibold text-red-800">⚠️ This action is permanent</p>
             <p className="text-xs text-red-600 leading-relaxed">
-              Deleting your store will remove all products, categories, and settings from our database.
+              Deleting your page will remove all products, categories, and settings from our database.
               This cannot be undone. Enter your PIN to confirm.
             </p>
             <form onSubmit={handleDelete} className="space-y-2">
@@ -1300,7 +1300,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
                   {deleting ? (
                     <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Deleting…</>
                   ) : (
-                    <><Trash2 size={13} /> Delete Store</>
+                    <><Trash2 size={13} /> Delete Page</>
                   )}
                 </button>
               </div>
@@ -1384,8 +1384,8 @@ export default function ManageStore() {
         <div className="absolute -z-10 top-[-6rem] right-[-6rem] w-96 h-96 rounded-full bg-emerald-300/20 blur-3xl animate-pl-blob" />
         <div className="text-center space-y-3 animate-pl-fade-up">
           <p className="text-5xl">🔍</p>
-          <p className="text-xl font-extrabold text-gray-900">Store not found</p>
-          <p className="text-sm text-gray-500">No store with slug “{businessSlug}” exists.</p>
+          <p className="text-xl font-extrabold text-gray-900">Page not found</p>
+          <p className="text-sm text-gray-500">No page with slug “{businessSlug}” exists.</p>
           <Link to="/" className="inline-flex items-center gap-1.5 mt-3 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
             <ArrowLeft size={14} /> Back to home
           </Link>
@@ -1423,7 +1423,7 @@ export default function ManageStore() {
               <p className="text-sm font-bold text-gray-900 truncate leading-tight">{config.businessName}</p>
               <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                Store live · Management
+                Page live · Manage
               </p>
             </div>
           </div>
@@ -1434,7 +1434,7 @@ export default function ManageStore() {
                            hover:opacity-90 active:scale-95 shadow-sm"
                 style={{ backgroundColor: themeColor }}>
             <ArrowLeft size={12} />
-            View Store
+            View page
           </Link>
         </div>
       </header>

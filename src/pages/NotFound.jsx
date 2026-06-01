@@ -43,14 +43,14 @@ export default function NotFound({ slug }) {
 
         {/* Heading */}
         <h1 className="text-2xl font-extrabold text-gray-900 mb-2 tracking-tight">
-          {slug ? 'This store is closed' : 'Page not found'}
+          {slug ? 'This page isn’t live' : 'Page not found'}
         </h1>
 
         {/* Message */}
         <p className="text-gray-500 text-sm mb-8 leading-relaxed max-w-sm mx-auto">
           {slug ? (
             <>
-              No store lives at{' '}
+              No page lives at{' '}
               <code className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded-md font-mono text-xs">
                 /{slug}
               </code>

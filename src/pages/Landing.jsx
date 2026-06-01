@@ -26,8 +26,8 @@ const HOW_IT_WORKS = [
   {
     icon: '🔗',
     step: '02',
-    title: 'Share your store link',
-    desc: 'Your store goes live instantly. Drop the link on WhatsApp, Instagram bio, or anywhere your customers already are.',
+    title: 'Share your link',
+    desc: 'Your page goes live instantly. Drop the link on WhatsApp, Instagram bio, or anywhere your customers already are.',
   },
   {
     icon: '💬',
@@ -38,12 +38,12 @@ const HOW_IT_WORKS = [
 ];
 
 const VALUE_PROPS = [
-  { icon: '🚫', title: 'No app downloads',     desc: 'Your store opens in any browser. Customers order through WhatsApp — which they already have.' },
+  { icon: '🚫', title: 'No app downloads',     desc: 'Your page opens in any browser. Customers order through WhatsApp — which they already have.' },
   { icon: '💸', title: '0% commission',        desc: 'Keep every rupee. We never take a cut of your sales, unlike marketplaces and food apps.' },
-  { icon: '🎨', title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five store templates tuned for different businesses.' },
+  { icon: '🎨', title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { icon: '🧾', title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { icon: '⚡', title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { icon: '🆓', title: 'Free to start',        desc: 'Launch a real, working store on the free plan. Upgrade only when you outgrow it.' },
+  { icon: '🆓', title: 'Free to start',        desc: 'Launch a real, working page on the free plan. Upgrade only when you outgrow it.' },
 ];
 
 const USE_CASES = [
@@ -57,7 +57,7 @@ const USE_CASES = [
 const TESTIMONIALS = [
   { emoji: '👩🏽‍🍳', name: 'Priya Sharma',  biz: 'Sharma Sweets, Jaipur',     quote: 'Set up my sweet shop in one evening. Festival orders now come straight to WhatsApp — no more lost messages.' },
   { emoji: '👨🏽‍🔧', name: 'Imran Khan',    biz: 'QuickFix Repairs, Delhi',   quote: 'My customers just tap the link and book. Zero commission means I keep everything I earn.' },
-  { emoji: '👩🏽‍💼', name: 'Anjali Rao',     biz: 'Bloom Boutique, Bengaluru', quote: 'It looks like an expensive website but it was free and took ten minutes. My Instagram bio finally has a real store.' },
+  { emoji: '👩🏽‍💼', name: 'Anjali Rao',     biz: 'Bloom Boutique, Bengaluru', quote: 'It looks like an expensive website but it was free and took ten minutes. My Instagram bio finally has a real business page.' },
 ];
 
 const STATS = [
@@ -188,7 +188,7 @@ export default function Landing() {
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = WA)}
           >
             <MessageCircle size={14} />
-            Create Free Store
+            Create Free Page
           </Link>
         </div>
       </nav>
@@ -218,7 +218,7 @@ export default function Landing() {
                 Turn WhatsApp into<br className="hidden sm:block" />{' '}
                 <span className="relative inline-block">
                   <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
-                    your online store
+                    your business page
                   </span>
                   <svg className="absolute -bottom-2 left-0 w-full" height="10" viewBox="0 0 200 10" preserveAspectRatio="none" aria-hidden="true">
                     <path d="M2 7 Q 50 2, 100 6 T 198 5" stroke="#25D366" strokeWidth="3" fill="none" strokeLinecap="round" />
@@ -227,7 +227,7 @@ export default function Landing() {
               </h1>
 
               <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed">
-                PocketLink gives any small business a beautiful storefront — shareable in one link,
+                PocketLink gives any small business a beautiful page — shareable in one link,
                 with orders landing straight in your WhatsApp. No app, no code, no commission.
               </p>
 
@@ -241,7 +241,7 @@ export default function Landing() {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = WA_DARK)}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = WA)}
                 >
-                  Create My Free Store
+                  Create My Free Page
                   <ArrowRight size={17} />
                 </Link>
                 <a
@@ -372,7 +372,7 @@ export default function Landing() {
           <div className="text-center mb-12">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Built for every business</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              One platform, five tailored stores
+              One platform, five tailored pages
             </h2>
             <p className="text-sm sm:text-base text-gray-500">
               Pick your business type and PocketLink sets up the right layout and ordering flow.
@@ -411,10 +411,10 @@ export default function Landing() {
           <div className="text-center mb-12">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">See it in action</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              Browse real demo stores
+              Browse live examples
             </h2>
             <p className="text-sm sm:text-base text-gray-500">
-              Tap any store, browse products and try the cart — this is exactly what your customers see.
+              Tap any page to explore a real, live example — exactly what your customers see.
             </p>
           </div>
 
@@ -515,7 +515,7 @@ export default function Landing() {
               {
                 name: 'Free', price: 0, popular: false, color: '#374151',
                 to: '/start', cta: 'Start Free',
-                features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable store link', 'GST-inclusive pricing'],
+                features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
                 caveat: '“Powered by PocketLink” badge',
               },
               {
@@ -607,14 +607,14 @@ export default function Landing() {
           </div>
           <div className="space-y-3">
             {[
-              { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working store with up to 2 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
-              { q: 'Do my customers need to download anything?', a: 'No app needed. Your store opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
+              { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working page with up to 2 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
+              { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
-              { q: 'What is the “Powered by PocketLink” badge?', a: 'Free stores show a small “Powered by PocketLink” link at the bottom of the storefront. It disappears on Pro and higher plans.' },
+              { q: 'What is the “Powered by PocketLink” badge?', a: 'Free pages show a small “Powered by PocketLink” link at the bottom of the page. It disappears on Pro and higher plans.' },
               { q: 'How do paid plans get activated?', a: 'Complete payment and send us a WhatsApp confirmation with your transaction ID. We activate your plan within 2–4 hours. Automated billing is on our roadmap.' },
-              { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your store management dashboard. All your products, settings and store link remain exactly the same.' },
-              { q: 'How do I delete my store?', a: 'Go to Settings in your store management dashboard to permanently delete your store and all associated data at any time.' },
+              { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
+              { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
             ].map(({ q, a }) => (
               <details key={q} className="group bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-gray-200 transition-colors">
                 <summary className="flex items-center justify-between px-5 py-4 cursor-pointer
@@ -673,7 +673,7 @@ export default function Landing() {
             <div className="col-span-2 sm:col-span-1">
               <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto mb-3" />
               <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
-                Helping small businesses go digital — simple online stores, orders on WhatsApp. 🌍
+                Helping small businesses go digital — simple business pages, orders on WhatsApp. 🌍
               </p>
             </div>
             <div>

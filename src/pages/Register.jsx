@@ -184,7 +184,7 @@ export default function Register() {
               <MessageCircle size={22} className="text-[#25D366]" />
             </div>
             <h1 className="text-xl font-extrabold text-gray-900">
-              {phase === 'phone' ? 'Create your free store' : 'Enter your OTP'}
+              {phase === 'phone' ? 'Create your free page' : 'Enter your OTP'}
             </h1>
             <p className="text-sm text-gray-500 leading-snug">
               {phase === 'phone'

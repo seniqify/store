@@ -27,7 +27,7 @@ const PRICING = {
 const FREE_FEATURES  = [
   '2 products · 1 category',
   'WhatsApp order messages',
-  'Shareable store link',
+  'Shareable page link',
   'GST-ready pricing',
   'UPI + Bank + COD',
 ];
@@ -39,7 +39,7 @@ const PRO_FEATURES   = [
   'Zero per-order cost — WhatsApp is always free',
   'No blocking risk — customers come to you',
   'Share one link on bio, status, everywhere',
-  'Promo banners & store announcements',
+  'Promo banners & page announcements',
   'Order history to track & re-engage',
   'Email support',
 ];
@@ -57,7 +57,7 @@ const BIZ_FEATURES   = [
 
 // ── All-plan universal features ───────────────────────────────────────────────
 const UNIVERSAL = [
-  { icon: '🔗', text: 'Shareable store link' },
+  { icon: '🔗', text: 'Shareable page link' },
   { icon: '💬', text: 'WhatsApp orders'       },
   { icon: '📱', text: 'Mobile-first design'   },
   { icon: '⚡', text: 'Live in 2 minutes'     },

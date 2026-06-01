@@ -226,7 +226,7 @@ export default function Footer() {
                        transition-colors duration-150"
           >
             <Settings size={11} />
-            <span>Manage Store</span>
+            <span>Manage page</span>
           </Link>
         )}
       </div>

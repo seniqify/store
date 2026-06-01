@@ -7,7 +7,7 @@ import { findStoreByPhone } from '../utils/storeService';
 const RESEND_SECONDS = 30;
 
 const SIDE_BENEFITS = [
-  { icon: '🆓', title: 'Free forever to start',  desc: 'A real, working store — no credit card needed.' },
+  { icon: '🆓', title: 'Free forever to start',  desc: 'A real, working page — no credit card needed.' },
   { icon: '💬', title: 'Orders on WhatsApp',     desc: 'Every order lands in your chat, neatly itemised.' },
   { icon: '⚡', title: 'Live in 2 minutes',      desc: 'No code, no designers. Share your link instantly.' },
 ];
@@ -114,7 +114,7 @@ export default function Start() {
               </span>
             </h1>
             <p className="text-gray-500 text-base leading-relaxed mb-8 max-w-md">
-              Enter your WhatsApp number to begin. We’ll set up a beautiful storefront that sends every
+              Enter your WhatsApp number to begin. We’ll set up a beautiful business page that sends every
               order straight to your chat.
             </p>
             <ul className="space-y-4">
@@ -142,10 +142,10 @@ export default function Start() {
                   <div className="text-4xl">🏪</div>
                   <div>
                     <h1 className="text-xl font-extrabold text-gray-900">
-                      Store already linked
+                      Page already linked
                     </h1>
                     <p className="text-sm text-gray-500 mt-2 leading-snug">
-                      This WhatsApp number already has a store.
+                      This WhatsApp number already has a page.
                     </p>
                   </div>
                   <a
@@ -154,7 +154,7 @@ export default function Start() {
                                text-sm font-bold text-white bg-[#25D366] hover:bg-[#1ebe5d]
                                transition-colors active:scale-[0.98]"
                   >
-                    Go to My Store →
+                    Go to my page →
                   </a>
                   <button
                     onClick={() => { setStep('phone'); setDigits(''); setExistSlug(''); }}
@@ -311,7 +311,7 @@ export default function Start() {
               )}
 
               <p className="text-center text-xs text-gray-400">
-                Already have a store?{' '}
+                Already have a page?{' '}
                 <Link to="/" className="text-emerald-600 font-semibold hover:underline">
                   Back to home →
                 </Link>

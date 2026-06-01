@@ -50,7 +50,7 @@ function LaunchSuccess({ slug, pin, themeColor }) {
   const storeUrl  = `${window.location.origin}/${slug}`;
   const manageUrl = `${window.location.origin}/${slug}/manage`;
   const waText    = encodeURIComponent(
-    `🎉 My new WhatsApp store is live!\n\nBrowse & order here:\n${storeUrl}`
+    `🎉 My new business page is live!\n\nBrowse & order here:\n${storeUrl}`
   );
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=${encodeURIComponent(storeUrl)}`;
 
@@ -114,8 +114,8 @@ function LaunchSuccess({ slug, pin, themeColor }) {
             <div className="w-20 h-20 mx-auto rounded-full bg-white flex items-center justify-center text-4xl shadow-lg animate-pl-pop">
               🎉
             </div>
-            <h1 className="text-2xl font-extrabold mt-4 tracking-tight">Your store is live!</h1>
-            <p className="text-sm text-white/80 mt-1">Congratulations — you're open for orders.</p>
+            <h1 className="text-2xl font-extrabold mt-4 tracking-tight">Your page is live!</h1>
+            <p className="text-sm text-white/80 mt-1">Congratulations — you're open for business.</p>
           </div>
         </div>
 
@@ -127,13 +127,13 @@ function LaunchSuccess({ slug, pin, themeColor }) {
             <div className="flex gap-4 items-center">
               {!qrError && (
                 <div className="flex-shrink-0 p-1.5 bg-white rounded-xl border border-gray-100 shadow-sm">
-                  <img src={qrUrl} alt="Store QR code" width={80} height={80}
+                  <img src={qrUrl} alt="Page QR code" width={80} height={80}
                        className="w-20 h-20 rounded-md block"
                        onError={() => setQrError(true)} />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-widest mb-1">Your store link</p>
+                <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-widest mb-1">Your page link</p>
                 <p className="font-mono text-sm font-bold text-gray-800 break-all leading-snug mb-2.5">
                   {storeUrl}
                 </p>
@@ -249,7 +249,7 @@ export default function Onboarding() {
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {
-      setSaveError(err.message || 'Failed to save store. Please try again.');
+      setSaveError(err.message || 'Failed to save your page. Please try again.');
       setSaving(false);
     }
   }

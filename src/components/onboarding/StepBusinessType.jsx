@@ -37,7 +37,7 @@ export default function StepBusinessType({ selected, onSelect, onNext }) {
       <div className="text-center">
         <p className="text-2xl mb-2">👋</p>
         <h2 className="text-xl font-extrabold text-gray-900">What type of business are you?</h2>
-        <p className="text-sm text-gray-500 mt-1">This sets up the right workflow for your store.</p>
+        <p className="text-sm text-gray-500 mt-1">This sets up the right layout for your business page.</p>
       </div>
 
       <div className="space-y-3">
