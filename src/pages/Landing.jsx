@@ -1033,22 +1033,38 @@ export default function Landing() {
               { q: 'How do paid plans get activated?', a: 'Complete payment and send us a WhatsApp confirmation with your transaction ID. We activate your plan within 2–4 hours. Automated billing is on our roadmap.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
               { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
-            ].map(({ q, a }) => (
-              <details key={q} className="group bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-gray-200 transition-colors">
-                <summary className="flex items-center justify-between px-5 py-4 cursor-pointer
-                                    font-semibold text-sm text-gray-900 list-none
-                                    [&::-webkit-details-marker]:hidden select-none">
-                  {q}
-                  <span className="text-emerald-500 transition-transform duration-200 group-open:rotate-45 flex-shrink-0 ml-3 text-xl leading-none">
-                    +
-                  </span>
-                </summary>
-                <p className="px-5 pb-4 text-sm text-gray-500 leading-relaxed">
-                  {a}
-                </p>
-              </details>
+            ].map(({ q, a }, idx) => (
+              <Reveal key={q} delay={Math.min(idx, 4) * 0.05}>
+                <details className="group bg-white border border-gray-100 rounded-2xl shadow-sm
+                                    open:shadow-lg open:border-emerald-100 hover:border-emerald-100 transition-all duration-200">
+                  <summary className="flex items-center justify-between gap-3 px-5 py-4 cursor-pointer
+                                      font-bold text-[15px] text-gray-900 list-none
+                                      [&::-webkit-details-marker]:hidden select-none">
+                    {q}
+                    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-50 text-emerald-600
+                                     flex items-center justify-center text-lg leading-none font-light
+                                     transition-all duration-300 group-open:rotate-45 group-open:bg-emerald-500 group-open:text-white">
+                      +
+                    </span>
+                  </summary>
+                  <p className="px-5 pb-5 -mt-1 text-sm text-gray-500 leading-relaxed">
+                    {a}
+                  </p>
+                </details>
+              </Reveal>
             ))}
           </div>
+
+          {/* Still have questions? */}
+          <Reveal delay={0.1} className="mt-8 text-center">
+            <div className="inline-flex flex-col sm:flex-row items-center gap-3 bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4">
+              <span className="text-sm text-gray-500">Still have a question?</span>
+              <a href="mailto:hello@pocketlink.store"
+                 className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-600 hover:text-emerald-700 transition-colors">
+                <MessageCircle size={15} /> Talk to us
+              </a>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -1087,44 +1103,60 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <footer className="border-t border-gray-100 bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 py-12">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-10">
+      {/* ── Footer (premium dark finish) ─────────────────────────────────── */}
+      <footer className="relative bg-[#050a09] text-white overflow-hidden">
+        {/* subtle aurora + grid */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute bottom-[-12rem] left-1/2 -translate-x-1/2 w-[44rem] h-[24rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.22), transparent 65%)' }} />
+          <div className="absolute inset-0 opacity-[0.12]"
+               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 70% 80% at 50% 100%, black, transparent 75%)' }} />
+        </div>
+
+        <div className="max-w-6xl mx-auto px-4 py-14">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2 sm:col-span-1">
-              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto mb-3" />
-              <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
+              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto mb-4 brightness-0 invert" />
+              <p className="text-xs text-white/45 leading-relaxed max-w-[210px] mb-4">
                 Helping small businesses go digital — simple business pages, orders on WhatsApp. 🌍
               </p>
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300
+                              bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                </span>
+                Made in India 🇮🇳
+              </div>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Product</p>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><a href="#how" className="hover:text-gray-900 transition-colors">How it works</a></li>
-                <li><a href="#features" className="hover:text-gray-900 transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a></li>
-                <li><a href="#demos" className="hover:text-gray-900 transition-colors">Live demos</a></li>
+              <p className="text-[11px] font-bold text-white/40 uppercase tracking-widest mb-4">Product</p>
+              <ul className="space-y-2.5 text-sm text-white/60">
+                <li><a href="#how" className="hover:text-emerald-300 transition-colors">How it works</a></li>
+                <li><a href="#features" className="hover:text-emerald-300 transition-colors">Features</a></li>
+                <li><a href="#pricing" className="hover:text-emerald-300 transition-colors">Pricing</a></li>
+                <li><a href="#demos" className="hover:text-emerald-300 transition-colors">Live demos</a></li>
               </ul>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Get started</p>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><Link to="/start" className="hover:text-gray-900 transition-colors">Create free page</Link></li>
-                <li><Link to="/plans" className="hover:text-gray-900 transition-colors">Plans</Link></li>
+              <p className="text-[11px] font-bold text-white/40 uppercase tracking-widest mb-4">Get started</p>
+              <ul className="space-y-2.5 text-sm text-white/60">
+                <li><Link to="/start" className="hover:text-emerald-300 transition-colors">Create free page</Link></li>
+                <li><Link to="/plans" className="hover:text-emerald-300 transition-colors">Plans</Link></li>
               </ul>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Company</p>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><Link to="/terms" className="hover:text-gray-900 transition-colors">Terms of Service</Link></li>
-                <li><Link to="/privacy" className="hover:text-gray-900 transition-colors">Privacy Policy</Link></li>
-                <li><a href="mailto:hello@pocketlink.store" className="hover:text-gray-900 transition-colors">Contact us</a></li>
+              <p className="text-[11px] font-bold text-white/40 uppercase tracking-widest mb-4">Company</p>
+              <ul className="space-y-2.5 text-sm text-white/60">
+                <li><Link to="/terms" className="hover:text-emerald-300 transition-colors">Terms of Service</Link></li>
+                <li><Link to="/privacy" className="hover:text-emerald-300 transition-colors">Privacy Policy</Link></li>
+                <li><a href="mailto:hello@pocketlink.store" className="hover:text-emerald-300 transition-colors">Contact us</a></li>
               </ul>
             </div>
           </div>
-          <div className="pt-6 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-gray-400">© {new Date().getFullYear()} PocketLink. All rights reserved.</p>
-            <p className="text-xs text-gray-400">Made with 💚 for small businesses</p>
+          <div className="pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-white/40">© {new Date().getFullYear()} PocketLink. All rights reserved.</p>
+            <p className="text-xs text-white/40">Made with 💚 for small businesses</p>
           </div>
         </div>
       </footer>
