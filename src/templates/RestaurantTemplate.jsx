@@ -7,6 +7,7 @@ import { useCart }   from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { calcCartTotals, formatINR } from '../utils/currency';
 import { openRestaurantOrder }       from '../utils/whatsappEngine';
+import PromoBanner                    from '../components/PromoBanner';
 
 const INITIAL_FORM = { name: '', phone: '', orderType: 'delivery', address: '', instructions: '' };
 
@@ -45,6 +46,8 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
   return (
     <div className={['min-h-screen w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}
          style={{ backgroundColor: '#fffbf5' }}>
+
+      <PromoBanner />
 
       {/* ── Hero banner ── */}
       <div className="w-full px-3 sm:px-4 pt-4 pb-2">

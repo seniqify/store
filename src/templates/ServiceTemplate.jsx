@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { openServiceInquiry } from '../utils/whatsappEngine';
+import PromoBanner from '../components/PromoBanner';
 
 const INITIAL_FORM = { name: '', phone: '', services: [], budget: '', notes: '' };
 
@@ -44,6 +45,8 @@ export default function ServiceTemplate({ onCartCountChange }) {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden" style={{ backgroundColor: '#f8faff' }}>
+
+      <PromoBanner maxWidth="max-w-5xl" />
 
       {/* ── Dark elegant hero ── */}
       <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%)' }}>

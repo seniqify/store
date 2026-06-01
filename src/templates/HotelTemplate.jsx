@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { openHotelBooking } from '../utils/whatsappEngine';
+import PromoBanner from '../components/PromoBanner';
 
 const today    = () => new Date().toISOString().split('T')[0];
 const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; };
@@ -41,6 +42,8 @@ export default function HotelTemplate({ onCartCountChange }) {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden" style={{ backgroundColor: '#fdf8f3' }}>
+
+      <PromoBanner maxWidth="max-w-5xl" />
 
       {/* ── Romantic hero ── */}
       <div className="relative overflow-hidden"

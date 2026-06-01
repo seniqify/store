@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { openLeadInquiry } from '../utils/whatsappEngine';
+import PromoBanner from '../components/PromoBanner';
 
 const INITIAL = { name: '', phone: '', email: '', service: '', message: '' };
 
@@ -34,6 +35,8 @@ export default function PortfolioTemplate({ onCartCountChange }) {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-white">
+
+      <PromoBanner maxWidth="max-w-5xl" />
 
       {/* ── Bold dark hero ── */}
       <div style={{ background: 'linear-gradient(135deg, #09090b 0%, #18181b 50%, #09090b 100%)' }}>
