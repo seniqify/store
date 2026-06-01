@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, MessageCircle, Check, Star, Zap,
   Sparkles, ShoppingBag, ChevronRight,
+  Pencil, Share2, QrCode, Copy, Globe,
+  Wallet, Palette, Receipt, Smartphone, Gift,
 } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
 
@@ -16,34 +18,13 @@ import { listBusinesses } from '../utils/BusinessLoader';
 
 const WA = '#25D366';        // WhatsApp green — primary CTA
 
-const HOW_IT_WORKS = [
-  {
-    icon: '📝',
-    step: '01',
-    title: 'Set up your shop',
-    desc: 'Add your business name, products and pricing. No tech skills needed — done in under 2 minutes.',
-  },
-  {
-    icon: '🔗',
-    step: '02',
-    title: 'Share your link',
-    desc: 'Your page goes live instantly. Drop the link on WhatsApp, Instagram bio, or anywhere your customers already are.',
-  },
-  {
-    icon: '💬',
-    step: '03',
-    title: 'Receive orders on WhatsApp',
-    desc: 'Customers browse, add to cart and tap “Send Order”. A neat, structured message lands straight in your WhatsApp.',
-  },
-];
-
 const VALUE_PROPS = [
-  { icon: '🚫', title: 'No app downloads',     desc: 'Your page opens in any browser. Customers order through WhatsApp — which they already have.' },
-  { icon: '💸', title: '0% commission',        desc: 'Keep every rupee. We never take a cut of your sales, unlike marketplaces and food apps.' },
-  { icon: '🎨', title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
-  { icon: '🧾', title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
-  { icon: '⚡', title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { icon: '🆓', title: 'Free to start',        desc: 'Launch a real, working page on the free plan. Upgrade only when you outgrow it.' },
+  { Icon: Smartphone, title: 'No app downloads',     desc: 'Your page opens in any browser. Customers order through WhatsApp — which they already have.' },
+  { Icon: Wallet,     title: '0% commission',        desc: 'Keep every rupee. We never take a cut of your sales, unlike marketplaces and food apps.' },
+  { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
+  { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
+  { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
+  { Icon: Gift,       title: 'Free to start',        desc: 'Launch a real, working page on the free plan. Upgrade only when you outgrow it.' },
 ];
 
 const USE_CASES = [
@@ -180,6 +161,35 @@ function RotatingWord() {
         {word}
       </span>
     </span>
+  );
+}
+
+/* ── A 'How it works' step: mini-UI screen + caption ──────────────────── */
+function HowStep({ n, title, desc, children }) {
+  return (
+    <div className="relative h-full rounded-3xl border border-gray-100 bg-white p-5 shadow-sm
+                    hover:shadow-2xl hover:border-emerald-100 hover:-translate-y-1.5 transition-all duration-300">
+      {/* step number badge */}
+      <div className="absolute -top-3 left-5 z-10">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold
+                         uppercase tracking-wider text-white shadow-lg shadow-emerald-500/30"
+              style={{ background: 'linear-gradient(90deg, #34d399, #0d9488)' }}>
+          Step {n}
+        </span>
+      </div>
+      {/* mini-UI "screen" */}
+      <div className="relative rounded-2xl bg-gray-50/70 border border-gray-100 p-3 mb-4 mt-2 overflow-hidden">
+        {/* faux browser dots */}
+        <div className="flex items-center gap-1 mb-3">
+          <span className="w-2 h-2 rounded-full bg-red-300" />
+          <span className="w-2 h-2 rounded-full bg-amber-300" />
+          <span className="w-2 h-2 rounded-full bg-emerald-300" />
+        </div>
+        {children}
+      </div>
+      <h3 className="font-extrabold text-gray-900 mb-1.5 text-lg tracking-tight">{title}</h3>
+      <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+    </div>
   );
 }
 
@@ -616,47 +626,102 @@ export default function Landing() {
         <div className="h-px bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent" />
       </div>
 
-      {/* ── How it works ─────────────────────────────────────────────────── */}
-      <section id="how" className="px-4 py-16 sm:py-20 bg-white">
-        <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-14">
+      {/* ── How it works — VISUAL FLOW ───────────────────────────────────── */}
+      <section id="how" className="px-4 py-16 sm:py-24 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="text-center mb-16">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
                           bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
                           before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">How it works</p>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              Three steps. You're online.
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">
+              From idea to first order<br className="hidden sm:block" /> in three steps.
             </h2>
-            <p className="text-sm sm:text-base text-gray-500">No designers, no developers, no monthly fee to start.</p>
+            <p className="text-sm sm:text-base text-gray-500">No designers. No developers. No monthly fee to start.</p>
           </Reveal>
 
-          <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-6">
-            {/* connecting gradient line (desktop) */}
-            <div className="hidden sm:block absolute top-[4.5rem] left-[18%] right-[18%] h-0.5
-                            bg-gradient-to-r from-emerald-200 via-emerald-300 to-emerald-200" />
+          <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-5">
+            {/* flow arrows between panels (desktop) */}
+            <div className="hidden lg:flex absolute top-[7.5rem] left-1/3 -translate-x-1/2 z-10 text-emerald-300">
+              <ArrowRight size={26} className="animate-pl-float-slow" />
+            </div>
+            <div className="hidden lg:flex absolute top-[7.5rem] left-2/3 -translate-x-1/2 z-10 text-emerald-300">
+              <ArrowRight size={26} className="animate-pl-float-slow" style={{ animationDelay: '1s' }} />
+            </div>
 
-            {HOW_IT_WORKS.map(({ icon, step, title, desc }, idx) => (
-              <Reveal key={step} delay={idx * 0.12}
-                className="group relative text-center bg-white rounded-3xl border border-gray-100 p-7
-                           shadow-sm hover:shadow-xl hover:border-emerald-100 hover:-translate-y-1 transition-all duration-300">
-                <div className="relative inline-block mb-5">
-                  {/* glow ring */}
-                  <div className="absolute inset-0 rounded-2xl bg-emerald-400/30 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative w-[4.5rem] h-[4.5rem] rounded-2xl flex items-center justify-center text-3xl z-10
-                                  bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
-                                  group-hover:scale-105 transition-transform duration-300">
-                    {icon}
+            {/* STEP 1 — build form */}
+            <Reveal delay={0} className="group">
+              <HowStep n="01" title="Set up in minutes" desc="Add your name, products and prices. Pick a colour. Done — no tech skills needed.">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                    <Pencil size={13} className="text-gray-400" />
+                    <span className="text-[12px] font-semibold text-gray-700">Sharma Sweets</span>
+                    <span className="ml-auto w-1.5 h-3.5 bg-emerald-400 rounded-sm animate-pulse" />
                   </div>
-                  <span className="absolute -top-2.5 -right-2.5 z-20 w-7 h-7
-                                   bg-gradient-to-br from-emerald-500 to-teal-600 text-white
-                                   text-xs font-extrabold rounded-full flex items-center
-                                   justify-center leading-none shadow-lg shadow-emerald-500/30 ring-2 ring-white">
-                    {step}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {['#10b981','#f472b6','#38bdf8','#a78bfa','#fb923c'].map((c, i) => (
+                      <span key={c} className={`w-6 h-6 rounded-full ${i === 0 ? 'ring-2 ring-offset-2 ring-gray-900' : ''}`}
+                            style={{ backgroundColor: c }} />
+                    ))}
+                    <Palette size={14} className="text-gray-300 ml-1" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {[{e:'🍰',n:'Kaju Katli'},{e:'🧁',n:'Motichoor'}].map(p => (
+                      <div key={p.n} className="rounded-lg border border-gray-100 bg-white p-2">
+                        <div className="h-9 rounded bg-gradient-to-br from-pink-50 to-rose-50 flex items-center justify-center text-lg mb-1">{p.e}</div>
+                        <p className="text-[10px] font-bold text-gray-700 truncate">{p.n}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <h3 className="font-extrabold text-gray-900 mb-2 text-lg tracking-tight">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
-              </Reveal>
-            ))}
+              </HowStep>
+            </Reveal>
+
+            {/* STEP 2 — share card with QR */}
+            <Reveal delay={0.12} className="group">
+              <HowStep n="02" title="Share one link" desc="Your page goes live instantly. Drop the link in your WhatsApp status, Insta bio — anywhere.">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                    <Globe size={13} className="text-emerald-500" />
+                    <span className="text-[11px] font-mono font-semibold text-emerald-700 truncate">pocketlink.store/sharma</span>
+                    <Copy size={12} className="text-emerald-400 ml-auto flex-shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 h-16 rounded-xl bg-white border border-gray-200 p-1.5 flex-shrink-0 shadow-sm">
+                      <QrCode size={52} className="text-gray-800" strokeWidth={1.2} />
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-700">
+                        <Share2 size={12} className="text-emerald-500" /> Share anywhere
+                      </div>
+                      <div className="flex gap-1.5">
+                        <span className="w-7 h-7 rounded-lg bg-[#25D366] flex items-center justify-center text-white"><MessageCircle size={13} /></span>
+                        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">IG</span>
+                        <span className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500"><Copy size={13} /></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </HowStep>
+            </Reveal>
+
+            {/* STEP 3 — incoming WhatsApp order */}
+            <Reveal delay={0.24} className="group">
+              <HowStep n="03" title="Orders in your chat" desc="Customers tap “Send Order” and a tidy, itemised message lands straight in your WhatsApp.">
+                <div className="rounded-xl bg-[#e5ddd5] p-2.5 space-y-2"
+                     style={{ backgroundImage: 'radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px)', backgroundSize: '12px 12px' }}>
+                  <div className="ml-auto max-w-[85%] rounded-xl rounded-tr-sm bg-[#dcf8c6] px-2.5 py-2 shadow-sm">
+                    <p className="text-[10px] font-bold text-gray-800 mb-0.5">🛒 New Order · Sharma Sweets</p>
+                    <p className="text-[10px] text-gray-600 leading-snug">2× Kaju Katli · 1× Motichoor<br/>Total: <span className="font-bold">₹1,280</span></p>
+                    <p className="text-[9px] text-gray-500 mt-1">📍 MG Road, Jaipur · COD</p>
+                    <span className="block text-right text-[8px] text-emerald-600 mt-0.5">12:04 ✓✓</span>
+                  </div>
+                  <div className="max-w-[70%] rounded-xl rounded-tl-sm bg-white px-2.5 py-1.5 shadow-sm">
+                    <p className="text-[10px] text-gray-700">Confirmed! Out for delivery 🛵</p>
+                    <span className="block text-right text-[8px] text-gray-400 mt-0.5">12:05</span>
+                  </div>
+                </div>
+              </HowStep>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -688,7 +753,7 @@ export default function Landing() {
           </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {VALUE_PROPS.map(({ icon, title, desc }, idx) => (
+            {VALUE_PROPS.map(({ Icon, title, desc }, idx) => (
               <Reveal
                 key={title}
                 delay={(idx % 3) * 0.08}
@@ -698,10 +763,10 @@ export default function Landing() {
                 {/* corner glow on hover */}
                 <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-emerald-400/25 blur-2xl
                                 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="relative w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4
-                                bg-emerald-400/10 border border-emerald-400/25
+                <div className="relative w-12 h-12 rounded-2xl flex items-center justify-center mb-4
+                                bg-emerald-400/10 border border-emerald-400/25 text-emerald-300
                                 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300">
-                  {icon}
+                  <Icon size={22} strokeWidth={2} />
                 </div>
                 <h3 className="relative font-extrabold text-white mb-1.5 text-[15px]">{title}</h3>
                 <p className="relative text-sm text-white/55 leading-relaxed">{desc}</p>
