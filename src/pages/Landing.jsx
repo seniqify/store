@@ -67,6 +67,31 @@ const STATS = [
   { value: '∞',     label: 'orders, no limits' },
 ];
 
+// Pricing plans (prices/links unchanged — richer presentation fields added)
+const PRICING_PLANS = [
+  {
+    name: 'Free', icon: '🌱', tagline: 'Get started today', accent: '#9ca3af',
+    price: 0, originalPrice: null, priceNote: 'forever · no card needed',
+    popular: false, to: '/start', cta: 'Start Free',
+    features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
+    caveat: '“Powered by PocketLink” badge',
+  },
+  {
+    name: 'Pro', icon: '🚀', tagline: 'For growing businesses', accent: '#34d399',
+    price: 551, originalPrice: 699, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: true, to: '/start?plan=pro', cta: 'Get Pro',
+    features: ['20 products · 5 categories', 'No PocketLink badge — your brand only', 'Zero per-order cost', 'Order history', 'Email support'],
+    caveat: null,
+  },
+  {
+    name: 'Business', icon: '👑', tagline: 'Unlimited, no limits', accent: '#818cf8',
+    price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: false, to: '/start?plan=business', cta: 'Get Business',
+    features: ['Unlimited products & categories', 'Discount codes & coupons', 'Analytics dashboard', 'Product variants', 'Priority support'],
+    caveat: null,
+  },
+];
+
 // Scrolling strip of business types under the hero
 const MARQUEE = [
   { emoji: '🛒', label: 'Kirana & Grocery' },
@@ -682,104 +707,147 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Pricing ──────────────────────────────────────────────────────── */}
-      <section id="pricing" className="px-4 py-16 sm:py-20 bg-gradient-to-b from-gray-50 to-white border-y border-gray-100">
+      {/* ── Pricing (premium dark showcase) ──────────────────────────────── */}
+      <section id="pricing" className="relative px-4 py-20 sm:py-28 bg-[#050a09] text-white overflow-hidden">
+        {/* Aurora + grid backdrop */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute top-[-8rem] left-1/2 -translate-x-1/2 w-[44rem] h-[28rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.4), transparent 65%)' }} />
+          <div className="absolute bottom-[-10rem] right-[-6rem] w-[32rem] h-[32rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.28), transparent 65%)', animationDelay: '7s' }} />
+          <div className="absolute inset-0 opacity-[0.15]"
+               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 30%, black, transparent 75%)' }} />
+        </div>
+
         <div className="max-w-5xl mx-auto">
-          <Reveal className="text-center mb-12">
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
-                          bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
-                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Pricing</p>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-              Simple, honest pricing
+          <Reveal className="text-center mb-14">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300
+                          bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">Pricing</p>
+            <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
+              Pay nothing to start.<br className="hidden sm:block" />
+              <span className="pl-shimmer-text bg-clip-text text-transparent"
+                    style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
+                Upgrade when you grow.
+              </span>
             </h2>
-            <p className="text-sm sm:text-base text-gray-500">
-              Start free. No credit card. Upgrade only when you outgrow the free tier.
+            <p className="text-sm sm:text-base text-white/55 max-w-md mx-auto">
+              No credit card. No commission. No surprises — just one fair price when you're ready.
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6 items-stretch">
-            {[
-              {
-                name: 'Free', price: 0, popular: false, color: '#374151',
-                to: '/start', cta: 'Start Free',
-                features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
-                caveat: '“Powered by PocketLink” badge',
-              },
-              {
-                name: 'Pro', price: 551, originalPrice: 699, popular: true, color: '#0d9488',
-                to: '/start?plan=pro', cta: 'Get Pro',
-                features: ['20 products · 5 categories', 'No PocketLink badge', 'Zero per-order cost', 'Order history', 'Email support'],
-                caveat: null,
-              },
-              {
-                name: 'Business', price: 1000, popular: false, color: '#6366f1',
-                to: '/start?plan=business', cta: 'Get Business',
-                features: ['Unlimited products & categories', 'No badge', 'Discount codes', 'Analytics dashboard', 'Product variants', 'Priority support'],
-                caveat: null,
-              },
-            ].map((plan) => (
-              <div
-                key={plan.name}
-                className={[
-                  'relative rounded-3xl border-2 p-6 flex flex-col bg-white transition-all duration-200',
-                  plan.popular
-                    ? 'border-teal-500 shadow-2xl shadow-teal-500/15 sm:-translate-y-2'
-                    : 'border-gray-100 shadow-sm hover:shadow-md',
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            {PRICING_PLANS.map((plan, idx) => (
+              <Reveal key={plan.name} delay={idx * 0.1}
+                className={plan.popular ? 'lg:-mt-4 lg:-mb-4' : ''}>
+                <div className={[
+                  'relative h-full rounded-3xl p-[1.5px] transition-transform duration-300',
+                  plan.popular ? 'hover:-translate-y-1' : 'hover:-translate-y-1',
                 ].join(' ')}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center gap-1 bg-teal-500 text-white text-[10px] font-bold px-3 py-1
-                                     rounded-full uppercase tracking-wider shadow-sm">
-                      <Zap size={10} className="fill-white" /> Best Value
-                    </span>
-                  </div>
-                )}
-                <h3 className="font-extrabold text-gray-900 text-lg mb-1">{plan.name}</h3>
-                <div className="flex items-baseline gap-2 mb-0.5">
-                  <p className="text-3xl font-extrabold text-gray-900">
-                    {plan.price === 0 ? 'Free' : `₹${plan.price}`}
-                    {plan.price > 0 && <span className="text-sm font-normal text-gray-400">/mo</span>}
-                  </p>
-                  {plan.originalPrice && (
-                    <span className="text-sm text-gray-400 line-through">₹{plan.originalPrice}</span>
+                  style={plan.popular
+                    ? { background: 'linear-gradient(160deg, #34d399, #14b8a6 45%, #0d9488)' }
+                    : { background: 'linear-gradient(160deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04))' }}>
+
+                  {/* Glow behind the popular card */}
+                  {plan.popular && (
+                    <div className="absolute -inset-3 -z-10 rounded-[2rem] bg-emerald-500/25 blur-2xl animate-pl-glow" />
                   )}
-                </div>
-                <p className="text-xs text-gray-400 mb-5 pb-5 border-b border-gray-100">
-                  {plan.price === 0 ? 'forever · no card needed' : '+ GST · billed monthly'}
-                </p>
-                <ul className="space-y-2.5 flex-1 mb-5">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
-                      <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-50 flex items-center justify-center">
-                        <Check size={11} className="text-teal-600" strokeWidth={3} />
+
+                  <div className={[
+                    'relative h-full rounded-3xl p-7 flex flex-col',
+                    plan.popular ? 'bg-[#07110e]' : 'bg-white/[0.03] backdrop-blur-sm',
+                  ].join(' ')}>
+
+                    {/* Badge */}
+                    {plan.popular && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-3 py-1 rounded-full
+                                         uppercase tracking-wider text-white shadow-lg shadow-emerald-500/40"
+                              style={{ background: 'linear-gradient(90deg, #34d399, #0d9488)' }}>
+                          <Zap size={10} className="fill-white" /> Most Popular
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Header */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl flex-shrink-0"
+                           style={{ backgroundColor: `${plan.accent}22`, border: `1px solid ${plan.accent}44` }}>
+                        {plan.icon}
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-white text-lg leading-none">{plan.name}</h3>
+                        <p className="text-[11px] text-white/45 mt-1">{plan.tagline}</p>
+                      </div>
+                    </div>
+
+                    {/* Price */}
+                    <div className="flex items-end gap-2 mb-1">
+                      <span className="text-4xl font-extrabold tracking-tight text-white">
+                        {plan.price === 0 ? 'Free' : `₹${plan.price}`}
                       </span>
-                      {f}
-                    </li>
-                  ))}
-                  {plan.caveat && (
-                    <li className="flex items-start gap-2.5 text-sm text-gray-400">
-                      <span className="mt-0.5 flex-shrink-0 text-gray-300 text-xs">✗</span>
-                      <span className="line-through">{plan.caveat}</span>
-                    </li>
-                  )}
-                </ul>
-                <Link
-                  to={plan.to}
-                  className="block text-center py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 active:scale-[0.98]"
-                  style={{
-                    backgroundColor: plan.popular || plan.name === 'Business' ? plan.color : '#f3f4f6',
-                    color: plan.popular || plan.name === 'Business' ? '#fff' : '#374151',
-                  }}
-                >
-                  {plan.cta}
-                </Link>
-              </div>
+                      {plan.price > 0 && <span className="text-sm text-white/40 mb-1.5">/month</span>}
+                      {plan.originalPrice && (
+                        <span className="text-sm text-white/30 line-through mb-1.5">₹{plan.originalPrice}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-white/45 mb-6 pb-6 border-b border-white/10">
+                      {plan.priceNote}
+                    </p>
+
+                    {/* Features */}
+                    <ul className="space-y-3 flex-1 mb-7">
+                      {plan.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2.5 text-sm text-white/75">
+                          <span className="mt-0.5 flex-shrink-0 w-[18px] h-[18px] rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: `${plan.accent}26` }}>
+                            <Check size={11} strokeWidth={3} style={{ color: plan.accent }} />
+                          </span>
+                          {f}
+                        </li>
+                      ))}
+                      {plan.caveat && (
+                        <li className="flex items-start gap-2.5 text-sm text-white/30">
+                          <span className="mt-0.5 flex-shrink-0 w-[18px] h-[18px] rounded-full bg-white/5 flex items-center justify-center text-[10px]">✗</span>
+                          <span className="line-through">{plan.caveat}</span>
+                        </li>
+                      )}
+                    </ul>
+
+                    {/* CTA */}
+                    <Link
+                      to={plan.to}
+                      className={[
+                        'group/btn relative block text-center py-3.5 rounded-xl text-sm font-bold transition-all',
+                        'active:scale-[0.98] overflow-hidden',
+                        plan.popular
+                          ? 'text-white shadow-lg shadow-emerald-500/30 hover:-translate-y-0.5'
+                          : 'text-white border border-white/15 hover:bg-white/10 hover:border-white/30',
+                      ].join(' ')}
+                      style={plan.popular ? { background: 'linear-gradient(90deg, #25D366, #0d9488)' } : undefined}
+                    >
+                      {plan.popular && (
+                        <span className="absolute inset-0 overflow-hidden rounded-xl">
+                          <span className="absolute top-0 left-0 h-full w-1/3 bg-white/30 blur-md pl-sheen" />
+                        </span>
+                      )}
+                      <span className="relative inline-flex items-center justify-center gap-1.5">
+                        {plan.cta}
+                        <ArrowRight size={15} className="transition-transform group-hover/btn:translate-x-0.5" />
+                      </span>
+                    </Link>
+                  </div>
+                </div>
+              </Reveal>
             ))}
           </div>
-          <p className="text-center text-xs text-gray-400">
-            6-month & yearly plans available at checkout · Cancel anytime
-          </p>
+
+          {/* Trust strip */}
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-white/45">
+            <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> 6-month &amp; yearly plans save more</span>
+            <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> Cancel anytime</span>
+            <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> 0% commission on every plan</span>
+          </div>
         </div>
       </section>
 
