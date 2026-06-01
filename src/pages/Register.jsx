@@ -70,6 +70,12 @@ function OtpInput({ value, onChange, disabled }) {
 }
 
 // â"€â"€ Main component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// TEMP: WhatsApp OTP disabled while Seniqify / WhatsApp delivery is down.
+// Flip OTP_ENABLED back to true to restore the send-OTP -> verify flow.
+// The phone number is still captured and passed to onboarding either way,
+// so payment / store creation / everything downstream is unchanged.
+const OTP_ENABLED = false;
+
 export default function Register() {
   const navigate = useNavigate();
 
@@ -103,6 +109,14 @@ export default function Register() {
   async function handleSendOtp(e) {
     e.preventDefault();
     if (!isValidPhone) { setError('Enter a valid 10-digit WhatsApp number.'); return; }
+
+    // TEMP: OTP disabled — skip verification, capture the number, continue.
+    if (!OTP_ENABLED) {
+      sessionStorage.setItem('pocketlink_verified_phone', fullPhone);
+      navigate('/onboarding', { replace: true });
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -188,7 +202,9 @@ export default function Register() {
             </h1>
             <p className="text-sm text-gray-500 leading-snug">
               {phase === 'phone'
-                ? 'Verify your WhatsApp number to get started.'
+                ? (OTP_ENABLED
+                    ? 'Verify your WhatsApp number to get started.'
+                    : 'Enter your WhatsApp number to get started.')
                 : <>We sent a 6-digit code to <span className="font-semibold text-gray-700">{displayPhone}</span></>
               }
             </p>
@@ -238,7 +254,9 @@ export default function Register() {
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-gray-400">
-                  OTP will be sent to this WhatsApp number.
+                  {OTP_ENABLED
+                    ? 'OTP will be sent to this WhatsApp number.'
+                    : "We'll use this number for your orders on WhatsApp."}
                 </p>
               </div>
 
@@ -261,7 +279,7 @@ export default function Register() {
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white
                                   rounded-full animate-spin" />
                 ) : (
-                  <>Send OTP on WhatsApp <ArrowRight size={15} /></>
+                  <>{OTP_ENABLED ? 'Send OTP on WhatsApp' : 'Continue'} <ArrowRight size={15} /></>
                 )}
               </button>
             </form>
