@@ -3,8 +3,8 @@ import { useBusinessConfig } from '../contexts/BusinessContext';
 /**
  * PromoBanner — renders the store's promo/announcement message (config.promoText).
  *
- * Shared across the business-type templates (Hotel, Restaurant, Service,
- * Portfolio) so the promo set in Manage → Settings shows up everywhere, not
+ * Shared across the business-type templates (Lodges & Stay, Restaurant,
+ * Service) so the promo set in Manage → Settings shows up everywhere, not
  * just on the default product storefront.
  *
  * Format: "🎉 Heading · optional subtitle"

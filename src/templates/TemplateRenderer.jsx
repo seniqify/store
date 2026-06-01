@@ -6,14 +6,12 @@ import ProductTemplate from '../pages/Home';
 const RestaurantTemplate = lazy(() => import('./RestaurantTemplate'));
 const ServiceTemplate    = lazy(() => import('./ServiceTemplate'));
 const HotelTemplate      = lazy(() => import('./HotelTemplate'));
-const PortfolioTemplate  = lazy(() => import('./PortfolioTemplate'));
 
 const TEMPLATES = {
   product:    ProductTemplate,
   restaurant: RestaurantTemplate,
   service:    ServiceTemplate,
   hotel:      HotelTemplate,
-  portfolio:  PortfolioTemplate,
 };
 
 function TemplateFallback() {

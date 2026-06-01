@@ -14,7 +14,6 @@ export default function Header({ cartCount = 0, onCartOpen }) {
   const infoStrip = {
     hotel:      '🛎️ Bookings confirmed instantly on WhatsApp',
     service:    '💬 Free consultation on WhatsApp',
-    portfolio:  '💬 Quick replies on WhatsApp',
     restaurant: '🍽️ Order — confirmed on WhatsApp',
   }[businessType] ?? `🚚 Free delivery above ₹${cart.freeShippingAbove}`;
 

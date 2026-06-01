@@ -31,8 +31,7 @@ const USE_CASES = [
   { emoji: '🛒', label: 'Retail & Wholesale', desc: 'Electronics, groceries, apparel, manufacturers', color: '#0d9488' },
   { emoji: '🍽️', label: 'Restaurants & Food', desc: 'Cafes, cloud kitchens, bakeries, tiffins',        color: '#f97316' },
   { emoji: '🔧', label: 'Services & Agencies', desc: 'Salons, repairs, consultants, home services',     color: '#6366f1' },
-  { emoji: '🏨', label: 'Hotels & Stays',      desc: 'Lodges, resorts, homestays, guest houses',         color: '#0ea5e9' },
-  { emoji: '💼', label: 'Portfolio & Leads',   desc: 'Architects, designers, coaches, freelancers',      color: '#db2777' },
+  { emoji: '🏨', label: 'Lodges & Stay',       desc: 'Lodges, resorts, homestays, guest houses',         color: '#0ea5e9' },
 ];
 
 const TESTIMONIALS = [
@@ -80,7 +79,7 @@ const MARQUEE = [
   { emoji: '🍽️', label: 'Restaurants' },
   { emoji: '💐', label: 'Florists' },
   { emoji: '🔧', label: 'Repairs & Services' },
-  { emoji: '🏨', label: 'Hotels & Stays' },
+  { emoji: '🏨', label: 'Lodges & Stay' },
   { emoji: '👗', label: 'Boutiques' },
   { emoji: '💇', label: 'Salons' },
   { emoji: '💼', label: 'Consultants' },

@@ -20,14 +20,8 @@ const BUSINESS_TYPES = [
   {
     key:   'hotel',
     emoji: '🏨',
-    label: 'Hotel / Lodge',
+    label: 'Lodges & Stay',
     desc:  'Hotels, lodges, resorts, homestays',
-  },
-  {
-    key:   'portfolio',
-    emoji: '💼',
-    label: 'Portfolio / Leads',
-    desc:  'Architects, freelancers, designers, coaches',
   },
 ];
 

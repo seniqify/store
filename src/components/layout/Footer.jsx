@@ -76,13 +76,12 @@ export default function Footer() {
   // Footer copy adapts to the kind of business (default keeps the product-store wording).
   const waCtaLabel = {
     hotel: 'Book on WhatsApp', service: 'Message on WhatsApp',
-    portfolio: 'Message on WhatsApp', restaurant: 'Order on WhatsApp',
+    restaurant: 'Order on WhatsApp',
   }[businessType] ?? 'Order on WhatsApp';
 
   const quickInfo = {
     hotel:      ['🛎️ Bookings confirmed on WhatsApp', '🕐 Flexible check-in & check-out', '🔒 No advance payment needed'],
     service:    ['💬 Free consultation on WhatsApp', '✅ Trusted local professional', '🗓️ Flexible scheduling'],
-    portfolio:  ['💬 Quick replies on WhatsApp', '✅ Custom work welcome', '🤝 Open to collaborations'],
     restaurant: ['🍽️ Order on WhatsApp', '🔥 Freshly prepared', '📍 Pickup & delivery'],
   }[businessType] ?? [
     `🚚 Free delivery above ₹${cart.freeShippingAbove}`,
