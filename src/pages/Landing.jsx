@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, MessageCircle, Check, Star, Zap,
   Sparkles, ShoppingBag, ChevronRight,
-  Pencil, Share2, QrCode, Copy, Globe,
+  Pencil, Share2, QrCode, Copy, Globe, Plus,
   Wallet, Palette, Receipt, Smartphone, Gift,
 } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
@@ -195,7 +195,7 @@ function BuildDemo() {
   // advance through stages on a loop while in view
   useEffect(() => {
     if (!inView) return;
-    const delays = [700, 1100, 1100, 1200, 1300, 2400]; // per-stage dwell
+    const delays = [800, 1100, 1100, 1200, 1500, 2800]; // per-stage dwell (ms)
     const t = setTimeout(() => setStage(s => (s + 1) % 6), delays[stage]);
     return () => clearTimeout(t);
   }, [stage, inView]);
@@ -221,22 +221,28 @@ function BuildDemo() {
         <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300 mb-4">
           <Sparkles size={13} /> Watch a page build itself
         </p>
-        <ul className="space-y-3">
+        <ul className="space-y-2.5">
           {BUILD_STEPS.map((label, i) => {
-            const done = stage >= i + 1;
+            const done    = stage >= i + 1;
+            const current = stage === i;          // the step being "worked on" right now
             return (
-              <li key={label} className="flex items-center gap-3">
+              <li key={label} className={[
+                'flex items-center gap-3 rounded-xl px-2.5 py-1.5 -mx-2.5 transition-colors duration-300',
+                current ? 'bg-white/[0.06]' : '',
+              ].join(' ')}>
                 <span className={[
                   'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all duration-500',
-                  done ? 'bg-emerald-500 scale-100' : 'bg-white/10 scale-90',
+                  done ? 'bg-emerald-500 scale-100' : current ? 'bg-emerald-400/20 scale-100' : 'bg-white/10 scale-90',
                 ].join(' ')}>
                   {done
                     ? <Check size={13} className="text-white" strokeWidth={3} />
-                    : <span className="w-1.5 h-1.5 rounded-full bg-white/40" />}
+                    : current
+                      ? <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-300 border-t-transparent animate-spin" />
+                      : <span className="w-1.5 h-1.5 rounded-full bg-white/40" />}
                 </span>
                 <span className={[
                   'text-sm font-semibold transition-colors duration-500',
-                  done ? 'text-white' : 'text-white/40',
+                  done ? 'text-white' : current ? 'text-emerald-200' : 'text-white/40',
                 ].join(' ')}>
                   {label}
                 </span>
@@ -245,16 +251,21 @@ function BuildDemo() {
           })}
         </ul>
 
-        {/* progress bar */}
-        <div className="mt-6 h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <div className="h-full rounded-full transition-all duration-700 ease-out"
-               style={{ width: `${Math.min(stage, 4) / 4 * 100}%`, background: 'linear-gradient(90deg, #34d399, #25D366)' }} />
+        {/* progress bar + percent */}
+        <div className="mt-6 flex items-center gap-3">
+          <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-700 ease-out"
+                 style={{ width: `${Math.min(stage, 4) / 4 * 100}%`, background: 'linear-gradient(90deg, #34d399, #25D366)' }} />
+          </div>
+          <span className="text-xs font-bold text-emerald-300 tabular-nums w-9 text-right">
+            {Math.round(Math.min(stage, 4) / 4 * 100)}%
+          </span>
         </div>
-        <p className="text-xs text-white/45 mt-3">
+        <p className="text-xs text-white/45 mt-3 min-h-[1rem]">
           {ordered
-            ? <span className="text-emerald-300 font-semibold">✓ Built in 90 seconds — first order already in.</span>
+            ? <span className="text-emerald-300 font-semibold">🎉 Built in under 2 minutes — first order already in.</span>
             : live
-              ? <span className="text-emerald-300 font-semibold">✓ Live! Now just share the link.</span>
+              ? <span className="text-emerald-300 font-semibold">✓ Your page is live. Now just share the link.</span>
               : 'No code. No designer. Just a few taps.'}
         </p>
       </div>
@@ -274,54 +285,100 @@ function BuildDemo() {
 
           <div className="rounded-[2rem] bg-gray-900 p-2 shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10">
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 w-20 h-4 bg-gray-900 rounded-b-xl" />
-            <div className="relative rounded-[1.6rem] overflow-hidden bg-[#f8fafc] h-[360px]">
+            <div className="relative rounded-[1.6rem] overflow-hidden bg-[#f8fafc] h-[380px] flex flex-col">
 
               {/* cover (colour fills in at stage 2) */}
-              <div className="relative h-20 transition-all duration-700"
+              <div className="relative h-[4.75rem] flex-shrink-0 transition-all duration-700"
                    style={{ background: colorShown ? `linear-gradient(135deg, ${picked}, ${picked}cc)` : '#e5e7eb' }}>
+                {colorShown && (
+                  <div className="absolute inset-0 opacity-25"
+                       style={{ backgroundImage: 'radial-gradient(circle, #ffffff55 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
+                )}
                 <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-sm shadow flex-shrink-0">
-                    {colorShown ? '🍬' : <span className="text-gray-300">+</span>}
+                  <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-sm shadow flex-shrink-0 transition-transform duration-500"
+                       style={{ transform: colorShown ? 'scale(1)' : 'scale(0.9)' }}>
+                    {colorShown ? '🍬' : <Plus size={14} className="text-gray-300" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     {/* name types in at stage 1 */}
                     {nameShown ? (
-                      <p className="text-white font-extrabold text-[12px] leading-tight truncate">Sharma Sweets</p>
+                      <p className="text-white font-extrabold text-[12px] leading-tight truncate">
+                        Sharma Sweets{!live && <span className="inline-block w-0.5 h-3 bg-white/80 ml-0.5 align-middle animate-pulse" />}
+                      </p>
                     ) : (
                       <div className="h-2.5 w-20 rounded bg-white/40" />
                     )}
-                    <div className="h-1.5 w-14 rounded bg-white/30 mt-1" />
+                    {nameShown
+                      ? <p className="text-white/80 text-[9px] leading-tight truncate mt-0.5">Fresh sweets, made daily</p>
+                      : <div className="h-1.5 w-14 rounded bg-white/25 mt-1" />}
                   </div>
                 </div>
               </div>
 
+              {/* promo strip — appears once the page goes live */}
+              <div className={[
+                'mx-2.5 mt-2.5 rounded-lg px-2 py-1.5 flex items-center gap-1.5 transition-all duration-500 flex-shrink-0',
+                live ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1 h-0 py-0 mt-0',
+              ].join(' ')}
+                   style={{ backgroundColor: `${picked}14`, border: `1px solid ${picked}28` }}>
+                <span className="text-xs">🎉</span>
+                <span className="text-[9px] font-bold leading-tight" style={{ color: picked }}>Festival Special · 20% off boxes</span>
+              </div>
+
               {/* product grid (first tile appears at stage 3) */}
-              <div className="px-2.5 mt-2.5 grid grid-cols-2 gap-2">
+              <div className="px-2.5 mt-2.5 grid grid-cols-2 gap-2 flex-1 content-start">
                 {[0, 1, 2, 3].map((i) => {
                   const visible = prodShown && (i === 0 || stage >= 4);
+                  const meta = [
+                    { e:'🍰', n:'Kaju Katli', p:'₹450' }, { e:'🧁', n:'Motichoor', p:'₹380' },
+                    { e:'🍮', n:'Rasmalai', p:'₹260' },   { e:'🍩', n:'Gulab Jamun', p:'₹220' },
+                  ][i];
                   return (
                     <div key={i} className={[
                       'rounded-lg border p-1.5 transition-all duration-500',
-                      visible ? 'bg-white border-gray-100 opacity-100 scale-100' : 'bg-gray-100/60 border-dashed border-gray-200 opacity-60 scale-95',
+                      visible ? 'bg-white border-gray-100 opacity-100 scale-100 shadow-sm' : 'bg-gray-100/50 border-dashed border-gray-200 opacity-70 scale-95',
                     ].join(' ')} style={{ transitionDelay: `${i * 80}ms` }}>
-                      <div className="h-9 rounded flex items-center justify-center text-base"
-                           style={{ background: visible ? `${picked}14` : 'transparent' }}>
-                        {visible ? ['🍰','🧁','🍮','🍩'][i] : ''}
+                      <div className="h-[2.1rem] rounded flex items-center justify-center text-base"
+                           style={{ background: visible ? `${picked}12` : 'transparent' }}>
+                        {visible ? meta.e : ''}
                       </div>
-                      {visible
-                        ? <div className="h-1.5 w-10 rounded bg-gray-300 mt-1.5" />
-                        : <div className="h-1.5 w-8 rounded bg-gray-200 mt-1.5" />}
+                      {visible ? (
+                        <>
+                          <p className="text-[9px] font-bold text-gray-700 leading-tight truncate mt-1">{meta.n}</p>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[9px] font-extrabold text-gray-900">{meta.p}</span>
+                            <span className="w-3.5 h-3.5 rounded text-white flex items-center justify-center leading-none" style={{ backgroundColor: picked }}>
+                              <Plus size={9} strokeWidth={3} />
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="h-1.5 w-10 rounded bg-gray-200 mt-1.5" />
+                          <div className="h-1.5 w-6 rounded bg-gray-200 mt-1" />
+                        </>
+                      )}
                     </div>
                   );
                 })}
               </div>
 
-              {/* first-order toast slides up at stage 5 */}
-              <div className={[
-                'absolute bottom-2.5 left-2.5 right-2.5 transition-all duration-500',
-                ordered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
-              ].join(' ')}>
-                <div className="rounded-xl bg-[#25D366] px-2.5 py-2 shadow-xl flex items-center gap-2">
+              {/* bottom: WhatsApp order bar (idle) → first-order toast (stage 5) */}
+              <div className="relative flex-shrink-0 p-2.5">
+                {/* idle order bar — visible once live, hidden when toast shows */}
+                <div className={[
+                  'rounded-xl px-2.5 py-2 flex items-center justify-center gap-1.5 transition-all duration-500',
+                  live && !ordered ? 'opacity-100' : 'opacity-0 absolute inset-x-2.5 bottom-2.5',
+                ].join(' ')} style={{ backgroundColor: picked }}>
+                  <MessageCircle size={12} className="text-white" />
+                  <span className="text-white font-bold text-[10px]">Order on WhatsApp</span>
+                </div>
+
+                {/* first-order toast */}
+                <div className={[
+                  'rounded-xl bg-[#25D366] px-2.5 py-2 shadow-xl flex items-center gap-2 transition-all duration-500',
+                  ordered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 absolute inset-x-2.5 bottom-2.5',
+                ].join(' ')}>
                   <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white/20 flex-shrink-0">
                     <span className="absolute inline-flex h-full w-full rounded-full bg-white/30 animate-ping" />
                     <MessageCircle size={13} className="relative text-white" />
