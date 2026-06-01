@@ -164,6 +164,182 @@ function RotatingWord() {
   );
 }
 
+/* ══ BUILD DEMO ════════════════════════════════════════════════════════════
+ * Self-running animation for the 'Why PocketLink' section: a page builds
+ * itself step-by-step (name → colour → product → publish → first order),
+ * with a checklist ticking off live. Shows BOTH how easy it is AND the payoff.
+ * Loops only while scrolled into view.
+ * ─────────────────────────────────────────────────────────────────────────*/
+const BUILD_COLORS = ['#10b981', '#f472b6', '#38bdf8', '#a78bfa', '#fb923c'];
+const BUILD_STEPS = [
+  'Add your business name',
+  'Choose your brand colour',
+  'Add your first product',
+  'Publish — your page is live',
+];
+
+function BuildDemo() {
+  const ioSupported = typeof IntersectionObserver !== 'undefined';
+  const [stage, setStage] = useState(0);   // 0..5 (5 = first order arrives)
+  const [hostEl, setHostEl] = useState(null);
+  const [inView, setInView] = useState(!ioSupported);  // animate immediately if no IO
+
+  // only animate when visible
+  useEffect(() => {
+    if (!hostEl || !ioSupported) return;
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.3 });
+    obs.observe(hostEl);
+    return () => obs.disconnect();
+  }, [hostEl, ioSupported]);
+
+  // advance through stages on a loop while in view
+  useEffect(() => {
+    if (!inView) return;
+    const delays = [700, 1100, 1100, 1200, 1300, 2400]; // per-stage dwell
+    const t = setTimeout(() => setStage(s => (s + 1) % 6), delays[stage]);
+    return () => clearTimeout(t);
+  }, [stage, inView]);
+
+  const colorIdx   = 1; // the colour it "picks" (pink) — pops vs default emerald
+  const picked     = stage >= 2 ? BUILD_COLORS[colorIdx] : BUILD_COLORS[0];
+  const nameShown  = stage >= 1;
+  const colorShown = stage >= 2;
+  const prodShown  = stage >= 3;
+  const live       = stage >= 4;
+  const ordered    = stage >= 5;
+
+  return (
+    <div ref={setHostEl}
+         className="relative grid lg:grid-cols-2 gap-8 lg:gap-10 items-center
+                    rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6 sm:p-8 mb-14 overflow-hidden">
+      {/* soft glow that follows the picked colour */}
+      <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full blur-3xl opacity-40 pointer-events-none"
+           style={{ background: `radial-gradient(circle, ${picked}, transparent 70%)`, transition: 'background 0.6s ease' }} />
+
+      {/* ── Left: the building checklist ──────────────────────────────── */}
+      <div className="relative">
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300 mb-4">
+          <Sparkles size={13} /> Watch a page build itself
+        </p>
+        <ul className="space-y-3">
+          {BUILD_STEPS.map((label, i) => {
+            const done = stage >= i + 1;
+            return (
+              <li key={label} className="flex items-center gap-3">
+                <span className={[
+                  'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-all duration-500',
+                  done ? 'bg-emerald-500 scale-100' : 'bg-white/10 scale-90',
+                ].join(' ')}>
+                  {done
+                    ? <Check size={13} className="text-white" strokeWidth={3} />
+                    : <span className="w-1.5 h-1.5 rounded-full bg-white/40" />}
+                </span>
+                <span className={[
+                  'text-sm font-semibold transition-colors duration-500',
+                  done ? 'text-white' : 'text-white/40',
+                ].join(' ')}>
+                  {label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* progress bar */}
+        <div className="mt-6 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-700 ease-out"
+               style={{ width: `${Math.min(stage, 4) / 4 * 100}%`, background: 'linear-gradient(90deg, #34d399, #25D366)' }} />
+        </div>
+        <p className="text-xs text-white/45 mt-3">
+          {ordered
+            ? <span className="text-emerald-300 font-semibold">✓ Built in 90 seconds — first order already in.</span>
+            : live
+              ? <span className="text-emerald-300 font-semibold">✓ Live! Now just share the link.</span>
+              : 'No code. No designer. Just a few taps.'}
+        </p>
+      </div>
+
+      {/* ── Right: the phone filling in live ──────────────────────────── */}
+      <div className="relative flex justify-center">
+        <div className="relative w-[230px]">
+          {/* live badge */}
+          <div className={[
+            'absolute -top-3 right-2 z-30 transition-all duration-500',
+            live ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2',
+          ].join(' ')}>
+            <span className="inline-flex items-center gap-1 bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg shadow-emerald-500/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+            </span>
+          </div>
+
+          <div className="rounded-[2rem] bg-gray-900 p-2 shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 w-20 h-4 bg-gray-900 rounded-b-xl" />
+            <div className="relative rounded-[1.6rem] overflow-hidden bg-[#f8fafc] h-[360px]">
+
+              {/* cover (colour fills in at stage 2) */}
+              <div className="relative h-20 transition-all duration-700"
+                   style={{ background: colorShown ? `linear-gradient(135deg, ${picked}, ${picked}cc)` : '#e5e7eb' }}>
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-sm shadow flex-shrink-0">
+                    {colorShown ? '🍬' : <span className="text-gray-300">+</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {/* name types in at stage 1 */}
+                    {nameShown ? (
+                      <p className="text-white font-extrabold text-[12px] leading-tight truncate">Sharma Sweets</p>
+                    ) : (
+                      <div className="h-2.5 w-20 rounded bg-white/40" />
+                    )}
+                    <div className="h-1.5 w-14 rounded bg-white/30 mt-1" />
+                  </div>
+                </div>
+              </div>
+
+              {/* product grid (first tile appears at stage 3) */}
+              <div className="px-2.5 mt-2.5 grid grid-cols-2 gap-2">
+                {[0, 1, 2, 3].map((i) => {
+                  const visible = prodShown && (i === 0 || stage >= 4);
+                  return (
+                    <div key={i} className={[
+                      'rounded-lg border p-1.5 transition-all duration-500',
+                      visible ? 'bg-white border-gray-100 opacity-100 scale-100' : 'bg-gray-100/60 border-dashed border-gray-200 opacity-60 scale-95',
+                    ].join(' ')} style={{ transitionDelay: `${i * 80}ms` }}>
+                      <div className="h-9 rounded flex items-center justify-center text-base"
+                           style={{ background: visible ? `${picked}14` : 'transparent' }}>
+                        {visible ? ['🍰','🧁','🍮','🍩'][i] : ''}
+                      </div>
+                      {visible
+                        ? <div className="h-1.5 w-10 rounded bg-gray-300 mt-1.5" />
+                        : <div className="h-1.5 w-8 rounded bg-gray-200 mt-1.5" />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* first-order toast slides up at stage 5 */}
+              <div className={[
+                'absolute bottom-2.5 left-2.5 right-2.5 transition-all duration-500',
+                ordered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
+              ].join(' ')}>
+                <div className="rounded-xl bg-[#25D366] px-2.5 py-2 shadow-xl flex items-center gap-2">
+                  <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white/20 flex-shrink-0">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-white/30 animate-ping" />
+                    <MessageCircle size={13} className="relative text-white" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-white font-bold text-[10px] leading-tight">New order · ₹1,280</p>
+                    <p className="text-white/80 text-[9px] leading-tight">just landed in your WhatsApp</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── A 'How it works' step: mini-UI screen + caption ──────────────────── */
 function HowStep({ n, title, desc, children }) {
   return (
@@ -751,6 +927,9 @@ export default function Landing() {
               Built for Indian businesses that sell on WhatsApp — fast, fair and genuinely free to start.
             </p>
           </Reveal>
+
+          {/* Self-running build demo */}
+          <BuildDemo />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {VALUE_PROPS.map(({ Icon, title, desc }, idx) => (
