@@ -87,6 +87,32 @@
     0%   { transform: translateY(-12vh) rotate(0deg);   opacity: 1; }
     100% { transform: translateY(108vh) rotate(720deg); opacity: 0.9; }
   }
+  /* Aurora: slow drifting + breathing gradient blobs for the dark hero */
+  @keyframes pl-aurora {
+    0%, 100% { transform: translate(0, 0) scale(1);        opacity: 0.55; }
+    25%      { transform: translate(6%, -4%) scale(1.18);  opacity: 0.8; }
+    50%      { transform: translate(-4%, 6%) scale(0.92);  opacity: 0.5; }
+    75%      { transform: translate(-6%, -3%) scale(1.1);  opacity: 0.75; }
+  }
+  /* Shimmer: animated gradient sweep across the headline text */
+  @keyframes pl-shimmer {
+    to { background-position: 200% center; }
+  }
+  /* Sheen: a diagonal light sweep across a surface (buttons, cards) */
+  @keyframes pl-sheen {
+    0%   { transform: translateX(-120%) skewX(-12deg); }
+    100% { transform: translateX(320%)  skewX(-12deg); }
+  }
+  /* Glow pulse for the phone halo */
+  @keyframes pl-glow {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50%      { opacity: 0.9;  transform: scale(1.06); }
+  }
+  /* Staggered fade-up that also eases in slightly later */
+  @keyframes pl-rise {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
   .animate-pl-float      { animation: pl-float 6s ease-in-out infinite; }
   .animate-pl-float-slow { animation: pl-float-slow 8s ease-in-out infinite; }
@@ -95,6 +121,21 @@
   .animate-pl-marquee    { animation: pl-marquee 30s linear infinite; }
   .animate-pl-pop        { animation: pl-pop 0.5s ease-out 0.8s both; }
   .animate-pl-confetti   { animation: pl-confetti 3.5s linear forwards; }
+  .animate-pl-aurora     { animation: pl-aurora 18s ease-in-out infinite; }
+  .animate-pl-glow       { animation: pl-glow 5s ease-in-out infinite; }
+  .animate-pl-marquee-slow { animation: pl-marquee 40s linear infinite; }
+
+  /* Shimmering gradient text — apply to a span with bg-clip-text */
+  .pl-shimmer-text {
+    background-size: 200% auto;
+    animation: pl-shimmer 4s linear infinite;
+  }
+  /* Sheen sweep element (position:absolute inside a relative parent) */
+  .pl-sheen {
+    animation: pl-sheen 4.5s ease-in-out infinite;
+  }
+  /* Rise-in helper with default timing; pair with inline animationDelay */
+  .pl-rise { animation: pl-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -104,7 +145,13 @@
   .animate-pl-marquee,
   .animate-pl-pop,
   .animate-pl-fade-up,
-  .animate-pl-confetti {
+  .animate-pl-confetti,
+  .animate-pl-aurora,
+  .animate-pl-glow,
+  .animate-pl-marquee-slow,
+  .pl-shimmer-text,
+  .pl-sheen,
+  .pl-rise {
     animation: none !important;
   }
 }

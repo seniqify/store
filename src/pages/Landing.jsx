@@ -14,7 +14,6 @@ import { listBusinesses } from '../utils/BusinessLoader';
  */
 
 const WA = '#25D366';        // WhatsApp green — primary CTA
-const WA_DARK = '#1ebe5d';
 
 const HOW_IT_WORKS = [
   {
@@ -67,20 +66,42 @@ const STATS = [
   { value: '∞',     label: 'orders, no limits' },
 ];
 
+// Scrolling strip of business types under the hero
+const MARQUEE = [
+  { emoji: '🛒', label: 'Kirana & Grocery' },
+  { emoji: '🍰', label: 'Bakeries' },
+  { emoji: '🍽️', label: 'Restaurants' },
+  { emoji: '💐', label: 'Florists' },
+  { emoji: '🔧', label: 'Repairs & Services' },
+  { emoji: '🏨', label: 'Hotels & Stays' },
+  { emoji: '👗', label: 'Boutiques' },
+  { emoji: '💇', label: 'Salons' },
+  { emoji: '💼', label: 'Consultants' },
+  { emoji: '📱', label: 'Electronics' },
+  { emoji: '🧵', label: 'Wholesalers' },
+  { emoji: '🎨', label: 'Designers' },
+];
+
 /* ── A live mini-storefront rendered inside a phone frame ─────────────── */
 function PhoneMockup() {
   return (
     <div className="relative mx-auto w-[270px] sm:w-[300px] animate-pl-float">
-      {/* Glow behind the phone */}
-      <div className="absolute -inset-6 rounded-[3rem] bg-gradient-to-tr from-emerald-300/40 via-teal-200/30 to-transparent blur-2xl" />
+      {/* Pulsing glow halo behind the phone */}
+      <div className="absolute -inset-10 rounded-[4rem] blur-3xl animate-pl-glow"
+           style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.55), rgba(45,212,191,0.25) 45%, transparent 70%)' }} />
 
       {/* Phone frame */}
-      <div className="relative rounded-[2.6rem] bg-gray-900 p-2.5 shadow-2xl shadow-emerald-900/20 ring-1 ring-black/5">
+      <div className="relative rounded-[2.6rem] bg-gray-900 p-2.5 shadow-2xl shadow-emerald-900/40 ring-1 ring-white/10">
         {/* Notch */}
         <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 w-28 h-5 bg-gray-900 rounded-b-2xl" />
 
         {/* Screen */}
         <div className="relative rounded-[2.1rem] overflow-hidden bg-[#f8fafc] h-[540px]">
+
+          {/* Glass reflection sweep */}
+          <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden rounded-[2.1rem]">
+            <div className="absolute -top-1/2 -left-1/4 w-1/2 h-[200%] bg-gradient-to-r from-transparent via-white/15 to-transparent pl-sheen" />
+          </div>
 
           {/* Store cover + header */}
           <div className="relative h-28 bg-gradient-to-br from-emerald-500 to-teal-600">
@@ -165,138 +186,173 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-white antialiased">
 
-      {/* ── Navigation ──────────────────────────────────────────────────── */}
-      <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 sm:h-9 w-auto" />
-          </Link>
+      {/* ══ Dark hero block (nav + hero + marquee + stats all share one bg) ══ */}
+      <div className="relative bg-[#050a09] text-white overflow-hidden">
 
-          <div className="hidden md:flex items-center gap-7 text-sm font-semibold text-gray-500">
-            <a href="#how"      className="hover:text-gray-900 transition-colors">How it works</a>
-            <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
-            <a href="#demos"    className="hover:text-gray-900 transition-colors">Demos</a>
-            <a href="#pricing"  className="hover:text-gray-900 transition-colors">Pricing</a>
-          </div>
-
-          <Link
-            to="/start"
-            className="inline-flex items-center gap-1.5 text-white text-sm font-bold px-4 py-2 rounded-xl
-                       transition-all shadow-sm hover:shadow-md active:scale-[0.98]"
-            style={{ backgroundColor: WA }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = WA_DARK)}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = WA)}
-          >
-            <MessageCircle size={14} />
-            Create Free Page
-          </Link>
+        {/* Aurora gradient field */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute top-[-12rem] left-[-8rem] w-[34rem] h-[34rem] rounded-full blur-[100px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.55), transparent 65%)' }} />
+          <div className="absolute top-[2rem] right-[-10rem] w-[40rem] h-[40rem] rounded-full blur-[110px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.45), transparent 65%)', animationDelay: '6s' }} />
+          <div className="absolute bottom-[-14rem] left-1/3 w-[36rem] h-[36rem] rounded-full blur-[120px] animate-pl-aurora"
+               style={{ background: 'radial-gradient(circle, rgba(37,211,102,0.35), transparent 65%)', animationDelay: '11s' }} />
+          {/* Fine grid */}
+          <div className="absolute inset-0 opacity-[0.18]"
+               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, black, transparent 75%)' }} />
         </div>
-      </nav>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        {/* Decorative background */}
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/70 via-white to-white" />
-        <div className="absolute -z-10 top-[-6rem] left-[-6rem] w-96 h-96 rounded-full bg-emerald-300/30 blur-3xl animate-pl-blob" />
-        <div className="absolute -z-10 top-10 right-[-8rem] w-[28rem] h-[28rem] rounded-full bg-teal-300/25 blur-3xl animate-pl-blob" style={{ animationDelay: '4s' }} />
-        <div className="absolute inset-0 -z-10 opacity-[0.4]"
-             style={{ backgroundImage: 'radial-gradient(circle, #0d948814 1px, transparent 1px)', backgroundSize: '26px 26px', maskImage: 'linear-gradient(to bottom, black, transparent 70%)' }} />
+        {/* ── Navigation ──────────────────────────────────────────────────── */}
+        <nav className="relative z-50 border-b border-white/10 backdrop-blur-md sticky top-0">
+          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            <Link to="/" className="flex items-center">
+              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 sm:h-9 w-auto brightness-0 invert" />
+            </Link>
 
-        <div className="max-w-6xl mx-auto px-4 pt-14 pb-16 sm:pt-20 sm:pb-24">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+            <div className="hidden md:flex items-center gap-7 text-sm font-semibold text-white/60">
+              <a href="#how"      className="hover:text-white transition-colors">How it works</a>
+              <a href="#features" className="hover:text-white transition-colors">Features</a>
+              <a href="#demos"    className="hover:text-white transition-colors">Demos</a>
+              <a href="#pricing"  className="hover:text-white transition-colors">Pricing</a>
+            </div>
 
-            {/* Left: copy */}
-            <div className="text-center lg:text-left animate-pl-fade-up">
-              <div className="inline-flex items-center gap-2 bg-white border border-emerald-100 shadow-sm
-                              text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Free · No tech skills · Live in minutes
-              </div>
+            <Link
+              to="/start"
+              className="group relative inline-flex items-center gap-1.5 text-white text-sm font-bold px-4 py-2 rounded-xl
+                         transition-all shadow-lg shadow-emerald-500/30 active:scale-[0.98] overflow-hidden"
+              style={{ backgroundColor: WA }}
+            >
+              <span className="absolute inset-0 -z-0 overflow-hidden rounded-xl">
+                <span className="absolute top-0 left-0 h-full w-1/3 bg-white/30 blur-md pl-sheen" />
+              </span>
+              <MessageCircle size={14} className="relative" />
+              <span className="relative">Create Free Page</span>
+            </Link>
+          </div>
+        </nav>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold text-gray-900
-                             leading-[1.05] tracking-tight mb-5">
-                Turn WhatsApp into<br className="hidden sm:block" />{' '}
-                <span className="relative inline-block">
-                  <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
-                    your business page
+        {/* ── Hero ─────────────────────────────────────────────────────────── */}
+        <section className="relative">
+          <div className="max-w-6xl mx-auto px-4 pt-12 pb-24 sm:pt-16 sm:pb-32">
+            <div className="grid lg:grid-cols-2 gap-12 lg:gap-6 items-center">
+
+              {/* Left: copy */}
+              <div className="text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 bg-white/5 border border-white/15 backdrop-blur-sm
+                                text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-7 pl-rise"
+                     style={{ animationDelay: '0.05s' }}>
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                   </span>
-                  <svg className="absolute -bottom-2 left-0 w-full" height="10" viewBox="0 0 200 10" preserveAspectRatio="none" aria-hidden="true">
-                    <path d="M2 7 Q 50 2, 100 6 T 198 5" stroke="#25D366" strokeWidth="3" fill="none" strokeLinecap="round" />
-                  </svg>
-                </span>
-              </h1>
-
-              <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed">
-                PocketLink gives any small business a beautiful page — shareable in one link,
-                with orders landing straight in your WhatsApp. No app, no code, no commission.
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3 mb-8">
-                <Link
-                  to="/start"
-                  className="inline-flex items-center gap-2 text-white font-bold text-base px-8 py-3.5 rounded-2xl
-                             shadow-lg shadow-emerald-500/25 hover:shadow-xl transition-all duration-200
-                             active:scale-[0.98] w-full sm:w-auto justify-center"
-                  style={{ backgroundColor: WA }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = WA_DARK)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = WA)}
-                >
-                  Create My Free Page
-                  <ArrowRight size={17} />
-                </Link>
-                <a
-                  href="#demos"
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-600
-                             hover:text-gray-900 transition-colors px-4 py-3.5"
-                >
-                  <Sparkles size={15} className="text-emerald-500" />
-                  See live demos
-                </a>
-              </div>
-
-              {/* Trust row */}
-              <div className="flex items-center justify-center lg:justify-start gap-3">
-                <div className="flex -space-x-2">
-                  {['🛍️', '🍰', '💐', '🔧'].map((e, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full bg-white border-2 border-white ring-1 ring-gray-100 shadow-sm flex items-center justify-center text-sm">
-                      {e}
-                    </div>
-                  ))}
+                  Free · No tech skills · Live in 2 minutes
                 </div>
-                <div className="text-left">
-                  <div className="flex items-center gap-0.5">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={12} className="text-amber-400 fill-amber-400" />
+
+                <h1 className="text-[2.6rem] sm:text-6xl lg:text-[4.1rem] font-extrabold
+                               leading-[1.02] tracking-tight mb-6 pl-rise"
+                    style={{ animationDelay: '0.12s' }}>
+                  <span className="text-white">Your business,</span><br />
+                  <span className="pl-shimmer-text bg-clip-text text-transparent"
+                        style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
+                    beautifully online
+                  </span><br />
+                  <span className="text-white">in two minutes.</span>
+                </h1>
+
+                <p className="text-white/60 text-base sm:text-lg max-w-xl mx-auto lg:mx-0 mb-9 leading-relaxed pl-rise"
+                   style={{ animationDelay: '0.2s' }}>
+                  PocketLink turns WhatsApp into a stunning page for any business — share one link,
+                  and orders land straight in your chat. No app. No code. No commission.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3 mb-9 pl-rise"
+                     style={{ animationDelay: '0.28s' }}>
+                  <Link
+                    to="/start"
+                    className="group relative inline-flex items-center gap-2 text-white font-bold text-base px-8 py-4 rounded-2xl
+                               shadow-xl shadow-emerald-500/30 transition-all duration-200 hover:-translate-y-0.5
+                               active:scale-[0.98] w-full sm:w-auto justify-center overflow-hidden"
+                    style={{ backgroundColor: WA }}
+                  >
+                    <span className="absolute inset-0 overflow-hidden rounded-2xl">
+                      <span className="absolute top-0 left-0 h-full w-1/3 bg-white/30 blur-md pl-sheen" />
+                    </span>
+                    <span className="relative">Create My Free Page</span>
+                    <ArrowRight size={18} className="relative transition-transform group-hover:translate-x-1" />
+                  </Link>
+                  <a
+                    href="#demos"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-white/70
+                               hover:text-white transition-colors px-5 py-4 rounded-2xl border border-white/15
+                               hover:border-white/30 hover:bg-white/5 w-full sm:w-auto justify-center"
+                  >
+                    <Sparkles size={15} className="text-emerald-300" />
+                    See it live
+                  </a>
+                </div>
+
+                {/* Trust row */}
+                <div className="flex items-center justify-center lg:justify-start gap-3 pl-rise"
+                     style={{ animationDelay: '0.36s' }}>
+                  <div className="flex -space-x-2.5">
+                    {['🛍️', '🍰', '💐', '🔧', '🏨'].map((e, i) => (
+                      <div key={i} className="w-9 h-9 rounded-full bg-white/10 border-2 border-[#0a1310] backdrop-blur-sm flex items-center justify-center text-sm">
+                        {e}
+                      </div>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Shops across India, online in minutes</p>
+                  <div className="text-left">
+                    <div className="flex items-center gap-0.5">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} size={13} className="text-amber-400 fill-amber-400" />
+                      ))}
+                    </div>
+                    <p className="text-xs text-white/50 mt-0.5">Loved by shops across India</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right: phone */}
-            <div className="flex justify-center lg:justify-end">
-              <PhoneMockup />
+              {/* Right: phone */}
+              <div className="flex justify-center lg:justify-end pl-rise" style={{ animationDelay: '0.24s' }}>
+                <PhoneMockup />
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ── Stats band ───────────────────────────────────────────────────── */}
-      <section className="px-4">
-        <div className="max-w-5xl mx-auto -mt-6 sm:-mt-10 relative z-10">
-          <div className="rounded-3xl bg-gray-900 shadow-xl shadow-gray-900/10 px-6 py-7 sm:py-8">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 divide-x divide-white/10">
-              {STATS.map(({ value, label }, i) => (
-                <div key={label} className={`text-center ${i % 2 === 0 ? '' : ''}`}>
-                  <p className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{value}</p>
-                  <p className="text-xs text-gray-400 mt-1">{label}</p>
-                </div>
+          {/* Marquee strip — live scrolling business types */}
+          <div className="relative border-y border-white/10 bg-white/[0.03] py-4 overflow-hidden">
+            <div className="flex w-max animate-pl-marquee-slow gap-3">
+              {[...MARQUEE, ...MARQUEE].map((m, i) => (
+                <span key={i} className="inline-flex items-center gap-2 text-sm font-semibold text-white/70
+                                          whitespace-nowrap px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.04]">
+                  <span className="text-base">{m.emoji}</span> {m.label}
+                </span>
               ))}
             </div>
+            {/* edge fades */}
+            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#050a09] to-transparent pointer-events-none" />
+            <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#050a09] to-transparent pointer-events-none" />
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* ── Stats band ──────────────────────────────────────────────────── */}
+        <section className="relative px-4 pb-16 sm:pb-20 pt-12 sm:pt-16">
+          <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {STATS.map(({ value, label }) => (
+              <div key={label}
+                   className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-sm px-4 py-5 text-center
+                              hover:bg-white/[0.07] hover:border-emerald-400/30 transition-colors">
+                <p className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent"
+                   style={{ backgroundImage: 'linear-gradient(135deg, #ffffff, #6ee7b7)' }}>{value}</p>
+                <p className="text-xs text-white/50 mt-1.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* smooth transition into the white body */}
+        <div className="h-px bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent" />
+      </div>
 
       {/* ── How it works ─────────────────────────────────────────────────── */}
       <section id="how" className="px-4 py-16 sm:py-20 bg-white">
@@ -644,21 +700,24 @@ export default function Landing() {
             <div className="absolute -bottom-12 -left-12 w-48 h-48 rounded-full bg-white/10 blur-2xl" />
 
             <div className="relative max-w-xl mx-auto">
-              <h2 className="text-2xl sm:text-4xl font-extrabold text-white mb-3 tracking-tight">
-                Ready to take your shop digital?
+              <h2 className="text-3xl sm:text-5xl font-extrabold text-white mb-4 tracking-tight leading-[1.05]">
+                Your customers are<br className="hidden sm:block" /> already on WhatsApp.
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
-                Free forever to start. No credit card, no setup fee.<br className="hidden sm:block" />
-                Give your shop a digital home and start receiving orders today.
+                Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
+                free forever to start, no credit card, no setup fee.
               </p>
               <Link
                 to="/start"
-                className="inline-flex items-center gap-2 bg-white text-emerald-700 font-bold text-base
-                           px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200
-                           active:scale-[0.98] hover:bg-emerald-50"
+                className="group relative inline-flex items-center gap-2 bg-white text-emerald-700 font-bold text-base
+                           px-8 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-200
+                           hover:-translate-y-0.5 active:scale-[0.98] overflow-hidden"
               >
-                Create My Free Page
-                <ArrowRight size={17} />
+                <span className="absolute inset-0 overflow-hidden rounded-2xl">
+                  <span className="absolute top-0 left-0 h-full w-1/3 bg-emerald-200/40 blur-md pl-sheen" />
+                </span>
+                <span className="relative">Create My Free Page</span>
+                <ArrowRight size={18} className="relative transition-transform group-hover:translate-x-1" />
               </Link>
               <p className="text-emerald-100/80 text-xs mt-4">Join shops across India already selling on WhatsApp</p>
             </div>
