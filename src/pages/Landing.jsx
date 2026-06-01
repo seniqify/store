@@ -141,13 +141,14 @@ function RotatingWord() {
 
   const { word, color } = ROTATING[i];
   return (
-    <span className="relative inline-block align-baseline">
+    // Own line, fixed height, clipped — the word swaps in place with zero reflow
+    <span className="inline-block overflow-hidden align-bottom leading-[1.15]" style={{ height: '1.15em' }}>
       <span
-        className="inline-block transition-all duration-300 ease-out"
+        className="inline-block transition-all duration-300 ease-out will-change-transform"
         style={{
           color,
           opacity: show ? 1 : 0,
-          transform: show ? 'translateY(0)' : 'translateY(0.35em)',
+          transform: show ? 'translateY(0)' : 'translateY(0.5em)',
           textShadow: `0 0 28px ${color}66`,
         }}
       >
@@ -337,22 +338,24 @@ export default function Landing() {
                 </div>
 
                 <h1 className="text-[2.6rem] sm:text-6xl lg:text-[4.1rem] font-extrabold
-                               leading-[1.04] tracking-tight mb-6 pl-rise"
+                               leading-[1.06] tracking-tight mb-6 pl-rise"
                     style={{ animationDelay: '0.12s' }}>
-                  <span className="text-white">Give your </span>
-                  <RotatingWord />
-                  <br />
-                  <span className="text-white">a page on </span>
-                  <span className="relative inline-block">
-                    <span className="pl-shimmer-text bg-clip-text text-transparent"
-                          style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
-                      WhatsApp
+                  <span className="block text-white">Give your</span>
+                  {/* rotating word on its own dedicated line — swaps in place, no reflow */}
+                  <span className="block"><RotatingWord /></span>
+                  <span className="block text-white">
+                    a page on{' '}
+                    <span className="relative inline-block">
+                      <span className="pl-shimmer-text bg-clip-text text-transparent"
+                            style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
+                        WhatsApp
+                      </span>
+                      {/* hand-drawn underline (glowing on dark) */}
+                      <svg className="absolute -bottom-2.5 left-0 w-full overflow-visible" height="14" viewBox="0 0 220 14" preserveAspectRatio="none" aria-hidden="true">
+                        <path d="M3 9 Q 55 3, 110 7 T 217 6" stroke="#25D366" strokeWidth="4" fill="none" strokeLinecap="round"
+                              style={{ filter: 'drop-shadow(0 0 6px rgba(37,211,102,0.7))' }} />
+                      </svg>
                     </span>
-                    {/* hand-drawn underline (glowing on dark) */}
-                    <svg className="absolute -bottom-2.5 left-0 w-full overflow-visible" height="14" viewBox="0 0 220 14" preserveAspectRatio="none" aria-hidden="true">
-                      <path d="M3 9 Q 55 3, 110 7 T 217 6" stroke="#25D366" strokeWidth="4" fill="none" strokeLinecap="round"
-                            style={{ filter: 'drop-shadow(0 0 6px rgba(37,211,102,0.7))' }} />
-                    </svg>
                   </span>
                 </h1>
 
