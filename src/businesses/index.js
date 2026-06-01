@@ -1,24 +1,24 @@
 /**
- * Business Registry
+ * Business Registry — demo storefronts
  * ─────────────────────────────────────────────────────────────────────────────
- * Maps URL slug → business config object.
+ * One polished demo per business type, shown on the landing page (#demos) and
+ * reachable at /demo/<slug>. These are NOT real user stores.
  *
- * To register a new business:
+ * To add a demo:
  *   1. Create  src/businesses/<slug>.js  (follow the same config shape)
  *   2. Import it below and add one line to REGISTRY
- *   3. Done — routing, theming, and the storefront all adapt automatically
- *
- * The slug is the URL path:  /<slug>  →  loads the matching config
  */
 
-import { softweaveConfig }      from './softweave';
-import { rkElectronicsConfig }  from './rkelectronics';
-import { defaultConfig }        from './default';
+import { aanyaBoutiqueConfig }  from './aanyaboutique';   // product / retail
+import { spiceRouteConfig }     from './spiceroute';      // restaurant / food
+import { glowUpConfig }         from './glowup';          // service / agency
+import { coralCourtyardConfig } from './coralcourtyard';  // lodges & stay
 
 const REGISTRY = {
-  softweave:    softweaveConfig,
-  rkelectronics: rkElectronicsConfig,
-  default:      defaultConfig,
+  aanyaboutique:  aanyaBoutiqueConfig,
+  spiceroute:     spiceRouteConfig,
+  glowup:         glowUpConfig,
+  coralcourtyard: coralCourtyardConfig,
 };
 
 export default REGISTRY;

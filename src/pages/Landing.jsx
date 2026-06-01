@@ -673,8 +673,8 @@ function LivePageBuilder() {
 }
 
 export default function Landing() {
-  // Show up to 3 demo stores (static configs only for the landing page)
-  const demoStores = listBusinesses().slice(0, 3);
+  // One demo per business type (static configs only for the landing page)
+  const demoStores = listBusinesses().slice(0, 4);
 
   return (
     <div className="min-h-screen bg-white antialiased">
@@ -1082,7 +1082,7 @@ export default function Landing() {
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {demoStores.map((biz) => (
               <Link
                 key={biz.slug}
@@ -1113,7 +1113,8 @@ export default function Landing() {
                   <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
                     <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
                       <ShoppingBag size={13} style={{ color: biz.theme.primary }} />
-                      {biz.products.length} products
+                      {biz.products.length}{' '}
+                      {{ restaurant: 'dishes', service: 'services', hotel: 'rooms' }[biz.businessType] ?? 'products'}
                     </span>
                     <span className="inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all text-emerald-300">
                       View <ChevronRight size={13} />
