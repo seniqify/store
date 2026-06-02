@@ -1,5 +1,6 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, Fragment } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Check } from 'lucide-react';
 import StepBusinessType from '../components/onboarding/StepBusinessType';
 import StepBusiness     from '../components/onboarding/StepBusiness';
 import StepProducts     from '../components/onboarding/StepProducts';
@@ -33,6 +34,41 @@ const INITIAL = {
 };
 
 const STEP_LABELS = ['Business Type', 'Your Business', 'Your Products', 'Preview & Launch'];
+const STEP_ICONS  = ['🧭', '🏪', '📦', '🚀'];
+
+// Premium dark stepper shown across all onboarding steps.
+function Stepper({ labels, icons, current }) {
+  return (
+    <div className="flex items-start justify-between max-w-md mx-auto">
+      {labels.map((label, i) => {
+        const done = i < current, active = i === current;
+        return (
+          <Fragment key={label}>
+            <div className="flex flex-col items-center gap-2 w-16 flex-shrink-0">
+              <div className={[
+                'w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300',
+                done ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/40'
+                  : active ? 'bg-white text-gray-900 ring-4 ring-emerald-400/30'
+                  : 'bg-white/10 text-white/40 border border-white/15',
+              ].join(' ')}>
+                {done ? <Check size={16} strokeWidth={3} /> : <span className="text-base leading-none">{icons[i]}</span>}
+              </div>
+              <span className={[
+                'text-[10px] font-semibold text-center leading-tight transition-colors hidden sm:block',
+                active ? 'text-white' : done ? 'text-emerald-300' : 'text-white/40',
+              ].join(' ')}>{label}</span>
+            </div>
+            {i < labels.length - 1 && (
+              <div className="flex-1 h-0.5 mt-5 rounded-full bg-white/10 min-w-[0.75rem] overflow-hidden">
+                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: done ? '100%' : '0%' }} />
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
 
 // Labels shown in StepProducts based on business type
 const PRODUCT_MODE = {
@@ -78,11 +114,14 @@ function LaunchSuccess({ slug, pin, themeColor }) {
   ];
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden bg-white">
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden"
+         style={{ background: 'linear-gradient(170deg, #061310 0%, #0a2a20 48%, #05110d 100%)' }}>
 
-      {/* Background */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/60 via-white to-white" />
-      <div className="absolute -z-10 top-[-6rem] left-1/2 -translate-x-1/2 w-[34rem] h-80 rounded-full bg-emerald-200/30 blur-3xl" />
+      {/* Background aurora */}
+      <div className="absolute inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-[-6rem] left-1/2 -translate-x-1/2 w-[40rem] h-80 rounded-full blur-[110px] animate-pl-aurora"
+             style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.32), transparent 65%)' }} />
+      </div>
 
       {/* Confetti */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
@@ -264,64 +303,47 @@ export default function Onboarding() {
     );
   }
 
-  const progress = ((step + 1) / STEP_LABELS.length) * 100;
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="relative min-h-screen overflow-hidden"
+         style={{ background: 'linear-gradient(170deg, #061310 0%, #0a2a20 48%, #05110d 100%)' }}>
 
-      {/* â"€â"€ Top bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+      {/* aurora + grid */}
+      <div className="absolute inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-[-8rem] left-1/2 -translate-x-1/2 w-[42rem] h-[26rem] rounded-full blur-[120px] animate-pl-aurora"
+             style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.30), transparent 65%)' }} />
+        <div className="absolute inset-0 opacity-[0.05]"
+             style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)', backgroundSize: '46px 46px', maskImage: 'radial-gradient(ellipse 80% 45% at 50% 12%, #000, transparent 75%)' }} />
+      </div>
+
+      {/* Top bar */}
+      <header className="relative z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center transition-opacity hover:opacity-80">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
+          <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" />
           </Link>
-          <span className="text-xs text-gray-400 font-medium">
+          <span className="text-xs text-white/45 font-medium">
             Step {step + 1} of {STEP_LABELS.length}
           </span>
         </div>
       </header>
 
-      {/* â"€â"€ Progress bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <div className="h-1 bg-gray-100">
-        <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500 ease-out"
-             style={{ width: `${progress}%` }} />
-      </div>
+      <main className="relative z-10 max-w-lg mx-auto px-4 pb-12">
 
-      {/* â"€â"€ Step pills â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-2 sm:px-4 flex">
-          {STEP_LABELS.map((label, i) => {
-            const done   = i < step;
-            const active = i === step;
-            return (
-              <div key={label}
-                className={[
-                  'flex-1 flex items-center justify-center gap-1.5 py-3 border-b-2 transition-colors',
-                  active ? 'border-emerald-500' : done ? 'border-emerald-200' : 'border-transparent',
-                ].join(' ')}>
-                <span className={[
-                  'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 transition-colors',
-                  done   ? 'bg-emerald-500 text-white'
-                  : active ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-400',
-                ].join(' ')}>
-                  {done ? '✓' : i + 1}
-                </span>
-                <span className={[
-                  'text-[11px] font-semibold hidden sm:block',
-                  active ? 'text-gray-900' : done ? 'text-emerald-600' : 'text-gray-400',
-                ].join(' ')}>
-                  {label}
-                </span>
-              </div>
-            );
-          })}
+        {/* eyebrow */}
+        <div className="text-center mb-6 mt-1">
+          <span className="inline-flex items-center gap-2 bg-white/5 border border-white/15 text-emerald-300
+                           text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full">
+            ⚡ Build your page · about 2 minutes
+          </span>
         </div>
-      </div>
 
-      {/* â"€â"€ Step content â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      <main className="max-w-lg mx-auto px-4 py-8">
-        <div key={step} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 animate-pl-fade-up">
+        {/* Stepper */}
+        <div className="mb-8 px-2">
+          <Stepper labels={STEP_LABELS} icons={STEP_ICONS} current={step} />
+        </div>
+
+        {/* Step content — light "work surface" floating on the dark frame */}
+        <div key={step} className="bg-white rounded-3xl shadow-2xl shadow-black/40 p-6 sm:p-8 animate-pl-fade-up">
           {step === 0 && (
             <StepBusinessType
               selected={data.businessType}
@@ -350,6 +372,11 @@ export default function Onboarding() {
             />
           )}
         </div>
+
+        {/* reassurance */}
+        <p className="text-center text-xs text-white/35 mt-5">
+          🔒 Your details stay private · You can edit everything later
+        </p>
       </main>
     </div>
   );
