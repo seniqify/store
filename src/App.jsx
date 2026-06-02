@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-router-dom';
 import Header           from './components/layout/Header';
 import Footer           from './components/layout/Footer';
 import TemplateRenderer from './templates/TemplateRenderer';
@@ -127,9 +127,21 @@ function BusinessShell() {
   );
 }
 
+// Reset scroll to the top on every route change. Without this, navigating from
+// a link low on the page (e.g. the demo cards near the footer) keeps the old
+// scroll position and drops you at the bottom of the next page.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
