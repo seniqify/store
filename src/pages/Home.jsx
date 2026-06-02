@@ -8,6 +8,7 @@ import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR } from '../utils/currency';
+import { isPaidPlan } from '../utils/planLimits';
 
 /**
  * Home — the main storefront page.
@@ -33,7 +34,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // Business config from context — changes when the route changes
   const config = useBusinessConfig();
-  const { products, categories, features, businessName, tagline, whatsappNumber, promoText, theme, logo, logoEmoji, coverImage } = config;
+  const { products, categories, features, businessName, tagline, whatsappNumber, promoText, theme, logo, logoEmoji, coverImage, plan } = config;
 
   const primary     = theme?.primary ?? '#0d9488';
   const primaryDark = theme?.primaryDark ?? '#0f766e';
@@ -151,10 +152,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               <div className="flex-1 min-w-0 pt-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-lg sm:text-2xl font-extrabold text-gray-900 leading-tight">{businessName}</h1>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
-                                   px-2 py-0.5 rounded-full flex-shrink-0">
-                    <Check size={10} strokeWidth={3} /> Verified
-                  </span>
+                  {isPaidPlan(plan) && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
+                                     px-2 py-0.5 rounded-full flex-shrink-0">
+                      <Check size={10} strokeWidth={3} /> Verified
+                    </span>
+                  )}
                 </div>
                 {tagline && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{tagline}</p>}
 

@@ -83,3 +83,9 @@ export function hasFeature(plan, feature) {
 export function showBrandBadge(plan) {
   return getPlanLimits(plan).badge === true;
 }
+
+// A paid plan is any plan that no longer carries the PocketLink brand badge.
+// Used to gate premium-only UI like the "Verified" store badge.
+export function isPaidPlan(plan) {
+  return !showBrandBadge(plan);
+}

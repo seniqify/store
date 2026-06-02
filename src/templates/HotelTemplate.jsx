@@ -94,55 +94,57 @@ export default function HotelTemplate({ onCartCountChange }) {
 
       {/* ══ Cinematic hero ══════════════════════════════════════════════════════ */}
       <section className="relative isolate flex flex-col justify-end overflow-hidden
-                          min-h-[82vh] sm:min-h-[88vh]">
+                          min-h-[54vh] sm:min-h-[60vh]">
         {/* Cover image / fallback gradient */}
         <div className="absolute inset-0 -z-20 bg-center bg-cover"
              style={coverImage
                ? { backgroundImage: `url(${coverImage})` }
                : { background: 'linear-gradient(135deg, #20100a 0%, #432414 45%, #20100a 100%)' }} />
-        {/* Legibility overlay */}
+        {/* Legibility overlay — photo stays visible up top, text readable at the bottom */}
         <div className="absolute inset-0 -z-10"
-             style={{ background: 'linear-gradient(to top, rgba(18,11,6,0.94) 4%, rgba(18,11,6,0.35) 42%, rgba(18,11,6,0.72) 100%)' }} />
+             style={{ background: 'linear-gradient(to top, rgba(13,8,4,0.95) 0%, rgba(13,8,4,0.55) 40%, rgba(13,8,4,0.22) 100%)' }} />
         {/* Faint gold star dust */}
         <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none">
-          {['top-10 left-[8%]','top-16 right-[14%]','top-7 left-1/3','top-24 right-1/3','top-12 left-2/3','top-28 left-[18%]'].map((pos, i) => (
-            <span key={i} className={`absolute text-amber-200/25 text-xs ${pos}`}>✦</span>
+          {['top-8 left-[10%]','top-12 right-[14%]','top-6 left-1/3','top-16 right-1/3'].map((pos, i) => (
+            <span key={i} className={`absolute text-amber-200/20 text-xs ${pos}`}>✦</span>
           ))}
         </div>
 
-        <div className="relative max-w-5xl mx-auto w-full px-5 pt-24 pb-28 sm:pb-32 text-center">
+        <div className="relative max-w-3xl mx-auto w-full px-5 pt-16 pb-16 sm:pb-20 text-center">
           {/* Brand mark */}
-          <div className="mx-auto mb-6 w-16 h-16 rounded-full flex items-center justify-center overflow-hidden
-                          border border-amber-200/40 backdrop-blur-sm"
-               style={{ backgroundColor: 'rgba(255,210,120,0.10)', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+          <div className="mx-auto mb-4 w-16 h-16 rounded-full flex items-center justify-center overflow-hidden
+                          ring-2 ring-amber-200/30 shadow-xl"
+               style={{ backgroundColor: 'rgba(18,11,6,0.55)' }}>
             {logo
               ? <img src={logo} alt={businessName} className="w-full h-full object-cover" />
               : <span className="text-3xl">{logoEmoji ?? '🏨'}</span>}
           </div>
 
           {/* Star row */}
-          <div className="flex items-center justify-center gap-1.5 mb-3 text-amber-300/90 text-sm tracking-[0.3em]">
+          <div className="flex items-center justify-center gap-1.5 mb-2 text-amber-300/90 text-sm tracking-[0.3em]"
+               style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
             ★★★★★
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-bold text-amber-50 leading-tight tracking-tight"
-              style={{ ...serif, textShadow: '0 2px 30px rgba(0,0,0,0.4)' }}>
+          <h1 className="text-3xl sm:text-5xl font-bold text-amber-50 leading-tight tracking-tight"
+              style={{ ...serif, textShadow: '0 2px 24px rgba(0,0,0,0.6)' }}>
             {businessName}
           </h1>
 
           {/* Gold divider */}
-          <div className="flex items-center justify-center gap-3 my-5">
-            <span className="h-px w-10 sm:w-16" style={{ backgroundColor: GOLD, opacity: 0.7 }} />
+          <div className="flex items-center justify-center gap-3 my-4">
+            <span className="h-px w-10 sm:w-14" style={{ backgroundColor: GOLD, opacity: 0.7 }} />
             <span className="text-amber-300/80 text-xs">✦</span>
-            <span className="h-px w-10 sm:w-16" style={{ backgroundColor: GOLD, opacity: 0.7 }} />
+            <span className="h-px w-10 sm:w-14" style={{ backgroundColor: GOLD, opacity: 0.7 }} />
           </div>
 
-          <p className="text-amber-100/80 text-sm sm:text-base max-w-xl mx-auto leading-relaxed font-light">
+          <p className="text-amber-100/85 text-sm sm:text-base max-w-xl mx-auto leading-relaxed font-light"
+             style={{ textShadow: '0 1px 12px rgba(0,0,0,0.55)' }}>
             {tagline || 'A restful escape, thoughtfully designed for an unforgettable stay.'}
           </p>
 
           {address && (
-            <p className="mt-4 inline-flex items-center gap-1.5 text-amber-200/70 text-xs">
+            <p className="mt-3 inline-flex items-center gap-1.5 text-amber-200/75 text-xs">
               <Pin width="13" height="13" /> {address}
             </p>
           )}
