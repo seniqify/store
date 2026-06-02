@@ -73,7 +73,7 @@ export default function HotelTemplate({ onCartCountChange }) {
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
 
-  function checkAvailability() {
+  function scrollToRooms() {
     (roomsRef.current || formRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -171,11 +171,11 @@ export default function HotelTemplate({ onCartCountChange }) {
               {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>)}
             </select>
           </BookingField>
-          <button onClick={checkAvailability}
+          <button onClick={scrollToRooms}
             className="col-span-2 md:col-span-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl
                        text-sm font-bold text-white transition-all hover:opacity-95 active:scale-[0.98]"
             style={{ background: 'linear-gradient(135deg, #2a1810, #6b3f1d)' }}>
-            <Moon width="14" height="14" /> Check Availability
+            <Moon width="14" height="14" /> View Rooms &amp; Rates
           </button>
         </div>
         {startingRate > 0 && (
