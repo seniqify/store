@@ -14,6 +14,9 @@ import { uploadConfigImages, uploadSingleImage } from '../utils/imageStorage';
 const INITIAL = {
   businessType:      '',
   businessName:      '',
+  tagline:           '',
+  address:           '',
+  features:          [],
   logo:              '',
   coverImage:        '',
   whatsappNumber:    '',

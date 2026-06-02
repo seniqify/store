@@ -25,9 +25,58 @@ export const THEME_PRESETS = {
 };
 
 
+// Type-appropriate highlight/amenity suggestions, shared with the onboarding form.
+export const FEATURE_SUGGESTIONS = {
+  product: [
+    { emoji: '🚚', title: 'Fast Delivery',    desc: 'Quick & reliable' },
+    { emoji: '📄', title: 'GST Invoice',       desc: 'Proper billing'   },
+    { emoji: '✅', title: 'Genuine Products',  desc: '100% authentic'   },
+    { emoji: '💬', title: 'WhatsApp Orders',   desc: 'Order on chat'    },
+    { emoji: '↩️', title: 'Easy Returns',      desc: 'Hassle-free'      },
+    { emoji: '🏷️', title: 'Best Prices',       desc: 'Great value'      },
+  ],
+  restaurant: [
+    { emoji: '🌶️', title: 'Cooked Fresh',      desc: 'Made to order'    },
+    { emoji: '🥡', title: 'Hygienic Packing',  desc: 'Sealed & safe'    },
+    { emoji: '⚡', title: 'Quick Prep',        desc: 'Hot & fast'       },
+    { emoji: '🌿', title: 'Pure Veg',          desc: '100% vegetarian'  },
+    { emoji: '🚚', title: 'Home Delivery',     desc: 'To your door'     },
+    { emoji: '💬', title: 'WhatsApp Orders',   desc: 'Order on chat'    },
+  ],
+  service: [
+    { emoji: '✨', title: 'Expert Team',       desc: 'Skilled pros'     },
+    { emoji: '🏠', title: 'At-home Service',   desc: 'We come to you'   },
+    { emoji: '🗓️', title: 'Easy Booking',      desc: 'Pick your slot'   },
+    { emoji: '💬', title: 'Free Consultation', desc: 'On WhatsApp'      },
+    { emoji: '⭐', title: 'Top Rated',         desc: 'Trusted by many'  },
+    { emoji: '💯', title: 'Satisfaction',      desc: 'Guaranteed'       },
+  ],
+  hotel: [
+    { emoji: '🏊', title: 'Swimming Pool',     desc: ''                 },
+    { emoji: '🍳', title: 'Breakfast',         desc: 'Complimentary'    },
+    { emoji: '📶', title: 'Free Wi-Fi',        desc: 'Full property'    },
+    { emoji: '🚗', title: 'Free Parking',      desc: ''                 },
+    { emoji: '❄️', title: 'Air Conditioning',  desc: ''                 },
+    { emoji: '🛎️', title: 'Room Service',      desc: '24×7'             },
+    { emoji: '🍽️', title: 'Restaurant',        desc: 'On-site dining'   },
+    { emoji: '🏞️', title: 'Scenic View',       desc: ''                 },
+  ],
+};
+
+export const DEFAULT_TAGLINES = {
+  product:    'Quality products, delivered. Order on WhatsApp.',
+  restaurant: 'Fresh, delicious food — order on WhatsApp.',
+  service:    'Trusted services, just a message away.',
+  hotel:      'A comfortable stay, booked on WhatsApp.',
+};
+
 export function buildBusinessConfig(wizardData, existingSlugs = []) {
   const {
+    businessType       = 'product',
     businessName,
+    tagline            = '',
+    address            = '',
+    features           = [],
     whatsappNumber,
     logoEmoji          = '🏪',
     logo               = '',
@@ -45,6 +94,10 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     categories         = [],
     products           = [],
   } = wizardData;
+
+  const resolvedFeatures = (features && features.length)
+    ? features
+    : (FEATURE_SUGGESTIONS[businessType] ?? FEATURE_SUGGESTIONS.product).slice(0, 4);
 
   const slug  = uniqueSlug(businessName, existingSlugs);
   const theme = THEME_PRESETS[themeColor] ?? THEME_PRESETS['#0d9488'];
@@ -79,7 +132,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
   return {
     slug,
     businessName: businessName.trim(),
-    tagline:      `Order from ${businessName.trim()} via WhatsApp`,
+    tagline:      tagline.trim() || (DEFAULT_TAGLINES[businessType] ?? DEFAULT_TAGLINES.product),
     logo:         logo?.trim() || null,
     coverImage:   coverImage?.trim() || null,
     logoEmoji,
@@ -87,7 +140,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     whatsappNumber: `91${digits}`,
     phone:          phoneFormatted,
     email:          '',
-    address:        '',
+    address:        address.trim(),
     gst:            gstNumber.trim(),
     upi:            upiId.trim(),
     bank: {
@@ -112,12 +165,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
       cta:     'Browse Products',
     },
 
-    features: [
-      { emoji: '📱', title: 'WhatsApp Orders',    desc: 'Instant order confirmation' },
-      { emoji: '✅', title: 'Quality Assured',    desc: '100% genuine products' },
-      { emoji: '🚚', title: 'Pan-India Delivery', desc: 'We ship anywhere in India' },
-      { emoji: '📄', title: 'GST Invoice',        desc: 'Proper billing on request' },
-    ],
+    features: resolvedFeatures,
 
     categories: allCategories,
     products:   builtProducts,
