@@ -44,6 +44,22 @@
   }
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+ * Mobile form fix: stop iOS/Safari from auto-zooming into inputs on focus.
+ * Any field with a font-size below 16px triggers a zoom-on-tap that then
+ * shoves the whole layout out of alignment and lets the page pan around.
+ * Forcing >=16px on touch devices (pointer: coarse) prevents the zoom on
+ * every form — register, onboarding, order, booking, quote — in one place.
+ * Desktop (fine pointer) keeps the smaller designed sizes.
+ * ─────────────────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
