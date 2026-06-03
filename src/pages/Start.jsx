@@ -6,11 +6,10 @@ import { findStoreByPhone } from '../utils/storeService';
 
 const RESEND_SECONDS = 30;
 
-// TEMP: WhatsApp OTP disabled while Seniqify / WhatsApp delivery is down.
-// Flip OTP_ENABLED back to true to restore the send-OTP -> verify flow.
-// The phone is still captured and passed on, so plan selection / onboarding /
-// payment / store creation are all unchanged. (Mirror of the flag in Register.jsx.)
-const OTP_ENABLED = false;
+// WhatsApp OTP is live (Seniqify template "optpt" / h042vmds6w). Set this to
+// false to bypass verification (the number is still captured and the flow
+// continues). (Mirror of the flag in Register.jsx.)
+const OTP_ENABLED = true;
 
 const CATEGORY_CHIPS = [['🛍️', 'Shops'], ['🍽️', 'Food'], ['💇', 'Services'], ['🏨', 'Stays']];
 

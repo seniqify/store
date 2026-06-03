@@ -70,11 +70,10 @@ function OtpInput({ value, onChange, disabled }) {
 }
 
 // â"€â"€ Main component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// TEMP: WhatsApp OTP disabled while Seniqify / WhatsApp delivery is down.
-// Flip OTP_ENABLED back to true to restore the send-OTP -> verify flow.
-// The phone number is still captured and passed to onboarding either way,
-// so payment / store creation / everything downstream is unchanged.
-const OTP_ENABLED = false;
+// WhatsApp OTP is live (Seniqify template "optpt" / h042vmds6w). Set this to
+// false to bypass verification (the number is still captured and the flow
+// continues) — e.g. if the provider goes down again.
+const OTP_ENABLED = true;
 
 export default function Register() {
   const navigate = useNavigate();
