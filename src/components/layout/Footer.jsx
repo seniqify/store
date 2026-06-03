@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
-import { showBrandBadge } from '../../utils/planLimits';
+import { showBrandBadge, effectivePlan } from '../../utils/planLimits';
 
 /**
  * Footer — reads the active business config from context.
@@ -68,7 +68,7 @@ export default function Footer() {
   const config = useBusinessConfig();
   const {
     businessName, tagline, logoEmoji, logo,
-    whatsappNumber, phone, address, upi, bank, gst, cart, slug, plan, businessType,
+    whatsappNumber, phone, address, upi, bank, gst, cart, slug, businessType,
   } = config;
 
   const waLink = whatsappLink(whatsappNumber, businessName);
@@ -246,7 +246,7 @@ export default function Footer() {
       </div>
 
       {/* â"€â"€ "Powered by PocketLink" — shown on free plan only â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-      {showBrandBadge(plan) && (
+      {showBrandBadge(effectivePlan(config)) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a
             href="https://pocketlink.store"

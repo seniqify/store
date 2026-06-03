@@ -32,7 +32,14 @@ export async function createStore(config, pin, ownerPhone = null) {
   }
 
   const hashedPin = await hashPin(pin);
-  const configToSave = { ...config, plan: 'free', ownerPhone };
+  // Honour the chosen plan + trial expiry (was previously forced to 'free',
+  // which dropped paid plans). Defaults keep brand-new free stores unchanged.
+  const configToSave = {
+    ...config,
+    plan:          config.plan ?? 'free',
+    planExpiresAt: config.planExpiresAt ?? null,
+    ownerPhone,
+  };
   const { error } = await supabase
     .from('stores')
     .insert({

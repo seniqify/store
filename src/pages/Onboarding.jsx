@@ -244,6 +244,7 @@ export default function Onboarding() {
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
   const [plan,          setPlan]          = useState('free');
+  const [planExpiresAt, setPlanExpiresAt] = useState(null);
 
   // Gate: require phone from /start → redirect if missing
   useEffect(() => {
@@ -251,6 +252,7 @@ export default function Onboarding() {
     if (!phone) { navigate('/start', { replace: true }); return; }
     setOwnerPhone(phone);
     setPlan(sessionStorage.getItem('pocketlink_plan') || 'free');
+    setPlanExpiresAt(sessionStorage.getItem('pocketlink_plan_expires') || null);
   }, [navigate]);
 
   function update(partial) {
@@ -265,7 +267,7 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      let config = { ...getConfig(), businessType: data.businessType || 'product' };
+      let config = { ...getConfig(), businessType: data.businessType || 'product', plan, planExpiresAt };
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
 
       // â"€â"€ Ensure slug is unique in DB â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -287,6 +289,7 @@ export default function Onboarding() {
       await saveBusiness(config, pin, ownerPhone);
       sessionStorage.removeItem('pocketlink_verified_phone');
       sessionStorage.removeItem('pocketlink_plan');
+      sessionStorage.removeItem('pocketlink_plan_expires');
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {

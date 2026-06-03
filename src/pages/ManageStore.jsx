@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { canAddProduct, canAddCategory, getPlanLimits } from '../utils/planLimits';
+import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft } from '../utils/planLimits';
 import {
   Lock, ArrowLeft, Package, Tag, Settings2,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
@@ -389,7 +389,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const userCats    = (config.categories || []).filter(c => c.id !== 'all');
   const products    = config.products || [];
-  const plan        = config.plan || 'free';
+  const plan        = effectivePlan(config);
   const limits      = getPlanLimits(plan);
   const atProdLimit = !canAddProduct(plan, products.length);
 
@@ -703,7 +703,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
 function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
   const themeColor = config.theme?.primary || '#0d9488';
   const userCats   = (config.categories || []).filter(c => c.id !== 'all');
-  const plan       = config.plan || 'free';
+  const plan       = effectivePlan(config);
   const limits     = getPlanLimits(plan);
   const atCatLimit = !canAddCategory(plan, userCats.length);
 
@@ -1402,6 +1402,13 @@ export default function ManageStore() {
   // ── Management Dashboard ──────────────────────────────────────────────────
   const themeColor = config.theme?.primary || '#0d9488';
 
+  // Free-trial / renewal state (coupon-granted plans expire; see effectivePlan)
+  const rawPlan    = config.plan || 'free';
+  const daysLeft   = trialDaysLeft(config);
+  const onTrial    = rawPlan !== 'free' && daysLeft !== null && daysLeft > 0;
+  const trialEnded = rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
+  const planName   = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
+
   const TABS = [
     { key: 'products',   label: 'Products',   icon: Package  },
     { key: 'categories', label: 'Categories', icon: Tag      },
@@ -1438,6 +1445,20 @@ export default function ManageStore() {
           </Link>
         </div>
       </header>
+
+      {/* ── Free-trial / renewal banner ─────────────────────────────────────── */}
+      {onTrial && (
+        <div className="bg-emerald-600 text-white text-center text-xs font-semibold px-4 py-2">
+          🎁 Free {planName} trial — {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left.{' '}
+          <a href="/plans" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Subscribe to keep it →</a>
+        </div>
+      )}
+      {trialEnded && (
+        <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
+          Your free {planName} trial ended — page is on Free now.{' '}
+          <a href="/plans" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Renew {planName} →</a>
+        </div>
+      )}
 
       {/* ── Tab navigation ──────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-gray-100 sticky top-16 z-10">

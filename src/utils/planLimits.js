@@ -89,3 +89,21 @@ export function showBrandBadge(plan) {
 export function isPaidPlan(plan) {
   return !showBrandBadge(plan);
 }
+
+// The plan a store is *currently entitled to*, accounting for a lapsed free
+// trial. A paid plan with a `planExpiresAt` in the past reverts to 'free'
+// (the page loses its paid features until the owner pays). Pass the config.
+export function effectivePlan(config) {
+  const plan = config?.plan ?? 'free';
+  const exp  = config?.planExpiresAt;
+  if (plan !== 'free' && exp && new Date(exp).getTime() < Date.now()) return 'free';
+  return plan;
+}
+
+// Whole days left on a trial (`planExpiresAt`). null if no expiry; 0 if past.
+export function trialDaysLeft(config) {
+  const exp = config?.planExpiresAt;
+  if (!exp) return null;
+  const ms = new Date(exp).getTime() - Date.now();
+  return ms > 0 ? Math.ceil(ms / 86400000) : 0;
+}
