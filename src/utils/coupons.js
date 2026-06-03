@@ -9,7 +9,7 @@
  * To add/disable codes, just edit this map.
  */
 export const COUPONS = {
-  FRIEND1MONTH: { plan: 'business', days: 30, label: '1 month of Business — free' },
+  SCGT: { plan: 'business', days: 30, label: '1 month of Business — free' },
 };
 
 /** Returns the coupon definition for a code, or null if invalid. Case-insensitive. */
