@@ -5,27 +5,33 @@ import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan } from '../utils/storeService';
 
 const PLAN_INFO = {
+  starter: {
+    name:  'Starter',
+    color: '#14b8a6',
+    features: ['20 products', '5 categories', 'No badge', 'Promo banners'],
+  },
   pro: {
     name:  'Pro',
-    color: '#0d9488',
-    features: ['20 products', '5 categories', 'No badge', 'Order history'],
+    color: '#10b981',
+    features: ['50 products', '10 categories', 'Verified badge', 'Order history'],
   },
   business: {
     name:  'Business',
-    color: '#6366f1',
-    features: ['Unlimited products', 'Unlimited categories', 'Analytics', 'Priority support'],
+    color: '#8b5cf6',
+    features: ['Unlimited products', 'Unlimited categories', 'Verified badge', 'Priority support'],
   },
 };
 
 const PERIOD_LABEL = {
-  monthly:  'Monthly',
-  halfyear: '6 Months',
-  yearly:   '1 Year',
+  monthly: 'Monthly',
+  yearly:  '1 Year',
 };
 
+// yearly = 12× monthly (one payment, no discount)
 const CHARGES = {
-  pro:      { monthly: 551,  halfyear: 2814, yearly: 4668 },
-  business: { monthly: 1000, halfyear: 5094, yearly: 8388 },
+  starter:  { monthly: 149, yearly: 1788 },
+  pro:      { monthly: 249, yearly: 2988 },
+  business: { monthly: 499, yearly: 5988 },
 };
 
 function loadRazorpayScript() {
@@ -58,6 +64,13 @@ export default function Checkout() {
   if (!plan || !amount) { navigate('/plans'); return null; }
   if (!phone)           { navigate('/start'); return null; }
 
+  // How long a paid term stays active before the next auto-charge (+grace).
+  // The razorpay-webhook pushes this forward on each successful renewal.
+  function termExpiry(per) {
+    const days = per === 'yearly' ? 368 : 33;
+    return new Date(Date.now() + days * 86400000).toISOString();
+  }
+
   async function handlePay() {
     setPaying(true);
     setPayError('');
@@ -67,26 +80,24 @@ export default function Checkout() {
       const loaded = await loadRazorpayScript();
       if (!loaded) throw new Error('Could not load payment SDK. Check your connection.');
 
-      // 2. Create order on backend
-      const { data: orderData } = await supabase.functions.invoke('create-razorpay-order', {
+      // 2. Create an auto-debit subscription on the backend
+      const { data: subData } = await supabase.functions.invoke('create-razorpay-subscription', {
         body: { plan: planKey, period, phone },
       });
 
-      if (orderData?.error || !orderData?.order_id) {
-        throw new Error(orderData?.error ?? 'Could not create payment order.');
+      if (subData?.error || !subData?.subscription_id) {
+        throw new Error(subData?.error ?? 'Could not start the subscription.');
       }
 
-      // 3. Open Razorpay checkout
+      // 3. Open Razorpay checkout for the mandate (amount comes from the plan)
       await new Promise((resolve, reject) => {
         const options = {
-          key:         orderData.key_id,
-          amount:      orderData.amount * 100,
-          currency:    'INR',
-          name:        'PocketLink',
-          description: `${plan.name} Plan · ${PERIOD_LABEL[period]}`,
-          order_id:    orderData.order_id,
-          prefill:     { contact: phone.replace('91', '') },
-          theme:       { color: plan.color },
+          key:             subData.key_id,
+          subscription_id: subData.subscription_id,
+          name:            'PocketLink',
+          description:     `${plan.name} Plan · ${PERIOD_LABEL[period]} · auto-renews`,
+          prefill:         { contact: phone.replace('91', '') },
+          theme:           { color: plan.color },
           modal: {
             ondismiss: () => {
               setPaying(false);
@@ -96,27 +107,31 @@ export default function Checkout() {
           },
           handler: async (response) => {
             try {
-              // 4. Verify signature on backend
+              // 4. Verify signature on backend (payment_id | subscription_id)
               const { data: verifyData } = await supabase.functions.invoke(
                 'verify-razorpay-payment',
                 {
                   body: {
-                    razorpay_order_id:   response.razorpay_order_id,
-                    razorpay_payment_id: response.razorpay_payment_id,
-                    razorpay_signature:  response.razorpay_signature,
+                    razorpay_payment_id:      response.razorpay_payment_id,
+                    razorpay_subscription_id: response.razorpay_subscription_id,
+                    razorpay_signature:       response.razorpay_signature,
                   },
                 },
               );
 
               if (verifyData?.verified) {
+                const expires = termExpiry(period);
+                const subId   = subData.subscription_id;
                 // Existing store for this phone → upgrade it (renewal);
                 // otherwise it's a new signup → carry the plan into onboarding.
                 const existing = await findStoreByPhone(phone);
                 if (existing) {
-                  await upgradePlan(existing, planKey, null);
+                  await upgradePlan(existing, planKey, expires, subId);
                   navigate(`/${existing}/manage`);
                 } else {
                   sessionStorage.setItem('pocketlink_plan', planKey);
+                  sessionStorage.setItem('pocketlink_plan_expires', expires);
+                  sessionStorage.setItem('pocketlink_subscription_id', subId);
                   navigate('/onboarding');
                 }
                 resolve(true);
@@ -165,7 +180,7 @@ export default function Checkout() {
 
   const billingNote = period === 'monthly'
     ? `₹${amount} billed monthly`
-    : `₹${amount.toLocaleString('en-IN')} billed ${period === 'halfyear' ? 'every 6 months' : 'yearly'}`;
+    : `₹${amount.toLocaleString('en-IN')} billed yearly`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -285,7 +300,7 @@ export default function Checkout() {
 
           {!applied && (
             <p className="text-center text-[11px] text-gray-400 mt-4">
-              Secured by Razorpay · 256-bit SSL · UPI · Cards · Wallets
+              Secured by Razorpay · Auto-renews {period === 'yearly' ? 'yearly' : 'monthly'} · Cancel anytime
             </p>
           )}
         </div>

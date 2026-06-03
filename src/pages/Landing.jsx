@@ -47,27 +47,34 @@ const STATS = [
   { value: '∞',     label: 'orders, no limits' },
 ];
 
-// Pricing plans (prices/links unchanged — richer presentation fields added)
+// Pricing plans — 4 tiers (yearly = 12× monthly, billed on /plans + /checkout)
 const PRICING_PLANS = [
   {
     name: 'Free', icon: '🌱', tagline: 'Get started today', accent: '#9ca3af',
     price: 0, originalPrice: null, priceNote: 'forever · no card needed',
     popular: false, to: '/start', cta: 'Start Free',
-    features: ['2 products · 1 category', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
+    features: ['10 products · 2 categories', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
     caveat: '“Powered by PocketLink” badge',
   },
   {
+    name: 'Starter', icon: '✨', tagline: 'Look professional', accent: '#2dd4bf',
+    price: 149, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: false, to: '/start?plan=starter', cta: 'Get Starter',
+    features: ['20 products · 5 categories', 'No PocketLink badge — your brand only', 'Promo banners', 'Email support'],
+    caveat: null,
+  },
+  {
     name: 'Pro', icon: '🚀', tagline: 'For growing businesses', accent: '#34d399',
-    price: 551, originalPrice: 699, priceNote: '+ GST · billed monthly · cancel anytime',
+    price: 249, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
     popular: true, to: '/start?plan=pro', cta: 'Get Pro',
-    features: ['20 products · 5 categories', 'No PocketLink badge — your brand only', 'Zero per-order cost', 'Order history', 'Email support'],
+    features: ['50 products · 10 categories', 'Verified badge', 'Order history & analytics', 'Email support'],
     caveat: null,
   },
   {
     name: 'Business', icon: '👑', tagline: 'Unlimited, no limits', accent: '#818cf8',
-    price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    price: 499, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
     popular: false, to: '/start?plan=business', cta: 'Get Business',
-    features: ['Unlimited products & categories', 'Discount codes & coupons', 'Analytics dashboard', 'Product variants', 'Priority support'],
+    features: ['Unlimited products & categories', 'Discount codes & coupons', 'Product variants', 'Priority support'],
     caveat: null,
   },
 ];
@@ -1181,7 +1188,7 @@ export default function Landing() {
                style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 30%, black, transparent 75%)' }} />
         </div>
 
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <Reveal className="text-center mb-14">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300
                           bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
@@ -1198,7 +1205,7 @@ export default function Landing() {
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
             {PRICING_PLANS.map((plan, idx) => (
               <Reveal key={plan.name} delay={idx * 0.1}
                 className={plan.popular ? 'lg:-mt-4 lg:-mb-4' : ''}>

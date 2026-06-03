@@ -65,11 +65,14 @@ export async function updateStore(slug, config) {
  * Upgrade / renew an existing store's plan (after a paid purchase or coupon).
  * Merges the new plan + optional trial expiry into the stored config — used so
  * renewals upgrade the existing page instead of creating a new one.
+ * Pass `subscriptionId` to record the Razorpay auto-debit subscription.
  */
-export async function upgradePlan(slug, plan, planExpiresAt = null) {
+export async function upgradePlan(slug, plan, planExpiresAt = null, subscriptionId = null) {
   const config = await fetchStore(slug);
   if (!config) throw new Error('Store not found.');
-  await updateStore(slug, { ...config, plan, planExpiresAt });
+  const next = { ...config, plan, planExpiresAt };
+  if (subscriptionId) next.razorpaySubscriptionId = subscriptionId;
+  await updateStore(slug, next);
 }
 
 /**

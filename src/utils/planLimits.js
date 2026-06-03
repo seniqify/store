@@ -1,10 +1,24 @@
 export const PLANS = {
   free: {
     name:            'Free',
-    products:        2,
-    categories:      1,
+    products:        10,
+    categories:      2,
     badge:           true,
+    verified:        false,
     promoBanner:     false,
+    discountCodes:   false,
+    orderHistory:    false,
+    analytics:       false,
+    variants:        false,
+    prioritySupport: false,
+  },
+  starter: {
+    name:            'Starter',
+    products:        20,
+    categories:      5,
+    badge:           false,
+    verified:        false,   // paid, but Verified is reserved for Pro & Business
+    promoBanner:     true,
     discountCodes:   false,
     orderHistory:    false,
     analytics:       false,
@@ -13,9 +27,10 @@ export const PLANS = {
   },
   pro: {
     name:            'Pro',
-    products:        20,
-    categories:      5,
+    products:        50,
+    categories:      10,
     badge:           false,
+    verified:        true,
     promoBanner:     true,
     discountCodes:   false,
     orderHistory:    true,
@@ -28,6 +43,7 @@ export const PLANS = {
     products:        Infinity,
     categories:      Infinity,
     badge:           false,
+    verified:        true,
     promoBanner:     true,
     discountCodes:   true,
     orderHistory:    true,
@@ -35,24 +51,13 @@ export const PLANS = {
     variants:        true,
     prioritySupport: true,
   },
-  // legacy aliases so old stores don't break
-  starter: {
-    name:            'Starter',
-    products:        10,
-    categories:      5,
-    badge:           false,
-    promoBanner:     true,
-    discountCodes:   false,
-    orderHistory:    true,
-    analytics:       'basic',
-    variants:        false,
-    prioritySupport: false,
-  },
+  // legacy alias so any old 'growth' store keeps its top-tier features
   growth: {
-    name:            'Growth',
-    products:        50,
-    categories:      15,
+    name:            'Business',
+    products:        Infinity,
+    categories:      Infinity,
     badge:           false,
+    verified:        true,
     promoBanner:     true,
     discountCodes:   true,
     orderHistory:    true,
@@ -88,6 +93,13 @@ export function showBrandBadge(plan) {
 // Used to gate premium-only UI like the "Verified" store badge.
 export function isPaidPlan(plan) {
   return !showBrandBadge(plan);
+}
+
+// The "Verified" store badge is a trust signal reserved for the higher tiers
+// (Pro & Business). Starter is paid but does NOT get Verified — gate the badge
+// on this, not isPaidPlan.
+export function isVerified(plan) {
+  return getPlanLimits(plan).verified === true;
 }
 
 // The plan a store is *currently entitled to*, accounting for a lapsed free

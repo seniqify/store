@@ -2,24 +2,25 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, X, Zap, ChevronDown, ShieldCheck, Sparkles } from 'lucide-react';
 
-// ── Billing periods ───────────────────────────────────────────────────────────
+// ── Billing periods (yearly = 12× monthly — one invoice, no discount) ──────────
 const PERIODS = [
-  { key: 'monthly',  label: 'Monthly',  badge: null          },
-  { key: 'halfyear', label: '6 Months', badge: 'Save 15%'    },
-  { key: 'yearly',   label: '1 Year',   badge: 'Best deal 🔥' },
+  { key: 'monthly', label: 'Monthly', badge: null          },
+  { key: 'yearly',  label: 'Yearly',  badge: 'One payment'  },
 ];
 
-// per-month display rate + total charge amount
+// per-month display rate + total charge amount (yearly = rate × 12)
 const PRICING = {
+  starter: {
+    monthly: { rate: 149, charge: 149  },
+    yearly:  { rate: 149, charge: 1788 },
+  },
   pro: {
-    monthly:  { rate: 551,  original: 699,  charge: 551,  saving: null           },
-    halfyear: { rate: 469,  original: null, charge: 2814, saving: 'Save ₹738'    },
-    yearly:   { rate: 389,  original: null, charge: 4668, saving: 'Save ₹1,944'  },
+    monthly: { rate: 249, charge: 249  },
+    yearly:  { rate: 249, charge: 2988 },
   },
   business: {
-    monthly:  { rate: 1000, original: null, charge: 1000, saving: null           },
-    halfyear: { rate: 849,  original: null, charge: 5094, saving: 'Save ₹906'    },
-    yearly:   { rate: 699,  original: null, charge: 8388, saving: 'Save ₹3,612'  },
+    monthly: { rate: 499, charge: 499  },
+    yearly:  { rate: 499, charge: 5988 },
   },
 };
 
@@ -28,34 +29,46 @@ const PLANS = [
   {
     key: 'free', name: 'Free', tagline: 'Get online today',
     accent: '#64748b', cta: 'Start Free',
-    highlights: ['2 products · 1 category', 'WhatsApp order messages', 'Your own shareable link'],
-    features: ['2 products · 1 category', 'WhatsApp order messages', 'Your own shareable link', 'GST-ready pricing', 'UPI + Bank + COD checkout'],
-    missing: ['Carries a small “Powered by PocketLink” badge'],
+    highlights: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link'],
+    features: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link', 'GST-ready pricing', 'UPI + Bank + COD checkout'],
+    missing: ['Carries a small “Powered by PocketLink” badge', 'No Verified badge'],
   },
   {
-    key: 'pro', name: 'Pro', tagline: 'For growing businesses', popular: true,
-    accent: '#10b981', cta: 'Get Pro',
+    key: 'starter', name: 'Starter', tagline: 'Look professional',
+    accent: '#14b8a6', cta: 'Get Starter',
     highlights: ['20 products · 5 categories', 'Your brand only — badge removed', 'Promo banners & announcements'],
     features: [
       '20 products · 5 categories',
       'No “Powered by” badge — 100% your brand',
       'Promo banners & page announcements',
-      'Order history to track & re-engage',
       'Zero per-order cost — WhatsApp stays free',
       'Share one link on bio, status, everywhere',
+      'Email support',
+    ],
+    missing: ['Verified badge is on Pro & Business'],
+  },
+  {
+    key: 'pro', name: 'Pro', tagline: 'For growing businesses', popular: true,
+    accent: '#10b981', cta: 'Get Pro',
+    highlights: ['50 products · 10 categories', 'Verified badge ✓', 'Order history & analytics'],
+    features: [
+      '50 products · 10 categories',
+      'Everything in Starter',
+      'Verified badge — instant customer trust',
+      'Order history to track & re-engage',
+      'Sales analytics dashboard',
       'Email support',
     ],
   },
   {
     key: 'business', name: 'Business', tagline: 'Scale with no limits',
     accent: '#8b5cf6', cta: 'Get Business',
-    highlights: ['Unlimited products & categories', 'Discount codes & coupons', 'Sales analytics dashboard'],
+    highlights: ['Unlimited products & categories', 'Discount codes & coupons', 'Priority support'],
     features: [
       'Unlimited products & categories',
       'Everything in Pro',
       'Discount codes & coupons',
       'Product variants — size, colour & more',
-      'Sales analytics dashboard',
       'Priority WhatsApp support',
     ],
   },
@@ -79,14 +92,14 @@ const FAQS = [
   { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales.' },
   { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. If you downgrade, your page simply moves to the Free plan; it never goes offline.' },
   { q: 'How do I pay?', a: 'Securely via UPI, debit/credit card or net banking. You get a GST invoice for every payment.' },
-  { q: 'How soon does my plan activate?', a: 'Paid plans activate within 2–4 hours of payment. Your Free page keeps working in the meantime.' },
+  { q: 'How soon does my plan activate?', a: 'Instantly. The moment your payment succeeds, your plan is live — no waiting, no manual confirmation.' },
 ];
 
 export default function Plans() {
   const navigate = useNavigate();
   const phone    = sessionStorage.getItem('pocketlink_verified_phone');
 
-  const [period, setPeriod] = useState('yearly');     // default to the best-value term
+  const [period, setPeriod] = useState('monthly');    // monthly first; yearly = 12× (one payment)
   const [open,   setOpen]   = useState({});            // which plan's feature dropdown is open
   const [faq,    setFaq]    = useState(null);          // which FAQ is open
 
@@ -123,7 +136,7 @@ export default function Plans() {
 
       {/* Nav */}
       <nav className="sticky top-0 z-20 border-b border-white/10 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/"><img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" /></Link>
           {phone && (
             <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium
@@ -135,7 +148,7 @@ export default function Plans() {
         </div>
       </nav>
 
-      <div className="relative max-w-5xl mx-auto px-4 py-12 sm:py-16">
+      <div className="relative max-w-6xl mx-auto px-4 py-12 sm:py-16">
 
         {/* Header */}
         <div className="text-center mb-9 animate-pl-fade-up">
@@ -174,7 +187,7 @@ export default function Plans() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
           {PLANS.map((plan) => {
             const p        = plan.key === 'free' ? null : PRICING[plan.key][period];
             const perDay   = p ? Math.round(p.rate / 30) : null;
@@ -186,7 +199,7 @@ export default function Plans() {
                 className={[
                   'relative flex flex-col rounded-3xl p-6 transition-all duration-200',
                   popular
-                    ? 'bg-white/[0.09] border-2 shadow-2xl md:-translate-y-3'
+                    ? 'bg-white/[0.09] border-2 shadow-2xl lg:-translate-y-3'
                     : 'bg-white/[0.04] border border-white/10 hover:bg-white/[0.06]',
                 ].join(' ')}
                 style={popular ? { borderColor: plan.accent, boxShadow: `0 24px 60px ${plan.accent}26` } : {}}>
@@ -217,21 +230,17 @@ export default function Plans() {
                         <p className="text-4xl font-extrabold text-white">
                           ₹{p.rate}<span className="text-base font-normal text-white/45">/mo</span>
                         </p>
-                        {p.original && <span className="text-sm text-white/40 line-through">₹{p.original}</span>}
                       </div>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
                           ≈ ₹{perDay}/day{plan.key === 'pro' ? ' · less than a chai' : ''}
                         </span>
-                        {p.saving && (
-                          <span className="text-[11px] font-semibold text-emerald-300">{p.saving}</span>
-                        )}
                       </div>
                       <p className="text-xs text-white/40 mt-2">
                         {period === 'monthly'
                           ? 'billed monthly · cancel anytime'
-                          : `₹${p.charge.toLocaleString('en-IN')} billed ${period === 'halfyear' ? 'every 6 months' : 'yearly'}`}
+                          : `₹${p.charge.toLocaleString('en-IN')} billed yearly · one invoice`}
                       </p>
                     </>
                   )}
@@ -303,7 +312,7 @@ export default function Plans() {
           ))}
         </div>
         <p className="text-center text-[11px] text-white/35 mt-3">
-          Prices exclusive of GST · Paid plans activate within 2–4 hours · Your Free page stays live until then
+          Prices exclusive of GST · Paid plans activate instantly after payment · Cancel anytime
         </p>
 
         {/* Every plan includes */}

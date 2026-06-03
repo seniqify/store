@@ -268,6 +268,8 @@ export default function Onboarding() {
     setSaveError('');
     try {
       let config = { ...getConfig(), businessType: data.businessType || 'product', plan, planExpiresAt };
+      const subId = sessionStorage.getItem('pocketlink_subscription_id');
+      if (subId) config.razorpaySubscriptionId = subId;
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
 
       // â"€â"€ Ensure slug is unique in DB â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -290,6 +292,7 @@ export default function Onboarding() {
       sessionStorage.removeItem('pocketlink_verified_phone');
       sessionStorage.removeItem('pocketlink_plan');
       sessionStorage.removeItem('pocketlink_plan_expires');
+      sessionStorage.removeItem('pocketlink_subscription_id');
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
     } catch (err) {
