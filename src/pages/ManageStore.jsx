@@ -505,7 +505,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
                 Limit: {limits.products} products
               </span>
-              <a href="/plans" target="_blank" rel="noopener noreferrer"
+              <a href="/plans"
+                 onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
                  className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
                  style={{ backgroundColor: themeColor }}>
                 Upgrade →
@@ -779,7 +780,8 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
               <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
                 Limit: {limits.categories} categor{limits.categories === 1 ? 'y' : 'ies'}
               </span>
-              <a href="/plans" target="_blank" rel="noopener noreferrer"
+              <a href="/plans"
+                 onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
                  className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
                  style={{ backgroundColor: themeColor }}>
                 Upgrade →
@@ -1450,13 +1452,13 @@ export default function ManageStore() {
       {onTrial && (
         <div className="bg-emerald-600 text-white text-center text-xs font-semibold px-4 py-2">
           🎁 Free {planName} trial — {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left.{' '}
-          <a href="/plans" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Subscribe to keep it →</a>
+          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Subscribe to keep it →</a>
         </div>
       )}
       {trialEnded && (
         <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
           Your free {planName} trial ended — page is on Free now.{' '}
-          <a href="/plans" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Renew {planName} →</a>
+          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Renew {planName} →</a>
         </div>
       )}
 

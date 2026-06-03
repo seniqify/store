@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { validateCoupon } from '../utils/coupons';
+import { findStoreByPhone, upgradePlan } from '../utils/storeService';
 
 const PLAN_INFO = {
   pro: {
@@ -108,8 +109,16 @@ export default function Checkout() {
               );
 
               if (verifyData?.verified) {
-                sessionStorage.setItem('pocketlink_plan', planKey);
-                navigate('/onboarding');
+                // Existing store for this phone → upgrade it (renewal);
+                // otherwise it's a new signup → carry the plan into onboarding.
+                const existing = await findStoreByPhone(phone);
+                if (existing) {
+                  await upgradePlan(existing, planKey, null);
+                  navigate(`/${existing}/manage`);
+                } else {
+                  sessionStorage.setItem('pocketlink_plan', planKey);
+                  navigate('/onboarding');
+                }
                 resolve(true);
               } else {
                 throw new Error(verifyData?.error ?? 'Payment verification failed.');
@@ -139,12 +148,19 @@ export default function Checkout() {
     setCouponError('');
   }
 
-  // Coupon path: grant the plan free with an expiry, skip payment, go to onboarding.
-  function handleClaim() {
+  // Coupon path: grant the plan free with an expiry, skip payment.
+  // Existing store → upgrade it (renewal); new signup → carry into onboarding.
+  async function handleClaim() {
     const expires = new Date(Date.now() + applied.days * 86400000).toISOString();
-    sessionStorage.setItem('pocketlink_plan', applied.plan);
-    sessionStorage.setItem('pocketlink_plan_expires', expires);
-    navigate('/onboarding');
+    const existing = await findStoreByPhone(phone);
+    if (existing) {
+      await upgradePlan(existing, applied.plan, expires);
+      navigate(`/${existing}/manage`);
+    } else {
+      sessionStorage.setItem('pocketlink_plan', applied.plan);
+      sessionStorage.setItem('pocketlink_plan_expires', expires);
+      navigate('/onboarding');
+    }
   }
 
   const billingNote = period === 'monthly'

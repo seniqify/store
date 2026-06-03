@@ -62,6 +62,17 @@ export async function updateStore(slug, config) {
 }
 
 /**
+ * Upgrade / renew an existing store's plan (after a paid purchase or coupon).
+ * Merges the new plan + optional trial expiry into the stored config — used so
+ * renewals upgrade the existing page instead of creating a new one.
+ */
+export async function upgradePlan(slug, plan, planExpiresAt = null) {
+  const config = await fetchStore(slug);
+  if (!config) throw new Error('Store not found.');
+  await updateStore(slug, { ...config, plan, planExpiresAt });
+}
+
+/**
  * Verify PIN via Supabase RPC (server-side comparison — PIN never sent raw).
  * Falls back to direct query if RPC function isn't deployed yet.
  */
