@@ -77,9 +77,9 @@ export default function BusinessCard({ biz }) {
           {biz.name}
         </h3>
 
-        {biz.city && (
+        {(biz.city || biz.state) && (
           <p className="flex items-center gap-1 text-xs text-gray-400 mt-0.5 truncate">
-            <MapPin size={12} className="flex-shrink-0" /> {biz.city}
+            <MapPin size={12} className="flex-shrink-0" /> {[biz.city, biz.state].filter(Boolean).join(', ')}
           </p>
         )}
 

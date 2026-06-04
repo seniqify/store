@@ -8,7 +8,7 @@ import StepPublish      from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness }        from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
-import { slugExists }          from '../utils/storeService';
+import { slugExists, clearPendingSignup } from '../utils/storeService';
 import { uploadConfigImages, uploadSingleImage } from '../utils/imageStorage';
 
 const INITIAL = {
@@ -16,6 +16,8 @@ const INITIAL = {
   businessName:      '',
   tagline:           '',
   address:           '',
+  state:             '',
+  city:              '',
   features:          [],
   logo:              '',
   coverImage:        '',
@@ -289,6 +291,7 @@ export default function Onboarding() {
       config = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
 
       await saveBusiness(config, pin, ownerPhone);
+      await clearPendingSignup(ownerPhone);   // payment is now tied to a real store
       sessionStorage.removeItem('pocketlink_verified_phone');
       sessionStorage.removeItem('pocketlink_plan');
       sessionStorage.removeItem('pocketlink_plan_expires');

@@ -497,9 +497,9 @@ function FeaturedCard({ biz }) {
           </div>
           <div className="min-w-0 pb-0.5">
             <h3 className="text-white font-extrabold text-sm leading-tight truncate drop-shadow">{biz.name}</h3>
-            {biz.city && (
+            {(biz.city || biz.state) && (
               <p className="text-white/85 text-[11px] flex items-center gap-1 truncate">
-                <MapPin size={11} className="flex-shrink-0" /> {biz.city}
+                <MapPin size={11} className="flex-shrink-0" /> {[biz.city, biz.state].filter(Boolean).join(', ')}
               </p>
             )}
           </div>

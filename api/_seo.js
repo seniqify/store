@@ -61,8 +61,14 @@ export function storeSeo(config, slug, origin) {
     areaServed: city || 'India',
     priceRange: '₹₹',
     ...(wa ? { telephone: `+${wa}` } : {}),
-    ...(config.address
-      ? { address: { '@type': 'PostalAddress', streetAddress: config.address, ...(city ? { addressLocality: city } : {}), addressCountry: 'IN' } }
+    ...((config.address || city || config.state)
+      ? { address: {
+            '@type': 'PostalAddress',
+            ...(config.address ? { streetAddress: config.address } : {}),
+            ...(city ? { addressLocality: city } : {}),
+            ...(config.state ? { addressRegion: config.state } : {}),
+            addressCountry: 'IN',
+          } }
       : {}),
     ...(products.length
       ? { makesOffer: products.slice(0, 20).map((p) => ({

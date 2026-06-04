@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, MessageCircle, Check } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
-import { findStoreByPhone } from '../utils/storeService';
+import { findStoreByPhone, getPendingSignup } from '../utils/storeService';
 
 const RESEND_SECONDS = 30;
 
@@ -39,6 +39,23 @@ export default function Start() {
     return () => clearInterval(timerRef.current);
   }, [timer]);
 
+  // After the phone is confirmed (OTP or bypass): if this number already paid
+  // but never finished onboarding, resume there free; otherwise go to plans.
+  async function continueAfterPhone() {
+    sessionStorage.setItem('pocketlink_verified_phone', phone);
+    if (!isUpgrade) {
+      const pending = await getPendingSignup(phone);
+      if (pending) {
+        sessionStorage.setItem('pocketlink_plan', pending.plan);
+        if (pending.planExpiresAt)  sessionStorage.setItem('pocketlink_plan_expires', pending.planExpiresAt);
+        if (pending.subscriptionId) sessionStorage.setItem('pocketlink_subscription_id', pending.subscriptionId);
+        navigate('/onboarding');
+        return;
+      }
+    }
+    navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
+  }
+
   async function handleSendOtp(e) {
     e?.preventDefault();
     if (!isValidPhone) { setError('Please enter a valid 10-digit WhatsApp number.'); return; }
@@ -57,8 +74,7 @@ export default function Start() {
       // TEMP: OTP disabled — skip verification, capture the number, continue
       // to the same place a successful verify would (plan selection).
       if (!OTP_ENABLED) {
-        sessionStorage.setItem('pocketlink_verified_phone', phone);
-        navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
+        await continueAfterPhone();
         return;
       }
 
@@ -80,8 +96,7 @@ export default function Start() {
     setError('');
     try {
       await verifyOtp(phone, otp);
-      sessionStorage.setItem('pocketlink_verified_phone', phone);
-      navigate(planParam !== 'free' ? `/plans?plan=${planParam}` : '/plans');
+      await continueAfterPhone();
     } catch (err) {
       setError(err.message || 'Verification failed. Please try again.');
     } finally {

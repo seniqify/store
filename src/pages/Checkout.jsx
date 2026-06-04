@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { validateCoupon } from '../utils/coupons';
-import { findStoreByPhone, upgradePlan } from '../utils/storeService';
+import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
 
 const PLAN_INFO = {
   starter: {
@@ -129,6 +129,8 @@ export default function Checkout() {
                   await upgradePlan(existing, planKey, expires, subId);
                   navigate(`/${existing}/manage`);
                 } else {
+                  // Persist the payment so it survives leaving onboarding (resume, no re-charge)
+                  await savePendingSignup(phone, planKey, expires, subId);
                   sessionStorage.setItem('pocketlink_plan', planKey);
                   sessionStorage.setItem('pocketlink_plan_expires', expires);
                   sessionStorage.setItem('pocketlink_subscription_id', subId);
@@ -172,6 +174,7 @@ export default function Checkout() {
       await upgradePlan(existing, applied.plan, expires);
       navigate(`/${existing}/manage`);
     } else {
+      await savePendingSignup(phone, applied.plan, expires, null);
       sessionStorage.setItem('pocketlink_plan', applied.plan);
       sessionStorage.setItem('pocketlink_plan_expires', expires);
       navigate('/onboarding');

@@ -169,6 +169,41 @@ export async function listStores() {
     .filter((c) => c && c.businessName);
 }
 
+// ── Pending signups ────────────────────────────────────────────────────────
+// A customer can pay BEFORE building their store (pay → onboarding). If they
+// leave mid-onboarding, the payment must not be lost: we record it by phone so
+// a returning, OTP-verified user resumes onboarding instead of paying again.
+
+/** Record a paid-but-not-yet-built signup, keyed by phone (last 10 digits). */
+export async function savePendingSignup(phone, plan, planExpiresAt = null, subscriptionId = null) {
+  const last10 = String(phone).replace(/\D/g, '').slice(-10);
+  if (!last10) return;
+  await supabase.from('pending_signups').upsert(
+    { phone: last10, plan, plan_expires_at: planExpiresAt, subscription_id: subscriptionId },
+    { onConflict: 'phone' },
+  );
+}
+
+/** Look up a pending paid signup. Returns { plan, planExpiresAt, subscriptionId } or null. */
+export async function getPendingSignup(phone) {
+  const last10 = String(phone).replace(/\D/g, '').slice(-10);
+  if (!last10) return null;
+  const { data } = await supabase
+    .from('pending_signups')
+    .select('plan, plan_expires_at, subscription_id')
+    .eq('phone', last10)
+    .maybeSingle();
+  if (!data) return null;
+  return { plan: data.plan, planExpiresAt: data.plan_expires_at, subscriptionId: data.subscription_id };
+}
+
+/** Clear a pending signup once the store is actually created. */
+export async function clearPendingSignup(phone) {
+  const last10 = String(phone).replace(/\D/g, '').slice(-10);
+  if (!last10) return;
+  await supabase.from('pending_signups').delete().eq('phone', last10);
+}
+
 /** Check if a slug already exists in DB. */
 export async function slugExists(slug) {
   const { data } = await supabase

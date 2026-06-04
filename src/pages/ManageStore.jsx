@@ -19,8 +19,10 @@ import {
 import { loadBusiness }                               from '../utils/BusinessLoader';
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
-import { THEME_PRESETS }                              from '../utils/buildConfig';
-import { uploadConfigImages }                         from '../utils/imageStorage';
+import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
+import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
+import { CATEGORIES }                                 from '../utils/marketplace';
+import { STATES, citiesForState }                     from '../utils/indiaLocations';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = [
@@ -1146,6 +1148,99 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         </div>
       </div>
 
+      {/* Logo & Cover */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Logo &amp; Cover</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className={lCls()}>Logo Image <span className="text-gray-400 font-normal">(replaces the icon)</span></label>
+            <ImageUploader value={config.logo || ''} onChange={v => update({ logo: v })} />
+          </div>
+          <div>
+            <label className={lCls()}>Cover Photo</label>
+            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} />
+          </div>
+        </div>
+      </div>
+
+      {/* Highlights (trust badges) */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Highlights</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        <p className="text-xs text-gray-400 mb-2.5">Trust badges shown on your page — tap to add or remove.</p>
+        <div className="flex flex-wrap gap-2">
+          {(FEATURE_SUGGESTIONS[config.businessType] ?? FEATURE_SUGGESTIONS.product).map(f => {
+            const on = (config.features || []).some(x => x.title === f.title);
+            return (
+              <button key={f.title} type="button"
+                onClick={() => {
+                  const cur = config.features || [];
+                  update({ features: on ? cur.filter(x => x.title !== f.title) : [...cur, f] });
+                }}
+                className={[
+                  'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-all active:scale-95',
+                  on ? 'text-white border-transparent shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                ].join(' ')}
+                style={on ? { backgroundColor: themeColor } : {}}>
+                <span className="text-base leading-none">{f.emoji}</span>
+                {f.title}
+                {on && <Check size={13} strokeWidth={3} className="ml-0.5" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Location & Category */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Location &amp; Category</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lCls()}>State</label>
+              <select value={config.state || ''} onChange={e => update({ state: e.target.value, city: '' })} className={iCls(false)}>
+                <option value="">Select state</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lCls()}>City</label>
+              <input list="pl-manage-cities" value={config.city || ''} disabled={!config.state}
+                     onChange={e => update({ city: e.target.value })}
+                     placeholder={config.state ? 'Select or type' : 'Pick a state'}
+                     className={[iCls(false), 'disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed'].join(' ')} />
+              <datalist id="pl-manage-cities">
+                {citiesForState(config.state).map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+          </div>
+          <div>
+            <label className={lCls()}>Full Address <span className="text-gray-400 font-normal">(shown on your page)</span></label>
+            <input type="text" value={config.address || ''} placeholder="e.g. MG Road, Bengaluru — 560001"
+                   onChange={e => update({ address: e.target.value })} className={iCls(false)} />
+          </div>
+          <div>
+            <label className={lCls()}>Marketplace Category</label>
+            <select value={config.category || ''} onChange={e => update({ category: e.target.value })} className={iCls(false)}>
+              <option value="">Auto (by business type)</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">How your business is filed on the marketplace.</p>
+          </div>
+        </div>
+      </div>
+
       {/* Pricing */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -1353,9 +1448,13 @@ export default function ManageStore() {
     setSaveStatus('saving');
     setSaveError('');
     try {
-      // Upload any base64 images added during this session
-      const uploadedProducts = await uploadConfigImages(config.products, businessSlug);
-      const finalConfig = { ...config, products: uploadedProducts };
+      // Upload any base64 images added during this session (products + logo + cover)
+      const [uploadedProducts, uploadedLogo, uploadedCover] = await Promise.all([
+        uploadConfigImages(config.products, businessSlug),
+        uploadSingleImage(config.logo, businessSlug, 'logo'),
+        uploadSingleImage(config.coverImage, businessSlug, 'cover'),
+      ]);
+      const finalConfig = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
 
       await updateStore(businessSlug, finalConfig);
       setConfig(finalConfig);      // update state with Storage URLs

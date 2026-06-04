@@ -62,6 +62,7 @@ export function normalizeBusiness(config, { demo = false } = {}) {
     name:           config.businessName || config.name || 'Unnamed business',
     category:       deriveCategory(config),
     city:           deriveCity(config),
+    state:          config.state || '',
     location:       config.address || '',
     tagline:        config.tagline || '',
     logo:           config.logo || null,
