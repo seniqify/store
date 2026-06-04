@@ -177,9 +177,12 @@ export default function Marketplace() {
             Local finder · 0% commission
           </span>
 
-          <h1 className="text-[2.4rem] sm:text-6xl font-extrabold text-white tracking-tight leading-[1.05] mb-4 pl-rise"
+          <h1 className="text-[2.4rem] sm:text-6xl font-extrabold text-white tracking-tight leading-[1.08] mb-4 pl-rise"
               style={{ animationDelay: '.08s' }}>
-            Discover Local <RotatingWord /><br className="hidden sm:block" /> Near You
+            {/* Each part on its own line — the rotating word swaps in place, no reflow */}
+            <span className="block">Discover Local</span>
+            <span className="block"><RotatingWord /></span>
+            <span className="block">Near You</span>
           </h1>
 
           <p className="text-white/55 text-sm sm:text-lg max-w-lg mx-auto mb-8 pl-rise" style={{ animationDelay: '.16s' }}>
