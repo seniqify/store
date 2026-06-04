@@ -35,19 +35,15 @@ export function deriveCategory(config) {
   return TYPE_TO_CATEGORY[config?.businessType] ?? 'Other';
 }
 
-/** Best-effort city/area from an explicit `config.city` or the free-text address. */
+/**
+ * City for the marketplace — the STRUCTURED field only. We deliberately do NOT
+ * parse the free-text address here: comma-less addresses ("242 Jodbhavi Peth
+ * Solapur") and state-only addresses would otherwise leak into the area filter.
+ * Stores without a structured city simply show no location until the owner sets
+ * one (now a quick pincode lookup in onboarding/Manage).
+ */
 export function deriveCity(config) {
-  if (config?.city) return String(config.city).trim();
-  const addr = config?.address || '';
-  if (!addr) return '';
-  const parts = addr.split(',').map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return '';
-  // The last comma-part is usually "City — 400050" / "City 400050"; strip the rest.
-  let last = parts[parts.length - 1].replace(/[-–—].*$/, '').replace(/\d{4,6}/g, '').trim();
-  if (!last && parts.length > 1) {
-    last = parts[parts.length - 2].replace(/\d{4,6}/g, '').trim();
-  }
-  return last;
+  return (config?.city || '').trim();
 }
 
 /**

@@ -18,6 +18,8 @@ export const spiceRouteConfig = {
   phone:   '+91 98765 43210',
   email:   'orders@spiceroute.in',
   address: 'Koramangala 5th Block, Bengaluru — 560095',
+  city:    'Bengaluru',
+  state:   'Karnataka',
   upi:     'spiceroute@upi',
 
   theme: { primary: '#ea580c', primaryDark: '#c2410c', accent: '#f59e0b', accentDark: '#d97706' },

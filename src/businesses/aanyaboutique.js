@@ -18,6 +18,8 @@ export const aanyaBoutiqueConfig = {
   phone:   '+91 98765 43210',
   email:   'hello@aanyaboutique.in',
   address: 'Linking Road, Bandra, Mumbai — 400050',
+  city:    'Mumbai',
+  state:   'Maharashtra',
   gst:     'GST No: 27ABCDE1234F1Z5',
   upi:     'aanyaboutique@upi',
 

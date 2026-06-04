@@ -16,15 +16,6 @@ function absImage(src, origin) {
   return null;                                  // data: URLs etc. — skip
 }
 
-function cityFromAddress(address = '') {
-  if (!address) return '';
-  const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return '';
-  let last = parts[parts.length - 1].replace(/[-–—].*$/, '').replace(/\d{4,6}/g, '').trim();
-  if (!last && parts.length > 1) last = parts[parts.length - 2].replace(/\d{4,6}/g, '').trim();
-  return last;
-}
-
 const TYPE_SCHEMA = {
   restaurant: 'Restaurant',
   hotel:      'LodgingBusiness',
@@ -36,7 +27,7 @@ const TYPE_SCHEMA = {
 export function storeSeo(config, slug, origin) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
-  const city    = config.city || cityFromAddress(config.address);
+  const city    = config.city || '';
   const tagline = (config.tagline || `Order from ${name} on WhatsApp.`).trim();
 
   let title = name;

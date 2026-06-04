@@ -18,6 +18,8 @@ export const coralCourtyardConfig = {
   phone:   '+91 98765 43210',
   email:   'stay@coralcourtyard.in',
   address: 'Calangute, Goa — 403516',
+  city:    'Calangute',
+  state:   'Goa',
 
   theme: { primary: '#d97706', primaryDark: '#b45309', accent: '#f59e0b', accentDark: '#92400e' },
   cart:  { taxRate: 0, freeShippingAbove: 0, shippingCharge: 0 },

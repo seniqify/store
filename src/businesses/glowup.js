@@ -18,6 +18,8 @@ export const glowUpConfig = {
   phone:   '+91 98765 43210',
   email:   'book@glowup.in',
   address: 'Banjara Hills, Hyderabad — 500034',
+  city:    'Hyderabad',
+  state:   'Telangana',
 
   theme: { primary: '#9333ea', primaryDark: '#7e22ce', accent: '#f59e0b', accentDark: '#d97706' },
   cart:  { taxRate: 0, freeShippingAbove: 0, shippingCharge: 0 },
