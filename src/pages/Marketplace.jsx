@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Sparkles, Store, ArrowRight, X } from 'lucide-react';
+import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle } from 'lucide-react';
 import { listStores } from '../utils/storeService';
 import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness, CATEGORIES, CATEGORY_META } from '../utils/marketplace';
+import { whatsappLink } from '../utils/theme';
 import BusinessCard from '../components/marketplace/BusinessCard';
 
 const WA = '#25D366';
@@ -104,6 +105,12 @@ export default function Marketplace() {
     const m = {};
     for (const b of businesses) m[b.category] = (m[b.category] || 0) + 1;
     return m;
+  }, [businesses]);
+
+  // Featured = image-forward businesses first (fall back to whatever exists), capped.
+  const featured = useMemo(() => {
+    const withCover = businesses.filter((b) => b.coverImage);
+    return (withCover.length ? withCover : businesses).slice(0, 8);
   }, [businesses]);
 
   const filtered = useMemo(() => {
@@ -234,6 +241,28 @@ export default function Marketplace() {
         </div>
       </div>
 
+      {/* ════════ Featured carousel ════════ */}
+      {!loading && featured.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
+          <Reveal>
+            <div className="flex items-end justify-between mb-5">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2">
+                  <Sparkles size={20} className="text-emerald-500" /> Featured near you
+                </h2>
+                <p className="text-sm text-gray-400 mt-1">Hand-picked local favourites</p>
+              </div>
+              <span className="hidden sm:inline text-xs font-semibold text-gray-300">swipe →</span>
+            </div>
+          </Reveal>
+          <Reveal>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2 -mx-4 px-4">
+              {featured.map((b) => <FeaturedCard key={b.href} biz={b} />)}
+            </div>
+          </Reveal>
+        </section>
+      )}
+
       {/* ════════ Browse by category ════════ */}
       <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
         <Reveal>
@@ -264,6 +293,9 @@ export default function Marketplace() {
           })}
         </div>
       </section>
+
+      {/* ════════ How it works ════════ */}
+      <HowItWorks />
 
       {/* ════════ Sticky filter bar ════════ */}
       <div id="results" className="sticky top-0 z-20 mt-10 bg-white/85 backdrop-blur-md border-y border-gray-100">
@@ -360,6 +392,8 @@ export default function Marketplace() {
           </div>
         </Reveal>
       </div>
+
+      <MarketplaceFooter />
     </div>
   );
 }
@@ -395,5 +429,156 @@ function EmptyState({ hasAny, hasFilters, onClear }) {
         </Link>
       )}
     </div>
+  );
+}
+
+/* ── Featured carousel card (image-forward, name overlaid on the banner) ──── */
+function FeaturedCard({ biz }) {
+  const waHref = biz.whatsappNumber ? whatsappLink(biz.whatsappNumber, biz.name) : null;
+  const meta   = CATEGORY_META[biz.category] || CATEGORY_META.Other;
+  const onWhatsApp = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (waHref) window.open(waHref, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <Link to={biz.href}
+      className="group relative flex-shrink-0 w-[270px] sm:w-[300px] snap-start rounded-3xl overflow-hidden
+                 bg-white border border-gray-100 shadow-sm transition-all duration-300 hover:-translate-y-1.5
+                 hover:shadow-[0_24px_50px_-12px_rgba(16,185,129,0.30)]">
+      <div className="relative h-44 overflow-hidden">
+        {biz.coverImage ? (
+          <img src={biz.coverImage} alt="" loading="lazy"
+               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        ) : (
+          <div className="w-full h-full transition-transform duration-500 group-hover:scale-110"
+               style={{ background: `linear-gradient(135deg, ${biz.primary}, ${biz.primaryDark})` }} />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold text-white px-2 py-0.5 rounded-full shadow"
+              style={{ background: `linear-gradient(135deg, ${meta.grad[0]}, ${meta.grad[1]})` }}>
+          <span>{meta.emoji}</span> {biz.category}
+        </span>
+
+        <div className="absolute bottom-0 inset-x-0 p-3.5 flex items-end gap-2.5">
+          <div className="w-11 h-11 rounded-xl ring-2 ring-white/80 overflow-hidden bg-white flex items-center justify-center text-xl flex-shrink-0"
+               style={!biz.logo ? { background: `linear-gradient(135deg, ${biz.primary}, ${biz.primaryDark})` } : undefined}>
+            {biz.logo
+              ? <img src={biz.logo} alt={biz.name} className="w-full h-full object-cover" loading="lazy" />
+              : <span>{biz.logoEmoji}</span>}
+          </div>
+          <div className="min-w-0 pb-0.5">
+            <h3 className="text-white font-extrabold text-sm leading-tight truncate drop-shadow">{biz.name}</h3>
+            {biz.city && (
+              <p className="text-white/85 text-[11px] flex items-center gap-1 truncate">
+                <MapPin size={11} className="flex-shrink-0" /> {biz.city}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-3.5">
+        <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem] mb-3">{biz.tagline}</p>
+        <div className="flex items-stretch gap-2">
+          <span className="relative flex-1 inline-flex items-center justify-center gap-1 text-xs font-bold text-white rounded-xl py-2.5 overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${biz.primary}, ${biz.primaryDark})` }}>
+            <span className="absolute inset-0 overflow-hidden rounded-xl">
+              <span className="absolute top-0 h-full w-1/3 bg-white/30 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
+            </span>
+            <span className="relative inline-flex items-center gap-1">Browse Products <ArrowRight size={13} /></span>
+          </span>
+          {waHref && (
+            <button type="button" onClick={onWhatsApp} aria-label="Chat on WhatsApp"
+              className="flex-shrink-0 inline-flex items-center justify-center rounded-xl w-11 text-white transition-transform hover:scale-110 active:scale-95"
+              style={{ backgroundColor: WA }}>
+              <MessageCircle size={17} />
+            </button>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* ── How it works ─────────────────────────────────────────────────────────── */
+function HowItWorks() {
+  const steps = [
+    { e: '🔍', t: 'Find a business',  d: 'Search or browse local shops, eateries & services near you.' },
+    { e: '💬', t: 'Chat on WhatsApp', d: 'Tap to message the owner directly — no app, no sign-up.' },
+    { e: '🛍️', t: 'Order & enjoy',    d: 'Confirm on chat, then pick up or get it delivered. Done.' },
+  ];
+  return (
+    <section className="max-w-6xl mx-auto px-4 pt-12 sm:pt-14">
+      <Reveal>
+        <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 text-center">How it works</h2>
+        <p className="text-sm text-gray-400 text-center mt-1 mb-7">Buying local has never been this simple</p>
+      </Reveal>
+      <div className="grid sm:grid-cols-3 gap-4">
+        {steps.map((s, i) => (
+          <Reveal key={s.t} delay={i * 0.08}>
+            <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 text-center shadow-sm
+                            hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+              <span className="absolute top-3 right-4 text-4xl font-extrabold text-gray-100 leading-none select-none">{i + 1}</span>
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">{s.e}</div>
+              <h3 className="font-bold text-gray-900">{s.t}</h3>
+              <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{s.d}</p>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+function FooterCol({ title, links }) {
+  return (
+    <div>
+      <h4 className="text-white font-bold text-sm mb-3">{title}</h4>
+      <ul className="space-y-2.5">
+        {links.map(([label, to]) => (
+          <li key={label}>
+            <Link to={to} className="text-white/55 text-sm hover:text-emerald-300 transition-colors">{label}</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MarketplaceFooter() {
+  const year = new Date().getFullYear();
+  return (
+    <footer className="relative overflow-hidden mt-6"
+            style={{ background: 'linear-gradient(0deg, #05110d 0%, #0a2a20 100%)' }}>
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute bottom-[-7rem] left-1/3 w-[30rem] h-[18rem] rounded-full blur-[120px]"
+             style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.18), transparent 65%)' }} />
+      </div>
+      <div className="relative max-w-6xl mx-auto px-4 py-12">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-2">
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert mb-4" />
+            <p className="text-white/50 text-sm max-w-xs leading-relaxed">
+              Your neighbourhood, online. Discover local businesses and order on WhatsApp — no app, no commission.
+            </p>
+            <Link to="/start"
+              className="inline-flex items-center gap-1.5 mt-5 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-500/20"
+              style={{ backgroundColor: WA }}>
+              <Store size={14} /> List Your Business Free
+            </Link>
+          </div>
+          <FooterCol title="Discover" links={[['Explore businesses', '/marketplace'], ['Create a page', '/start'], ['Pricing', '/plans']]} />
+          <FooterCol title="Company"  links={[['Terms', '/terms'], ['Privacy', '/privacy'], ['Home', '/']]} />
+        </div>
+        <div className="border-t border-white/10 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-white/40 text-xs">© {year} PocketLink · Made in India 🇮🇳</p>
+          <p className="text-white/40 text-xs">0% commission · No app · WhatsApp-first</p>
+        </div>
+      </div>
+    </footer>
   );
 }
