@@ -8,8 +8,8 @@ const CORS = {
 
 // WhatsApp template that sends the OTP. To swap templates later, just change
 // TEMPLATE_ID (or set the SENIQIFY_TEMPLATE_URL secret to override without a
-// redeploy). Current: Seniqify template "optpt".
-const TEMPLATE_ID  = 'h042vmds6w';
+// redeploy). Current: PocketLink template "opt" (sender 8482840808).
+const TEMPLATE_ID  = 'z0vm5t48dw';
 const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL')
   ?? `https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/${TEMPLATE_ID}/process`;
 
