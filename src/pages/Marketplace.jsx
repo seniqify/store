@@ -312,9 +312,6 @@ export default function Marketplace() {
         </div>
       </section>
 
-      {/* ════════ How it works ════════ */}
-      <HowItWorks />
-
       {/* ════════ Sticky filter bar ════════ */}
       <div id="results" className="sticky top-0 z-20 mt-10 bg-white/85 backdrop-blur-md border-y border-gray-100">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -383,6 +380,9 @@ export default function Marketplace() {
           </>
         )}
       </div>
+
+      {/* ════════ How it works ════════ */}
+      <HowItWorks />
 
       {/* ════════ List-your-business CTA ════════ */}
       <div className="max-w-6xl mx-auto px-4 pb-16">
