@@ -18,6 +18,8 @@ const INITIAL = {
   address:           '',
   state:             '',
   city:              '',
+  pincode:           '',
+  area:              '',
   features:          [],
   logo:              '',
   coverImage:        '',

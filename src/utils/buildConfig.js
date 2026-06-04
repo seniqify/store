@@ -78,6 +78,8 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     address            = '',
     state              = '',
     city               = '',
+    pincode            = '',
+    area               = '',
     features           = [],
     whatsappNumber,
     logoEmoji          = '🏪',
@@ -145,6 +147,8 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     address:        address.trim(),
     state:          state.trim(),
     city:           city.trim(),
+    pincode:        pincode.trim(),
+    area:           area.trim(),
     gst:            gstNumber.trim(),
     upi:            upiId.trim(),
     bank: {

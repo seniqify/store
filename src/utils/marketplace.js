@@ -63,6 +63,7 @@ export function normalizeBusiness(config, { demo = false } = {}) {
     category:       deriveCategory(config),
     city:           deriveCity(config),
     state:          config.state || '',
+    area:           config.area || '',
     location:       config.address || '',
     tagline:        config.tagline || '',
     logo:           config.logo || null,

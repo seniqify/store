@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { FEATURE_SUGGESTIONS } from '../../utils/buildConfig';
-import { STATES, citiesForState } from '../../utils/indiaLocations';
+import LocationPicker from '../LocationPicker';
 
 /**
  * StepBusiness — Onboarding Step 2
@@ -225,39 +225,13 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
       </div>
 
       {/* ════ Location ════ */}
-      {section('📍', 'LOCATION', 'State & city appear on the marketplace')}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            State {type === 'hotel' && <span className="text-red-500">*</span>}
-          </label>
-          <select value={data.state || ''} style={fieldStyle}
-            onChange={e => onChange({ state: e.target.value, city: '' })}
-            className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:border-transparent">
-            <option value="">Select state</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">City</label>
-          <input list="pl-city-list" value={data.city || ''} style={fieldStyle}
-            onChange={e => onChange({ city: e.target.value })}
-            placeholder={data.state ? 'Select or type city' : 'Pick a state first'}
-            disabled={!data.state}
-            className={`${fieldCls('city')} disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed`} />
-          <datalist id="pl-city-list">
-            {citiesForState(data.state).map(c => <option key={c} value={c} />)}
-          </datalist>
-        </div>
-      </div>
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-          {copy.addr} <span className="text-gray-400 font-normal">(full address{type !== 'hotel' ? ', optional' : ''})</span>
-        </label>
-        <input type="text" placeholder={copy.addrPh} value={data.address} style={fieldStyle}
-          onChange={e => onChange({ address: e.target.value })} className={fieldCls('address')} />
-        <p className="mt-1 text-xs text-gray-400">City &amp; state show on the marketplace; the full address appears on your page{type === 'hotel' ? ' hero &amp; footer' : ' footer'}.</p>
-      </div>
+      {section('📍', 'LOCATION', 'Enter your pincode — we fill in the rest')}
+      <LocationPicker
+        values={{ pincode: data.pincode, city: data.city, state: data.state, area: data.area, address: data.address }}
+        onChange={onChange}
+        accent={brand}
+      />
+      <p className="-mt-2 text-xs text-gray-400">City &amp; state show on the marketplace; the full address appears on your page{type === 'hotel' ? ' hero & footer' : ' footer'}.</p>
 
       {/* ════ Highlights / Amenities ════ */}
       {section(type === 'hotel' ? '🛎️' : '⭐', copy.highlights.toUpperCase(), 'Tap to add or remove')}

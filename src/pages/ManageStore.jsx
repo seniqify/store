@@ -22,7 +22,7 @@ import { cacheStore, clearCachedStore }               from '../utils/businessSto
 import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
 import { CATEGORIES }                                 from '../utils/marketplace';
-import { STATES, citiesForState }                     from '../utils/indiaLocations';
+import LocationPicker                                 from '../components/LocationPicker';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = [
@@ -1205,39 +1205,18 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Location &amp; Category</span>
           <div className="h-px flex-1 bg-gray-100" />
         </div>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lCls()}>State</label>
-              <select value={config.state || ''} onChange={e => update({ state: e.target.value, city: '' })} className={iCls(false)}>
-                <option value="">Select state</option>
-                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lCls()}>City</label>
-              <input list="pl-manage-cities" value={config.city || ''} disabled={!config.state}
-                     onChange={e => update({ city: e.target.value })}
-                     placeholder={config.state ? 'Select or type' : 'Pick a state'}
-                     className={[iCls(false), 'disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed'].join(' ')} />
-              <datalist id="pl-manage-cities">
-                {citiesForState(config.state).map(c => <option key={c} value={c} />)}
-              </datalist>
-            </div>
-          </div>
-          <div>
-            <label className={lCls()}>Full Address <span className="text-gray-400 font-normal">(shown on your page)</span></label>
-            <input type="text" value={config.address || ''} placeholder="e.g. MG Road, Bengaluru — 560001"
-                   onChange={e => update({ address: e.target.value })} className={iCls(false)} />
-          </div>
-          <div>
-            <label className={lCls()}>Marketplace Category</label>
-            <select value={config.category || ''} onChange={e => update({ category: e.target.value })} className={iCls(false)}>
-              <option value="">Auto (by business type)</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <p className="mt-1 text-xs text-gray-400">How your business is filed on the marketplace.</p>
-          </div>
+        <LocationPicker
+          values={{ pincode: config.pincode, city: config.city, state: config.state, area: config.area, address: config.address }}
+          onChange={update}
+          accent={themeColor}
+        />
+        <div className="mt-3">
+          <label className={lCls()}>Marketplace Category</label>
+          <select value={config.category || ''} onChange={e => update({ category: e.target.value })} className={iCls(false)}>
+            <option value="">Auto (by business type)</option>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">How your business is filed on the marketplace.</p>
         </div>
       </div>
 
