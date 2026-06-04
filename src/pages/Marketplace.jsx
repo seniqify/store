@@ -8,7 +8,22 @@ import { whatsappLink } from '../utils/theme';
 import BusinessCard from '../components/marketplace/BusinessCard';
 
 const WA = '#25D366';
-const ROTATING = ['Boutiques', 'Cafés', 'Salons', 'Grocers', 'Lodges', 'Studios'];
+const ROTATING = [
+  'Boutiques', 'Cafés', 'Salons', 'Bakeries', 'Grocers', 'Lodges',
+  'Studios', 'Florists', 'Tailors', 'Pharmacies', 'Bookshops', 'Gyms',
+  'Restaurants', 'Designers', 'Repairs', 'Kirana',
+];
+// A different vibrant gradient per rotation — cycled alongside the words.
+const WORD_GRADIENTS = [
+  'linear-gradient(90deg,#34d399,#5eead4,#25D366,#34d399)', // emerald
+  'linear-gradient(90deg,#fb7185,#f472b6,#f43f5e,#fb7185)', // rose
+  'linear-gradient(90deg,#fbbf24,#fb923c,#f59e0b,#fbbf24)', // amber
+  'linear-gradient(90deg,#c084fc,#a78bfa,#9333ea,#c084fc)', // violet
+  'linear-gradient(90deg,#60a5fa,#38bdf8,#2563eb,#60a5fa)', // blue
+  'linear-gradient(90deg,#a3e635,#4ade80,#16a34a,#a3e635)', // lime
+  'linear-gradient(90deg,#e879f9,#f472b6,#d946ef,#e879f9)', // fuchsia
+  'linear-gradient(90deg,#818cf8,#60a5fa,#4f46e5,#818cf8)', // indigo
+];
 const SUGGESTIONS = ['Boutiques', 'Cafés', 'Salons', 'Grocery', 'Electronics'];
 const MARQUEE = [
   { e: '🛒', t: 'Kirana' }, { e: '🍰', t: 'Bakeries' }, { e: '🍽️', t: 'Restaurants' },
@@ -21,12 +36,12 @@ const MARQUEE = [
 function RotatingWord() {
   const [i, setI] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((x) => (x + 1) % ROTATING.length), 2200);
+    const t = setInterval(() => setI((x) => (x + 1) % ROTATING.length), 1900);
     return () => clearInterval(t);
   }, []);
   return (
-    <span key={i} className="inline-block pl-rise pl-shimmer-text bg-clip-text text-transparent"
-          style={{ backgroundImage: 'linear-gradient(90deg,#34d399,#5eead4,#25D366,#34d399)' }}>
+    <span key={i} className="inline-block whitespace-nowrap pl-rise pl-shimmer-text bg-clip-text text-transparent"
+          style={{ backgroundImage: WORD_GRADIENTS[i % WORD_GRADIENTS.length] }}>
       {ROTATING[i]}
     </span>
   );
