@@ -33,6 +33,16 @@
 
     <!-- Theme color (browser chrome + PWA) -->
     <meta name="theme-color" content="#0d9488" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="keywords" content="WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace" />
+
+    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@graph":[
+      {"@type":"Organization","@id":"https://www.pocketlink.store/#org","name":"PocketLink","url":"https://www.pocketlink.store/","logo":"https://www.pocketlink.store/pocketlink-logo.svg","description":"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace."},
+      {"@type":"WebSite","@id":"https://www.pocketlink.store/#website","name":"PocketLink","url":"https://www.pocketlink.store/","publisher":{"@id":"https://www.pocketlink.store/#org"},"potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://www.pocketlink.store/marketplace?q={search_term_string}"},"query-input":"required name=search_term_string"}}
+    ]}
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

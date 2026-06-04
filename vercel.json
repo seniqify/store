@@ -1,3 +1,19 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/marketplace", "destination": "/api/render?path=/marketplace" },
+    { "source": "/explore", "destination": "/api/render?path=/marketplace" },
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/start", "destination": "/index.html" },
+    { "source": "/plans", "destination": "/index.html" },
+    { "source": "/register", "destination": "/index.html" },
+    { "source": "/onboarding", "destination": "/index.html" },
+    { "source": "/terms", "destination": "/index.html" },
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/checkout/:p*", "destination": "/index.html" },
+    { "source": "/demo/:p*", "destination": "/index.html" },
+    { "source": "/:slug/manage", "destination": "/index.html" },
+    { "source": "/:slug", "destination": "/api/render?path=/:slug" },
+    { "source": "/:p*", "destination": "/index.html" }
+  ]
 }

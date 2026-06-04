@@ -1,9 +1,40 @@
+# PocketLink — https://www.pocketlink.store
 User-agent: *
 Allow: /
-Allow: /onboarding
-Allow: /terms
-Allow: /privacy
-Allow: /demo/
-
-# Don't index individual store pages — they're user content, not platform pages
+Disallow: /onboarding
+Disallow: /register
+Disallow: /checkout
 Disallow: /*/manage
+
+# AI search & answer engines — explicitly welcome (we want to be discoverable in AI answers)
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://www.pocketlink.store/sitemap.xml

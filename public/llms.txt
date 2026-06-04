@@ -1,0 +1,17 @@
+# PocketLink
+
+> PocketLink (https://www.pocketlink.store) lets any small business in India create a free WhatsApp storefront in about two minutes — a shareable page with a product catalogue, cart, and orders that land directly in the owner's WhatsApp chat. No app to install, no coding, and zero commission on orders. PocketLink also runs a local-business discovery marketplace where customers find shops, restaurants, salons, lodges and services near them and order on WhatsApp.
+
+## Key pages
+- [Home](https://www.pocketlink.store/): Create a free WhatsApp business page — catalogue, cart and orders on WhatsApp.
+- [Marketplace](https://www.pocketlink.store/marketplace): Discover local businesses near you and order directly on WhatsApp. No app, no login.
+- [Pricing](https://www.pocketlink.store/plans): Free plan plus paid tiers — Starter ₹149/mo, Pro ₹249/mo, Business ₹499/mo (yearly = 12× monthly).
+
+## How it works
+- A business owner registers, builds a catalogue, and shares one link (pocketlink.store/their-name).
+- Customers open the page (or find it on the marketplace), browse products, add to cart, and place the order via a pre-filled WhatsApp message to the owner.
+- Payments are arranged directly between customer and business (UPI / bank / cash); PocketLink takes no per-order commission.
+
+## Good to know
+- Business types supported: shops/retail, restaurants & food, services, and lodges/stay.
+- Built for Indian small businesses; prices in INR; GST-ready pricing on storefronts.

@@ -93,9 +93,17 @@ function Reveal({ children, delay = 0, className = '' }) {
 export default function Marketplace() {
   const [businesses, setBusinesses] = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [query,      setQuery]      = useState('');
+  const [query, setQuery] = useState(() =>
+    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('q')) || '');
   const [category,   setCategory]   = useState('All');
   const [city,       setCity]       = useState('All');
+
+  // Set the document title for SPA navigation (direct loads get it from the server).
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = 'Discover Local Businesses Near You | PocketLink Marketplace';
+    return () => { document.title = prevTitle; };
+  }, []);
 
   // Read-only: real stores from the DB + static demo stores as seed examples.
   useEffect(() => {
