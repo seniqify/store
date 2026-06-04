@@ -153,6 +153,22 @@ export async function findStoreByPhone(phone) {
   return data?.[0]?.slug ?? null;
 }
 
+/**
+ * Read-only: list all stores for the public marketplace/discovery page.
+ * Returns an array of config objects, each augmented with its `slug`.
+ * Writes nothing — safe for anonymous/public use. Only named stores are returned.
+ */
+export async function listStores() {
+  const { data, error } = await supabase
+    .from('stores')
+    .select('slug, config');
+
+  if (error || !data) return [];
+  return data
+    .map((row) => ({ ...row.config, slug: row.slug }))
+    .filter((c) => c && c.businessName);
+}
+
 /** Check if a slug already exists in DB. */
 export async function slugExists(slug) {
   const { data } = await supabase

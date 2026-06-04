@@ -16,6 +16,7 @@ const Checkout   = lazy(() => import('./pages/Checkout'));
 const Register   = lazy(() => import('./pages/Register'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const ManageStore = lazy(() => import('./pages/ManageStore'));
+const Marketplace = lazy(() => import('./pages/Marketplace'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
@@ -148,6 +149,8 @@ export default function App() {
             <Route path="/"                      element={<Landing />} />
             <Route path="/start"                 element={<Start />} />
             <Route path="/plans"                 element={<Plans />} />
+            <Route path="/marketplace"           element={<Marketplace />} />
+            <Route path="/explore"               element={<Marketplace />} />
             <Route path="/checkout/:plan"        element={<Checkout />} />
             <Route path="/register"              element={<Register />} />
             <Route path="/onboarding"            element={<Onboarding />} />

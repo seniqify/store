@@ -5,6 +5,7 @@
 export const spiceRouteConfig = {
   slug:         'spiceroute',
   businessType: 'restaurant',
+  category:     'Food',
   businessName: 'Spice Route Kitchen',
   name:         'Spice Route Kitchen',
   tagline:      'Authentic North Indian, cooked fresh to order',

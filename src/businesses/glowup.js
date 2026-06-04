@@ -5,6 +5,7 @@
 export const glowUpConfig = {
   slug:         'glowup',
   businessType: 'service',
+  category:     'Beauty',
   businessName: 'GlowUp Salon & Spa',
   name:         'GlowUp Salon & Spa',
   tagline:      'Premium salon & spa — at our studio or your home',
