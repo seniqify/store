@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
-import { ChevronRight, ShoppingCart, MessageCircle, Check } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
 import CartSummary from '../components/cart/CartSummary';
 import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
+import StoreTabBar from '../components/layout/StoreTabBar';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
@@ -108,7 +109,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   }
 
   return (
-    <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden', itemCount > 0 ? 'pb-20 lg:pb-0' : ''].join(' ')}>
+    <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden lg:pb-0', itemCount > 0 ? 'pb-32' : 'pb-16'].join(' ')}>
 
       {/* ── Store hero: cover image OR branded gradient + overlapping card ── */}
       <header className="relative w-full">
@@ -350,39 +351,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       />
 
       {/* ── Mobile bottom bar ��───────────────────────────────────────────── */}
-      {itemCount > 0 && (
-        <div
-          className="lg:hidden fixed bottom-0 left-0 right-0 z-40
-                     bg-white border-t border-gray-200
-                     shadow-[0_-4px_20px_rgba(0,0,0,0.08)]
-                     pb-[env(safe-area-inset-bottom)]"
-        >
-          <div className="px-4 py-3">
-            <button
-              onClick={() => setCartOpen(true)}
-              className="w-full flex items-center justify-between
-                         bg-brand hover:bg-brand-dark active:bg-brand-dark
-                         text-white font-semibold rounded-xl
-                         px-4 py-3 transition-all duration-150 active:scale-[0.99]"
-            >
-              <div className="flex items-center gap-2.5">
-                <span className="bg-white/20 text-white text-xs font-bold
-                                 w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0">
-                  {itemCount}
-                </span>
-                <span className="text-sm">
-                  {itemCount === 1 ? '1 item' : `${itemCount} items`}
-                  <span className="opacity-75 ml-1 font-normal">· View Cart</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <span className="font-bold tabular-nums">{formatINR(total)}</span>
-                <ChevronRight size={16} className="opacity-80" />
-              </div>
-            </button>
-          </div>
-        </div>
-      )}
+      <StoreTabBar
+        itemCount={itemCount}
+        cartTotal={total}
+        onCartClick={() => setCartOpen(true)}
+        categoriesTarget="products"
+      />
     </div>
   );
 }
