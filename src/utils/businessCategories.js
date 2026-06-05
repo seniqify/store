@@ -96,6 +96,69 @@ export const DEFAULT_CATEGORY = {
   hotel:      'Hotel',
 };
 
+// Curated icon suggestions per sub-category (first one = the smart default).
+const CATEGORY_ICONS = {
+  // product
+  'Grocery & Kirana':        ['🛒', '🥬', '🍎', '🥛', '🍞', '🧅', '🥔', '🌾', '🧺', '🏪'],
+  'Clothing & Fashion':      ['👗', '👕', '👚', '👖', '🧥', '👔', '🧣', '🛍️', '👜'],
+  'Electronics':             ['📱', '💻', '🔌', '🎧', '📺', '🖥️', '⌨️', '🔋'],
+  'Mobile & Accessories':    ['📲', '📱', '🎧', '🔌', '🔋', '🪫'],
+  'Construction & Hardware': ['🏗️', '🔧', '🔨', '🧱', '🪚', '🪛', '⚙️', '🔩', '🪜', '🧰'],
+  'Textiles & Fabrics':      ['🧵', '🪡', '🧶', '🧣', '👗', '🎽', '🧺'],
+  'Jewellery':               ['💍', '💎', '📿', '👑', '⌚', '✨'],
+  'Footwear':                ['👟', '👞', '👠', '🥿', '👢', '🩴'],
+  'Pharmacy & Medical':      ['💊', '🩺', '🏥', '💉', '🩹', '🌡️'],
+  'Books & Stationery':      ['📚', '📖', '✏️', '📝', '📒', '🖊️', '📐'],
+  'Home & Furniture':        ['🛋️', '🪑', '🛏️', '🚪', '🪞', '🧹', '🏠'],
+  'Beauty & Cosmetics':      ['💄', '💅', '🧴', '💋', '🪞', '✨', '🧖'],
+  'Sports & Fitness':        ['⚽', '🏏', '🏸', '🏀', '🥊', '🏋️', '🎾'],
+  'Gifts & Toys':            ['🎁', '🧸', '🎈', '🪅', '🎀', '🪀', '🧩'],
+  'Auto & Parts':            ['🚗', '🛞', '🔧', '🏍️', '🛺', '⛽'],
+  'Agriculture & Farming':   ['🌾', '🚜', '🌱', '🍃', '🪴', '🥕'],
+  'Pet Supplies':            ['🐾', '🐕', '🐈', '🦴', '🐦', '🐠'],
+  'Other Retail':            ['🏪', '🛒', '🛍️', '📦', '🏬'],
+  // restaurant
+  'Restaurant':              ['🍽️', '🍛', '🍜', '🥘', '🍴', '👨‍🍳'],
+  'Café & Coffee':           ['☕', '🍵', '🧋', '🥐', '🍰'],
+  'Bakery & Cakes':          ['🍰', '🧁', '🎂', '🥐', '🍞', '🥖', '🍩'],
+  'Sweets & Snacks':         ['🍬', '🍫', '🥮', '🧁', '🍡', '🍩'],
+  'Cloud Kitchen':           ['🥡', '🍱', '🍔', '🍕', '🛵'],
+  'Tiffin & Catering':       ['🍱', '🥘', '🍲', '🍛', '🥗'],
+  'Juices & Beverages':      ['🧃', '🥤', '🧋', '🍹', '🥛'],
+  'Ice Cream & Desserts':    ['🍦', '🍨', '🍧', '🧁', '🍮'],
+  'Other Food':              ['🍴', '🍽️', '🥗', '🍲'],
+  // service
+  'Salon & Beauty':          ['💇', '💅', '💄', '✂️', '🧖', '💆'],
+  'Repairs & Maintenance':   ['🔧', '🛠️', '🔩', '⚙️', '🪛', '🔌'],
+  'Home Services':           ['🏠', '🧹', '🧰', '🪣', '🚿', '🔧'],
+  'Education & Tuition':      ['📚', '✏️', '🎓', '📝', '🧑‍🏫', '📖'],
+  'Healthcare & Clinic':     ['🏥', '🩺', '💊', '💉', '🦷'],
+  'Consulting & Professional':['💼', '📊', '📈', '📋', '🤝'],
+  'Photography & Video':     ['📷', '📸', '🎥', '🎬', '🖼️'],
+  'Events & Decor':          ['🎉', '🎈', '🎊', '💐', '🎀', '🪩'],
+  'Fitness & Gym':           ['🏋️', '💪', '🧘', '🤸', '🥊', '🚴'],
+  'Travel & Tours':          ['✈️', '🧳', '🗺️', '🏖️', '🚌'],
+  'Logistics & Courier':     ['🚚', '📦', '🛵', '📮', '🚛'],
+  'Other Services':          ['🧰', '🛠️', '💼', '🤝'],
+  // hotel
+  'Hotel':                   ['🏨', '🛎️', '🛏️', '🔑', '🧳'],
+  'Lodge & Guesthouse':      ['🛎️', '🏡', '🛏️', '🔑'],
+  'Homestay':                ['🏡', '🏠', '🛏️', '🌿'],
+  'Resort':                  ['🌴', '🏖️', '🏝️', '🏊', '🍹'],
+  'Hostel':                  ['🛏️', '🎒', '🧳', '🛌'],
+  'Other Stay':              ['🧳', '🏨', '🛏️'],
+};
+
+/** Curated icon suggestions for a category (empty array if none). */
+export function iconSuggestions(category) {
+  return CATEGORY_ICONS[category] || [];
+}
+
+/** The smart-default icon for a category (its first suggestion). */
+export function defaultIcon(category) {
+  return CATEGORY_ICONS[category]?.[0] || '🏪';
+}
+
 /** A broad emoji set for the business-icon picker (onboarding + Manage). */
 export const ICON_EMOJIS = [
   '🏪', '🛒', '🛍️', '👗', '👕', '👟', '👜', '💍', '⌚', '🕶️', '📱', '💻',

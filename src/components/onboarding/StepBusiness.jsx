@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { FEATURE_SUGGESTIONS } from '../../utils/buildConfig';
 import LocationPicker from '../LocationPicker';
-import { subcategoriesForType, ICON_EMOJIS } from '../../utils/businessCategories';
+import IconPicker from '../IconPicker';
+import { subcategoriesForType, defaultIcon } from '../../utils/businessCategories';
 
 /**
  * StepBusiness — Onboarding Step 2
@@ -116,7 +117,13 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
           Business Category <span className="text-gray-400 font-normal">(helps customers find you)</span>
         </label>
         <select value={data.category || ''} style={fieldStyle}
-          onChange={e => onChange({ category: e.target.value })}
+          onChange={e => {
+            const cat = e.target.value;
+            const patch = { category: cat };
+            // Smart default: auto-fill the icon for this category if the user hasn't picked one.
+            if (cat && (!data.logoEmoji || data.logoEmoji === '🏪')) patch.logoEmoji = defaultIcon(cat);
+            onChange(patch);
+          }}
           className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:border-transparent">
           <option value="">Select a category</option>
           {subcategoriesForType(type).map(({ id, emoji }) => (
@@ -157,18 +164,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
 
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">Business Icon</label>
-        <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto p-1.5 rounded-xl border border-gray-100 bg-gray-50/50">
-          {ICON_EMOJIS.map(emoji => (
-            <button key={emoji} type="button" onClick={() => onChange({ logoEmoji: emoji })}
-              className={[
-                'w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all',
-                data.logoEmoji === emoji ? 'scale-110 text-white shadow-sm' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200',
-              ].join(' ')}
-              style={data.logoEmoji === emoji ? { backgroundColor: brand } : {}}>
-              {emoji}
-            </button>
-          ))}
-        </div>
+        <IconPicker value={data.logoEmoji} onChange={(emoji) => onChange({ logoEmoji: emoji })} category={data.category} accent={brand} />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">

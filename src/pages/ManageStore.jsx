@@ -21,8 +21,9 @@ import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeSer
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
-import { subcategoriesForType, ICON_EMOJIS }          from '../utils/businessCategories';
+import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/businessCategories';
 import LocationPicker                                 from '../components/LocationPicker';
+import IconPicker                                     from '../components/IconPicker';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1102,20 +1103,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           {/* Store icon (logoEmoji) */}
           <div>
             <label className={lCls()}>Business Icon</label>
-            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1.5 rounded-xl border border-gray-100 bg-gray-50/50">
-              {ICON_EMOJIS.map(emoji => (
-                <button key={emoji} type="button"
-                        onClick={() => update({ logoEmoji: emoji })}
-                        className={[
-                          'w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all',
-                          config.logoEmoji === emoji
-                            ? 'ring-2 ring-offset-1 ring-gray-800 bg-gray-100 scale-110'
-                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200',
-                        ].join(' ')}>
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            <IconPicker value={config.logoEmoji} onChange={(emoji) => update({ logoEmoji: emoji })} category={config.category} accent={themeColor} />
           </div>
 
           {/* Brand color */}
@@ -1208,7 +1196,12 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         />
         <div className="mt-3">
           <label className={lCls()}>Marketplace Category</label>
-          <select value={config.category || ''} onChange={e => update({ category: e.target.value })} className={iCls(false)}>
+          <select value={config.category || ''}
+            onChange={e => {
+              const cat = e.target.value;
+              update({ category: cat, ...((cat && (!config.logoEmoji || config.logoEmoji === '🏪')) ? { logoEmoji: defaultIcon(cat) } : {}) });
+            }}
+            className={iCls(false)}>
             <option value="">Auto (by business type)</option>
             {subcategoriesForType(config.businessType).map(({ id, emoji }) => (
               <option key={id} value={id}>{emoji} {id}</option>
