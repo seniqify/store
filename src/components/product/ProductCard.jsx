@@ -19,9 +19,26 @@ export default function ProductCard({
   const outOfStock = product.inStock === false || product.stock === 0;
   const inCart     = cartQty > 0;
 
+  const variants    = product.variants;
+  const hasVariants = !!(variants && variants.options && variants.options.length);
+  const [selVariant, setSelVariant] = useState(hasVariants ? variants.options[0].name : null);
+  const selOpt       = hasVariants ? (variants.options.find((o) => o.name === selVariant) || variants.options[0]) : null;
+  const displayPrice = selOpt && selOpt.price != null ? selOpt.price : product.price;
+
   function handleAdd() {
     if (outOfStock) return;
-    onAddToCart(product, 1);
+    if (hasVariants) {
+      const opt = selOpt;
+      onAddToCart({
+        ...product,
+        id:           `${product.id}::${opt.name}`,
+        variant:      opt.name,
+        variantLabel: variants.label,
+        price:        opt.price != null ? opt.price : product.price,
+      }, 1);
+    } else {
+      onAddToCart(product, 1);
+    }
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1000);
   }
@@ -115,7 +132,7 @@ export default function ProductCard({
         {/* Price */}
         <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1">
           <span className="text-[17px] font-extrabold text-gray-900 tabular-nums tracking-tight">
-            {formatINR(product.price)}
+            {formatINR(displayPrice)}
           </span>
           {product.mrp > product.price && (
             <span className="text-[11px] text-gray-400 line-through tabular-nums">
@@ -138,6 +155,30 @@ export default function ProductCard({
                        text-[11px] font-semibold text-gray-400 cursor-not-allowed">
             Unavailable
           </button>
+        ) : hasVariants ? (
+          <div className="mt-2">
+            <p className="text-[10px] font-semibold text-gray-400 mb-1">{variants.label}</p>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {variants.options.map((o) => (
+                <button key={o.name} type="button" onClick={() => setSelVariant(o.name)}
+                  className={[
+                    'px-2 py-1 rounded-lg text-[11px] font-semibold border transition active:scale-95',
+                    selVariant === o.name ? 'bg-brand text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                  ].join(' ')}>
+                  {o.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={handleAdd}
+              className={[
+                'w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl transition-all duration-150 active:scale-95',
+                justAdded ? 'bg-green-500 text-white shadow-md shadow-green-500/30' : 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/25',
+              ].join(' ')}>
+              {justAdded
+                ? <><Check size={13} strokeWidth={3} /> Added!</>
+                : <><Plus size={14} strokeWidth={2.5} /> {cartQty > 0 ? `Add · ${cartQty} in cart` : 'Add'}</>}
+            </button>
+          </div>
         ) : cartQty === 0 ? (
           <button
             onClick={handleAdd}

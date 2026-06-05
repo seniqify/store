@@ -153,7 +153,7 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
       <div className="px-4 mt-3 rounded-xl bg-gray-50 mx-4 py-2.5 sm:mx-0 sm:rounded-none sm:bg-transparent sm:px-4">
         {(o.items || []).map((it, i) => (
           <div key={i} className="flex items-center justify-between text-xs text-gray-600 py-0.5">
-            <span className="truncate pr-2">{it.name}{it.size ? ` (${it.size})` : ''} × {it.qty}</span>
+            <span className="truncate pr-2">{it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''} × {it.qty}</span>
             <span className="tabular-nums flex-shrink-0">{formatINR((it.price || 0) * (it.qty || 0))}</span>
           </div>
         ))}

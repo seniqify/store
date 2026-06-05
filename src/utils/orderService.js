@@ -25,7 +25,7 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}) {
       destination:    customerDetails.destination || customerDetails.city || '',
       payment_method: customerDetails.paymentMethod || '',
       notes:          customerDetails.notes || '',
-      items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, size: i.size || null, unit: i.unit || null })),
+      items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
       item_count:     cart.reduce((s, i) => s + i.qty, 0),
       subtotal, tax, shipping, total,
       status:         'new',

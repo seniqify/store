@@ -44,7 +44,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'' };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', variantLabel:'', variantOptions:[] };
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -420,6 +420,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
       image:       product.image       || '',
+      variantLabel:   product.variants?.label || '',
+      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '' })) : [],
     });
     setEditingId(product.id);
     setErrors({});
@@ -440,6 +442,11 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
 
     const finalUnit  = form.unit === 'Other…' ? (form.unitCustom.trim() || 'per piece') : form.unit;
     const finalImage = form.image?.trim() || '';
+    const cleanOpts  = (form.variantOptions || [])
+      .map(o => ({ name: String(o.name || '').trim(), price: (o.price === '' || o.price == null) ? null : Number(o.price) }))
+      .filter(o => o.name);
+    const variants   = (form.variantLabel.trim() && cleanOpts.length)
+      ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
 
     let newProducts;
     if (editingId !== null) {
@@ -448,7 +455,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, variants }
           : p
       );
     } else {
@@ -462,6 +469,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         unit:        finalUnit,
+        variants,
         badge:       null,
         badgeColor:  null,
       }];
@@ -675,6 +683,45 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 Product Image <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+            </div>
+
+            {/* Variants */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                Variants <span className="text-gray-400 font-normal">(optional — e.g. Size, Colour, Weight)</span>
+              </label>
+              <div className="rounded-xl border border-gray-200 p-3 space-y-2.5 bg-gray-50/50">
+                <input type="text" placeholder="Option type — e.g. Size"
+                  value={form.variantLabel}
+                  onChange={e => setForm(p => ({ ...p, variantLabel: e.target.value }))}
+                  className={iCls(false)} />
+                {(form.variantOptions || []).map((o, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <input type="text" placeholder="Option — e.g. M"
+                      value={o.name}
+                      onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                    <div className="relative w-24 flex-shrink-0">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                      <input type="number" inputMode="numeric" min={0} placeholder="price"
+                        value={o.price}
+                        onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
+                        className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                    </div>
+                    <button type="button" aria-label="Remove option"
+                      onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
+                      className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                  </div>
+                ))}
+                <button type="button"
+                  onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '' }] }))}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-700">
+                  <Plus size={13} /> Add option
+                </button>
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Leave price blank to use the main price. Customers pick one option before adding to cart.
+                </p>
+              </div>
             </div>
           </div>
 

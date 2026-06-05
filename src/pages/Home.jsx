@@ -311,8 +311,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                             <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
                               {item.name}
                             </p>
-                            {item.size && (
-                              <p className="text-[11px] text-gray-400 truncate">{item.size}</p>
+                            {(item.variant || item.size) && (
+                              <p className="text-[11px] text-gray-400 truncate">{item.variant || item.size}</p>
                             )}
                             <p className="text-[11px] text-gray-500 mt-0.5 tabular-nums">
                               {formatINR(item.price)} × {item.qty}

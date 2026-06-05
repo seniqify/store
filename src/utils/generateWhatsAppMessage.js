@@ -81,7 +81,8 @@ export function generateWhatsAppMessage(customerDetails, cart, businessConfig = 
   lines.push('Products:');
   cart.forEach((item, index) => {
     const lineTotal = formatINR(item.price * item.qty);
-    lines.push(`${index + 1}. ${item.name} × ${item.qty} — ${lineTotal}`);
+    const v = item.variant ? ` (${item.variant})` : '';
+    lines.push(`${index + 1}. ${item.name}${v} × ${item.qty} — ${lineTotal}`);
   });
   lines.push('');
 

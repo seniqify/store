@@ -56,7 +56,9 @@ export default function ProductGrid({
 
   // ── Cart qty lookup ────────────────────────────────────────────────────
   function getCartQty(id) {
-    return cart.find((i) => i.id === id)?.qty ?? 0;
+    // Sum the base product line + any variant lines (id "3" or "3::M").
+    const prefix = `${id}::`;
+    return cart.reduce((s, i) => (i.id === id || String(i.id).startsWith(prefix) ? s + i.qty : s), 0);
   }
 
   // Category label for the heading
