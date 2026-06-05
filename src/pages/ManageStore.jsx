@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft } from '../utils/planLimits';
 import {
-  Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag,
+  Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2,
 } from 'lucide-react';
@@ -25,6 +25,7 @@ import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/busines
 import LocationPicker                                 from '../components/LocationPicker';
 import IconPicker                                     from '../components/IconPicker';
 import OrdersTab                                       from '../components/manage/OrdersTab';
+import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1482,8 +1483,10 @@ export default function ManageStore() {
   const trialEnded = rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
   const planName   = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
 
+  const analyticsEnabled = !!getPlanLimits(effectivePlan(config)).analytics;
   const TABS = [
     { key: 'orders',     label: 'Orders',     icon: ShoppingBag },
+    { key: 'analytics',  label: 'Stats',      icon: BarChart3 },
     { key: 'products',   label: 'Products',   icon: Package  },
     { key: 'categories', label: 'Categories', icon: Tag      },
     { key: 'settings',   label: 'Settings',   icon: Settings2 },
@@ -1536,7 +1539,7 @@ export default function ManageStore() {
 
       {/* ── Tab navigation ──────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-gray-100 sticky top-16 z-10">
-        <div className="max-w-lg mx-auto px-4 flex">
+        <div className="max-w-lg mx-auto px-4 flex overflow-x-auto scrollbar-hide">
           {TABS.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
@@ -1545,7 +1548,7 @@ export default function ManageStore() {
                 type="button"
                 onClick={() => setTab(key)}
                 className={[
-                  'flex-1 flex items-center justify-center gap-1.5 py-3.5 text-xs font-semibold',
+                  'flex-1 min-w-[4.75rem] flex items-center justify-center gap-1.5 py-3.5 text-xs font-semibold',
                   'border-b-2 transition-colors',
                   active ? '' : 'border-transparent text-gray-400 hover:text-gray-600',
                 ].join(' ')}
@@ -1563,6 +1566,10 @@ export default function ManageStore() {
         {tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
+          </div>
+        ) : tab === 'analytics' ? (
+          <div className="animate-pl-fade-up">
+            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
