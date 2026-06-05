@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { MapPin, ArrowRight, MessageCircle } from 'lucide-react';
 import { whatsappLink } from '../../utils/theme';
-import { CATEGORY_META } from '../../utils/marketplace';
+import { categoryMeta } from '../../utils/businessCategories';
 
 const WA = '#25D366';
 
@@ -11,7 +11,7 @@ const WA = '#25D366';
  */
 export default function BusinessCard({ biz }) {
   const waHref = biz.whatsappNumber ? whatsappLink(biz.whatsappNumber, biz.name) : null;
-  const meta   = CATEGORY_META[biz.category] || CATEGORY_META.Other;
+  const meta   = categoryMeta(biz.category);
 
   const onWhatsApp = (e) => {
     e.preventDefault();

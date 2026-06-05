@@ -3,36 +3,11 @@
  * Nothing here writes to the DB or mutates store data.
  */
 
-// Canonical filter categories shown as pills on the marketplace.
-// A store maps to one of these via an explicit `config.category` (preferred)
-// or, failing that, a coarse mapping from its `businessType`.
-export const CATEGORIES = ['Food', 'Clothing', 'Services', 'Beauty', 'Grocery', 'Electronics', 'Stay', 'Other'];
+import { DEFAULT_CATEGORY } from './businessCategories';
 
-// Emoji + gradient per category — used for the browse tiles, filter pills and card chips.
-export const CATEGORY_META = {
-  All:         { emoji: '✨', grad: ['#10b981', '#0d9488'] },
-  Food:        { emoji: '🍽️', grad: ['#fb7185', '#e11d48'] },
-  Clothing:    { emoji: '👗', grad: ['#f472b6', '#db2777'] },
-  Services:    { emoji: '🛠️', grad: ['#60a5fa', '#2563eb'] },
-  Beauty:      { emoji: '💄', grad: ['#c084fc', '#9333ea'] },
-  Grocery:     { emoji: '🛒', grad: ['#4ade80', '#16a34a'] },
-  Electronics: { emoji: '📱', grad: ['#818cf8', '#4f46e5'] },
-  Stay:        { emoji: '🏨', grad: ['#fbbf24', '#d97706'] },
-  Other:       { emoji: '🏪', grad: ['#94a3b8', '#475569'] },
-};
-
-const TYPE_TO_CATEGORY = {
-  restaurant: 'Food',
-  service:    'Services',
-  hotel:      'Stay',
-  product:    'Other',
-};
-
-/** Best-effort category for a store: explicit field first, else by businessType. */
+/** A store's marketplace category: its chosen sub-category, else a type default. */
 export function deriveCategory(config) {
-  const explicit = config?.category;
-  if (explicit && CATEGORIES.includes(explicit)) return explicit;
-  return TYPE_TO_CATEGORY[config?.businessType] ?? 'Other';
+  return config?.category || DEFAULT_CATEGORY[config?.businessType] || 'Other Retail';
 }
 
 /**

@@ -73,6 +73,7 @@ export const DEFAULT_TAGLINES = {
 export function buildBusinessConfig(wizardData, existingSlugs = []) {
   const {
     businessType       = 'product',
+    category           = '',
     businessName,
     tagline            = '',
     address            = '',
@@ -149,6 +150,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
     city:           city.trim(),
     pincode:        pincode.trim(),
     area:           area.trim(),
+    category:       category.trim(),
     gst:            gstNumber.trim(),
     upi:            upiId.trim(),
     bank: {

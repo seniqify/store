@@ -5,7 +5,7 @@
 export const aanyaBoutiqueConfig = {
   slug:         'aanyaboutique',
   businessType: 'product',
-  category:     'Clothing',
+  category:     'Clothing & Fashion',
   businessName: 'Aanya Boutique',
   name:         'Aanya Boutique',
   tagline:      'Ethnic & fusion wear, curated for every occasion',

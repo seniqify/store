@@ -13,6 +13,7 @@ import { uploadConfigImages, uploadSingleImage } from '../utils/imageStorage';
 
 const INITIAL = {
   businessType:      '',
+  category:          '',
   businessName:      '',
   tagline:           '',
   address:           '',

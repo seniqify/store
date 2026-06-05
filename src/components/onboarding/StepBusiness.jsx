@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { FEATURE_SUGGESTIONS } from '../../utils/buildConfig';
 import LocationPicker from '../LocationPicker';
+import { subcategoriesForType, ICON_EMOJIS } from '../../utils/businessCategories';
 
 /**
  * StepBusiness — Onboarding Step 2
@@ -10,11 +11,7 @@ import LocationPicker from '../LocationPicker';
  * Fields adapt to the chosen business type.
  */
 
-const LOGO_EMOJIS = [
-  '🏪', '📱', '🔌', '⚙️', '🧵', '🏭',
-  '🛒', '📦', '💎', '🌿', '🔧', '🍽️',
-  '🚗', '💼', '👕', '🎯', '🏨', '💇',
-];
+// Business-icon emojis come from ICON_EMOJIS (utils/businessCategories).
 
 const THEME_OPTIONS = [
   { hex: '#0d9488', label: 'Teal'   },
@@ -116,6 +113,20 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
 
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+          Business Category <span className="text-gray-400 font-normal">(helps customers find you)</span>
+        </label>
+        <select value={data.category || ''} style={fieldStyle}
+          onChange={e => onChange({ category: e.target.value })}
+          className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:border-transparent">
+          <option value="">Select a category</option>
+          {subcategoriesForType(type).map(({ id, emoji }) => (
+            <option key={id} value={id}>{emoji} {id}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
           Tagline <span className="text-gray-400 font-normal">(one line under your name)</span>
         </label>
         <input type="text" placeholder={copy.taglinePh} maxLength={90}
@@ -146,8 +157,8 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
 
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">Business Icon</label>
-        <div className="flex flex-wrap gap-2">
-          {LOGO_EMOJIS.map(emoji => (
+        <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto p-1.5 rounded-xl border border-gray-100 bg-gray-50/50">
+          {ICON_EMOJIS.map(emoji => (
             <button key={emoji} type="button" onClick={() => onChange({ logoEmoji: emoji })}
               className={[
                 'w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all',

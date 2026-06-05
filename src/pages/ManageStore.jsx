@@ -21,15 +21,11 @@ import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeSer
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
-import { CATEGORIES }                                 from '../utils/marketplace';
+import { subcategoriesForType, ICON_EMOJIS }          from '../utils/businessCategories';
 import LocationPicker                                 from '../components/LocationPicker';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CAT_EMOJIS = [
-  '📦','🔌','🧵','🍽️','⚙️','📱',
-  '🏠','🎯','💻','🔧','🚗','👕',
-  '🌿','💎','🎸','🛒','🔩','🌾',
-];
+const CAT_EMOJIS = ICON_EMOJIS;
 const UNIT_OPTIONS = [
   'per piece','per kg','per metre','per litre',
   'pack of 2','pack of 3','pack of 6','pack of 12',
@@ -844,7 +840,7 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
 
           <div>
             <p className="text-xs text-gray-500 mb-1.5">Pick an icon</p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 rounded-lg bg-white border border-gray-100">
               {CAT_EMOJIS.map(e => (
                 <button key={e} type="button" onClick={() => setForm(p => ({...p, emoji:e}))}
                         className={[
@@ -1106,8 +1102,8 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           {/* Store icon (logoEmoji) */}
           <div>
             <label className={lCls()}>Business Icon</label>
-            <div className="flex flex-wrap gap-2">
-              {['🏪','📱','🔌','⚙️','🧵','🏭','🛒','📦','💎','🌿','🔧','🍽️','🚗','💼','👕','🎯','🔩','🌾'].map(emoji => (
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1.5 rounded-xl border border-gray-100 bg-gray-50/50">
+              {ICON_EMOJIS.map(emoji => (
                 <button key={emoji} type="button"
                         onClick={() => update({ logoEmoji: emoji })}
                         className={[
@@ -1214,7 +1210,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           <label className={lCls()}>Marketplace Category</label>
           <select value={config.category || ''} onChange={e => update({ category: e.target.value })} className={iCls(false)}>
             <option value="">Auto (by business type)</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {subcategoriesForType(config.businessType).map(({ id, emoji }) => (
+              <option key={id} value={id}>{emoji} {id}</option>
+            ))}
           </select>
           <p className="mt-1 text-xs text-gray-400">How your business is filed on the marketplace.</p>
         </div>

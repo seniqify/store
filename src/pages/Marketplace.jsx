@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle } from 'lucide-react';
 import { listStores } from '../utils/storeService';
 import { listBusinesses } from '../utils/BusinessLoader';
-import { normalizeBusiness, CATEGORIES, CATEGORY_META } from '../utils/marketplace';
+import { normalizeBusiness } from '../utils/marketplace';
+import { categoryMeta } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
 import BusinessCard from '../components/marketplace/BusinessCard';
 
@@ -129,6 +130,12 @@ export default function Marketplace() {
     for (const b of businesses) m[b.category] = (m[b.category] || 0) + 1;
     return m;
   }, [businesses]);
+
+  // Only show categories that actually have businesses, most-listed first.
+  const presentCategories = useMemo(
+    () => Object.keys(countByCategory).sort((a, b) => countByCategory[b] - countByCategory[a]),
+    [countByCategory],
+  );
 
   // Featured = image-forward businesses first (fall back to whatever exists), capped.
   const featured = useMemo(() => {
@@ -290,43 +297,43 @@ export default function Marketplace() {
       )}
 
       {/* ════════ Browse by category ════════ */}
-      <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
-        <Reveal>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 text-center">Browse by category</h2>
-          <p className="text-sm text-gray-400 text-center mt-1 mb-6">Tap a category to jump in</p>
-        </Reveal>
-        <div className="grid grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
-          {CATEGORIES.map((c, i) => {
-            const meta = CATEGORY_META[c];
-            const count = countByCategory[c] || 0;
-            return (
-              <Reveal key={c} delay={i * 0.04}>
-                <button onClick={() => pickCategory(c)}
-                  className="group relative w-full overflow-hidden rounded-2xl py-4 flex flex-col items-center justify-center gap-1
-                             text-white shadow-sm hover:shadow-xl hover:-translate-y-1 active:scale-95 transition-all duration-200"
-                  style={{ background: `linear-gradient(140deg, ${meta.grad[0]}, ${meta.grad[1]})` }}>
-                  <span className="absolute inset-0 overflow-hidden rounded-2xl">
-                    <span className="absolute top-0 h-full w-1/3 bg-white/25 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
-                  </span>
-                  <span className="relative text-2xl sm:text-[1.7rem] transition-transform group-hover:scale-110">{meta.emoji}</span>
-                  <span className="relative text-[11px] sm:text-xs font-bold leading-none">{c}</span>
-                  <span className="relative text-[9px] font-semibold text-white/80 leading-none">
-                    {count > 0 ? `${count} listed` : '—'}
-                  </span>
-                </button>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
+      {presentCategories.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
+          <Reveal>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 text-center">Browse by category</h2>
+            <p className="text-sm text-gray-400 text-center mt-1 mb-6">Tap a category to jump in</p>
+          </Reveal>
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3">
+            {presentCategories.map((c, i) => {
+              const meta = categoryMeta(c);
+              const count = countByCategory[c] || 0;
+              return (
+                <Reveal key={c} delay={Math.min(i, 8) * 0.04}>
+                  <button onClick={() => pickCategory(c)}
+                    className="group relative w-full overflow-hidden rounded-2xl py-4 px-1 flex flex-col items-center justify-center gap-1
+                               text-white shadow-sm hover:shadow-xl hover:-translate-y-1 active:scale-95 transition-all duration-200"
+                    style={{ background: `linear-gradient(140deg, ${meta.grad[0]}, ${meta.grad[1]})` }}>
+                    <span className="absolute inset-0 overflow-hidden rounded-2xl">
+                      <span className="absolute top-0 h-full w-1/3 bg-white/25 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
+                    </span>
+                    <span className="relative text-2xl sm:text-[1.7rem] transition-transform group-hover:scale-110">{meta.emoji}</span>
+                    <span className="relative text-[10px] sm:text-[11px] font-bold leading-tight text-center px-0.5">{c}</span>
+                    <span className="relative text-[9px] font-semibold text-white/80 leading-none">{count} listed</span>
+                  </button>
+                </Reveal>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ════════ Sticky filter bar ════════ */}
       <div id="results" className="sticky top-0 z-20 mt-10 bg-white/85 backdrop-blur-md border-y border-gray-100">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
-            {['All', ...CATEGORIES].map((c) => {
+            {['All', ...presentCategories].map((c) => {
               const active = category === c;
-              const meta = CATEGORY_META[c];
+              const meta = c === 'All' ? { emoji: '✨' } : categoryMeta(c);
               return (
                 <button key={c} onClick={() => setCategory(c)}
                   className={[
@@ -461,7 +468,7 @@ function EmptyState({ hasAny, hasFilters, onClear }) {
 /* ── Featured carousel card (image-forward, name overlaid on the banner) ──── */
 function FeaturedCard({ biz }) {
   const waHref = biz.whatsappNumber ? whatsappLink(biz.whatsappNumber, biz.name) : null;
-  const meta   = CATEGORY_META[biz.category] || CATEGORY_META.Other;
+  const meta   = categoryMeta(biz.category);
   const onWhatsApp = (e) => {
     e.preventDefault();
     e.stopPropagation();

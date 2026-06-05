@@ -5,7 +5,7 @@
 export const coralCourtyardConfig = {
   slug:         'coralcourtyard',
   businessType: 'hotel',
-  category:     'Stay',
+  category:     'Resort',
   businessName: 'The Coral Courtyard',
   name:         'The Coral Courtyard',
   tagline:      'A boutique escape moments from the Goan coast',
