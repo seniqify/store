@@ -172,8 +172,8 @@ export default function ProductCard({
             <QtyField
               qty={cartQty}
               onSetQty={(n) => onSetQty(product.id, n)}
-              className="w-12 h-full text-center text-sm font-bold text-white tabular-nums
-                         bg-transparent border-0 focus:outline-none focus:bg-white/20"
+              className="w-14 h-7 text-center text-sm font-bold text-white tabular-nums
+                         bg-white/20 rounded-md border border-white/40 focus:outline-none focus:bg-white/30"
             />
             <button onClick={() => onIncrease(product.id)}
               aria-label="Increase quantity"

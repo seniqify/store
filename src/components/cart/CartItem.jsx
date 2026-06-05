@@ -115,8 +115,8 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSet
               <QtyField
                 qty={item.qty}
                 onSetQty={(n) => onSetQty(item.id, n)}
-                className="w-12 h-8 text-center text-sm font-bold text-gray-900 tabular-nums
-                           bg-transparent border-0 focus:outline-none focus:bg-white"
+                className="w-14 h-7 mx-0.5 text-center text-sm font-bold text-gray-900 tabular-nums
+                           bg-white rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand/40"
               />
 
               <button
