@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Trash2, Plus, Minus, Ruler } from 'lucide-react';
 import { formatINR } from '../../utils/currency';
+import QtyField from './QtyField';
 
 /**
  * CartItem
@@ -22,7 +23,7 @@ import { formatINR } from '../../utils/currency';
  *   onDecrease  (id) => void   — automatically removes when qty hits 0
  *   onRemove    (id) => void
  */
-export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
+export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSetQty }) {
   const [removing, setRemoving] = useState(false);
 
   const unitSubtotal = item.price * item.qty;
@@ -111,9 +112,12 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
                 <Minus size={13} strokeWidth={2.5} />
               </button>
 
-              <span className="w-8 text-center text-sm font-bold text-gray-900 select-none tabular-nums">
-                {item.qty}
-              </span>
+              <QtyField
+                qty={item.qty}
+                onSetQty={(n) => onSetQty(item.id, n)}
+                className="w-12 h-8 text-center text-sm font-bold text-gray-900 tabular-nums
+                           bg-transparent border-0 focus:outline-none focus:bg-white"
+              />
 
               <button
                 onClick={() => onIncrease(item.id)}

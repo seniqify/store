@@ -30,6 +30,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     addToCart,
     increaseQty,
     decreaseQty,
+    setQty,
     removeItem,
   } = useCart();
 
@@ -249,6 +250,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onAddToCart={addToCart}
               onIncrease={increaseQty}
               onDecrease={decreaseQty}
+              onSetQty={setQty}
             />
 
             {/* Section divider */}
@@ -347,6 +349,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onIncrease={increaseQty}
         onDecrease={decreaseQty}
         onRemove={removeItem}
+        onSetQty={setQty}
         onCheckout={handleCheckout}
       />
 

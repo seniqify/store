@@ -21,7 +21,7 @@ import EmptyState from '../ui/EmptyState';
  *   onAddToCart (product, qty) => void
  */
 export default function ProductGrid({
-  products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease,
+  products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease, onSetQty,
   heading = 'Our Products', nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…',
 }) {
@@ -141,6 +141,7 @@ export default function ProductGrid({
                 onAddToCart={onAddToCart}
                 onIncrease={onIncrease}
                 onDecrease={onDecrease}
+                onSetQty={onSetQty}
               />
             ))}
           </div>

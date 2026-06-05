@@ -35,6 +35,7 @@ export default function CartSidebar({
   onIncrease,
   onDecrease,
   onRemove,
+  onSetQty,
   onCheckout,
 }) {
   const itemCount = cart.reduce((s, i) => s + i.qty, 0);
@@ -126,6 +127,7 @@ export default function CartSidebar({
                 onIncrease={onIncrease}
                 onDecrease={onDecrease}
                 onRemove={onRemove}
+                onSetQty={onSetQty}
               />
             ))
           )}

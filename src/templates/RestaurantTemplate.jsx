@@ -27,7 +27,7 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
   const [cartOpen, setCartOpen] = useState(false);
   const [form,     setForm]     = useState(INITIAL_FORM);
 
-  const { cart, itemCount, addToCart, increaseQty, decreaseQty, removeItem } = useCart();
+  const { cart, itemCount, addToCart, increaseQty, decreaseQty, setQty, removeItem } = useCart();
   const config = useBusinessConfig();
   const { products, categories, businessName, tagline, logo, logoEmoji, coverImage, whatsappNumber, theme } = config;
   const { total } = calcCartTotals(cart, config.cart ?? {});
@@ -151,7 +151,7 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
           {/* Menu + form */}
           <div className="w-full lg:flex-1 min-w-0 space-y-6">
             <ProductGrid products={products} categories={categories} cart={cart}
-              onAddToCart={addToCart} onIncrease={increaseQty} onDecrease={decreaseQty}
+              onAddToCart={addToCart} onIncrease={increaseQty} onDecrease={decreaseQty} onSetQty={setQty}
               heading="Our Menu" nounSingular="dish" nounPlural="dishes" searchPlaceholder="Search the menu…" />
 
             <div className="flex items-center gap-4">
@@ -248,7 +248,7 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
       </div>
 
       <CartSidebar cart={cart} isOpen={cartOpen} onClose={() => setCartOpen(false)}
-        onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeItem} onCheckout={handleCheckout} />
+        onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeItem} onSetQty={setQty} onCheckout={handleCheckout} />
 
       {itemCount > 0 && (
         <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-orange-100 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)]">

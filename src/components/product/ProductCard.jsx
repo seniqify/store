@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Minus, Check } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
+import QtyField from '../cart/QtyField';
 
 export default function ProductCard({
   product,
@@ -8,6 +9,7 @@ export default function ProductCard({
   onAddToCart,
   onIncrease,
   onDecrease,
+  onSetQty,
 }) {
   const [justAdded, setJustAdded] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -167,9 +169,12 @@ export default function ProductCard({
                          text-white hover:bg-white/20 active:bg-white/30 transition-colors">
               <Minus size={15} strokeWidth={2.5} />
             </button>
-            <span className="text-sm font-bold text-white tabular-nums select-none">
-              {cartQty}
-            </span>
+            <QtyField
+              qty={cartQty}
+              onSetQty={(n) => onSetQty(product.id, n)}
+              className="w-12 h-full text-center text-sm font-bold text-white tabular-nums
+                         bg-transparent border-0 focus:outline-none focus:bg-white/20"
+            />
             <button onClick={() => onIncrease(product.id)}
               aria-label="Increase quantity"
               className="w-10 h-full flex items-center justify-center
