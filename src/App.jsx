@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-rout
 import Header           from './components/layout/Header';
 import Footer           from './components/layout/Footer';
 import TemplateRenderer from './templates/TemplateRenderer';
+import StoreStatus      from './components/store/StoreStatus';
+import StoreReviews     from './components/store/StoreReviews';
 import ErrorBoundary    from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
@@ -72,12 +74,14 @@ function DemoShell() {
       </div>
       <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
+        <StoreStatus />
         <main className="flex-1">
           <TemplateRenderer
             externalCartOpen={cartOpen}
             onExternalCartClose={() => setCartOpen(false)}
             onCartCountChange={handleCartCountChange}
           />
+          <StoreReviews />
         </main>
         <Footer />
       </div>
@@ -115,12 +119,14 @@ function BusinessShell() {
       <ThemeApplier />
       <div className="min-h-screen flex flex-col bg-[#f8fafc] overflow-x-hidden w-full">
         <Header cartCount={cartCount} onCartOpen={() => setCartOpen(true)} />
+        <StoreStatus />
         <main className="flex-1">
           <TemplateRenderer
             externalCartOpen={cartOpen}
             onExternalCartClose={() => setCartOpen(false)}
             onCartCountChange={handleCartCountChange}
           />
+          <StoreReviews />
         </main>
         <Footer />
       </div>

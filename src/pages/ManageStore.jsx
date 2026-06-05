@@ -14,8 +14,10 @@ import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysL
 import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  AlertCircle, ChevronDown, Copy, Check, Trash2,
+  AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
 } from 'lucide-react';
+import { openStorePoster } from '../utils/storePoster';
+import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
 import { loadBusiness }                               from '../utils/BusinessLoader';
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
@@ -26,6 +28,7 @@ import LocationPicker                                 from '../components/Locati
 import IconPicker                                     from '../components/IconPicker';
 import OrdersTab                                       from '../components/manage/OrdersTab';
 import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
+import ReviewsTab                                       from '../components/manage/ReviewsTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -931,6 +934,105 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
   );
 }
 
+// ── Business Hours editor ───────────────────────────────────────────────────
+function HoursEditor({ value, onChange, themeColor }) {
+  const hours = normaliseHours(value);
+  const status = getStoreStatus(hours);
+
+  function setEnabled(enabled) {
+    // Seed sensible defaults the first time the owner switches hours on.
+    onChange(enabled && !value ? { ...defaultHours(), enabled: true } : { ...hours, enabled });
+  }
+
+  function setDay(idx, partial) {
+    onChange({ ...hours, days: { ...hours.days, [idx]: { ...hours.days[idx], ...partial } } });
+  }
+
+  function applyToAll(idx) {
+    const src = hours.days[idx];
+    const days = {};
+    for (let i = 0; i < 7; i++) days[i] = { ...hours.days[i], open: src.open, close: src.close, closed: src.closed };
+    onChange({ ...hours, days });
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-px flex-1 bg-gray-100" />
+        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Business Hours</span>
+        <div className="h-px flex-1 bg-gray-100" />
+      </div>
+
+      {/* Master toggle */}
+      <label className="flex items-center justify-between gap-3 cursor-pointer">
+        <span className="text-sm font-semibold text-gray-700">
+          Show open / closed status on your page
+          <span className="block text-xs font-normal text-gray-400 mt-0.5">
+            A live badge tells customers if you're open right now (India time).
+          </span>
+        </span>
+        <button type="button" role="switch" aria-checked={hours.enabled}
+                onClick={() => setEnabled(!hours.enabled)}
+                className={['relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
+                  hours.enabled ? '' : 'bg-gray-200'].join(' ')}
+                style={hours.enabled ? { backgroundColor: themeColor } : undefined}>
+          <span className={['absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+            hours.enabled ? 'translate-x-5' : ''].join(' ')} />
+        </button>
+      </label>
+
+      {hours.enabled && (
+        <>
+          {/* Live preview */}
+          {status && (
+            <div className={['mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold',
+              status.open ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500'].join(' ')}>
+              <span className={['w-1.5 h-1.5 rounded-full', status.open ? 'bg-emerald-500' : 'bg-gray-400'].join(' ')} />
+              Right now: {status.label}{status.detail ? ` · ${status.detail}` : ''}
+            </div>
+          )}
+
+          {/* Per-day rows (Mon-first) */}
+          <div className="mt-3 space-y-1.5">
+            {DAY_ORDER.map((idx) => {
+              const d = hours.days[idx];
+              return (
+                <div key={idx} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  <span className="w-20 text-xs font-semibold text-gray-600 flex-shrink-0">{DAY_FULL[idx]}</span>
+                  <button type="button" onClick={() => setDay(idx, { closed: !d.closed })}
+                          className={['text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 w-20 text-center',
+                            d.closed ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                     : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'].join(' ')}>
+                    {d.closed ? 'Closed' : 'Open'}
+                  </button>
+                  {d.closed ? (
+                    <span className="text-xs text-gray-300 flex-1">—</span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <input type="time" value={d.open}
+                             onChange={(e) => setDay(idx, { open: e.target.value })}
+                             className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                      <span className="text-gray-300 text-xs">to</span>
+                      <input type="time" value={d.close}
+                             onChange={(e) => setDay(idx, { close: e.target.value })}
+                             className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                      <button type="button" onClick={() => applyToAll(idx)} title="Copy these times to every day"
+                              className="ml-auto text-[10px] font-semibold text-gray-400 hover:text-gray-700 px-1.5 py-1 flex-shrink-0">
+                        Copy to all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-400">Overnight hours work too — set a closing time earlier than the opening time (e.g. 6 PM → 2 AM).</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete }) {
   const themeColor  = config.theme?.primary || '#0d9488';
@@ -1040,6 +1142,15 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             >
               Share on WhatsApp
             </a>
+            <button
+              type="button"
+              onClick={() => openStorePoster(config)}
+              title="Open a printable QR poster"
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
+                         bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-colors"
+            >
+              <QrCode size={13} /> QR Poster
+            </button>
             <a
               href={`/${config.slug}`}
               target="_blank"
@@ -1230,6 +1341,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           })}
         </div>
       </div>
+
+      {/* Business Hours */}
+      <HoursEditor value={config.hours} onChange={(hours) => update({ hours })} themeColor={themeColor} />
 
       {/* Location & Category */}
       <div>
@@ -1534,6 +1648,7 @@ export default function ManageStore() {
   const TABS = [
     { key: 'orders',     label: 'Orders',     icon: ShoppingBag },
     { key: 'analytics',  label: 'Stats',      icon: BarChart3 },
+    { key: 'reviews',    label: 'Reviews',    icon: Star      },
     { key: 'products',   label: 'Products',   icon: Package  },
     { key: 'categories', label: 'Categories', icon: Tag      },
     { key: 'settings',   label: 'Settings',   icon: Settings2 },
@@ -1617,6 +1732,10 @@ export default function ManageStore() {
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
             <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} />
+          </div>
+        ) : tab === 'reviews' ? (
+          <div className="animate-pl-fade-up">
+            <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">

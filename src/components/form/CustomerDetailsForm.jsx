@@ -8,6 +8,7 @@ import {
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
+import { buildUpiLink } from '../../utils/upiLink';
 
 /**
  * CustomerDetailsForm
@@ -269,18 +270,37 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
         ─────────────────────────────────────────────────────────────────── */}
         {formData.paymentMethod === 'upi' && (
           config.upi ? (
-            <div className="flex items-start gap-3 bg-blue-50 border border-blue-100
-                            rounded-xl px-4 py-3">
-              <span className="text-lg leading-none mt-0.5 flex-shrink-0">📱</span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-blue-800 mb-0.5">Pay via UPI</p>
-                <p className="text-sm font-mono font-bold text-blue-700 break-all select-all">
-                  {config.upi}
-                </p>
-                <p className="text-[11px] text-blue-400 mt-1">
-                  This UPI ID will be included in your order message.
-                </p>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+              <div className="flex items-start gap-3">
+                <span className="text-lg leading-none mt-0.5 flex-shrink-0">📱</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-blue-800 mb-0.5">Pay via UPI</p>
+                  <p className="text-sm font-mono font-bold text-blue-700 break-all select-all">
+                    {config.upi}
+                  </p>
+                  <p className="text-[11px] text-blue-400 mt-1">
+                    This UPI ID will be included in your order message.
+                  </p>
+                </div>
               </div>
+              {/* Pay-online link — opens the customer's UPI app with the amount pre-filled */}
+              {!cartEmpty && (
+                <a
+                  href={buildUpiLink({
+                    upi:       config.upi,
+                    payeeName: config.businessName || config.name,
+                    amount:    total,
+                    note:      `Order — ${config.businessName || config.name || 'Store'}`,
+                  })}
+                  className="mt-3 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700
+                             text-white text-sm font-bold py-2.5 rounded-xl transition-colors active:scale-[0.98]"
+                >
+                  📲 Pay {formatINR(total)} now via UPI
+                </a>
+              )}
+              <p className="text-[10px] text-blue-400 text-center mt-1.5">
+                Opens GPay / PhonePe / Paytm with the amount filled in.
+              </p>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-gray-400
