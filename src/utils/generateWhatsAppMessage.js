@@ -1,4 +1,5 @@
 import { calcCartTotals, formatINR } from './currency';
+import { saveOrder } from './orderService';
 
 /**
  * generateWhatsAppMessage
@@ -117,6 +118,8 @@ export function generateWhatsAppURL(customerDetails, cart, businessConfig = {}) 
  * Mobile: opens the WhatsApp app directly via the wa.me deep link.
  */
 export function sendOrderOnWhatsApp(customerDetails, cart, businessConfig = {}) {
+  // Record the order first (best-effort, fire-and-forget — never blocks WhatsApp).
+  saveOrder(customerDetails, cart, businessConfig);
   const url = generateWhatsAppURL(customerDetails, cart, businessConfig);
   window.open(url, '_blank', 'noopener,noreferrer');
 }

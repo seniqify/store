@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft } from '../utils/planLimits';
 import {
-  Lock, ArrowLeft, Package, Tag, Settings2,
+  Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2,
 } from 'lucide-react';
@@ -24,6 +24,7 @@ import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorag
 import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/businessCategories';
 import LocationPicker                                 from '../components/LocationPicker';
 import IconPicker                                     from '../components/IconPicker';
+import OrdersTab                                       from '../components/manage/OrdersTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -210,7 +211,7 @@ function PinGate({ slug, onVerified }) {
     setChecking(true); setError('');
     const ok = await verifyPin(slug, pin);
     if (ok) {
-      onVerified();
+      onVerified(pin);
     } else {
       setError('Incorrect PIN. Please try again.');
       setChecking(false);
@@ -1386,8 +1387,9 @@ export default function ManageStore() {
   const [loading,     setLoading]     = useState(true);
   const [notFound,    setNotFound]    = useState(false);
   const [pinVerified, setPinVerified] = useState(false);
+  const [storePin,    setStorePin]    = useState('');
   const [config,      setConfig]      = useState(null);
-  const [tab,         setTab]         = useState('products');
+  const [tab,         setTab]         = useState('orders');
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
   const saveTimerRef = useRef(null);
@@ -1467,7 +1469,7 @@ export default function ManageStore() {
 
   // ── PIN Gate ───────────────────────────────────────────────────────────────
   if (!pinVerified) {
-    return <PinGate slug={businessSlug} onVerified={() => setPinVerified(true)} />;
+    return <PinGate slug={businessSlug} onVerified={(pin) => { setStorePin(pin); setPinVerified(true); }} />;
   }
 
   // ── Management Dashboard ──────────────────────────────────────────────────
@@ -1481,6 +1483,7 @@ export default function ManageStore() {
   const planName   = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
 
   const TABS = [
+    { key: 'orders',     label: 'Orders',     icon: ShoppingBag },
     { key: 'products',   label: 'Products',   icon: Package  },
     { key: 'categories', label: 'Categories', icon: Tag      },
     { key: 'settings',   label: 'Settings',   icon: Settings2 },
@@ -1557,6 +1560,11 @@ export default function ManageStore() {
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
       <main className="max-w-lg mx-auto px-4 py-6">
+        {tab === 'orders' ? (
+          <div className="animate-pl-fade-up">
+            <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
+          </div>
+        ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
           {tab === 'products' && (
             <ManageProducts
@@ -1587,6 +1595,7 @@ export default function ManageStore() {
             />
           )}
         </div>
+        )}
       </main>
     </div>
   );
