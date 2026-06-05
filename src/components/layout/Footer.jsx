@@ -101,7 +101,7 @@ export default function Footer() {
     : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 
   return (
-    <footer className="bg-gray-900 text-gray-300 mt-16">
+    <footer className="bg-gray-900 text-gray-300 mt-16 pb-28 lg:pb-0">
       <div className={`max-w-7xl mx-auto px-4 py-10 grid gap-8 ${gridCls}`}>
 
         {/* â"€â"€ 1. Brand â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
