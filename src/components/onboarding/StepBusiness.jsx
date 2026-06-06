@@ -263,7 +263,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
       {/* ════ Pricing & payments (cart types only) ════ */}
       {isCart && (
         <>
-          {section('💳', 'PRICING & PAYMENTS', 'Used at checkout')}
+          {section('💳', 'PRICING & PAYMENTS', 'All optional — you can add these later in Manage')}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

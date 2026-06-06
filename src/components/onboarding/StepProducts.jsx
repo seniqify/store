@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Plus, X, AlertCircle, ImagePlus, Link2, Pencil, Lock } from 'lucide-react';
+import { Plus, X, ImagePlus, Link2, Pencil, Lock } from 'lucide-react';
 import { getPlanLimits, canAddProduct, canAddCategory } from '../../utils/planLimits';
 
 /**
@@ -34,6 +34,15 @@ const EMPTY_PRODUCT = {
 };
 
 const EMPTY_CAT_FORM = { emoji: '📦', label: '' };
+
+// A sensible starter category per business type, so owners can add an item
+// straight away without first thinking about categories (they can rename it).
+const DEFAULT_CAT = {
+  product:  { label: 'Products', emoji: '📦' },
+  menuitem: { label: 'Menu',     emoji: '🍽️' },
+  service:  { label: 'Services', emoji: '🛠️' },
+  room:     { label: 'Rooms',    emoji: '🛏️' },
+};
 
 function inputCls(hasError) {
   return [
@@ -223,6 +232,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
   const [productForm,      setProductForm]      = useState(EMPTY_PRODUCT);
   const [editingProductId, setEditingProductId] = useState(null);   // product.tempId being edited
   const [prodErrors,       setProdErrors]       = useState({});
+  const [navError,         setNavError]         = useState('');     // "add at least one item" nudge
 
   // ── Helpers: clear all editing state ────────────────────────────────────
   function resetForms() {
@@ -256,16 +266,28 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
 
   // ── Open: new product ─────────────────────────────────────────────────────
   function openProductForm() {
-    if (data.categories.length === 0) return;
     // Auto-save an open category form with content
     if (activeForm === 'category' && catForm.label.trim()) {
       submitCategory(catForm);
     }
+    // Owners shouldn't have to set up categories first. If none exist, start a
+    // sensible default they can rename; preselect it (or the only one) so adding
+    // an item is just name + price.
+    let presetCat = '';
+    if (data.categories.length === 0) {
+      const d  = DEFAULT_CAT[mode] ?? DEFAULT_CAT.product;
+      const id = d.label.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+      onChange({ categories: [{ id, label: d.label, emoji: d.emoji }] });
+      presetCat = id;
+    } else if (data.categories.length === 1) {
+      presetCat = data.categories[0].id;
+    }
     setCatForm(EMPTY_CAT_FORM);
     setEditingCatId(null);
-    setProductForm(EMPTY_PRODUCT);
+    setProductForm({ ...EMPTY_PRODUCT, category: presetCat });
     setEditingProductId(null);
     setProdErrors({});
+    setNavError('');
     setActiveForm('product');
   }
 
@@ -363,6 +385,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
     }
     setProductForm(EMPTY_PRODUCT);
     setProdErrors({});
+    setNavError('');
     setActiveForm(null);
   }
 
@@ -374,8 +397,11 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
 
   // ── Step navigation ───────────────────────────────────────────────────────
   function handleNext() {
-    if (data.categories.length === 0) { alert('Add at least one category before continuing.'); return; }
-    if (data.products.length === 0)   { alert('Add at least one product before continuing.');  return; }
+    if (data.products.length === 0) {
+      setNavError(`Add at least one ${labels.singular.toLowerCase()} to continue.`);
+      return;
+    }
+    setNavError('');
     onNext();
   }
 
@@ -387,9 +413,10 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
     <div className="space-y-6">
 
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">Your products</h2>
+        <h2 className="text-xl font-extrabold text-gray-900">Your {labels.plural.toLowerCase()}</h2>
         <p className="text-sm text-gray-500 mt-1">
-          First add categories, then add products under each category.
+          Just tap “{labels.add}” and fill in the name &amp; price — that’s it.
+          Grouping into categories is optional.
         </p>
       </div>
 
@@ -447,11 +474,9 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
             </div>
           ))}
           {data.categories.length === 0 && activeForm !== 'category' && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50
-                            border border-amber-100 rounded-xl px-3 py-1.5">
-              <AlertCircle size={12} className="flex-shrink-0" />
-              Add at least one category before adding products.
-            </div>
+            <p className="text-xs text-gray-400">
+              Optional — tap “{labels.add}” below and we’ll start a category for you.
+            </p>
           )}
         </div>
 
@@ -522,13 +547,9 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 </span>
               </div>
             ) : (
-              <button type="button" onClick={openProductForm} disabled={!hasCategories}
-                      title={!hasCategories ? 'Add a category first' : ''}
-                      className={[
-                        'flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg',
-                        'text-white transition-colors',
-                        hasCategories ? 'hover:opacity-90' : 'opacity-40 cursor-not-allowed',
-                      ].join(' ')}
+              <button type="button" onClick={openProductForm}
+                      className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
+                                 text-white transition-colors hover:opacity-90"
                       style={{ backgroundColor: themeColor }}>
                 <Plus size={12} /> {labels.add}
               </button>
@@ -765,6 +786,9 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
       </div>
 
       {/* ── Navigation ───────────────────────────────────────────────────────── */}
+      {navError && (
+        <p className="text-sm text-red-500 text-center -mb-1">{navError}</p>
+      )}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onBack}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold

@@ -6,10 +6,10 @@ import StepBusiness     from '../components/onboarding/StepBusiness';
 import StepProducts     from '../components/onboarding/StepProducts';
 import StepPublish      from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
-import { saveBusiness }        from '../utils/businessStorage';
+import { saveBusiness, cacheStore } from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
-import { slugExists, clearPendingSignup } from '../utils/storeService';
-import { uploadConfigImages, uploadSingleImage } from '../utils/imageStorage';
+import { slugExists, clearPendingSignup, updateStore } from '../utils/storeService';
+import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
 
 const INITIAL = {
   businessType:      '',
@@ -285,25 +285,48 @@ export default function Onboarding() {
       }
       config = { ...config, slug };
 
-      // â"€â"€ Upload base64 product images to Supabase Storage â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-      const [uploadedProducts, uploadedLogo, uploadedCover] = await Promise.all([
-        uploadConfigImages(config.products, slug),
-        uploadSingleImage(config.logo, slug, 'logo'),
-        uploadSingleImage(config.coverImage, slug, 'cover'),
-      ]);
-      config = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
-
+      // Save the page immediately with photos kept as-is, so "Launch" feels
+      // instant even on a slow field connection (one insert, no image upload
+      // wait). The success screen shows right away; photos then move to Storage
+      // in the background (uploadImagesInBackground) and swap in their CDN URLs.
       await saveBusiness(config, pin, ownerPhone);
-      await clearPendingSignup(ownerPhone);   // payment is now tied to a real store
+
       sessionStorage.removeItem('pocketlink_verified_phone');
       sessionStorage.removeItem('pocketlink_plan');
       sessionStorage.removeItem('pocketlink_plan_expires');
       sessionStorage.removeItem('pocketlink_subscription_id');
+
       setLaunchedSlug(slug);
       setLaunched(true);          // show success screen instead of navigating away
+
+      // Non-blocking: detach the pending signup + move photos to Storage.
+      clearPendingSignup(ownerPhone).catch(() => {});
+      uploadImagesInBackground(config, slug);
     } catch (err) {
       setSaveError(err.message || 'Failed to save your page. Please try again.');
       setSaving(false);
+    }
+  }
+
+  // After the page is live, swap any base64 photos for Supabase Storage URLs.
+  // Failure is harmless — the base64 version is already saved and renders fine.
+  async function uploadImagesInBackground(config, slug) {
+    try {
+      const needsUpload =
+        isBase64Image(config.logo) ||
+        isBase64Image(config.coverImage) ||
+        (config.products || []).some(p => isBase64Image(p.image));
+      if (!needsUpload) return;
+      const [products, logo, coverImage] = await Promise.all([
+        uploadConfigImages(config.products, slug),
+        uploadSingleImage(config.logo, slug, 'logo'),
+        uploadSingleImage(config.coverImage, slug, 'cover'),
+      ]);
+      const updated = { ...config, products, logo, coverImage };
+      await updateStore(slug, updated);
+      cacheStore(updated);
+    } catch {
+      /* base64 already saved & working — nothing to do */
     }
   }
 
