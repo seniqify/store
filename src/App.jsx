@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Header           from './components/layout/Header';
 import Footer           from './components/layout/Footer';
 import TemplateRenderer from './templates/TemplateRenderer';
@@ -149,6 +150,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <Analytics />
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
