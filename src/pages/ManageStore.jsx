@@ -28,6 +28,7 @@ import LocationPicker                                 from '../components/Locati
 import IconPicker                                     from '../components/IconPicker';
 import OrdersTab                                       from '../components/manage/OrdersTab';
 import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
+import ReachCard                                       from '../components/manage/ReachCard';
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1725,6 +1726,7 @@ export default function ManageStore() {
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
       <main className="max-w-lg mx-auto px-4 py-6">
+        <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName} />
         {tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />

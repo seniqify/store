@@ -9,6 +9,7 @@ import StoreReviews     from './components/store/StoreReviews';
 import ErrorBoundary    from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
+import { logStoreView } from './utils/viewService';
 import { applyTheme }   from './utils/theme';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
@@ -106,8 +107,12 @@ function BusinessShell() {
     setConfig(null);
 
     loadBusiness(businessSlug).then((cfg) => {
-      if (cfg) setConfig(cfg);
-      else     setNotFound(true);
+      if (cfg) {
+        setConfig(cfg);
+        logStoreView(cfg.slug);   // count this visit (deduped per device/day)
+      } else {
+        setNotFound(true);
+      }
       setLoading(false);
     });
   }, [businessSlug]);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Lock } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
+import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
 
 const DAY = 86400000;
@@ -11,10 +12,13 @@ const DAY = 86400000;
  */
 export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false }) {
   const [orders, setOrders] = useState(null);
+  const [views,  setViews]  = useState(null);
 
   const load = useCallback(async () => {
     if (!enabled) return;
-    setOrders(await fetchOrders(slug, pin));
+    const [o, v] = await Promise.all([fetchOrders(slug, pin), fetchViewStats(slug)]);
+    setOrders(o);
+    setViews(v);
   }, [slug, pin, enabled]);
 
   useEffect(() => { load(); }, [load]);
@@ -58,6 +62,12 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const lastWeek = valid.filter((o) => { const d = now - new Date(o.created_at).getTime(); return d >= 7 * DAY && d < 14 * DAY; }).length;
   const wow = lastWeek ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : (thisWeek ? 100 : 0);
   const customers = new Set(valid.map((o) => o.customer_phone).filter(Boolean)).size;
+
+  // Reach → orders funnel. Compared on the same 7-day window so it's apples-to-
+  // apples (views only started logging recently). Capped at 100% for sanity.
+  const totalViews = views?.total ?? 0;
+  const weekViews  = views?.week  ?? 0;
+  const conv = weekViews > 0 ? Math.min(100, Math.round((thisWeek / weekViews) * 100)) : null;
 
   // Orders per day, last 14 days
   const days = Array.from({ length: 14 }, (_, i) => {
@@ -109,6 +119,8 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
         } />
         <Stat label="Avg order" value={formatINR(Math.round(aov))} />
         <Stat label="Customers" value={customers} sub={<span className="text-[11px] text-gray-400">unique buyers</span>} />
+        <Stat label="Page views" value={totalViews.toLocaleString('en-IN')} sub={<span className="text-[11px] text-gray-400">{weekViews.toLocaleString('en-IN')} this week</span>} />
+        <Stat label="Conversion" value={conv === null ? '—' : `${conv}%`} sub={<span className="text-[11px] text-gray-400">visitors → orders (7d)</span>} />
       </div>
 
       {/* Orders over time */}
