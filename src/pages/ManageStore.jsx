@@ -1726,7 +1726,12 @@ export default function ManageStore() {
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
       <main className="max-w-lg mx-auto px-4 py-6">
-        <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName} />
+        {/* Reach hook — only on the Orders tab (the default landing). Settings has
+            its own "share your page" hero and Stats has its own views number, so
+            showing it everywhere would stack duplicate share cards. */}
+        {tab === 'orders' && (
+          <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName} />
+        )}
         {tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
