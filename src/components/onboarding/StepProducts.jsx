@@ -668,7 +668,26 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 {prodErrors.name && <p className="mt-0.5 text-xs text-red-500">{prodErrors.name}</p>}
               </div>
 
-              {/* Category */}
+              {/* Price — leads alongside Name (the only two things needed) */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Price ₹ <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
+                                   text-gray-400 pointer-events-none">₹</span>
+                  <input type="number" inputMode="numeric" min="0" placeholder="349"
+                         value={productForm.price}
+                         onChange={e => {
+                           setProductForm(p => ({ ...p, price: e.target.value }));
+                           setProdErrors(p => ({ ...p, price: '' }));
+                         }}
+                         className={[inputCls(prodErrors.price), 'pl-7'].join(' ')} />
+                </div>
+                {prodErrors.price && <p className="mt-0.5 text-xs text-red-500">{prodErrors.price}</p>}
+              </div>
+
+              {/* Category — auto-set for you; change only if you want */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Category <span className="text-red-500">*</span>
@@ -705,25 +724,6 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                   )}
                 </div>
               )}
-
-              {/* Price */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Price ₹ <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
-                                   text-gray-400 pointer-events-none">₹</span>
-                  <input type="number" inputMode="numeric" min="0" placeholder="349"
-                         value={productForm.price}
-                         onChange={e => {
-                           setProductForm(p => ({ ...p, price: e.target.value }));
-                           setProdErrors(p => ({ ...p, price: '' }));
-                         }}
-                         className={[inputCls(prodErrors.price), 'pl-7'].join(' ')} />
-                </div>
-                {prodErrors.price && <p className="mt-0.5 text-xs text-red-500">{prodErrors.price}</p>}
-              </div>
 
               {/* MRP — not relevant for services or portfolio */}
               {(mode === 'product' || mode === 'menuitem' || mode === 'room') && (

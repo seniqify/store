@@ -10,6 +10,7 @@ import { saveBusiness, cacheStore } from '../utils/businessStorage';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists, clearPendingSignup, updateStore } from '../utils/storeService';
 import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
+import { defaultIcon, DEFAULT_CATEGORY } from '../utils/businessCategories';
 
 const INITIAL = {
   businessType:      '',
@@ -27,10 +28,10 @@ const INITIAL = {
   whatsappNumber:    '',
   logoEmoji:         '🏪',
   themeColor:        '#0d9488',
-  gstRate:           0.05,
+  gstRate:           0,
   gstNumber:         '',
-  deliveryCharge:    49,
-  freeDeliveryAbove: 999,
+  deliveryCharge:    0,
+  freeDeliveryAbove: 0,
   upiId:             '',
   bankAccountName:   '',
   bankAccountNumber: '',
@@ -41,8 +42,12 @@ const INITIAL = {
   products:          [],
 };
 
-const STEP_LABELS = ['Business Type', 'Your Business', 'Your Products', 'Preview & Launch'];
-const STEP_ICONS  = ['🧭', '🏪', '📦', '🚀'];
+const STEP_LABELS = ['Type', 'Details', 'Items', 'Launch'];
+const STEP_ICONS  = ['🧭', '📝', '📦', '🚀'];
+
+// Each business type gets its own accent so stores aren't all the same colour.
+// (Owners can change it later in Manage → Settings.)
+const THEME_BY_TYPE = { product: '#0d9488', restaurant: '#ea580c', service: '#9333ea', hotel: '#6366f1' };
 
 // Premium dark stepper shown across all onboarding steps.
 function Stepper({ labels, icons, current }) {
@@ -232,6 +237,11 @@ function LaunchSuccess({ slug, pin, themeColor }) {
               PIN: <strong>{pin || 'last 4 digits of your WhatsApp number'}</strong>
             </p>
           </div>
+
+          {/* Make-it-yours nudge — all the optional polish now lives in Manage */}
+          <p className="text-center text-[11px] text-gray-400 leading-relaxed px-2">
+            ✨ Want it to stand out? Add a logo, cover photo &amp; payment details anytime in Manage → Settings.
+          </p>
         </div>
       </div>
     </div>
@@ -256,6 +266,8 @@ export default function Onboarding() {
     const phone = sessionStorage.getItem('pocketlink_verified_phone');
     if (!phone) { navigate('/start', { replace: true }); return; }
     setOwnerPhone(phone);
+    // Prefill the WhatsApp number from the just-verified phone — no need to ask again.
+    setData(d => ({ ...d, whatsappNumber: d.whatsappNumber || phone.replace(/\D/g, '').slice(-10) }));
     setPlan(sessionStorage.getItem('pocketlink_plan') || 'free');
     setPlanExpiresAt(sessionStorage.getItem('pocketlink_plan_expires') || null);
   }, [navigate]);
@@ -385,7 +397,11 @@ export default function Onboarding() {
           {step === 0 && (
             <StepBusinessType
               selected={data.businessType}
-              onSelect={(type) => update({ businessType: type })}
+              onSelect={(type) => update({
+                businessType: type,
+                themeColor: THEME_BY_TYPE[type] || '#0d9488',
+                logoEmoji: defaultIcon(DEFAULT_CATEGORY[type] || 'Other Retail'),
+              })}
               onNext={() => setStep(1)}
             />
           )}
