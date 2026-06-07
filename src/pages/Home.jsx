@@ -2,8 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { ShoppingCart, MessageCircle, Check } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
+import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
-import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
+import { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
@@ -22,6 +23,7 @@ import { isVerified, effectivePlan } from '../utils/planLimits';
  */
 export default function Home({ externalCartOpen, onExternalCartClose, onCartCountChange }) {
   const [cartOpen,        setCartOpen]        = useState(false);
+  const [checkoutOpen,    setCheckoutOpen]    = useState(false);
   const [customerDetails, setCustomerDetails] = useState(INITIAL_CUSTOMER_DETAILS);
 
   const {
@@ -99,14 +101,10 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     }
   }, [externalCartOpen, onExternalCartClose]);
 
-  // ── "Place Order" → close sidebar + scroll to form ───────────────────────
+  // ── "Place Order" → close cart, open the checkout sheet ──────────────────
   function handleCheckout() {
     setCartOpen(false);
-    setTimeout(() => {
-      document
-        .getElementById('order-form')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
+    setCheckoutOpen(true);
   }
 
   return (
@@ -253,20 +251,6 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onSetQty={setQty}
             />
 
-            {/* Section divider */}
-            <div className="flex items-center gap-4">
-              <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest flex-shrink-0">
-                Place Your Order
-              </span>
-              <div className="h-px flex-1 bg-gray-200" />
-            </div>
-
-            <CustomerDetailsForm
-              formData={customerDetails}
-              onChange={setCustomerDetails}
-              cart={cart}
-            />
           </div>
 
           {/* ── Right: Sticky cart (desktop only) ───────────────────────── */}
@@ -353,7 +337,17 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onCheckout={handleCheckout}
       />
 
-      {/* ── Mobile bottom bar ��───────────────────────────────────────────── */}
+      {/* ── Checkout Sheet (order form) ──────────────────────────────────── */}
+      <CheckoutSheet
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        onBack={() => { setCheckoutOpen(false); setCartOpen(true); }}
+        formData={customerDetails}
+        onChange={setCustomerDetails}
+        cart={cart}
+      />
+
+      {/* ── Mobile bottom bar ───────────────────────────────────────────── */}
       <StoreTabBar
         itemCount={itemCount}
         cartTotal={total}
