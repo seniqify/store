@@ -313,7 +313,7 @@ export default function Onboarding() {
 
       // Non-blocking: detach the pending signup + move photos to Storage.
       clearPendingSignup(ownerPhone).catch(() => {});
-      uploadImagesInBackground(config, slug);
+      uploadImagesInBackground(config, slug, pin);
     } catch (err) {
       setSaveError(err.message || 'Failed to save your page. Please try again.');
       setSaving(false);
@@ -322,7 +322,7 @@ export default function Onboarding() {
 
   // After the page is live, swap any base64 photos for Supabase Storage URLs.
   // Failure is harmless — the base64 version is already saved and renders fine.
-  async function uploadImagesInBackground(config, slug) {
+  async function uploadImagesInBackground(config, slug, pin) {
     try {
       const needsUpload =
         isBase64Image(config.logo) ||
@@ -335,7 +335,7 @@ export default function Onboarding() {
         uploadSingleImage(config.coverImage, slug, 'cover'),
       ]);
       const updated = { ...config, products, logo, coverImage };
-      await updateStore(slug, updated);
+      await updateStore(slug, updated, pin);
       cacheStore(updated);
     } catch {
       /* base64 already saved & working — nothing to do */

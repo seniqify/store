@@ -1591,7 +1591,7 @@ export default function ManageStore() {
       ]);
       const finalConfig = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
 
-      await updateStore(businessSlug, finalConfig);
+      await updateStore(businessSlug, finalConfig, storePin);
       setConfig(finalConfig);      // update state with Storage URLs
       cacheStore(finalConfig);
       setSaveStatus('saved');

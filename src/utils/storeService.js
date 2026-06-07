@@ -51,14 +51,18 @@ export async function createStore(config, pin, ownerPhone = null) {
   if (error) throw new Error(error.message);
 }
 
-/** Update an existing store's config after PIN is verified. */
-export async function updateStore(slug, config) {
-  const { error } = await supabase
-    .from('stores')
-    .update({ config, updated_at: new Date().toISOString() })
-    .eq('slug', slug);
-
+/**
+ * Update an existing store's config. PIN-checked server-side via the
+ * update_store_config RPC (the table no longer allows public UPDATE). The RPC
+ * preserves the server-managed plan/billing fields, so this can't self-upgrade.
+ */
+export async function updateStore(slug, config, pin) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('update_store_config', {
+    p_slug: slug, p_hashed_pin: hashed, p_config: config,
+  });
   if (error) throw new Error(error.message);
+  if (data === false) throw new Error('Could not save — please re-enter your PIN and try again.');
 }
 
 /**
@@ -68,11 +72,12 @@ export async function updateStore(slug, config) {
  * Pass `subscriptionId` to record the Razorpay auto-debit subscription.
  */
 export async function upgradePlan(slug, plan, planExpiresAt = null, subscriptionId = null) {
-  const config = await fetchStore(slug);
-  if (!config) throw new Error('Store not found.');
-  const next = { ...config, plan, planExpiresAt };
-  if (subscriptionId) next.razorpaySubscriptionId = subscriptionId;
-  await updateStore(slug, next);
+  // Touches only plan/billing fields server-side (upgrade_store_plan RPC) — it
+  // can't overwrite the rest of the store, even without a PIN.
+  const { error } = await supabase.rpc('upgrade_store_plan', {
+    p_slug: slug, p_plan: plan, p_expires: planExpiresAt, p_sub_id: subscriptionId,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -107,25 +112,14 @@ export async function verifyPin(slug, pin) {
  * Throws if the number doesn't match.
  */
 export async function resetPin(slug, newPin, whatsappNumber) {
-  // Fetch the public config to verify ownership
-  const config = await fetchStore(slug);
-  if (!config) throw new Error('Store not found.');
-
-  // Normalise both to last 10 digits for comparison
-  const storedDigits = String(config.whatsappNumber || '').replace(/\D/g, '').slice(-10);
-  const inputDigits  = String(whatsappNumber).replace(/\D/g, '').slice(-10);
-
-  if (!storedDigits || storedDigits !== inputDigits) {
-    throw new Error('WhatsApp number does not match this store. Please try again.');
-  }
-
+  // Ownership (matching WhatsApp number) is verified server-side in the RPC, and
+  // the PIN column is no longer writable directly by the anon role.
   const hashedPin = await hashPin(newPin);
-  const { error } = await supabase
-    .from('stores')
-    .update({ pin: hashedPin, updated_at: new Date().toISOString() })
-    .eq('slug', slug);
-
+  const { data, error } = await supabase.rpc('reset_store_pin', {
+    p_slug: slug, p_whatsapp: whatsappNumber, p_new_hashed_pin: hashedPin,
+  });
   if (error) throw new Error(error.message);
+  if (data === false) throw new Error('WhatsApp number does not match this store. Please try again.');
 }
 
 /**
