@@ -47,7 +47,9 @@ export default function CartSidebar({
         onClick={onClose}
         aria-hidden="true"
         className={[
-          'fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300',
+          // z-[55]/panel z-[60] sit ABOVE the mobile StoreTabBar (z-50) so the
+          // cart fully covers it and its "Proceed to Checkout" button is tappable.
+          'fixed inset-0 bg-black/40 backdrop-blur-sm z-[55] transition-opacity duration-300',
           'lg:hidden',
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         ].join(' ')}
@@ -59,7 +61,7 @@ export default function CartSidebar({
         aria-modal="true"
         aria-label="Shopping cart"
         className={[
-          'fixed top-0 right-0 z-50',
+          'fixed top-0 right-0 z-[60]',
           'h-[100dvh] w-full sm:w-[26rem]',
           'bg-white shadow-2xl sm:rounded-l-3xl',
           'flex flex-col overflow-hidden',
