@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Plus, X, ImagePlus, Link2, Pencil, Lock } from 'lucide-react';
 import { getPlanLimits, canAddProduct, canAddCategory } from '../../utils/planLimits';
+import { useI18n } from '../../i18n/I18nContext';
 
 /**
  * StepProducts — Onboarding Step 2
@@ -58,6 +59,7 @@ function inputCls(hasError) {
 // ImageUploader — drag-drop / click-to-upload + URL paste fallback
 // ─────────────────────────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }) {
+  const { t } = useI18n();
   const [dragOver, setDragOver] = useState(false);
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -121,22 +123,22 @@ function ImageUploader({ value, onChange }) {
         </div>
         <div className="flex flex-col gap-1.5 pt-0.5">
           <p className="text-xs font-semibold text-gray-700">
-            {isBase64 ? '✅ Image uploaded' : '🔗 Image URL set'}
+            {isBase64 ? t('img.uploaded') : t('img.urlSet')}
           </p>
           <p className="text-[11px] text-gray-400 leading-snug max-w-[180px] truncate">
-            {isBase64 ? 'Compressed & ready' : value}
+            {isBase64 ? t('img.ready') : value}
           </p>
           <div className="flex gap-2 mt-0.5">
             <button type="button" onClick={() => fileRef.current?.click()}
                     className="text-xs font-medium text-brand hover:text-brand-dark
                                underline underline-offset-2 transition-colors">
-              Change
+              {t('img.change')}
             </button>
             <span className="text-gray-300">·</span>
             <button type="button" onClick={clearImage}
                     className="text-xs font-medium text-red-400 hover:text-red-600
                                underline underline-offset-2 transition-colors">
-              Remove
+              {t('img.remove')}
             </button>
           </div>
         </div>
@@ -160,7 +162,7 @@ function ImageUploader({ value, onChange }) {
           <button type="button" onClick={applyUrl}
                   className="px-3 py-2 rounded-xl bg-gray-900 text-white text-xs
                              font-semibold hover:bg-gray-700 transition-colors">
-            Set
+            {t('img.set')}
           </button>
           <button type="button" onClick={() => { setUrlMode(false); setUrlInput(''); }}
                   className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600">
@@ -168,7 +170,7 @@ function ImageUploader({ value, onChange }) {
           </button>
         </div>
         <p className="text-[11px] text-gray-400">
-          Paste a direct link to any image (.jpg / .png / .webp etc.)
+          {t('img.urlHint')}
         </p>
       </div>
     );
@@ -194,10 +196,10 @@ function ImageUploader({ value, onChange }) {
         </div>
         <div className="text-center">
           <p className="text-xs font-semibold text-gray-600">
-            Click to upload or drag &amp; drop
+            {t('img.upload')}
           </p>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            JPG, PNG, WebP · auto-compressed to 400 px
+            {t('img.formats')}
           </p>
         </div>
       </button>
@@ -207,7 +209,7 @@ function ImageUploader({ value, onChange }) {
               className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600
                          transition-colors mx-auto">
         <Link2 size={11} />
-        Use image URL instead
+        {t('img.useUrl')}
       </button>
     </div>
   );
@@ -224,7 +226,12 @@ const MODE_LABELS = {
 };
 
 export default function StepProducts({ data, onChange, onNext, onBack, themeColor = '#0d9488', plan = 'free', mode = 'product' }) {
-  const labels = MODE_LABELS[mode] ?? MODE_LABELS.product;
+  const { t } = useI18n();
+  const labels = {
+    plural:   t(`mode.${mode}.plural`),
+    singular: t(`mode.${mode}.singular`),
+    add:      t(`mode.${mode}.add`),
+  };
   const limits = getPlanLimits(plan);
   const [activeForm,       setActiveForm]       = useState(null);   // 'category' | 'product' | null
   const [catForm,          setCatForm]          = useState(EMPTY_CAT_FORM);
@@ -349,9 +356,9 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
   // ── Validate product form ─────────────────────────────────────────────────
   function validateProduct() {
     const errs = {};
-    if (!productForm.name.trim())                              errs.name     = 'Product name is required.';
-    if (!productForm.category)                                 errs.category = 'Please select a category.';
-    if (!productForm.price || Number(productForm.price) <= 0) errs.price    = 'Enter a valid price.';
+    if (!productForm.name.trim())                              errs.name     = t('itm.f.name.err');
+    if (!productForm.category)                                 errs.category = t('itm.f.category.err');
+    if (!productForm.price || Number(productForm.price) <= 0) errs.price    = t('itm.f.price.err');
     return errs;
   }
 
@@ -398,7 +405,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
   // ── Step navigation ───────────────────────────────────────────────────────
   function handleNext() {
     if (data.products.length === 0) {
-      setNavError(`Add at least one ${labels.singular.toLowerCase()} to continue.`);
+      setNavError(t('itm.navErr', { singular: labels.singular }));
       return;
     }
     setNavError('');
@@ -413,18 +420,15 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
     <div className="space-y-6">
 
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">Your {labels.plural.toLowerCase()}</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Just tap “{labels.add}” and fill in the name &amp; price — that’s it.
-          Grouping into categories is optional.
-        </p>
+        <h2 className="text-xl font-extrabold text-gray-900">{t('itm.heading', { plural: labels.plural })}</h2>
+        <p className="text-sm text-gray-500 mt-1">{t('itm.sub', { add: labels.add })}</p>
       </div>
 
       {/* ── CATEGORIES ─────────────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">
-            Categories
+            {t('itm.cats')}
             <span className="ml-1.5 text-xs font-normal text-gray-400">
               ({data.categories.length}/{limits.categories === Infinity ? '∞' : limits.categories})
             </span>
@@ -435,12 +439,12 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                       className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
                                  border border-dashed border-gray-300 text-gray-500
                                  hover:border-gray-400 hover:text-gray-700 transition-colors">
-                <Plus size={12} /> Add Category
+                <Plus size={12} /> {t('itm.addCat')}
               </button>
             ) : (
               <span className="flex items-center gap-1 text-xs font-semibold text-amber-600
                                bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">
-                <Lock size={10} /> Limit reached
+                <Lock size={10} /> {t('itm.limitReached')}
               </span>
             )
           )}
@@ -475,7 +479,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
           ))}
           {data.categories.length === 0 && activeForm !== 'category' && (
             <p className="text-xs text-gray-400">
-              Optional — tap “{labels.add}” below and we’ll start a category for you.
+              {t('itm.catHint', { add: labels.add })}
             </p>
           )}
         </div>
@@ -484,12 +488,12 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         {activeForm === 'category' && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {isEditingCat ? 'Edit Category' : 'New Category'}
+              {isEditingCat ? t('itm.editCat') : t('itm.newCat')}
             </p>
 
             {/* Emoji picker */}
             <div>
-              <p className="text-xs text-gray-500 mb-1.5">Pick an icon</p>
+              <p className="text-xs text-gray-500 mb-1.5">{t('itm.pickIcon')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {CAT_EMOJIS.map(e => (
                   <button key={e} type="button"
@@ -507,7 +511,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Category name  (e.g. Chargers, Bath Towels)"
+                placeholder={t('itm.catName.ph')}
                 value={catForm.label}
                 onChange={e => setCatForm(p => ({ ...p, label: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && submitCategory()}
@@ -518,7 +522,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               <button type="button" onClick={() => submitCategory()}
                       className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm
                                  font-semibold hover:bg-gray-700 transition-colors">
-                {isEditingCat ? 'Update' : 'Add'}
+                {isEditingCat ? t('itm.update') : t('itm.add')}
               </button>
               <button type="button" onClick={resetForms}
                       className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:text-gray-700">
@@ -566,13 +570,13 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                 {limits.products === Infinity ? '' : `Plan limit: ${limits.products} ${labels.plural.toLowerCase()} max`}
               </p>
               <p className="text-[11px] text-teal-600 mt-0.5">
-                Upgrade to Pro for 20, or Business for unlimited.
+                {t('itm.upgrade.note')}
               </p>
             </div>
             <a href="/plans" target="_blank" rel="noopener noreferrer"
                className="flex-shrink-0 text-xs font-bold text-white bg-teal-600
                           hover:bg-teal-700 px-3 py-1.5 rounded-lg transition-colors">
-              Upgrade →
+              {t('itm.upgrade.cta')}
             </a>
           </div>
         )}
@@ -638,7 +642,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
 
         {data.products.length === 0 && activeForm !== 'product' && hasCategories && (
           <p className="text-xs text-gray-400 text-center py-2">
-            No {labels.plural.toLowerCase()} yet — click "{labels.add}" above.
+            {t('itm.noItems', { plural: labels.plural, add: labels.add })}
           </p>
         )}
 
@@ -646,7 +650,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         {activeForm === 'product' && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {isEditingProd ? `Edit ${labels.singular}` : `New ${labels.singular}`}
+              {isEditingProd ? t('itm.edit', { singular: labels.singular }) : t('itm.new', { singular: labels.singular })}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -654,10 +658,10 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Name */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Product Name <span className="text-red-500">*</span>
+                  {t('itm.f.name')} <span className="text-red-500">*</span>
                 </label>
                 <input type="text"
-                       placeholder="e.g. 65W GaN Charger, Premium Bath Towel"
+                       placeholder={t('itm.f.name.ph')}
                        value={productForm.name}
                        autoFocus
                        onChange={e => {
@@ -671,7 +675,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Price — leads alongside Name (the only two things needed) */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Price ₹ <span className="text-red-500">*</span>
+                  {t('itm.f.price')} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
@@ -690,7 +694,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Category — auto-set for you; change only if you want */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Category <span className="text-red-500">*</span>
+                  {t('itm.f.category')} <span className="text-red-500">*</span>
                 </label>
                 <select value={productForm.category}
                         onChange={e => {
@@ -698,7 +702,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                           setProdErrors(p => ({ ...p, category: '' }));
                         }}
                         className={inputCls(prodErrors.category)}>
-                  <option value="">Select category…</option>
+                  <option value="">{t('itm.f.selectCat')}</option>
                   {data.categories.map(c => (
                     <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>
                   ))}
@@ -709,7 +713,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Unit — only relevant for physical products and menu items */}
               {(mode === 'product' || mode === 'menuitem') && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('itm.f.unit')}</label>
                   <select value={productForm.unit}
                           onChange={e => setProductForm(p => ({ ...p, unit: e.target.value, unitCustom: '' }))}
                           className={inputCls(false)}>
@@ -729,8 +733,8 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {(mode === 'product' || mode === 'menuitem' || mode === 'room') && (
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    {mode === 'room' ? 'Original Price ₹' : 'MRP ₹'}{' '}
-                    <span className="text-gray-400 font-normal">(optional)</span>
+                    {mode === 'room' ? t('itm.f.origPrice') : t('itm.f.mrp')}{' '}
+                    <span className="text-gray-400 font-normal">{t('itm.f.optional')}</span>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm
@@ -740,17 +744,17 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                            onChange={e => setProductForm(p => ({ ...p, mrp: e.target.value }))}
                            className={[inputCls(false), 'pl-7'].join(' ')} />
                   </div>
-                  <p className="mt-0.5 text-xs text-gray-400">Shows strikethrough on the card.</p>
+                  <p className="mt-0.5 text-xs text-gray-400">{t('itm.f.mrpHint')}</p>
                 </div>
               )}
 
               {/* Description */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Description <span className="text-gray-400 font-normal">(optional)</span>
+                  {t('itm.f.desc')} <span className="text-gray-400 font-normal">{t('itm.f.optional')}</span>
                 </label>
                 <input type="text"
-                       placeholder="Short description shown on the product card"
+                       placeholder={t('itm.f.desc.ph')}
                        value={productForm.description}
                        onChange={e => setProductForm(p => ({ ...p, description: e.target.value }))}
                        className={inputCls(false)} />
@@ -759,7 +763,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
               {/* Image */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  {labels.singular} Image <span className="text-gray-400 font-normal">(optional — placeholder used if skipped)</span>
+                  {t('itm.f.image', { singular: labels.singular })} <span className="text-gray-400 font-normal">{t('itm.f.image.opt')}</span>
                 </label>
                 <ImageUploader
                   value={productForm.image}
@@ -773,12 +777,12 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white
                                  transition-colors hover:opacity-90"
                       style={{ backgroundColor: themeColor }}>
-                {isEditingProd ? `Update ${labels.singular}` : labels.add}
+                {isEditingProd ? `${t('itm.update')} ${labels.singular}` : labels.add}
               </button>
               <button type="button" onClick={resetForms}
                       className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm
                                  text-gray-500 hover:text-gray-700">
-                Cancel
+                {t('itm.cancel')}
               </button>
             </div>
           </div>
@@ -793,13 +797,13 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
         <button type="button" onClick={onBack}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold
                            text-gray-600 hover:bg-gray-50 transition-colors">
-          ← Back
+          {t('common.back')}
         </button>
         <button type="button" onClick={handleNext}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white
                            transition-all active:scale-[0.98] hover:opacity-90"
                 style={{ backgroundColor: themeColor }}>
-          Preview Page →
+          {t('itm.cta')}
         </button>
       </div>
     </div>

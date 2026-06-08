@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { lookupPincode } from '../../utils/pincode';
 import { DEFAULT_TAGLINES } from '../../utils/buildConfig';
+import { useI18n } from '../../i18n/I18nContext';
 
 /**
  * StepBusiness — Onboarding step 2 ("Details").
@@ -9,16 +10,14 @@ import { DEFAULT_TAGLINES } from '../../utils/buildConfig';
  * preview shows the page forming. Logo, colours, cover, GST, payments etc. are
  * deferred to Manage → Settings.
  */
-
-const TYPE_NOUN = { product: 'shop', restaurant: 'restaurant', service: 'business', hotel: 'property' };
-
 export default function StepBusiness({ data, onChange, onNext, onBack }) {
+  const { t } = useI18n();
   const [errors,    setErrors]    = useState({});
   const [pinStatus, setPinStatus] = useState('idle'); // idle | loading | ok | notfound
 
   const type    = data.businessType || 'product';
   const brand   = data.themeColor || '#0d9488';
-  const noun    = TYPE_NOUN[type] || 'business';
+  const noun    = t(`noun.${type}`);
   const digits  = (data.whatsappNumber || '').replace(/\D/g, '').slice(-10);
   const tagline = data.tagline?.trim() || DEFAULT_TAGLINES[type] || DEFAULT_TAGLINES.product;
 
@@ -38,8 +37,8 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
 
   function handleNext() {
     const errs = {};
-    if (!data.businessName.trim()) errs.businessName   = 'Please enter your business name.';
-    if (digits.length !== 10)      errs.whatsappNumber = 'Enter a valid 10-digit number.';
+    if (!data.businessName.trim()) errs.businessName   = t('det.name.err');
+    if (digits.length !== 10)      errs.whatsappNumber = t('det.wa.err');
     if (Object.keys(errs).length) { setErrors(errs); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     onNext();
   }
@@ -54,8 +53,8 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">Your {noun} details</h2>
-        <p className="text-sm text-gray-500 mt-1">Just the basics to go live — add a logo, colours &amp; more later.</p>
+        <h2 className="text-xl font-extrabold text-gray-900">{t('det.heading', { noun })}</h2>
+        <p className="text-sm text-gray-500 mt-1">{t('det.sub')}</p>
       </div>
 
       {/* ── Live preview ── */}
@@ -67,25 +66,25 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
           </div>
           <div className="min-w-0">
             <p className="text-white font-extrabold text-base leading-tight truncate">
-              {data.businessName.trim() || `Your ${noun} name`}
+              {data.businessName.trim() || t('det.preview.name', { noun })}
             </p>
             <p className="text-white/80 text-xs mt-0.5 leading-snug line-clamp-1">{tagline}</p>
           </div>
         </div>
         <div className="px-4 py-2.5 bg-white flex items-center gap-2">
           <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg text-white" style={{ backgroundColor: '#25D366' }}>
-            💬 Order on WhatsApp
+            {t('det.preview.cta')}
           </span>
-          <span className="text-[11px] text-gray-400">live preview</span>
+          <span className="text-[11px] text-gray-400">{t('det.preview.tag')}</span>
         </div>
       </div>
 
       {/* ── Business name ── */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-          Business name <span className="text-red-500">*</span>
+          {t('det.name.label')} <span className="text-red-500">*</span>
         </label>
-        <input type="text" autoFocus placeholder="e.g. Sharma Kirana Store"
+        <input type="text" autoFocus placeholder={t('det.name.ph')}
           value={data.businessName} style={ring}
           onChange={(e) => { onChange({ businessName: e.target.value }); setErrors(p => ({ ...p, businessName: '' })); }}
           className={inputCls('businessName')} />
@@ -95,7 +94,7 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
       {/* ── WhatsApp (prefilled from the verified number) ── */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-          WhatsApp number <span className="text-red-500">*</span>
+          {t('det.wa.label')} <span className="text-red-500">*</span>
         </label>
         <div className="relative">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
@@ -106,33 +105,33 @@ export default function StepBusiness({ data, onChange, onNext, onBack }) {
         </div>
         {errors.whatsappNumber
           ? <p className="mt-1 text-xs text-red-500">{errors.whatsappNumber}</p>
-          : <p className="mt-1 text-xs text-gray-400">Every order &amp; enquiry comes here — ✅ already verified.</p>}
+          : <p className="mt-1 text-xs text-gray-400">{t('det.wa.hint')}</p>}
       </div>
 
       {/* ── Optional pincode → city/state ── */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-          Pincode <span className="text-gray-400 font-normal">(optional — helps nearby customers find you)</span>
+          {t('det.pin.label')} <span className="text-gray-400 font-normal">{t('det.pin.opt')}</span>
         </label>
         <input type="tel" inputMode="numeric" maxLength={6} placeholder="413001"
           value={data.pincode || ''} style={ring}
           onChange={(e) => onPincode(e.target.value)}
           className={inputCls(false)} />
-        {pinStatus === 'loading'  && <p className="mt-1 text-xs text-gray-400">Looking up…</p>}
+        {pinStatus === 'loading'  && <p className="mt-1 text-xs text-gray-400">{t('det.pin.loading')}</p>}
         {pinStatus === 'ok'       && <p className="mt-1 text-xs text-emerald-600 truncate">📍 {[data.city, data.state].filter(Boolean).join(', ')}</p>}
-        {pinStatus === 'notfound' && <p className="mt-1 text-xs text-amber-600">Couldn't find that pincode — you can skip it.</p>}
+        {pinStatus === 'notfound' && <p className="mt-1 text-xs text-amber-600">{t('det.pin.notfound')}</p>}
       </div>
 
       {/* ── CTA ── */}
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={onBack}
           className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-          ← Back
+          {t('common.back')}
         </button>
         <button type="button" onClick={handleNext}
           className="flex-[2] py-3 rounded-xl font-bold text-white text-sm transition-all active:scale-[0.98] shadow-sm hover:opacity-90"
           style={{ backgroundColor: brand }}>
-          Continue — Add items →
+          {t('det.cta')}
         </button>
       </div>
     </div>

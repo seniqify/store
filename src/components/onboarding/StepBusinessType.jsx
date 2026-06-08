@@ -1,3 +1,5 @@
+import { useI18n } from '../../i18n/I18nContext';
+
 /**
  * StepBusinessType — Onboarding step 1.
  * Pick what kind of business this is. Tapping a card selects it AND advances
@@ -5,37 +7,15 @@
  */
 
 const BUSINESS_TYPES = [
-  {
-    key:   'product',
-    emoji: '🛒',
-    label: 'Shop / Products',
-    desc:  'Kirana, clothes, electronics, hardware…',
-    tint:  '#0d9488',
-  },
-  {
-    key:   'restaurant',
-    emoji: '🍽️',
-    label: 'Food / Restaurant',
-    desc:  'Restaurant, tiffin, bakery, sweets…',
-    tint:  '#ea580c',
-  },
-  {
-    key:   'service',
-    emoji: '🛠️',
-    label: 'Services',
-    desc:  'Salon, repairs, tailor, tuition…',
-    tint:  '#9333ea',
-  },
-  {
-    key:   'hotel',
-    emoji: '🏨',
-    label: 'Stay / Rooms',
-    desc:  'Lodge, hotel, homestay, resort…',
-    tint:  '#6366f1',
-  },
+  { key: 'product',    emoji: '🛒', tint: '#0d9488' },
+  { key: 'restaurant', emoji: '🍽️', tint: '#ea580c' },
+  { key: 'service',    emoji: '🛠️', tint: '#9333ea' },
+  { key: 'hotel',      emoji: '🏨', tint: '#6366f1' },
 ];
 
 export default function StepBusinessType({ selected, onSelect, onNext }) {
+  const { t } = useI18n();
+
   // One tap: record the choice (parent also sets theme + icon), then move on.
   function pick(type) {
     onSelect(type);
@@ -46,8 +26,8 @@ export default function StepBusinessType({ selected, onSelect, onNext }) {
     <div className="space-y-6">
       <div className="text-center">
         <p className="text-2xl mb-2">👋</p>
-        <h2 className="text-xl font-extrabold text-gray-900">What do you sell?</h2>
-        <p className="text-sm text-gray-500 mt-1">Tap the one that fits — you can change anything later.</p>
+        <h2 className="text-xl font-extrabold text-gray-900">{t('type.heading')}</h2>
+        <p className="text-sm text-gray-500 mt-1">{t('type.sub')}</p>
       </div>
 
       <div className="space-y-3">
@@ -72,8 +52,8 @@ export default function StepBusinessType({ selected, onSelect, onNext }) {
                 {type.emoji}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-extrabold text-[15px] leading-tight text-gray-900">{type.label}</p>
-                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{type.desc}</p>
+                <p className="font-extrabold text-[15px] leading-tight text-gray-900">{t(`type.${type.key}.label`)}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{t(`type.${type.key}.desc`)}</p>
               </div>
               <span className="text-gray-300 text-lg flex-shrink-0">→</span>
             </button>
@@ -81,7 +61,7 @@ export default function StepBusinessType({ selected, onSelect, onNext }) {
         })}
       </div>
 
-      <p className="text-center text-[11px] text-gray-400">Not sure? Pick the closest — it only sets your page layout.</p>
+      <p className="text-center text-[11px] text-gray-400">{t('type.footer')}</p>
     </div>
   );
 }

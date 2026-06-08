@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Lock } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nContext';
 
 /**
  * StepPublish — Onboarding step 4 ("Launch").
@@ -7,32 +8,29 @@ import { Lock } from 'lucide-react';
  * (defaults to the last 4 of the WhatsApp number), and the Launch button.
  */
 
-const ITEM_NOUNS = {
-  product:    ['product', 'products'],
-  restaurant: ['dish',    'dishes'],
-  service:    ['service',  'services'],
-  hotel:      ['room',     'rooms'],
-};
+const TYPE_TO_MODE = { product: 'product', restaurant: 'menuitem', service: 'service', hotel: 'room' };
 
 export default function StepPublish({ data, config, saving, saveError, onBack, onPublish, onPinChange }) {
+  const { t } = useI18n();
   if (!config) return null;
 
   const { businessName, tagline, whatsappNumber, logo, logoEmoji, theme, slug } = config;
   const brand      = theme.primary;
   const type       = data.businessType || 'product';
+  const mode       = TYPE_TO_MODE[type] || 'product';
   const digits     = whatsappNumber.replace(/\D/g, '').slice(-10);
   const phoneLabel = digits.length === 10 ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}` : `+91 ${digits}`;
   const defaultPin = digits.slice(-4) || '1234';
-  const [nounS, nounP] = ITEM_NOUNS[type] ?? ITEM_NOUNS.product;
   const itemCount  = data.products.length;
+  const itemNoun   = itemCount === 1 ? t(`mode.${mode}.itemS`) : t(`mode.${mode}.itemP`);
   const host       = window.location.origin.replace(/^https?:\/\//, '');
 
   return (
     <div className="space-y-6">
 
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">Ready to launch 🚀</h2>
-        <p className="text-sm text-gray-500 mt-1">Quick check, then your page goes live.</p>
+        <h2 className="text-xl font-extrabold text-gray-900">{t('lau.heading')}</h2>
+        <p className="text-sm text-gray-500 mt-1">{t('lau.sub')}</p>
       </div>
 
       {/* ── Compact preview ── */}
@@ -52,15 +50,15 @@ export default function StepPublish({ data, config, saving, saveError, onBack, o
 
         <div className="p-4 space-y-2.5">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">{itemCount === 1 ? nounS : nounP} added</span>
+            <span className="text-gray-500">{t('lau.added', { noun: itemNoun })}</span>
             <span className="font-bold text-gray-900">{itemCount}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">Orders go to</span>
+            <span className="text-gray-500">{t('lau.ordersTo')}</span>
             <span className="font-bold text-gray-900">{phoneLabel}</span>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 overflow-hidden">
-            <p className="text-[11px] text-gray-400 mb-0.5">Your page link</p>
+            <p className="text-[11px] text-gray-400 mb-0.5">{t('lau.link')}</p>
             <p className="font-mono text-[13px] font-semibold text-gray-700 truncate">
               {host}/<span style={{ color: brand }}>{slug}</span>
             </p>
@@ -72,11 +70,9 @@ export default function StepPublish({ data, config, saving, saveError, onBack, o
       <div className="rounded-2xl border border-gray-200 p-5">
         <div className="flex items-center gap-2 mb-1.5">
           <Lock size={15} className="text-gray-500" />
-          <p className="text-sm font-bold text-gray-900">Set your edit PIN</p>
+          <p className="text-sm font-bold text-gray-900">{t('lau.pin.title')}</p>
         </div>
-        <p className="text-xs text-gray-500 leading-relaxed mb-3">
-          You'll enter this 4-digit PIN to edit your page after launch.
-        </p>
+        <p className="text-xs text-gray-500 leading-relaxed mb-3">{t('lau.pin.sub')}</p>
         <div className="flex items-center gap-3 flex-wrap">
           <input
             type="text" inputMode="numeric" placeholder={defaultPin} maxLength={4}
@@ -88,8 +84,7 @@ export default function StepPublish({ data, config, saving, saveError, onBack, o
             style={{ '--tw-ring-color': `${brand}55` }}
           />
           <p className="text-xs text-gray-400 leading-snug flex-1 min-w-[10rem]">
-            Leave blank to use <span className="font-bold text-gray-600">{defaultPin}</span>
-            <br />— the last 4 digits of your number.
+            {t('lau.pin.blank', { pin: defaultPin })}
           </p>
         </div>
       </div>
@@ -111,16 +106,16 @@ export default function StepPublish({ data, config, saving, saveError, onBack, o
         <button type="button" onClick={onBack} disabled={saving}
           className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold
                      text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
-          ← Back
+          {t('common.back')}
         </button>
         <button type="button" onClick={onPublish} disabled={saving}
           className="flex-[2] py-3.5 rounded-xl text-sm font-bold text-white transition-all active:scale-[0.98]
                      shadow-lg hover:opacity-90 disabled:opacity-70 flex items-center justify-center gap-2"
           style={{ backgroundColor: brand, boxShadow: `0 10px 30px ${brand}40` }}>
           {saving ? (
-            <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Launching…</>
+            <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {t('lau.launching')}</>
           ) : (
-            <>🚀 Launch my page</>
+            <>{t('lau.launch')}</>
           )}
         </button>
       </div>

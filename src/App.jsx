@@ -11,6 +11,7 @@ import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext'
 import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
 import { logStoreView } from './utils/viewService';
 import { applyTheme }   from './utils/theme';
+import { I18nProvider } from './i18n/I18nContext';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
 const Landing    = lazy(() => import('./pages/Landing'));
@@ -153,6 +154,7 @@ function ScrollToTop() {
 
 export default function App() {
   return (
+    <I18nProvider>
     <BrowserRouter>
       <ScrollToTop />
       <Analytics />
@@ -177,5 +179,6 @@ export default function App() {
         </Suspense>
       </ErrorBoundary>
     </BrowserRouter>
+    </I18nProvider>
   );
 }
