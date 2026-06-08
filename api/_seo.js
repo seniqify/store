@@ -23,16 +23,6 @@ const TYPE_SCHEMA = {
   product:    'Store',
 };
 
-// Attractive category-default link-preview image for stores that haven't set a
-// cover/logo yet (the streamlined onboarding defers cover photos). The owner's
-// own cover/logo always takes priority; this just replaces the generic
-// PocketLink fallback so a shared link still looks relevant.
-const TYPE_OG_IMAGE = {
-  product:    'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1200&q=80',
-  restaurant: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80',
-  service:    'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=1200&q=80',
-  hotel:      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200&q=80',
-};
 
 // ── Store page ────────────────────────────────────────────────────────────────
 export function storeSeo(config, slug, origin) {
@@ -49,8 +39,10 @@ export function storeSeo(config, slug, origin) {
 
   const description = `${tagline}${city ? ` Based in ${city}.` : ''} Browse the catalogue and order directly on WhatsApp — no app needed.`.slice(0, 300);
   const url   = `${origin}/${slug}`;
-  const image = absImage(config.coverImage, origin) || absImage(config.logo, origin)
-    || TYPE_OG_IMAGE[config.businessType] || `${origin}/og-image.jpg`;
+  // The owner's cover photo wins; otherwise a dynamic branded card (their
+  // logo/emoji + name + brand colour, rendered by /api/og) — never the generic
+  // PocketLink image, so every shared link looks shop-specific.
+  const image = absImage(config.coverImage, origin) || `${origin}/api/og?slug=${encodeURIComponent(slug)}`;
   const wa    = String(config.whatsappNumber || '').replace(/\D/g, '');
   const products = Array.isArray(config.products) ? config.products.slice(0, 40) : [];
 
