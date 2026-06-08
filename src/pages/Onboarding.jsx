@@ -289,7 +289,15 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      let config = { ...getConfig(), businessType: data.businessType || 'product', plan, planExpiresAt };
+      // New free signups get a free 7-day Pro trial (Verified badge + analytics +
+      // no branding). It reverts to Free after 7 days unless they subscribe.
+      // effectivePlan() treats an expired paid plan as 'free', so no cleanup needed.
+      let trialPlan = plan, trialExpires = planExpiresAt;
+      if (trialPlan === 'free' && !trialExpires) {
+        trialPlan = 'pro';
+        trialExpires = new Date(Date.now() + 7 * 86400000).toISOString();
+      }
+      let config = { ...getConfig(), businessType: data.businessType || 'product', plan: trialPlan, planExpiresAt: trialExpires };
       const subId = sessionStorage.getItem('pocketlink_subscription_id');
       if (subId) config.razorpaySubscriptionId = subId;
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';

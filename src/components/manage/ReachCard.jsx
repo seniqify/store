@@ -13,7 +13,7 @@ import { fetchViewStats, weekTrend } from '../../utils/viewService';
 
 const MILESTONE = 50;   // celebrate + ask for a referral once a page crosses this
 
-export default function ReachCard({ slug, themeColor = '#0d9488', businessName = '' }) {
+export default function ReachCard({ slug, themeColor = '#0d9488', businessName = '', upgrade = false, phone = '' }) {
   const [stats,  setStats]  = useState(null);   // null = loading
   const [copied, setCopied] = useState(false);
 
@@ -119,6 +119,19 @@ export default function ReachCard({ slug, themeColor = '#0d9488', businessName =
       {/* actions */}
       <div className="px-4 py-3">
         {ShareButtons}
+
+        {/* Upsell — only when this plan doesn't include analytics */}
+        {upgrade && (
+          <a href="/plans"
+             onClick={() => { try { sessionStorage.setItem('pocketlink_verified_phone', String(phone).replace(/\D/g, '')); } catch { /* ignore */ } }}
+             className="mt-3 flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border transition-colors hover:opacity-90"
+             style={{ borderColor: `${themeColor}33`, backgroundColor: `${themeColor}0d` }}>
+            <span className="text-[11px] text-gray-600 leading-snug">
+              📊 See <b className="font-bold">where</b> visitors come from &amp; <b className="font-bold">what</b> they view
+            </span>
+            <span className="text-[11px] font-extrabold flex-shrink-0" style={{ color: themeColor }}>Pro →</span>
+          </a>
+        )}
 
         {/* Milestone → turn pride into a shop-owner referral */}
         {total >= MILESTONE && (

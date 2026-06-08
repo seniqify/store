@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft } from '../utils/planLimits';
+import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft, showBrandBadge } from '../utils/planLimits';
 import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
@@ -1166,6 +1166,27 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         </div>
       </div>
 
+      {/* Remove-branding upsell — shown only on the Free plan */}
+      {showBrandBadge(effectivePlan(config)) && (
+        <a href="/plans"
+           onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
+           className="block rounded-2xl border p-4 transition-opacity hover:opacity-90"
+           style={{ borderColor: `${themeColor}33`, background: `${themeColor}0d` }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900">✨ Make it 100% your brand</p>
+              <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+                Remove the “Powered by PocketLink” badge — from ₹149/mo (about ₹5/day).
+              </p>
+            </div>
+            <span className="text-xs font-bold text-white px-3 py-2 rounded-lg flex-shrink-0"
+                  style={{ backgroundColor: themeColor }}>
+              Upgrade →
+            </span>
+          </div>
+        </a>
+      )}
+
       {/* Promo Banner */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -1730,7 +1751,8 @@ export default function ManageStore() {
             its own "share your page" hero and Stats has its own views number, so
             showing it everywhere would stack duplicate share cards. */}
         {tab === 'orders' && (
-          <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName} />
+          <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
+                     upgrade={!analyticsEnabled} phone={config.whatsappNumber} />
         )}
         {tab === 'orders' ? (
           <div className="animate-pl-fade-up">
