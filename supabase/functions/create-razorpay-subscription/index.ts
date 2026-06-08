@@ -6,10 +6,12 @@ const CORS = {
 };
 
 // Razorpay Plan IDs (created in the Razorpay dashboard). plan → period → plan_id.
+// Yearly = 10× monthly ("2 months free"); these yearly plans replaced the old
+// 12× ones (plan_SxGXj6yV919wqk / plan_SxGYAS9RKv0lIb / plan_SxGYVeQjb9AJOw).
 const PLAN_IDS: Record<string, Record<string, string>> = {
-  starter:  { monthly: 'plan_SxGTBmTNTNFSA5', yearly: 'plan_SxGXj6yV919wqk' },
-  pro:      { monthly: 'plan_SxGWPAF1XhEdPY', yearly: 'plan_SxGYAS9RKv0lIb' },
-  business: { monthly: 'plan_SxGX6oGSTcfaB7', yearly: 'plan_SxGYVeQjb9AJOw' },
+  starter:  { monthly: 'plan_SxGTBmTNTNFSA5', yearly: 'plan_SzCmGJ6a2iBWGS' },
+  pro:      { monthly: 'plan_SxGWPAF1XhEdPY', yearly: 'plan_SzCmGbviWSbcJP' },
+  business: { monthly: 'plan_SxGX6oGSTcfaB7', yearly: 'plan_SzCmGyxNzoloI7' },
 };
 
 // How many billing cycles the mandate runs for before it ends (≈10 years each).

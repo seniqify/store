@@ -27,11 +27,12 @@ const PERIOD_LABEL = {
   yearly:  '1 Year',
 };
 
-// yearly = 12× monthly (one payment, no discount)
+// yearly = 10× monthly (pay for 10, get 12 → 2 months free). Display only — the
+// amount actually debited comes from the Razorpay yearly plan_id on the backend.
 const CHARGES = {
-  starter:  { monthly: 149, yearly: 1788 },
-  pro:      { monthly: 249, yearly: 2988 },
-  business: { monthly: 499, yearly: 5988 },
+  starter:  { monthly: 149, yearly: 1490 },
+  pro:      { monthly: 249, yearly: 2490 },
+  business: { monthly: 499, yearly: 4990 },
 };
 
 function loadRazorpayScript() {
@@ -183,7 +184,7 @@ export default function Checkout() {
 
   const billingNote = period === 'monthly'
     ? `₹${amount} billed monthly`
-    : `₹${amount.toLocaleString('en-IN')} billed yearly`;
+    : `₹${amount.toLocaleString('en-IN')} billed yearly · 2 months free`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -303,7 +304,7 @@ export default function Checkout() {
 
           {!applied && (
             <p className="text-center text-[11px] text-gray-400 mt-4">
-              Secured by Razorpay · Auto-renews {period === 'yearly' ? 'yearly' : 'monthly'} · Cancel anytime
+              Secured by Razorpay · 0% commission · Auto-renews {period === 'yearly' ? 'yearly' : 'monthly'} · Cancel anytime
             </p>
           )}
         </div>

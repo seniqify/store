@@ -2,25 +2,25 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, X, Zap, ChevronDown, ShieldCheck, Sparkles } from 'lucide-react';
 
-// ── Billing periods (yearly = 12× monthly — one invoice, no discount) ──────────
+// ── Billing periods (yearly = 10× monthly — pay for 10, get 12 = 2 months free) ──
 const PERIODS = [
   { key: 'monthly', label: 'Monthly', badge: null          },
-  { key: 'yearly',  label: 'Yearly',  badge: 'One payment'  },
+  { key: 'yearly',  label: 'Yearly',  badge: '2 months free' },
 ];
 
-// per-month display rate + total charge amount (yearly = rate × 12)
+// monthly list rate + total amount actually charged (yearly = rate × 10 → 2 months free)
 const PRICING = {
   starter: {
     monthly: { rate: 149, charge: 149  },
-    yearly:  { rate: 149, charge: 1788 },
+    yearly:  { rate: 149, charge: 1490 },
   },
   pro: {
     monthly: { rate: 249, charge: 249  },
-    yearly:  { rate: 249, charge: 2988 },
+    yearly:  { rate: 249, charge: 2490 },
   },
   business: {
     monthly: { rate: 499, charge: 499  },
-    yearly:  { rate: 499, charge: 5988 },
+    yearly:  { rate: 499, charge: 4990 },
   },
 };
 
@@ -75,7 +75,7 @@ const PLANS = [
 ];
 
 const GUARANTEES = [
-  ['🚫', 'No per-order fees'],
+  ['💸', '0% commission'],
   ['🔁', 'Cancel anytime'],
   ['🌐', 'Page stays live'],
   ['🔒', 'Secure payment'],
@@ -89,7 +89,8 @@ const UNIVERSAL = [
 
 const FAQS = [
   { q: 'Is the free plan really free?', a: 'Yes — free forever, no credit card. Your page stays live on Free for as long as you like.' },
-  { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales.' },
+  { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission.' },
+  { q: 'Is yearly cheaper?', a: 'Yes — pay yearly and 2 months are free: you pay for 10 months, not 12. Same plan and features at a lower effective price, and it auto-renews yearly so your page never lapses.' },
   { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. If you downgrade, your page simply moves to the Free plan; it never goes offline.' },
   { q: 'How do I pay?', a: 'Securely via UPI, debit/credit card or net banking. You get a GST invoice for every payment.' },
   { q: 'How soon does my plan activate?', a: 'Instantly. The moment your payment succeeds, your plan is live — no waiting, no manual confirmation.' },
@@ -190,7 +191,11 @@ export default function Plans() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
           {PLANS.map((plan) => {
             const p        = plan.key === 'free' ? null : PRICING[plan.key][period];
-            const perDay   = p ? Math.round(p.rate / 30) : null;
+            // On yearly, headline the true effective per-month (10 months' charge
+            // spread over 12) so the saving is visible at a glance.
+            const effMonth = p ? (period === 'yearly' ? Math.round(p.charge / 12) : p.rate) : null;
+            const perDay   = effMonth ? Math.round(effMonth / 30) : null;
+            const yearSave = p && period === 'yearly' ? p.rate * 2 : 0;   // 2 months free
             const isOpen   = !!open[plan.key];
             const popular  = plan.popular;
 
@@ -228,19 +233,25 @@ export default function Plans() {
                     <>
                       <div className="flex items-baseline gap-2">
                         <p className="text-4xl font-extrabold text-white">
-                          ₹{p.rate}<span className="text-base font-normal text-white/45">/mo</span>
+                          ₹{effMonth}<span className="text-base font-normal text-white/45">/mo</span>
                         </p>
+                        {period === 'yearly' && (
+                          <span className="text-lg font-semibold text-white/35 line-through">₹{p.rate}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
                           ≈ ₹{perDay}/day{plan.key === 'pro' ? ' · less than a chai' : ''}
                         </span>
+                        {period === 'yearly' && (
+                          <span className="text-[11px] font-bold text-emerald-300">Save ₹{yearSave.toLocaleString('en-IN')}/yr</span>
+                        )}
                       </div>
                       <p className="text-xs text-white/40 mt-2">
                         {period === 'monthly'
                           ? 'billed monthly · cancel anytime'
-                          : `₹${p.charge.toLocaleString('en-IN')} billed yearly · one invoice`}
+                          : `₹${p.charge.toLocaleString('en-IN')} billed yearly · 2 months free`}
                       </p>
                     </>
                   )}
