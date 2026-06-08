@@ -13,6 +13,7 @@
     "@cashfreepayments/cashfree-js": "^1.0.7",
     "@supabase/supabase-js": "^2.50.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/og": "^0.11.1",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
