@@ -1,23 +1,23 @@
 import { X, ArrowLeft } from 'lucide-react';
-import CustomerDetailsForm from '../form/CustomerDetailsForm';
 
 /**
  * CheckoutSheet
  * ───────────────────────────────────────────────────────────────────────────
- * The order form, presented as a focused slide-over (right panel on desktop,
- * full-screen on mobile) opened from the cart — instead of an inline form
- * hanging off the bottom of the catalog. Mirrors CartSidebar's layout/stacking
- * (z-[60]/[55]) so it sits above the mobile tab bar.
+ * A focused slide-over (right panel on desktop, full-screen on mobile) for the
+ * order/checkout form — opened from the cart instead of an inline form hanging
+ * off the bottom of the catalog. Generic shell: pass the template's own form as
+ * `children`, so every business type (product, restaurant, …) shares the same
+ * checkout UX. Mirrors CartSidebar's stacking (z-[60]/[55]) so it sits above
+ * the mobile tab bar.
  *
  * Props:
  *   open      boolean
  *   onClose   () => void          — close everything
  *   onBack    () => void | null   — back to the cart panel (optional)
- *   formData  customer details object
- *   onChange  (next) => void
- *   cart      CartItem[]
+ *   title     string              — header label
+ *   children  the form to render in the scrollable body
  */
-export default function CheckoutSheet({ open, onClose, onBack, formData, onChange, cart }) {
+export default function CheckoutSheet({ open, onClose, onBack, title = 'Complete your order', children }) {
   return (
     <>
       {/* Backdrop */}
@@ -34,7 +34,7 @@ export default function CheckoutSheet({ open, onClose, onBack, formData, onChang
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label="Checkout"
+        aria-label={title}
         className={[
           'fixed top-0 right-0 z-[60] h-[100dvh] w-full sm:w-[28rem]',
           'bg-[#f8fafc] shadow-2xl sm:rounded-l-3xl flex flex-col overflow-hidden',
@@ -52,7 +52,7 @@ export default function CheckoutSheet({ open, onClose, onBack, formData, onChang
               </button>
             )}
             <h2 className="text-base font-extrabold text-gray-900 leading-none tracking-tight truncate">
-              Complete your order
+              {title}
             </h2>
           </div>
           <button onClick={onClose} aria-label="Close"
@@ -63,7 +63,7 @@ export default function CheckoutSheet({ open, onClose, onBack, formData, onChang
 
         {/* Scrollable form body */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4">
-          <CustomerDetailsForm formData={formData} onChange={onChange} cart={cart} />
+          {children}
         </div>
       </aside>
     </>

@@ -4,7 +4,7 @@ import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
 import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
-import { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
+import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
@@ -342,10 +342,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
         onBack={() => { setCheckoutOpen(false); setCartOpen(true); }}
-        formData={customerDetails}
-        onChange={setCustomerDetails}
-        cart={cart}
-      />
+      >
+        <CustomerDetailsForm formData={customerDetails} onChange={setCustomerDetails} cart={cart} />
+      </CheckoutSheet>
 
       {/* ── Mobile bottom bar ───────────────────────────────────────────── */}
       <StoreTabBar

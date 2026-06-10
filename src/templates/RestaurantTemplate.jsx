@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import ProductGrid   from '../components/product/ProductGrid';
 import CartSidebar   from '../components/cart/CartSidebar';
 import CartSummary   from '../components/cart/CartSummary';
+import CheckoutSheet from '../components/cart/CheckoutSheet';
 import { useCart }   from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
@@ -24,8 +25,9 @@ function Chip({ children }) {
 }
 
 export default function RestaurantTemplate({ externalCartOpen, onExternalCartClose, onCartCountChange }) {
-  const [cartOpen, setCartOpen] = useState(false);
-  const [form,     setForm]     = useState(INITIAL_FORM);
+  const [cartOpen,     setCartOpen]     = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [form,         setForm]         = useState(INITIAL_FORM);
 
   const { cart, itemCount, addToCart, increaseQty, decreaseQty, setQty, removeItem } = useCart();
   const config = useBusinessConfig();
@@ -46,13 +48,14 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
 
   function handleCheckout() {
     setCartOpen(false);
-    setTimeout(() => document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    setCheckoutOpen(true);
   }
 
   function handleOrder(e) {
     e.preventDefault();
     if (!cart.length) return;
     openRestaurantOrder(form, cart, config);
+    setCheckoutOpen(false);
   }
 
   const isValid = form.name && form.phone.length === 10 && (form.orderType === 'pickup' || form.address);
@@ -154,14 +157,14 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
               onAddToCart={addToCart} onIncrease={increaseQty} onDecrease={decreaseQty} onSetQty={setQty}
               heading="Our Menu" nounSingular="dish" nounPlural="dishes" searchPlaceholder="Search the menu…" />
 
-            <div className="flex items-center gap-4">
-              <div className="h-px flex-1 bg-orange-100" />
-              <span className="text-xs font-bold text-orange-400 uppercase tracking-widest">Your Order Details</span>
-              <div className="h-px flex-1 bg-orange-100" />
-            </div>
-
-            {/* Order form */}
-            <form id="order-form" onSubmit={handleOrder}
+            {/* Order form — opens as a focused slide-over from the cart */}
+            <CheckoutSheet
+              open={checkoutOpen}
+              onClose={() => setCheckoutOpen(false)}
+              onBack={() => { setCheckoutOpen(false); setCartOpen(true); }}
+              title={form.orderType === 'delivery' ? 'Delivery details' : 'Pickup details'}
+            >
+            <form onSubmit={handleOrder}
               className="bg-white rounded-3xl border border-orange-100 shadow-sm p-5 sm:p-6 space-y-4">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-lg">{form.orderType === 'delivery' ? '🚚' : '🏠'}</span>
@@ -221,6 +224,7 @@ export default function RestaurantTemplate({ externalCartOpen, onExternalCartClo
                 </p>
               )}
             </form>
+            </CheckoutSheet>
           </div>
 
           {/* Desktop cart */}
