@@ -95,11 +95,12 @@ export function storeBody(config, slug, origin, seo) {
 }
 
 // ── Marketplace page ──────────────────────────────────────────────────────────
-export function marketplaceSeo(stores, origin) {
+export function marketplaceSeo(stores, origin, storeOrigin = origin) {
   const n = stores.length;
   const title = 'Discover Local Businesses Near You | PocketLink Marketplace';
   const description = `Browse ${n ? `${n}+ ` : ''}local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.`;
-  const url = `${origin}/marketplace`;
+  // On the consumer subdomain the marketplace lives at the root.
+  const url = origin.includes('//market.') ? `${origin}/` : `${origin}/marketplace`;
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -113,7 +114,7 @@ export function marketplaceSeo(stores, origin) {
       itemListElement: stores.slice(0, 100).map((s, i) => ({
         '@type': 'ListItem',
         position: i + 1,
-        url: `${origin}/${s.slug}`,
+        url: `${storeOrigin}/${s.slug}`,
         name: (s.config && s.config.businessName) || s.slug,
       })),
     },

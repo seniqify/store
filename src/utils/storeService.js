@@ -149,18 +149,25 @@ export async function findStoreByPhone(phone) {
 
 /**
  * Read-only: list all stores for the public marketplace/discovery page.
- * Returns an array of config objects, each augmented with its `slug`.
+ * Returns an array of card-shaped config objects, each with its `slug`.
+ * Selects ONLY the fields the marketplace card needs — never the heavy
+ * `products` array — so the payload stays small as the store count grows.
  * Writes nothing — safe for anonymous/public use. Only named stores are returned.
  */
 export async function listStores() {
   const { data, error } = await supabase
     .from('stores')
-    .select('slug, config');
+    .select(`slug,
+      businessName:config->>businessName, tagline:config->>tagline,
+      category:config->>category, businessType:config->>businessType,
+      city:config->>city, state:config->>state, area:config->>area,
+      address:config->>address, logo:config->>logo, logoEmoji:config->>logoEmoji,
+      coverImage:config->>coverImage, whatsappNumber:config->>whatsappNumber,
+      theme:config->theme`)
+    .limit(500);
 
   if (error || !data) return [];
-  return data
-    .map((row) => ({ ...row.config, slug: row.slug }))
-    .filter((c) => c && c.businessName);
+  return data.filter((c) => c && c.businessName);
 }
 
 // ── Pending signups ────────────────────────────────────────────────────────

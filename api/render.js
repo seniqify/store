@@ -62,18 +62,30 @@ export default async function handler(req, res) {
     const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY;
     const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
 
-    // ── Marketplace ──
-    if (path === '/marketplace' || path === '/explore') {
+    // ── Marketplace (path on the main domain, or the root of market.*) ──
+    if (path === '/marketplace' || path === '/explore' || (host.startsWith('market.') && path === '/')) {
+      // Store pages always live on the main domain, whichever host serves the
+      // marketplace — links must not point at market.*/slug.
+      const storeOrigin = 'https://www.pocketlink.store';
       let stores = [];
       try {
         if (SUPABASE_URL && SUPABASE_ANON) {
-          const r = await fetch(`${SUPABASE_URL}/rest/v1/stores?select=slug,config`, { headers: dbHeaders });
-          if (r.ok) stores = (await r.json()).filter((s) => s.config && s.config.businessName);
+          // Slim selection: the listing only needs name + tagline per store —
+          // never pull full configs (products) for the whole table.
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/stores?select=slug,name:config->>businessName,tagline:config->>tagline&limit=200`,
+            { headers: dbHeaders },
+          );
+          if (r.ok) {
+            stores = (await r.json())
+              .filter((s) => s.name)
+              .map((s) => ({ slug: s.slug, config: { businessName: s.name, tagline: s.tagline } }));
+          }
         }
       } catch { /* empty marketplace still renders */ }
-      const seo = marketplaceSeo(stores, origin);
+      const seo = marketplaceSeo(stores, origin, storeOrigin);
       let html = injectHead(base, { ...seo, image: `${origin}/og-image.jpg` });
-      html = injectBody(html, marketplaceBody(stores, origin));
+      html = injectBody(html, marketplaceBody(stores, storeOrigin));
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=86400');
       res.status(200).send(html);

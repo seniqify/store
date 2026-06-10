@@ -152,6 +152,21 @@ function ScrollToTop() {
   return null;
 }
 
+// ── Consumer marketplace subdomain ────────────────────────────────────────────
+// market.pocketlink.store serves ONLY the marketplace (customer traffic).
+// Stores, onboarding, manage etc. stay on the main domain — every other path on
+// the subdomain bounces back there so shared links keep working everywhere.
+const MAIN_ORIGIN   = 'https://www.pocketlink.store';
+const isMarketHost  = typeof window !== 'undefined' && window.location.hostname.startsWith('market.');
+
+function ToMainSite() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    window.location.replace(MAIN_ORIGIN + pathname + search);
+  }, [pathname, search]);
+  return <PageLoader />;
+}
+
 export default function App() {
   return (
     <I18nProvider>
@@ -160,6 +175,14 @@ export default function App() {
       <Analytics />
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
+          {isMarketHost ? (
+            <Routes>
+              <Route path="/"            element={<Marketplace />} />
+              <Route path="/marketplace" element={<Marketplace />} />
+              <Route path="/explore"     element={<Marketplace />} />
+              <Route path="*"            element={<ToMainSite />} />
+            </Routes>
+          ) : (
           <Routes>
             <Route path="/"                      element={<Landing />} />
             <Route path="/start"                 element={<Start />} />
@@ -176,6 +199,7 @@ export default function App() {
             <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="*"                      element={<NotFound />} />
           </Routes>
+          )}
         </Suspense>
       </ErrorBoundary>
     </BrowserRouter>

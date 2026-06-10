@@ -1,5 +1,7 @@
 {
   "rewrites": [
+    { "source": "/", "has": [{ "type": "host", "value": "market.pocketlink.store" }], "destination": "/api/render?path=/marketplace" },
+    { "source": "/:p*", "has": [{ "type": "host", "value": "market.pocketlink.store" }], "destination": "/index.html" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/marketplace", "destination": "/api/render?path=/marketplace" },
     { "source": "/explore", "destination": "/api/render?path=/marketplace" },
