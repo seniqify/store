@@ -109,6 +109,13 @@ export default function Marketplace() {
   const [city,       setCity]       = useState('All');
   const [showTop,    setShowTop]    = useState(false);
 
+  // Progressive grid: render a page at a time so the marketplace stays short
+  // and scannable as the store count grows — finding happens via search and
+  // the category chips, not by scrolling to the bottom of one giant list.
+  const PAGE = 16;
+  const [visible, setVisible] = useState(PAGE);
+  useEffect(() => { setVisible(PAGE); }, [query, category, city]);
+
   // Device memory — the no-login comeback loop (saved shops, recents, visits).
   const [favs,      setFavs]      = useState(() => getFavs());
   const [savedOnly, setSavedOnly] = useState(false);
@@ -413,29 +420,7 @@ export default function Marketplace() {
         </section>
       )}
 
-      {/* ════════ Featured carousel (steps aside while searching/filtering) ════════ */}
-      {!loading && browsing && featured.length > 0 && (
-        <section className="max-w-6xl mx-auto px-4 pt-9">
-          <Reveal>
-            <div className="flex items-end justify-between mb-4">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-                  <Sparkles size={20} className="text-emerald-500" /> Featured near you
-                </h2>
-                <p className="text-sm text-gray-400 mt-1">Hand-picked local favourites</p>
-              </div>
-              <span className="hidden sm:inline text-xs font-semibold text-gray-300">swipe →</span>
-            </div>
-          </Reveal>
-          <Reveal>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2 -mx-4 px-4">
-              {featured.map((b) => <FeaturedCard key={b.href} biz={b} />)}
-            </div>
-          </Reveal>
-        </section>
-      )}
-
-      {/* ════════ Browse by category (tiles — also steps aside when filtering) ════════ */}
+      {/* ════════ Browse by category (above Featured — "jump to what I need" first) ════════ */}
       {browsing && presentCategories.length > 0 && (
         <section className="max-w-6xl mx-auto px-4 pt-9">
           <Reveal>
@@ -463,6 +448,28 @@ export default function Marketplace() {
               );
             })}
           </div>
+        </section>
+      )}
+
+      {/* ════════ Featured carousel (steps aside while searching/filtering) ════════ */}
+      {!loading && browsing && featured.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 pt-9">
+          <Reveal>
+            <div className="flex items-end justify-between mb-4">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2">
+                  <Sparkles size={20} className="text-emerald-500" /> Featured near you
+                </h2>
+                <p className="text-sm text-gray-400 mt-1">Hand-picked local favourites</p>
+              </div>
+              <span className="hidden sm:inline text-xs font-semibold text-gray-300">swipe →</span>
+            </div>
+          </Reveal>
+          <Reveal>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2 -mx-4 px-4">
+              {featured.map((b) => <FeaturedCard key={b.href} biz={b} />)}
+            </div>
+          </Reveal>
         </section>
       )}
 
@@ -501,12 +508,24 @@ export default function Marketplace() {
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map((b, i) => (
+              {filtered.slice(0, visible).map((b, i) => (
                 <Reveal key={b.href} delay={Math.min(i, 7) * 0.05}>
                   <BusinessCard biz={b} fav={favs.includes(b.slug)} onToggleFav={handleToggleFav} />
                 </Reveal>
               ))}
             </div>
+
+            {/* Progressive reveal — the list never becomes one endless scroll */}
+            {filtered.length > visible && (
+              <div className="mt-7 flex flex-col items-center gap-2">
+                <button onClick={() => setVisible((v) => v + PAGE)}
+                  className="px-7 py-3 rounded-2xl bg-white border border-gray-200 text-sm font-bold text-emerald-700
+                             shadow-sm hover:shadow-md hover:border-emerald-200 active:scale-[0.98] transition-all">
+                  Show {Math.min(PAGE, filtered.length - visible)} more businesses
+                </button>
+                <p className="text-xs text-gray-400">Showing {Math.min(visible, filtered.length)} of {filtered.length}</p>
+              </div>
+            )}
           </>
         )}
       </div>
