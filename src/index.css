@@ -154,20 +154,15 @@
   .pl-rise { animation: pl-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
 }
 
+/* Android reports prefers-reduced-motion whenever battery saver is on — which
+ * covers a large share of our real (mobile-first, India) audience who never
+ * chose a static page. So only the genuinely motion-heavy effects are disabled
+ * here (continuous auto-scroll + confetti); the ambient transform/opacity-only
+ * brand animations (aurora, glow, shimmer, rise-ins, floats) stay on for all. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-pl-float,
-  .animate-pl-float-slow,
-  .animate-pl-blob,
   .animate-pl-marquee,
-  .animate-pl-pop,
-  .animate-pl-fade-up,
-  .animate-pl-confetti,
-  .animate-pl-aurora,
-  .animate-pl-glow,
   .animate-pl-marquee-slow,
-  .pl-shimmer-text,
-  .pl-sheen,
-  .pl-rise {
+  .animate-pl-confetti {
     animation: none !important;
   }
 }
