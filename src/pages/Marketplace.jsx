@@ -600,7 +600,7 @@ function FeaturedCard({ biz }) {
   };
 
   return (
-    <Link to={biz.href} onClick={() => !biz.demo && addRecent(biz)}
+    <a href={biz.href} onClick={() => !biz.demo && addRecent(biz)}
       className="group relative flex-shrink-0 w-[270px] sm:w-[300px] snap-start rounded-3xl overflow-hidden
                  bg-white border border-gray-100 shadow-sm transition-all duration-300 hover:-translate-y-1.5
                  hover:shadow-[0_24px_50px_-12px_rgba(16,185,129,0.30)]">
@@ -656,7 +656,7 @@ function FeaturedCard({ biz }) {
           )}
         </div>
       </div>
-    </Link>
+    </a>
   );
 }
 

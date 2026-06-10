@@ -94,8 +94,12 @@ function DemoShell() {
 
 function BusinessShell() {
   const { businessSlug } = useParams();
-  const [config,   setConfig]   = useState(null);
-  const [loading,  setLoading]  = useState(true);
+  // SSR'd pages embed the config — start hydrated, zero loading frames.
+  const pre0 = (typeof window !== 'undefined'
+    && window.__PL_CONFIG__?.slug === businessSlug
+    && window.__PL_CONFIG__.config?.businessName) ? window.__PL_CONFIG__.config : null;
+  const [config,   setConfig]   = useState(pre0 ? { ...pre0, plan: pre0.plan ?? 'free' } : null);
+  const [loading,  setLoading]  = useState(!pre0);
   const [notFound, setNotFound] = useState(false);
   const [cartOpen,  setCartOpen]  = useState(false);
   const [cartCount, setCartCount] = useState(0);
@@ -103,6 +107,19 @@ function BusinessShell() {
   const handleCartCountChange = useCallback((c) => setCartCount(c), []);
 
   useEffect(() => {
+    // Fast path: server-rendered store pages embed their config in the HTML
+    // (window.__PL_CONFIG__) — hydrate instantly, no second DB fetch and no
+    // "Loading page…" flash. Consumed once; SPA navigations use the loader.
+    const pre = typeof window !== 'undefined' ? window.__PL_CONFIG__ : null;
+    if (pre?.slug === businessSlug && pre.config?.businessName) {
+      delete window.__PL_CONFIG__;
+      setConfig({ ...pre.config, plan: pre.config.plan ?? 'free' });
+      setNotFound(false);
+      setLoading(false);
+      logStoreView(businessSlug);
+      return;
+    }
+
     setLoading(true);
     setNotFound(false);
     setConfig(null);

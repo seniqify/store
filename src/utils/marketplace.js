@@ -27,12 +27,18 @@ export function deriveCity(config) {
  */
 const NEW_WINDOW_MS = 14 * 86400000;   // a shop counts as "new" for 14 days
 
+// On the consumer subdomain, store links go straight to the main domain —
+// one direct navigation instead of an SPA bounce + redirect hop.
+const STORE_ORIGIN =
+  typeof window !== 'undefined' && window.location.hostname.startsWith('market.')
+    ? 'https://www.pocketlink.store' : '';
+
 export function normalizeBusiness(config, { demo = false } = {}) {
   const slug = config.slug;
   const createdAt = config.created_at ? new Date(config.created_at).getTime() : null;
   return {
     slug,
-    href:           demo ? `/demo/${slug}` : `/${slug}`,
+    href:           STORE_ORIGIN + (demo ? `/demo/${slug}` : `/${slug}`),
     isNew:          !demo && !!createdAt && (Date.now() - createdAt) < NEW_WINDOW_MS,
     name:           config.businessName || config.name || 'Unnamed business',
     category:       deriveCategory(config),

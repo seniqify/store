@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { MapPin, ArrowRight, MessageCircle, Heart } from 'lucide-react';
 import { whatsappLink } from '../../utils/theme';
 import { categoryMeta } from '../../utils/businessCategories';
@@ -29,8 +28,8 @@ export default function BusinessCard({ biz, fav = false, onToggleFav }) {
   };
 
   return (
-    <Link
-      to={biz.href}
+    <a
+      href={biz.href}
       onClick={() => !biz.demo && addRecent(biz)}
       className="group relative flex flex-col bg-white rounded-3xl border border-gray-100 overflow-hidden
                  shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-emerald-200
@@ -137,6 +136,6 @@ export default function BusinessCard({ biz, fav = false, onToggleFav }) {
           )}
         </div>
       </div>
-    </Link>
+    </a>
   );
 }
