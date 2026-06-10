@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle } from 'lucide-react';
+import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronDown } from 'lucide-react';
 import { listStores } from '../utils/storeService';
 import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness } from '../utils/marketplace';
@@ -8,62 +8,15 @@ import { categoryMeta } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
 import BusinessCard from '../components/marketplace/BusinessCard';
 
+/**
+ * Marketplace — the consumer-facing discovery app at market.pocketlink.store.
+ * Deliberately utility-first (think food-delivery app, not startup landing):
+ * compact app bar, search up top, sticky category chips, shops immediately.
+ * Merchant acquisition lives on the main domain — only a quiet CTA here.
+ */
+
 const WA = '#25D366';
-const ROTATING = [
-  'Boutiques', 'Cafés', 'Salons', 'Bakeries', 'Grocers', 'Lodges',
-  'Studios', 'Florists', 'Tailors', 'Pharmacies', 'Bookshops', 'Gyms',
-  'Restaurants', 'Designers', 'Repairs', 'Kirana',
-];
-// A different vibrant gradient per rotation — cycled alongside the words.
-const WORD_GRADIENTS = [
-  'linear-gradient(90deg,#34d399,#5eead4,#25D366,#34d399)', // emerald
-  'linear-gradient(90deg,#fb7185,#f472b6,#f43f5e,#fb7185)', // rose
-  'linear-gradient(90deg,#fbbf24,#fb923c,#f59e0b,#fbbf24)', // amber
-  'linear-gradient(90deg,#c084fc,#a78bfa,#9333ea,#c084fc)', // violet
-  'linear-gradient(90deg,#60a5fa,#38bdf8,#2563eb,#60a5fa)', // blue
-  'linear-gradient(90deg,#a3e635,#4ade80,#16a34a,#a3e635)', // lime
-  'linear-gradient(90deg,#e879f9,#f472b6,#d946ef,#e879f9)', // fuchsia
-  'linear-gradient(90deg,#818cf8,#60a5fa,#4f46e5,#818cf8)', // indigo
-];
-const SUGGESTIONS = ['Boutiques', 'Cafés', 'Salons', 'Grocery', 'Electronics'];
-const MARQUEE = [
-  { e: '🛒', t: 'Kirana' }, { e: '🍰', t: 'Bakeries' }, { e: '🍽️', t: 'Restaurants' },
-  { e: '💐', t: 'Florists' }, { e: '🔧', t: 'Repairs' }, { e: '🏨', t: 'Lodges' },
-  { e: '👗', t: 'Boutiques' }, { e: '💇', t: 'Salons' }, { e: '💼', t: 'Consultants' },
-  { e: '📱', t: 'Electronics' }, { e: '🧵', t: 'Wholesalers' }, { e: '🎨', t: 'Designers' },
-];
-
-/* ── Rotating gradient word in the hero headline ─────────────────────────── */
-function RotatingWord() {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setI((x) => (x + 1) % ROTATING.length), 1900);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <span key={i} className="inline-block whitespace-nowrap pl-rise pl-shimmer-text bg-clip-text text-transparent"
-          style={{ backgroundImage: WORD_GRADIENTS[i % WORD_GRADIENTS.length] }}>
-      {ROTATING[i]}
-    </span>
-  );
-}
-
-/* ── Count-up number for the stat strip ──────────────────────────────────── */
-function CountUp({ to, suffix = '', duration = 1100 }) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (!to) { setVal(0); return; }
-    let raf; const start = performance.now();
-    const tick = (now) => {
-      const p = Math.min(1, (now - start) / duration);
-      setVal(Math.round((1 - Math.pow(1 - p, 3)) * to));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [to, duration]);
-  return <>{val}{suffix}</>;
-}
+const SUGGESTIONS = ['Boutiques', 'Cafés', 'Salons', 'Grocery', 'Electronics', 'Bakery'];
 
 /* ── Reveal-on-scroll wrapper (fades + rises into view once) ──────────────── */
 function Reveal({ children, delay = 0, className = '' }) {
@@ -83,8 +36,8 @@ function Reveal({ children, delay = 0, className = '' }) {
     <div ref={ref} className={className}
          style={{
            opacity: shown ? 1 : 0,
-           transform: shown ? 'none' : 'translateY(26px)',
-           transition: `opacity .6s ease ${delay}s, transform .6s cubic-bezier(.22,1,.36,1) ${delay}s`,
+           transform: shown ? 'none' : 'translateY(22px)',
+           transition: `opacity .55s ease ${delay}s, transform .55s cubic-bezier(.22,1,.36,1) ${delay}s`,
          }}>
       {children}
     </div>
@@ -154,137 +107,114 @@ export default function Marketplace() {
     });
   }, [businesses, query, category, city]);
 
-  const pickCategory = (c) => {
-    setCategory(c);
-    setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-  };
-
   const hasFilters = query || category !== 'All' || city !== 'All';
   const clearFilters = () => { setQuery(''); setCategory('All'); setCity('All'); };
+  const showBrowse = !query;   // searching: skip straight to results
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
 
-      {/* ════════ Animated dark hero ════════ */}
-      <div className="relative overflow-hidden"
-           style={{ background: 'linear-gradient(170deg, #061310 0%, #0a2a20 48%, #05110d 100%)' }}>
-        {/* Aurora + grid */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-[-8rem] left-1/4 w-[34rem] h-[24rem] rounded-full blur-[120px] animate-pl-aurora"
-               style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.34), transparent 65%)' }} />
-          <div className="absolute top-[2rem] right-[-6rem] w-[28rem] h-[22rem] rounded-full blur-[120px] animate-pl-aurora"
-               style={{ background: 'radial-gradient(circle, rgba(45,212,191,0.22), transparent 65%)', animationDelay: '6s' }} />
-          <div className="absolute inset-0 opacity-[0.05]"
-               style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px)', backgroundSize: '46px 46px', maskImage: 'radial-gradient(ellipse 80% 55% at 50% 20%, #000, transparent 75%)' }} />
-        </div>
+      {/* ════════ App bar ════════ */}
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <Link to="/" className="flex-shrink-0">
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto" />
+          </Link>
 
-        {/* Nav */}
-        <nav className="relative z-10 border-b border-white/10 backdrop-blur-md">
-          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-            <Link to="/"><img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" /></Link>
-            <Link to="/start"
-              className="group relative inline-flex items-center gap-1.5 text-white text-sm font-bold px-4 py-2 rounded-xl
-                         shadow-lg shadow-emerald-500/30 active:scale-[0.98] overflow-hidden"
-              style={{ backgroundColor: WA }}>
-              <span className="absolute inset-0 overflow-hidden rounded-xl">
-                <span className="absolute top-0 h-full w-1/3 bg-white/30 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
-              </span>
-              <Store size={14} className="relative" />
-              <span className="relative hidden sm:inline">List Your Business Free</span>
-              <span className="relative sm:hidden">List Free</span>
-            </Link>
+          {/* Area picker — the one global control customers reach for */}
+          <div className="relative">
+            <MapPin size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" />
+            <select value={city} onChange={(e) => setCity(e.target.value)} aria-label="Choose your area"
+              className="appearance-none text-xs font-bold text-gray-800 bg-emerald-50 border border-emerald-100
+                         rounded-full pl-7 pr-7 py-2 max-w-[10rem] truncate focus:outline-none focus:ring-2 focus:ring-emerald-300">
+              {cities.map((c) => <option key={c} value={c}>{c === 'All' ? 'All areas' : c}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" />
           </div>
-        </nav>
 
-        {/* Hero copy + search */}
-        <div className="relative z-10 max-w-4xl mx-auto px-4 pt-12 sm:pt-16 pb-12 text-center">
-          <span className="inline-flex items-center gap-2 bg-white/5 border border-white/15 text-emerald-300
-                           text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-6 pl-rise">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-            </span>
-            Local finder · 0% commission
-          </span>
+          <a href="https://www.pocketlink.store/start"
+             className="flex-shrink-0 text-[11px] sm:text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors">
+            Own a shop? <span className="text-emerald-600">List free →</span>
+          </a>
+        </div>
+      </header>
 
-          <h1 className="text-[2.4rem] sm:text-6xl font-extrabold text-white tracking-tight leading-[1.08] mb-4 pl-rise"
-              style={{ animationDelay: '.08s' }}>
-            {/* Each part on its own line — the rotating word swaps in place, no reflow */}
-            <span className="block">Discover Local</span>
-            <span className="block"><RotatingWord /></span>
-            <span className="block">Near You</span>
+      {/* ════════ Search hero — light, short, utility-first ════════ */}
+      <div className="relative overflow-hidden border-b border-gray-100 bg-white">
+        <div className="absolute inset-0 pointer-events-none"
+             style={{ background: 'radial-gradient(60% 120% at 50% -20%, rgba(16,185,129,0.10), transparent 70%)' }} />
+        <div className="relative max-w-2xl mx-auto px-4 pt-8 sm:pt-12 pb-7 text-center">
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight">
+            Discover local businesses <span className="text-emerald-600">near you</span>
           </h1>
-
-          <p className="text-white/55 text-sm sm:text-lg max-w-lg mx-auto mb-8 pl-rise" style={{ animationDelay: '.16s' }}>
-            Browse shops, eateries and services around you — and order directly on WhatsApp. No app, no login.
+          <p className="text-gray-500 text-sm sm:text-base mt-2 mb-6">
+            Order from neighbourhood shops on WhatsApp — no app, no login, 0% commission.
           </p>
 
-          {/* Glowing search */}
-          <div className="relative max-w-xl mx-auto pl-rise" style={{ animationDelay: '.24s' }}>
-            <div className="absolute -inset-1 rounded-2xl bg-emerald-500/20 blur-xl animate-pl-glow pointer-events-none" />
-            <div className="relative">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by name, category or area…"
-                className="w-full pl-11 pr-10 py-4 rounded-2xl bg-white text-gray-900 placeholder-gray-400 text-sm sm:text-base
-                           shadow-xl focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-              {query && (
-                <button onClick={() => setQuery('')} aria-label="Clear"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                  <X size={18} />
-                </button>
-              )}
-            </div>
+          {/* Search */}
+          <div className="relative max-w-xl mx-auto">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search shops, food, salons, services…"
+              className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-white text-gray-900 placeholder-gray-400 text-sm sm:text-base
+                         border border-gray-200 shadow-[0_8px_30px_rgba(0,0,0,0.06)]
+                         focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition-all" />
+            {query && (
+              <button onClick={() => setQuery('')} aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                <X size={18} />
+              </button>
+            )}
           </div>
 
           {/* Suggestion chips */}
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-4 pl-rise" style={{ animationDelay: '.3s' }}>
-            <span className="text-xs text-white/40">Try:</span>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-3.5">
             {SUGGESTIONS.map((s) => (
               <button key={s} onClick={() => setQuery(s)}
-                className="text-xs font-semibold text-white/75 bg-white/5 border border-white/15 rounded-full px-3 py-1
-                           hover:bg-white/10 hover:text-white transition-colors">
+                className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1
+                           hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors">
                 {s}
               </button>
-            ))}
-          </div>
-
-          {/* Stats */}
-          <div className="flex items-center justify-center gap-6 sm:gap-10 mt-9 pl-rise" style={{ animationDelay: '.36s' }}>
-            <Stat value={<CountUp to={businesses.length} suffix="+" />} label="Businesses" />
-            <span className="w-px h-8 bg-white/10" />
-            <Stat value={<CountUp to={Math.max(cities.length - 1, 0)} />} label="Areas" />
-            <span className="w-px h-8 bg-white/10" />
-            <Stat value="0%" label="Commission" />
-          </div>
-        </div>
-
-        {/* Emoji marquee */}
-        <div className="relative z-10 pb-6 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-          <div className="flex gap-2.5 w-max animate-pl-marquee-slow">
-            {[...MARQUEE, ...MARQUEE].map((m, i) => (
-              <span key={i} className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-white/70
-                                       bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
-                <span>{m.e}</span> {m.t}
-              </span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ════════ Featured carousel ════════ */}
-      {!loading && featured.length > 0 && (
-        <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
+      {/* ════════ Sticky category chips (below the app bar) ════════ */}
+      <div id="results" className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex gap-2 overflow-x-auto scrollbar-hide">
+          {['All', ...presentCategories].map((c) => {
+            const active = category === c;
+            const meta = c === 'All' ? { emoji: '✨' } : categoryMeta(c);
+            const count = c === 'All' ? businesses.length : (countByCategory[c] || 0);
+            return (
+              <button key={c} onClick={() => setCategory(c)}
+                className={[
+                  'flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold border transition-all active:scale-95',
+                  active ? 'bg-gray-900 text-white border-gray-900 shadow-md'
+                         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                ].join(' ')}>
+                <span className="text-sm leading-none">{meta.emoji}</span> {c}
+                <span className={['text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none',
+                                  active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'].join(' ')}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ════════ Featured strip (hidden while searching/filtering) ════════ */}
+      {!loading && showBrowse && category === 'All' && featured.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 pt-7">
           <Reveal>
-            <div className="flex items-end justify-between mb-5">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-                  <Sparkles size={20} className="text-emerald-500" /> Featured near you
-                </h2>
-                <p className="text-sm text-gray-400 mt-1">Hand-picked local favourites</p>
-              </div>
+            <div className="flex items-end justify-between mb-4">
+              <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 flex items-center gap-2">
+                <Sparkles size={18} className="text-emerald-500" /> Featured shops
+              </h2>
               <span className="hidden sm:inline text-xs font-semibold text-gray-300">swipe →</span>
             </div>
           </Reveal>
@@ -296,66 +226,8 @@ export default function Marketplace() {
         </section>
       )}
 
-      {/* ════════ Browse by category ════════ */}
-      {presentCategories.length > 0 && (
-        <section className="max-w-6xl mx-auto px-4 pt-10 sm:pt-12">
-          <Reveal>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 text-center">Browse by category</h2>
-            <p className="text-sm text-gray-400 text-center mt-1 mb-6">Tap a category to jump in</p>
-          </Reveal>
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3">
-            {presentCategories.map((c, i) => {
-              const meta = categoryMeta(c);
-              const count = countByCategory[c] || 0;
-              return (
-                <Reveal key={c} delay={Math.min(i, 8) * 0.04}>
-                  <button onClick={() => pickCategory(c)}
-                    className="group relative w-full overflow-hidden rounded-2xl py-4 px-1 flex flex-col items-center justify-center gap-1
-                               text-white shadow-sm hover:shadow-xl hover:-translate-y-1 active:scale-95 transition-all duration-200"
-                    style={{ background: `linear-gradient(140deg, ${meta.grad[0]}, ${meta.grad[1]})` }}>
-                    <span className="absolute inset-0 overflow-hidden rounded-2xl">
-                      <span className="absolute top-0 h-full w-1/3 bg-white/25 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
-                    </span>
-                    <span className="relative text-2xl sm:text-[1.7rem] transition-transform group-hover:scale-110">{meta.emoji}</span>
-                    <span className="relative text-[10px] sm:text-[11px] font-bold leading-tight text-center px-0.5">{c}</span>
-                    <span className="relative text-[9px] font-semibold text-white/80 leading-none">{count} listed</span>
-                  </button>
-                </Reveal>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ════════ Sticky filter bar ════════ */}
-      <div id="results" className="sticky top-0 z-20 mt-10 bg-white/85 backdrop-blur-md border-y border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
-            {['All', ...presentCategories].map((c) => {
-              const active = category === c;
-              const meta = c === 'All' ? { emoji: '✨' } : categoryMeta(c);
-              return (
-                <button key={c} onClick={() => setCategory(c)}
-                  className={[
-                    'flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all',
-                    active ? 'bg-gray-900 text-white border-gray-900 shadow-sm scale-105'
-                           : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50',
-                  ].join(' ')}>
-                  <span>{meta.emoji}</span> {c}
-                </button>
-              );
-            })}
-          </div>
-          <select value={city} onChange={(e) => setCity(e.target.value)}
-            className="flex-shrink-0 text-xs font-semibold text-gray-700 border border-gray-200 rounded-full
-                       px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
-            {cities.map((c) => <option key={c} value={c}>{c === 'All' ? '📍 All areas' : c}</option>)}
-          </select>
-        </div>
-      </div>
-
       {/* ════════ Results ════════ */}
-      <div className="max-w-6xl mx-auto px-4 py-8 min-h-[40vh]">
+      <div className="max-w-6xl mx-auto px-4 py-7 min-h-[40vh]">
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -376,8 +248,8 @@ export default function Marketplace() {
           <>
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-bold text-gray-900">
-                {filtered.length} {filtered.length === 1 ? 'business' : 'businesses'}
-                {category !== 'All' && <span className="text-gray-400 font-medium"> in {category}</span>}
+                {query ? `Results for “${query.trim()}”` : category !== 'All' ? category : 'All shops'}
+                <span className="text-gray-400 font-medium"> · {filtered.length}</span>
               </p>
               {hasFilters && (
                 <button onClick={clearFilters} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1">
@@ -396,46 +268,39 @@ export default function Marketplace() {
         )}
       </div>
 
-      {/* ════════ How it works ════════ */}
-      <HowItWorks />
+      {/* ════════ Trust strip ════════ */}
+      <div className="max-w-6xl mx-auto px-4 pb-10">
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-2xl bg-white border border-gray-100 px-5 py-4">
+          {[['💬', 'Order on WhatsApp'], ['🆓', 'No app needed'], ['💸', '0% commission'], ['🏪', 'Direct from the owner']].map(([e, t]) => (
+            <span key={t} className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+              <span>{e}</span> {t}
+            </span>
+          ))}
+        </div>
+      </div>
 
-      {/* ════════ List-your-business CTA ════════ */}
-      <div className="max-w-6xl mx-auto px-4 pb-16">
+      {/* ════════ Quiet merchant CTA ════════ */}
+      <div className="max-w-6xl mx-auto px-4 pb-12">
         <Reveal>
-          <div className="relative overflow-hidden rounded-[2rem] p-8 sm:p-12 text-center"
-               style={{ background: 'linear-gradient(135deg, #064e3b 0%, #0d9488 60%, #059669 100%)' }}>
-            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl animate-pl-glow" />
-            <div className="absolute -bottom-12 -left-8 w-52 h-52 rounded-full bg-emerald-300/20 blur-2xl animate-pl-glow" style={{ animationDelay: '2s' }} />
-            <div className="relative">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/15 backdrop-blur mb-4 text-2xl">🚀</div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Own a business?</h3>
-              <p className="text-sm sm:text-base text-white/75 mt-2 mb-6 max-w-md mx-auto">
+          <div className="relative overflow-hidden rounded-3xl p-7 sm:p-9 flex flex-col sm:flex-row items-center justify-between gap-5"
+               style={{ background: 'linear-gradient(135deg, #064e3b 0%, #0d9488 70%)' }}>
+            <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative text-center sm:text-left">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Own a business?</h3>
+              <p className="text-sm text-white/75 mt-1.5 max-w-md">
                 Get your own WhatsApp store page and get discovered right here — free, live in 2 minutes.
               </p>
-              <Link to="/start"
-                className="group relative inline-flex items-center gap-2 bg-white text-emerald-700 font-bold text-sm sm:text-base
-                           px-7 py-3.5 rounded-2xl shadow-xl hover:-translate-y-0.5 active:scale-[0.98] transition-all overflow-hidden">
-                <span className="absolute inset-0 overflow-hidden rounded-2xl">
-                  <span className="absolute top-0 h-full w-1/3 bg-emerald-200/40 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
-                </span>
-                <span className="relative">List Your Business Free</span>
-                <ArrowRight size={18} className="relative transition-transform group-hover:translate-x-1" />
-              </Link>
             </div>
+            <a href="https://www.pocketlink.store/start"
+               className="relative flex-shrink-0 inline-flex items-center gap-2 bg-white text-emerald-700 font-bold text-sm
+                          px-6 py-3 rounded-2xl shadow-xl hover:-translate-y-0.5 active:scale-[0.98] transition-all">
+              List Your Business Free <ArrowRight size={16} />
+            </a>
           </div>
         </Reveal>
       </div>
 
       <MarketplaceFooter />
-    </div>
-  );
-}
-
-function Stat({ value, label }) {
-  return (
-    <div className="text-center">
-      <div className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">{value}</div>
-      <div className="text-[10px] sm:text-xs font-medium text-white/45 uppercase tracking-wider mt-0.5">{label}</div>
     </div>
   );
 }
@@ -457,9 +322,9 @@ function EmptyState({ hasAny, hasFilters, onClear }) {
         </button>
       )}
       {!hasAny && (
-        <Link to="/start" className="inline-block mt-4 text-emerald-600 font-bold text-sm hover:text-emerald-700">
+        <a href="https://www.pocketlink.store/start" className="inline-block mt-4 text-emerald-600 font-bold text-sm hover:text-emerald-700">
           List your business free →
-        </Link>
+        </a>
       )}
     </div>
   );
@@ -480,7 +345,7 @@ function FeaturedCard({ biz }) {
       className="group relative flex-shrink-0 w-[270px] sm:w-[300px] snap-start rounded-3xl overflow-hidden
                  bg-white border border-gray-100 shadow-sm transition-all duration-300 hover:-translate-y-1.5
                  hover:shadow-[0_24px_50px_-12px_rgba(16,185,129,0.30)]">
-      <div className="relative h-44 overflow-hidden">
+      <div className="relative h-40 overflow-hidden">
         {biz.coverImage ? (
           <img src={biz.coverImage} alt="" loading="lazy"
                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
@@ -516,12 +381,9 @@ function FeaturedCard({ biz }) {
       <div className="p-3.5">
         <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem] mb-3">{biz.tagline}</p>
         <div className="flex items-stretch gap-2">
-          <span className="relative flex-1 inline-flex items-center justify-center gap-1 text-xs font-bold text-white rounded-xl py-2.5 overflow-hidden"
+          <span className="flex-1 inline-flex items-center justify-center gap-1 text-xs font-bold text-white rounded-xl py-2.5"
                 style={{ background: `linear-gradient(135deg, ${biz.primary}, ${biz.primaryDark})` }}>
-            <span className="absolute inset-0 overflow-hidden rounded-xl">
-              <span className="absolute top-0 h-full w-1/3 bg-white/30 blur-md -skew-x-12 -translate-x-[180%] group-hover:translate-x-[420%] transition-transform duration-700" />
-            </span>
-            <span className="relative inline-flex items-center gap-1">Browse Products <ArrowRight size={13} /></span>
+            Visit shop <ArrowRight size={13} />
           </span>
           {waHref && (
             <button type="button" onClick={onWhatsApp} aria-label="Chat on WhatsApp"
@@ -536,80 +398,22 @@ function FeaturedCard({ biz }) {
   );
 }
 
-/* ── How it works ─────────────────────────────────────────────────────────── */
-function HowItWorks() {
-  const steps = [
-    { e: '🔍', t: 'Find a business',  d: 'Search or browse local shops, eateries & services near you.' },
-    { e: '💬', t: 'Chat on WhatsApp', d: 'Tap to message the owner directly — no app, no sign-up.' },
-    { e: '🛍️', t: 'Order & enjoy',    d: 'Confirm on chat, then pick up or get it delivered. Done.' },
-  ];
-  return (
-    <section className="max-w-6xl mx-auto px-4 pt-12 sm:pt-14">
-      <Reveal>
-        <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 text-center">How it works</h2>
-        <p className="text-sm text-gray-400 text-center mt-1 mb-7">Buying local has never been this simple</p>
-      </Reveal>
-      <div className="grid sm:grid-cols-3 gap-4">
-        {steps.map((s, i) => (
-          <Reveal key={s.t} delay={i * 0.08}>
-            <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 text-center shadow-sm
-                            hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-              <span className="absolute top-3 right-4 text-4xl font-extrabold text-gray-100 leading-none select-none">{i + 1}</span>
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">{s.e}</div>
-              <h3 className="font-bold text-gray-900">{s.t}</h3>
-              <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{s.d}</p>
-            </div>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ── Footer ───────────────────────────────────────────────────────────────── */
-function FooterCol({ title, links }) {
-  return (
-    <div>
-      <h4 className="text-white font-bold text-sm mb-3">{title}</h4>
-      <ul className="space-y-2.5">
-        {links.map(([label, to]) => (
-          <li key={label}>
-            <Link to={to} className="text-white/55 text-sm hover:text-emerald-300 transition-colors">{label}</Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
+/* ── Footer (slim, consumer-toned) ────────────────────────────────────────── */
 function MarketplaceFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="relative overflow-hidden mt-6"
-            style={{ background: 'linear-gradient(0deg, #05110d 0%, #0a2a20 100%)' }}>
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute bottom-[-7rem] left-1/3 w-[30rem] h-[18rem] rounded-full blur-[120px]"
-             style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.18), transparent 65%)' }} />
-      </div>
-      <div className="relative max-w-6xl mx-auto px-4 py-12">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-2">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert mb-4" />
-            <p className="text-white/50 text-sm max-w-xs leading-relaxed">
-              Your neighbourhood, online. Discover local businesses and order on WhatsApp — no app, no commission.
-            </p>
-            <Link to="/start"
-              className="inline-flex items-center gap-1.5 mt-5 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-500/20"
-              style={{ backgroundColor: WA }}>
-              <Store size={14} /> List Your Business Free
-            </Link>
-          </div>
-          <FooterCol title="Discover" links={[['Explore businesses', '/marketplace'], ['Create a page', '/start'], ['Pricing', '/plans']]} />
-          <FooterCol title="Company"  links={[['Terms', '/terms'], ['Privacy', '/privacy'], ['Home', '/']]} />
+    <footer className="bg-white border-t border-gray-100">
+      <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-6 w-auto" />
+          <span className="text-xs text-gray-400">© {year} · Made in India 🇮🇳</span>
         </div>
-        <div className="border-t border-white/10 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-white/40 text-xs">© {year} PocketLink · Made in India 🇮🇳</p>
-          <p className="text-white/40 text-xs">0% commission · No app · WhatsApp-first</p>
+        <div className="flex items-center gap-5 text-xs font-semibold text-gray-400">
+          <a href="https://www.pocketlink.store/start" className="hover:text-emerald-600 transition-colors inline-flex items-center gap-1">
+            <Store size={12} /> List your business
+          </a>
+          <a href="https://www.pocketlink.store/terms" className="hover:text-gray-600 transition-colors">Terms</a>
+          <a href="https://www.pocketlink.store/privacy" className="hover:text-gray-600 transition-colors">Privacy</a>
         </div>
       </div>
     </footer>
