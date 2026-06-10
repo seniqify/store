@@ -50,6 +50,21 @@ export const PLANS = {
     analytics:       'full',
     variants:        true,
     prioritySupport: true,
+    whatsappApi:     false,   // WhatsApp API number connect is Premium-only
+  },
+  premium: {
+    name:            'Premium',
+    products:        Infinity,
+    categories:      Infinity,
+    badge:           false,
+    verified:        true,
+    promoBanner:     true,
+    discountCodes:   true,
+    orderHistory:    true,
+    analytics:       'full',
+    variants:        true,
+    prioritySupport: true,
+    whatsappApi:     true,    // connect your own WhatsApp Business API number
   },
   // legacy alias so any old 'growth' store keeps its top-tier features
   growth: {

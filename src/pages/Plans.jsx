@@ -10,17 +10,17 @@ const PERIODS = [
 
 // monthly list rate + total amount actually charged (yearly = rate × 10 → 2 months free)
 const PRICING = {
-  starter: {
-    monthly: { rate: 149, charge: 149  },
-    yearly:  { rate: 149, charge: 1490 },
-  },
   pro: {
-    monthly: { rate: 249, charge: 249  },
-    yearly:  { rate: 249, charge: 2490 },
+    monthly: { rate: 249,  charge: 249   },
+    yearly:  { rate: 249,  charge: 2490  },
   },
   business: {
-    monthly: { rate: 499, charge: 499  },
-    yearly:  { rate: 499, charge: 4990 },
+    monthly: { rate: 500,  charge: 500   },
+    yearly:  { rate: 500,  charge: 5000  },
+  },
+  premium: {
+    monthly: { rate: 1000, charge: 1000  },
+    yearly:  { rate: 1000, charge: 10000 },
   },
 };
 
@@ -34,42 +34,44 @@ const PLANS = [
     missing: ['Carries a small “Powered by PocketLink” badge', 'No Verified badge'],
   },
   {
-    key: 'starter', name: 'Starter', tagline: 'Look professional',
-    accent: '#14b8a6', cta: 'Get Starter',
-    highlights: ['20 products · 5 categories', 'Your brand only — badge removed', 'Promo banners & announcements'],
-    features: [
-      '20 products · 5 categories',
-      'No “Powered by” badge — 100% your brand',
-      'Promo banners & page announcements',
-      'Zero per-order cost — WhatsApp stays free',
-      'Share one link on bio, status, everywhere',
-      'Email support',
-    ],
-    missing: ['Verified badge is on Pro & Business'],
-  },
-  {
-    key: 'pro', name: 'Pro', tagline: 'For growing businesses', popular: true,
+    key: 'pro', name: 'Pro', tagline: 'Look professional & get found',
     accent: '#10b981', cta: 'Get Pro',
     highlights: ['50 products · 10 categories', 'Verified badge ✓', 'Order history & analytics'],
     features: [
       '50 products · 10 categories',
-      'Everything in Starter',
+      'No “Powered by” badge — 100% your brand',
       'Verified badge — instant customer trust',
-      'Order history to track & re-engage',
-      'Sales analytics dashboard',
+      'Promo banners & page announcements',
+      'Order history + sales analytics',
       'Email support',
     ],
+    missing: ['WhatsApp API number is on Premium'],
   },
   {
-    key: 'business', name: 'Business', tagline: 'Scale with no limits',
+    key: 'business', name: 'Business', tagline: 'Sell without limits', popular: true,
     accent: '#8b5cf6', cta: 'Get Business',
-    highlights: ['Unlimited products & categories', 'Discount codes & coupons', 'Priority support'],
+    highlights: ['Unlimited products & categories', 'Discount codes & coupons', 'Variants — size, colour & more'],
     features: [
-      'Unlimited products & categories',
       'Everything in Pro',
+      'Unlimited products & categories',
       'Discount codes & coupons',
       'Product variants — size, colour & more',
-      'Priority WhatsApp support',
+      'Advanced sales analytics',
+      'Priority support',
+    ],
+    missing: ['WhatsApp API number is on Premium'],
+  },
+  {
+    key: 'premium', name: 'Premium', tagline: 'Your own WhatsApp API',
+    accent: '#f59e0b', cta: 'Get Premium',
+    highlights: ['📱 Your own WhatsApp API number', 'Auto order updates + broadcasts', 'Everything in Business'],
+    features: [
+      'Everything in Business',
+      'Your own WhatsApp Business API number — set up for you',
+      'Automatic order confirmations & status updates',
+      'Marketing broadcasts to your customer list',
+      'WhatsApp auto-reply bot',
+      'Dedicated priority support',
     ],
   },
 ];

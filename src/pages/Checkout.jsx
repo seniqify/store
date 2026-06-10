@@ -5,11 +5,6 @@ import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
 
 const PLAN_INFO = {
-  starter: {
-    name:  'Starter',
-    color: '#14b8a6',
-    features: ['20 products', '5 categories', 'No badge', 'Promo banners'],
-  },
   pro: {
     name:  'Pro',
     color: '#10b981',
@@ -18,7 +13,12 @@ const PLAN_INFO = {
   business: {
     name:  'Business',
     color: '#8b5cf6',
-    features: ['Unlimited products', 'Unlimited categories', 'Verified badge', 'Priority support'],
+    features: ['Unlimited products', 'Unlimited categories', 'Discount codes', 'Priority support'],
+  },
+  premium: {
+    name:  'Premium',
+    color: '#f59e0b',
+    features: ['Your WhatsApp API number', 'Auto order updates', 'Broadcasts', 'Everything in Business'],
   },
 };
 
@@ -30,9 +30,9 @@ const PERIOD_LABEL = {
 // yearly = 10× monthly (pay for 10, get 12 → 2 months free). Display only — the
 // amount actually debited comes from the Razorpay yearly plan_id on the backend.
 const CHARGES = {
-  starter:  { monthly: 149, yearly: 1490 },
-  pro:      { monthly: 249, yearly: 2490 },
-  business: { monthly: 499, yearly: 4990 },
+  pro:      { monthly: 249,  yearly: 2490  },
+  business: { monthly: 500,  yearly: 5000  },
+  premium:  { monthly: 1000, yearly: 10000 },
 };
 
 function loadRazorpayScript() {

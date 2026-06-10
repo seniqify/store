@@ -1176,7 +1176,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             <div className="min-w-0">
               <p className="text-sm font-bold text-gray-900">✨ Make it 100% your brand</p>
               <p className="text-xs text-gray-500 mt-0.5 leading-snug">
-                Remove the “Powered by PocketLink” badge — from ₹149/mo (about ₹5/day).
+                Remove the “Powered by PocketLink” badge — from ₹249/mo (about ₹8/day).
               </p>
             </div>
             <span className="text-xs font-bold text-white px-3 py-2 rounded-lg flex-shrink-0"

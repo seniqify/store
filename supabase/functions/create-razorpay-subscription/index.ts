@@ -5,13 +5,14 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Razorpay Plan IDs (created in the Razorpay dashboard). plan → period → plan_id.
-// Yearly = 10× monthly ("2 months free"); these yearly plans replaced the old
-// 12× ones (plan_SxGXj6yV919wqk / plan_SxGYAS9RKv0lIb / plan_SxGYVeQjb9AJOw).
+// Razorpay Plan IDs. plan → period → plan_id. Yearly = 10× monthly ("2 months
+// free"). Fresh set for the 3-tier structure (Pro 249 / Business 500 / Premium
+// 1000); WhatsApp API is a Premium-only feature. All older plans (starter 149,
+// the old pro/business, and their yearly variants) are retired but left dormant.
 const PLAN_IDS: Record<string, Record<string, string>> = {
-  starter:  { monthly: 'plan_SxGTBmTNTNFSA5', yearly: 'plan_SzCmGJ6a2iBWGS' },
-  pro:      { monthly: 'plan_SxGWPAF1XhEdPY', yearly: 'plan_SzCmGbviWSbcJP' },
-  business: { monthly: 'plan_SxGX6oGSTcfaB7', yearly: 'plan_SzCmGyxNzoloI7' },
+  pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },
+  business: { monthly: 'plan_Szqmn3xin5zwQY', yearly: 'plan_SzqmnDgFhQFC5y' },
+  premium:  { monthly: 'plan_SzqmnPq8JoWcSc', yearly: 'plan_SzqmnZ9M5keufj' },
 };
 
 // How many billing cycles the mandate runs for before it ends (≈10 years each).
