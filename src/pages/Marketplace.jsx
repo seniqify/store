@@ -216,17 +216,17 @@ export default function Marketplace() {
 
         {/* Nav */}
         <nav className="relative z-10 border-b border-white/10 backdrop-blur-md">
-          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+          <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-3">
             <Link to="/" className="flex-shrink-0">
-              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" />
+              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 sm:h-8 w-auto brightness-0 invert" />
             </Link>
 
-            {/* Area picker — the one global control a customer reaches for */}
-            <div className="relative">
+            {/* Area picker — flexes/truncates so the nav never overflows on mobile */}
+            <div className="relative flex-1 min-w-0 max-w-[10rem] ml-auto">
               <MapPin size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-300 pointer-events-none" />
               <select value={city} onChange={(e) => setCity(e.target.value)} aria-label="Choose your area"
-                className="appearance-none text-xs font-bold text-white bg-white/10 border border-white/20
-                           rounded-full pl-7 pr-7 py-2 max-w-[9.5rem] truncate backdrop-blur-sm
+                className="appearance-none w-full text-xs font-bold text-white bg-white/10 border border-white/20
+                           rounded-full pl-7 pr-7 py-2 truncate backdrop-blur-sm
                            focus:outline-none focus:ring-2 focus:ring-emerald-400 [&>option]:text-gray-900">
                 {cities.map((c) => <option key={c} value={c}>{c === 'All' ? 'All areas' : c}</option>)}
               </select>
@@ -234,7 +234,8 @@ export default function Marketplace() {
             </div>
 
             <a href="https://www.pocketlink.store/start"
-              className="group relative inline-flex items-center gap-1.5 text-white text-sm font-bold px-4 py-2 rounded-xl
+              className="group relative inline-flex items-center gap-1.5 text-white text-xs sm:text-sm font-bold
+                         px-3 sm:px-4 py-2 rounded-xl whitespace-nowrap
                          shadow-lg shadow-emerald-500/30 active:scale-[0.98] overflow-hidden flex-shrink-0"
               style={{ backgroundColor: WA }}>
               <span className="absolute inset-0 overflow-hidden rounded-xl">
@@ -325,26 +326,10 @@ export default function Marketplace() {
         </div>
       </div>
 
-      {/* ════════ Sticky filter bar — chips with live counts + area + search ════════ */}
+      {/* ════════ Sticky category bar — chips only (search lives in the hero,
+           the area picker in the header) ════════ */}
       <div id="results" className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center gap-2.5">
-          {/* Compact search — always within thumb's reach while scrolling the list */}
-          <div className="relative flex-shrink-0 w-32 sm:w-52">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              className="w-full pl-8 pr-7 py-2 rounded-full border border-gray-200 bg-white text-xs font-semibold
-                         text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
-            {query && (
-              <button onClick={() => setQuery('')} aria-label="Clear search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center">
           {/* Category chips with live counts (+ a Saved chip once they've ❤️'d shops) */}
           <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
             {favs.length > 0 && (
@@ -381,13 +366,6 @@ export default function Marketplace() {
               );
             })}
           </div>
-
-          {/* Area (mirrors the hero picker) */}
-          <select value={city} onChange={(e) => setCity(e.target.value)} aria-label="Choose your area"
-            className="flex-shrink-0 text-xs font-semibold text-gray-700 border border-gray-200 rounded-full
-                       px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 max-w-[8.5rem] truncate">
-            {cities.map((c) => <option key={c} value={c}>{c === 'All' ? '📍 All areas' : c}</option>)}
-          </select>
         </div>
       </div>
 
