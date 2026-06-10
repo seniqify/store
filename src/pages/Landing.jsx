@@ -714,7 +714,7 @@ export default function Landing() {
               <a href="#features" className="hover:text-white transition-colors">Features</a>
               <a href="#demos"    className="hover:text-white transition-colors">Demos</a>
               <a href="#pricing"  className="hover:text-white transition-colors">Pricing</a>
-              <Link to="/marketplace" className="hover:text-white transition-colors">Explore</Link>
+              <a href="https://market.pocketlink.store" className="hover:text-white transition-colors">Explore</a>
             </div>
 
             <Link
@@ -801,15 +801,15 @@ export default function Landing() {
                     <Sparkles size={15} className="text-emerald-300" />
                     See it live
                   </a>
-                  <Link
-                    to="/marketplace"
+                  <a
+                    href="https://market.pocketlink.store"
                     className="inline-flex items-center gap-2 text-sm font-semibold text-white/70
                                hover:text-white transition-colors px-5 py-4 rounded-2xl border border-white/15
                                hover:border-white/30 hover:bg-white/5 w-full sm:w-auto justify-center"
                   >
                     Explore Local Businesses
                     <ArrowRight size={15} className="text-emerald-300" />
-                  </Link>
+                  </a>
                 </div>
 
                 {/* Trust row */}

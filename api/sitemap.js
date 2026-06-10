@@ -1,6 +1,7 @@
 // Dynamic sitemap — static marketing pages + demo pages + every live store.
 const ORIGIN  = 'https://www.pocketlink.store';
-const STATIC  = ['/', '/marketplace', '/plans', '/start', '/terms', '/privacy'];
+const MARKET  = 'https://market.pocketlink.store/';   // consumer marketplace home
+const STATIC  = ['/', '/plans', '/start', '/terms', '/privacy'];
 const DEMOS   = ['aanyaboutique', 'spiceroute', 'glowup', 'coralcourtyard'];
 
 export default async function handler(req, res) {
@@ -19,6 +20,7 @@ export default async function handler(req, res) {
 
   const urls = [
     ...STATIC.map((p) => ({ loc: ORIGIN + p })),
+    { loc: MARKET },
     ...DEMOS.map((s) => ({ loc: `${ORIGIN}/demo/${s}` })),
     ...stores
       .filter((s) => s && s.slug)
