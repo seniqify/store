@@ -157,7 +157,7 @@ export async function findStoreByPhone(phone) {
 export async function listStores() {
   const { data, error } = await supabase
     .from('stores')
-    .select(`slug,
+    .select(`slug, created_at,
       businessName:config->>businessName, tagline:config->>tagline,
       category:config->>category, businessType:config->>businessType,
       city:config->>city, state:config->>state, area:config->>area,

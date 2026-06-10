@@ -25,11 +25,15 @@ export function deriveCity(config) {
  * Normalize a store config (real DB store or static demo) into a card model.
  * `demo: true` routes the card to the /demo/<slug> preview instead of /<slug>.
  */
+const NEW_WINDOW_MS = 14 * 86400000;   // a shop counts as "new" for 14 days
+
 export function normalizeBusiness(config, { demo = false } = {}) {
   const slug = config.slug;
+  const createdAt = config.created_at ? new Date(config.created_at).getTime() : null;
   return {
     slug,
     href:           demo ? `/demo/${slug}` : `/${slug}`,
+    isNew:          !demo && !!createdAt && (Date.now() - createdAt) < NEW_WINDOW_MS,
     name:           config.businessName || config.name || 'Unnamed business',
     category:       deriveCategory(config),
     city:           deriveCity(config),

@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronDown, ArrowUp } from 'lucide-react';
+import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronDown, ArrowUp, Heart, History } from 'lucide-react';
 import { listStores } from '../utils/storeService';
 import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness } from '../utils/marketplace';
 import { categoryMeta } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
+import { getFavs, toggleFav, getRecents, addRecent, bumpMarketplaceVisit } from '../utils/shopMemory';
 import BusinessCard from '../components/marketplace/BusinessCard';
 
 /**
@@ -108,6 +109,14 @@ export default function Marketplace() {
   const [city,       setCity]       = useState('All');
   const [showTop,    setShowTop]    = useState(false);
 
+  // Device memory — the no-login comeback loop (saved shops, recents, visits).
+  const [favs,      setFavs]      = useState(() => getFavs());
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [recents]                 = useState(() => getRecents());
+  const [returning, setReturning] = useState(false);
+  useEffect(() => { setReturning(bumpMarketplaceVisit() > 1); }, []);
+  const handleToggleFav = (slug) => setFavs(toggleFav(slug));
+
   // Set the document title for SPA navigation (direct loads get it from the server).
   useEffect(() => {
     const prevTitle = document.title;
@@ -162,24 +171,25 @@ export default function Marketplace() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return businesses.filter((b) => {
+      if (savedOnly && !favs.includes(b.slug)) return false;
       if (category !== 'All' && b.category !== category) return false;
       if (city !== 'All' && b.city !== city) return false;
       if (!q) return true;
       return [b.name, b.category, b.city, b.location, b.tagline]
         .filter(Boolean).some((f) => f.toLowerCase().includes(q));
     });
-  }, [businesses, query, category, city]);
+  }, [businesses, query, category, city, savedOnly, favs]);
 
   const pickCategory = (c) => {
     setCategory(c);
     setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   };
 
-  const hasFilters = query || category !== 'All' || city !== 'All';
-  const clearFilters = () => { setQuery(''); setCategory('All'); setCity('All'); };
+  const hasFilters = query || category !== 'All' || city !== 'All' || savedOnly;
+  const clearFilters = () => { setQuery(''); setCategory('All'); setCity('All'); setSavedOnly(false); };
   // Browse sections (featured + category tiles) step aside the moment the
   // customer searches or narrows down — results come first.
-  const browsing = !query && category === 'All';
+  const browsing = !query && category === 'All' && !savedOnly;
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -238,7 +248,7 @@ export default function Marketplace() {
               <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
             </span>
-            Local finder · 0% commission
+            {returning ? <>Welcome back 👋 · 0% commission</> : <>Local finder · 0% commission</>}
           </span>
 
           <h1 className="text-[2.4rem] sm:text-6xl font-extrabold text-white tracking-tight leading-[1.08] mb-4 pl-rise"
@@ -328,14 +338,28 @@ export default function Marketplace() {
             )}
           </div>
 
-          {/* Category chips with live counts */}
+          {/* Category chips with live counts (+ a Saved chip once they've ❤️'d shops) */}
           <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
+            {favs.length > 0 && (
+              <button onClick={() => { setSavedOnly((v) => !v); setCategory('All'); }}
+                className={[
+                  'flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all active:scale-95',
+                  savedOnly ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
+                            : 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50',
+                ].join(' ')}>
+                <Heart size={12} fill={savedOnly ? 'currentColor' : 'none'} /> Saved
+                <span className={['text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none',
+                                  savedOnly ? 'bg-white/20 text-white' : 'bg-rose-50 text-rose-400'].join(' ')}>
+                  {favs.length}
+                </span>
+              </button>
+            )}
             {['All', ...presentCategories].map((c) => {
-              const active = category === c;
+              const active = !savedOnly && category === c;
               const meta = c === 'All' ? { emoji: '✨' } : categoryMeta(c);
               const count = c === 'All' ? businesses.length : (countByCategory[c] || 0);
               return (
-                <button key={c} onClick={() => setCategory(c)}
+                <button key={c} onClick={() => { setCategory(c); setSavedOnly(false); }}
                   className={[
                     'flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all active:scale-95',
                     active ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
@@ -359,6 +383,35 @@ export default function Marketplace() {
           </select>
         </div>
       </div>
+
+      {/* ════════ Continue where you left off (device memory, no login) ════════ */}
+      {browsing && recents.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 pt-7">
+          <div className="flex items-center gap-2 mb-3">
+            <History size={16} className="text-emerald-600" />
+            <h2 className="text-sm font-extrabold text-gray-900 uppercase tracking-wide">Continue where you left off</h2>
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4">
+            {recents.map((r) => (
+              <a key={r.slug} href={`https://www.pocketlink.store/${r.slug}`}
+                 className="flex-shrink-0 inline-flex items-center gap-2.5 bg-white border border-gray-100 rounded-2xl
+                            pl-2 pr-4 py-2 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-200
+                            transition-all active:scale-[0.98]">
+                <span className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center text-lg flex-shrink-0 text-white"
+                      style={!r.logo ? { background: r.primary } : { background: '#f3f4f6' }}>
+                  {r.logo
+                    ? <img src={r.logo} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    : <span>{r.logoEmoji}</span>}
+                </span>
+                <span className="leading-tight">
+                  <span className="block text-xs font-bold text-gray-900 whitespace-nowrap max-w-[9rem] truncate">{r.name}</span>
+                  {r.category && <span className="block text-[10px] text-gray-400 whitespace-nowrap">{r.category}</span>}
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ════════ Featured carousel (steps aside while searching/filtering) ════════ */}
       {!loading && browsing && featured.length > 0 && (
@@ -435,7 +488,9 @@ export default function Marketplace() {
           <>
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-bold text-gray-900">
-                {query ? <>Results for “{query.trim()}”</> : category !== 'All' ? category : 'All businesses'}
+                {savedOnly ? <>❤️ Your saved shops</>
+                  : query ? <>Results for “{query.trim()}”</>
+                  : category !== 'All' ? category : 'All businesses'}
                 <span className="text-gray-400 font-medium"> · {filtered.length}</span>
                 {city !== 'All' && <span className="text-gray-400 font-medium"> in {city}</span>}
               </p>
@@ -448,7 +503,7 @@ export default function Marketplace() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.map((b, i) => (
                 <Reveal key={b.href} delay={Math.min(i, 7) * 0.05}>
-                  <BusinessCard biz={b} />
+                  <BusinessCard biz={b} fav={favs.includes(b.slug)} onToggleFav={handleToggleFav} />
                 </Reveal>
               ))}
             </div>
@@ -548,7 +603,7 @@ function FeaturedCard({ biz }) {
   };
 
   return (
-    <Link to={biz.href}
+    <Link to={biz.href} onClick={() => !biz.demo && addRecent(biz)}
       className="group relative flex-shrink-0 w-[270px] sm:w-[300px] snap-start rounded-3xl overflow-hidden
                  bg-white border border-gray-100 shadow-sm transition-all duration-300 hover:-translate-y-1.5
                  hover:shadow-[0_24px_50px_-12px_rgba(16,185,129,0.30)]">
