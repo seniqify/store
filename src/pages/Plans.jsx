@@ -45,7 +45,6 @@ const PLANS = [
       'Order history + sales analytics',
       'Email support',
     ],
-    missing: ['WhatsApp API number is on Premium'],
   },
   {
     key: 'business', name: 'Business', tagline: 'Sell without limits', popular: true,
@@ -59,19 +58,16 @@ const PLANS = [
       'Advanced sales analytics',
       'Priority support',
     ],
-    missing: ['WhatsApp API number is on Premium'],
   },
   {
-    key: 'premium', name: 'Premium', tagline: 'Your own WhatsApp API',
+    key: 'premium', name: 'Premium', tagline: 'For serious sellers',
     accent: '#f59e0b', cta: 'Get Premium',
-    highlights: ['📱 Your own WhatsApp API number', 'Auto order updates + broadcasts', 'Everything in Business'],
+    highlights: ['Everything in Business', '👑 Dedicated priority support', 'Personal onboarding & setup help'],
     features: [
       'Everything in Business',
-      'Your own WhatsApp Business API number — set up for you',
-      'Automatic order confirmations & status updates',
-      'Marketing broadcasts to your customer list',
-      'WhatsApp auto-reply bot',
-      'Dedicated priority support',
+      'Dedicated WhatsApp support — talk to a real person',
+      'Personal onboarding & store setup help',
+      'Early access to new features',
     ],
   },
 ];

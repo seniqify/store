@@ -71,10 +71,10 @@ const PRICING_PLANS = [
     caveat: null,
   },
   {
-    name: 'Premium', icon: '📱', tagline: 'Your own WhatsApp API', accent: '#f59e0b',
+    name: 'Premium', icon: '👑', tagline: 'For serious sellers', accent: '#f59e0b',
     price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
     popular: false, to: '/start?plan=premium', cta: 'Get Premium',
-    features: ['Your own WhatsApp API number', 'Auto order updates + broadcasts', 'WhatsApp auto-reply bot', 'Everything in Business'],
+    features: ['Everything in Business', 'Dedicated WhatsApp support', 'Personal onboarding & setup help', 'Early access to new features'],
     caveat: null,
   },
 ];

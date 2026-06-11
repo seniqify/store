@@ -8,7 +8,7 @@ const RESEND_SECONDS = 30;
 
 // WhatsApp OTP is live (Seniqify template "optpt" / h042vmds6w). Set this to
 // false to bypass verification (the number is still captured and the flow
-// continues). (Mirror of the flag in Register.jsx.)
+// continues).
 const OTP_ENABLED = true;
 
 const CATEGORY_CHIPS = [['🛍️', 'Shops'], ['🍽️', 'Food'], ['💇', 'Services'], ['🏨', 'Stays']];

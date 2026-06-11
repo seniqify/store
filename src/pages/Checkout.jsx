@@ -18,7 +18,7 @@ const PLAN_INFO = {
   premium: {
     name:  'Premium',
     color: '#f59e0b',
-    features: ['Your WhatsApp API number', 'Auto order updates', 'Broadcasts', 'Everything in Business'],
+    features: ['Everything in Business', 'Dedicated support', 'Personal setup help', 'Early access to new features'],
   },
 };
 

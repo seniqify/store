@@ -12,19 +12,6 @@ export const PLANS = {
     variants:        false,
     prioritySupport: false,
   },
-  starter: {
-    name:            'Starter',
-    products:        20,
-    categories:      5,
-    badge:           false,
-    verified:        false,   // paid, but Verified is reserved for Pro & Business
-    promoBanner:     true,
-    discountCodes:   false,
-    orderHistory:    false,
-    analytics:       false,
-    variants:        false,
-    prioritySupport: false,
-  },
   pro: {
     name:            'Pro',
     products:        50,
@@ -64,21 +51,7 @@ export const PLANS = {
     analytics:       'full',
     variants:        true,
     prioritySupport: true,
-    whatsappApi:     true,    // connect your own WhatsApp Business API number
-  },
-  // legacy alias so any old 'growth' store keeps its top-tier features
-  growth: {
-    name:            'Business',
-    products:        Infinity,
-    categories:      Infinity,
-    badge:           false,
-    verified:        true,
-    promoBanner:     true,
-    discountCodes:   true,
-    orderHistory:    true,
-    analytics:       'full',
-    variants:        true,
-    prioritySupport: true,
+    whatsappApi:     false,   // WhatsApp API connect is built later — flip when it ships
   },
 };
 

@@ -18,7 +18,6 @@ const Landing    = lazy(() => import('./pages/Landing'));
 const Start      = lazy(() => import('./pages/Start'));
 const Plans      = lazy(() => import('./pages/Plans'));
 const Checkout   = lazy(() => import('./pages/Checkout'));
-const Register   = lazy(() => import('./pages/Register'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const ManageStore = lazy(() => import('./pages/ManageStore'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
@@ -207,7 +206,6 @@ export default function App() {
             <Route path="/marketplace"           element={<Marketplace />} />
             <Route path="/explore"               element={<Marketplace />} />
             <Route path="/checkout/:plan"        element={<Checkout />} />
-            <Route path="/register"              element={<Register />} />
             <Route path="/onboarding"            element={<Onboarding />} />
             <Route path="/terms"                 element={<Terms />} />
             <Route path="/privacy"               element={<Privacy />} />
