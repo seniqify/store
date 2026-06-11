@@ -1,7 +1,8 @@
-import { MapPin, ArrowRight, MessageCircle, Heart } from 'lucide-react';
+import { MapPin, ArrowRight, MessageCircle, Heart, Star } from 'lucide-react';
 import { whatsappLink } from '../../utils/theme';
 import { categoryMeta } from '../../utils/businessCategories';
 import { addRecent } from '../../utils/shopMemory';
+import { getStoreStatus } from '../../utils/storeHours';
 
 const WA = '#25D366';
 
@@ -11,9 +12,11 @@ const WA = '#25D366';
  * this device (no login) — both stop the card navigation. Visits are recorded
  * for the "continue where you left off" row.
  */
-export default function BusinessCard({ biz, fav = false, onToggleFav }) {
+export default function BusinessCard({ biz, fav = false, onToggleFav, rating = null }) {
   const waHref = biz.whatsappNumber ? whatsappLink(biz.whatsappNumber, biz.name) : null;
   const meta   = categoryMeta(biz.category);
+  // Real open/closed from the owner's business hours; null when not configured.
+  const status = getStoreStatus(biz.hours);
 
   const onWhatsApp = (e) => {
     e.preventDefault();
@@ -53,22 +56,27 @@ export default function BusinessCard({ biz, fav = false, onToggleFav }) {
           <span>{meta.emoji}</span> {biz.category}
         </span>
 
-        {/* NEW (just joined) or live "Open" pulse */}
+        {/* NEW (just joined), else REAL open/closed from business hours.
+            No badge at all when the owner hasn't set hours — never fake it. */}
         {biz.isNew ? (
           <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 text-[10px] font-bold text-white
                            bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 rounded-full shadow-sm">
             ✨ NEW
           </span>
-        ) : (
+        ) : status ? (
           <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 text-[10px] font-semibold text-white
                            bg-black/35 backdrop-blur px-2 py-0.5 rounded-full">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-            </span>
-            Open
+            {status.open ? (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
+            )}
+            {status.open ? 'Open' : 'Closed'}
           </span>
-        )}
+        ) : null}
 
         {biz.demo && (
           <span className="absolute bottom-2 left-2.5 text-[9px] font-bold text-white/90 bg-black/30 px-1.5 py-0.5 rounded">
@@ -105,6 +113,18 @@ export default function BusinessCard({ biz, fav = false, onToggleFav }) {
                        transition-colors group-hover:text-emerald-600">
           {biz.name}
         </h3>
+
+        {/* Social proof — only when the shop actually has reviews */}
+        {rating?.count > 0 && (
+          <p className="flex items-center gap-1 mt-1">
+            <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-white bg-emerald-600 rounded-md px-1.5 py-0.5">
+              {rating.avg.toFixed(1)} <Star size={10} fill="currentColor" />
+            </span>
+            <span className="text-[11px] text-gray-400 font-medium">
+              {rating.count} {rating.count === 1 ? 'review' : 'reviews'}
+            </span>
+          </p>
+        )}
 
         {(biz.city || biz.state) && (
           <p className="flex items-center gap-1 text-xs text-gray-400 mt-0.5 truncate">

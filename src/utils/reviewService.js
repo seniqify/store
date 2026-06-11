@@ -94,3 +94,35 @@ export function reviewStats(reviews = []) {
   const sum = reviews.reduce((s, r) => s + (Number(r.rating) || 0), 0);
   return { avg: Math.round((sum / count) * 10) / 10, count };
 }
+
+/**
+ * Public: one bulk query of approved ratings for the marketplace —
+ * returns { [store_slug]: { avg, count } }. Rows are just (slug, rating), so
+ * this stays small for a long while; move to a SQL aggregate RPC if reviews
+ * ever reach tens of thousands.
+ */
+export async function fetchAllRatings() {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('store_slug, rating')
+      .eq('status', 'approved')
+      .limit(5000);
+    if (error || !data) return {};
+    const acc = {};
+    for (const r of data) {
+      const k = r.store_slug;
+      if (!k) continue;
+      (acc[k] ??= { sum: 0, count: 0 });
+      acc[k].sum += Number(r.rating) || 0;
+      acc[k].count += 1;
+    }
+    const out = {};
+    for (const [k, v] of Object.entries(acc)) {
+      out[k] = { avg: Math.round((v.sum / v.count) * 10) / 10, count: v.count };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}

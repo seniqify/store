@@ -51,6 +51,7 @@ export function normalizeBusiness(config, { demo = false } = {}) {
     logoEmoji:      config.logoEmoji || '🏪',
     coverImage:     config.coverImage || null,
     whatsappNumber: config.whatsappNumber || '',
+    hours:          config.hours || null,   // real open/closed on the card
     primary:        config.theme?.primary || '#0d9488',
     primaryDark:    config.theme?.primaryDark || '#0f766e',
     demo,

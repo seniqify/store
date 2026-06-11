@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronDown, ArrowUp, Heart, History } from 'lucide-react';
 import { listStores } from '../utils/storeService';
-import { listBusinesses } from '../utils/BusinessLoader';
+import { fetchAllRatings } from '../utils/reviewService';
 import { normalizeBusiness } from '../utils/marketplace';
 import { categoryMeta } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
@@ -138,16 +138,14 @@ export default function Marketplace() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Read-only: real stores from the DB + static demo stores as seed examples.
+  // Read-only: real stores only (demo seeds retired) + bulk review ratings.
+  const [ratings, setRatings] = useState({});
   useEffect(() => {
     let alive = true;
     (async () => {
-      const real  = (await listStores()).map((c) => normalizeBusiness(c, { demo: false }));
-      const seen  = new Set(real.map((b) => b.slug));
-      const demos = listBusinesses()
-        .map((c) => normalizeBusiness(c, { demo: true }))
-        .filter((d) => !seen.has(d.slug));
-      if (alive) { setBusinesses([...real, ...demos]); setLoading(false); }
+      const [rows, ratingMap] = await Promise.all([listStores(), fetchAllRatings()]);
+      const real = rows.map((c) => normalizeBusiness(c, { demo: false }));
+      if (alive) { setBusinesses(real); setRatings(ratingMap); setLoading(false); }
     })();
     return () => { alive = false; };
   }, []);
@@ -445,7 +443,7 @@ export default function Marketplace() {
           </Reveal>
           <Reveal>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2 -mx-4 px-4">
-              {featured.map((b) => <FeaturedCard key={b.href} biz={b} />)}
+              {featured.map((b) => <FeaturedCard key={b.href} biz={b} rating={ratings[b.slug]} />)}
             </div>
           </Reveal>
         </section>
@@ -488,7 +486,7 @@ export default function Marketplace() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.slice(0, visible).map((b, i) => (
                 <Reveal key={b.href} delay={Math.min(i, 7) * 0.05}>
-                  <BusinessCard biz={b} fav={favs.includes(b.slug)} onToggleFav={handleToggleFav} />
+                  <BusinessCard biz={b} fav={favs.includes(b.slug)} onToggleFav={handleToggleFav} rating={ratings[b.slug]} />
                 </Reveal>
               ))}
             </div>
@@ -590,7 +588,7 @@ function EmptyState({ hasAny, hasFilters, onClear }) {
 }
 
 /* ── Featured carousel card (image-forward, name overlaid on the banner) ──── */
-function FeaturedCard({ biz }) {
+function FeaturedCard({ biz, rating = null }) {
   const waHref = biz.whatsappNumber ? whatsappLink(biz.whatsappNumber, biz.name) : null;
   const meta   = categoryMeta(biz.category);
   const onWhatsApp = (e) => {
@@ -628,11 +626,18 @@ function FeaturedCard({ biz }) {
           </div>
           <div className="min-w-0 pb-0.5">
             <h3 className="text-white font-extrabold text-sm leading-tight truncate drop-shadow">{biz.name}</h3>
-            {(biz.city || biz.state) && (
-              <p className="text-white/85 text-[11px] flex items-center gap-1 truncate">
-                <MapPin size={11} className="flex-shrink-0" /> {[biz.city, biz.state].filter(Boolean).join(', ')}
-              </p>
-            )}
+            <p className="text-white/85 text-[11px] flex items-center gap-1.5 truncate">
+              {rating?.count > 0 && (
+                <span className="inline-flex items-center gap-0.5 font-bold text-amber-300">
+                  ★ {rating.avg.toFixed(1)} <span className="text-white/60 font-medium">({rating.count})</span>
+                </span>
+              )}
+              {(biz.city || biz.state) && (
+                <span className="inline-flex items-center gap-1 truncate">
+                  <MapPin size={11} className="flex-shrink-0" /> {[biz.city, biz.state].filter(Boolean).join(', ')}
+                </span>
+              )}
+            </p>
           </div>
         </div>
       </div>

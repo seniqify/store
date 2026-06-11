@@ -163,7 +163,7 @@ export async function listStores() {
       city:config->>city, state:config->>state, area:config->>area,
       address:config->>address, logo:config->>logo, logoEmoji:config->>logoEmoji,
       coverImage:config->>coverImage, whatsappNumber:config->>whatsappNumber,
-      theme:config->theme`)
+      theme:config->theme, hours:config->hours`)
     .limit(500);
 
   if (error || !data) return [];
