@@ -1401,9 +1401,20 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
                    onChange={e => update({
                      businessName: e.target.value,
                      hero: { ...config.hero, heading: e.target.value },
-                     tagline: `Order from ${e.target.value} via WhatsApp`,
                    })}
                    className={iCls(false)} />
+          </div>
+
+          <div>
+            <label className={lCls()}>Tagline / Description</label>
+            <textarea rows={2} maxLength={140}
+                   placeholder="e.g. Fresh sweets made daily — order on WhatsApp"
+                   value={config.tagline || ''}
+                   onChange={e => update({ tagline: e.target.value })}
+                   className={[iCls(false), 'resize-none'].join(' ')} />
+            <p className="mt-1 text-xs text-gray-400">
+              Shown under your business name on your page and in shared link previews. {(config.tagline || '').length}/140
+            </p>
           </div>
 
           <div>
