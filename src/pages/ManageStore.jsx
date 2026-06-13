@@ -50,7 +50,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', variantLabel:'', variantOptions:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', variantLabel:'', variantOptions:[] };
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -443,6 +443,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
       image:       product.image       || '',
+      gstRate:     product.gstRate != null ? product.gstRate : '',
       variantLabel:   product.variants?.label || '',
       variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '' })) : [],
     });
@@ -484,6 +485,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       .filter(o => o.name);
     const variants   = (form.variantLabel.trim() && cleanOpts.length)
       ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
+    // Per-product GST: '' means "use the store default rate" → store undefined.
+    const gstRate    = form.gstRate === '' || form.gstRate == null ? undefined : Number(form.gstRate);
 
     let newProducts;
     if (editingId !== null) {
@@ -492,7 +495,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, variants }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, variants }
           : p
       );
     } else {
@@ -506,6 +509,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         unit:        finalUnit,
+        gstRate,
         variants,
         badge:       null,
         badgeColor:  null,
@@ -708,20 +712,40 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   </div>
                 </div>
               </div>
-              <div>
-                <label className={FIELD_LABEL}>Sold by</label>
-                <select value={form.unit}
-                        onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
-                        className={iCls(false)}>
-                  {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-                {form.unit === 'Other…' && (
-                  <input type="text" placeholder="e.g. per roll, per bundle"
-                         value={form.unitCustom}
-                         onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
-                         className={[iCls(false), 'mt-2'].join(' ')} />
-                )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={FIELD_LABEL}>Sold by</label>
+                  <select value={form.unit}
+                          onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
+                          className={iCls(false)}>
+                    {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>GST rate</label>
+                  <select value={form.gstRate}
+                          onChange={e => setForm(p => ({...p, gstRate:e.target.value}))}
+                          className={iCls(false)}>
+                    <option value="">Store default ({Math.round((config.cart?.taxRate ?? 0.05) * 100)}%)</option>
+                    <option value={0}>0% — No GST</option>
+                    <option value={0.05}>5%</option>
+                    <option value={0.12}>12%</option>
+                    <option value={0.18}>18%</option>
+                    <option value={0.28}>28%</option>
+                  </select>
+                </div>
               </div>
+              {form.unit === 'Other…' && (
+                <input type="text" placeholder="e.g. per roll, per bundle"
+                       value={form.unitCustom}
+                       onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
+                       className={iCls(false)} />
+              )}
+              {form.gstRate !== '' && (
+                <p className="text-[11px] text-gray-400 -mt-1">
+                  This item uses its own GST rate instead of the store default.
+                </p>
+              )}
             </FormSection>
 
             <FormSection title="Details">

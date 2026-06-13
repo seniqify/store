@@ -40,8 +40,7 @@ const PAYMENT_LABELS = {
 
 export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}) {
   const cartConfig = businessConfig.cart ?? { taxRate: 0, freeShippingAbove: 999, shippingCharge: 49 };
-  const { subtotal, tax, shipping, total, taxInclusive } = calcCartTotals(cart, cartConfig);
-  const taxPct = Math.round((cartConfig.taxRate ?? 0) * 100);
+  const { subtotal, tax, shipping, total, taxInclusive, taxUniformPct } = calcCartTotals(cart, cartConfig);
 
   const lines = [];
 
@@ -88,7 +87,7 @@ export function generateWhatsAppMessage(customerDetails, cart, businessConfig = 
 
   // ── Cost breakdown ──────────────────────────────────────────────────────────
   lines.push(`Subtotal: ${formatINR(subtotal)}`);
-  if (taxPct > 0) lines.push(`GST (${taxPct}%)${taxInclusive ? ' incl.' : ''}: ${formatINR(tax)}`);
+  if (tax > 0) lines.push(`GST${taxUniformPct != null ? ` (${taxUniformPct}%)` : ''}${taxInclusive ? ' incl.' : ''}: ${formatINR(tax)}`);
   lines.push(`Delivery: ${shipping === 0 ? 'FREE' : formatINR(shipping)}`);
   lines.push(`*Total: ${formatINR(total)}*`);
 

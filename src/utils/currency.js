@@ -40,6 +40,10 @@ export function discountPercent(price, mrp) {
 export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
   const { taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive = false } = cartConfig;
 
+  // Each item's GST rate: its own `gstRate` (set per product for mixed-rate
+  // stores), else the store-wide default rate.
+  const rateFor = (item) => (item.gstRate != null ? item.gstRate : taxRate);
+
   const subtotal = items.reduce(
     (sum, item) => sum + item.price * item.qty,
     0
@@ -56,13 +60,21 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     : subtotal >= freeShippingAbove ? 0
     : shippingCharge;
 
-  // Two GST modes:
-  //  • inclusive — listed prices ALREADY contain GST. Don't add it again; just
-  //    back-calculate the portion sitting inside the subtotal for the invoice.
-  //  • exclusive (default / legacy) — GST is added on top of the subtotal.
-  const tax = taxInclusive
-    ? Math.round(subtotal - subtotal / (1 + taxRate))
-    : Math.round(subtotal * taxRate);
+  // GST is summed per line so a cart can mix rates (e.g. 5% dry fruit + 18% oil).
+  //  • inclusive — listed prices ALREADY contain GST; back-calculate the portion
+  //    inside each line for the invoice (not added to the total).
+  //  • exclusive (default / legacy) — GST is added on top.
+  const taxRaw = items.reduce((sum, item) => {
+    const r = rateFor(item);
+    const line = item.price * item.qty;
+    return sum + (taxInclusive ? line - line / (1 + r) : line * r);
+  }, 0);
+  const tax = Math.round(taxRaw);
+
+  // If every taxed line shares one rate, expose it so the UI can label "GST (5%)";
+  // otherwise it's a mix and the label drops the percentage.
+  const rates = new Set(items.filter(i => rateFor(i) > 0).map(rateFor));
+  const taxUniformPct = rates.size === 1 ? Math.round([...rates][0] * 100) : null;
 
   return {
     subtotal,
@@ -70,6 +82,7 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     tax,
     shipping,
     taxInclusive,
+    taxUniformPct,
     total: taxInclusive ? subtotal + shipping : subtotal + tax + shipping,
   };
 }
