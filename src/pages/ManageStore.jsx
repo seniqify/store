@@ -1645,6 +1645,14 @@ export default function ManageStore() {
     });
   }, [businessSlug]);
 
+  // The PIN→dashboard hand-off and tab switches happen on the same route, so the
+  // global ScrollToTop never fires for them. On mobile the PIN field's autofocus
+  // scrolls the page down, and that offset would otherwise carry into the
+  // dashboard (top hidden until you scroll up). Reset to the top each time.
+  useEffect(() => {
+    if (pinVerified) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pinVerified, tab]);
+
   // Merge partial config updates
   function handleChange(partial) {
     setConfig(prev => ({ ...prev, ...partial }));
