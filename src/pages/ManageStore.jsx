@@ -56,11 +56,26 @@ const EMPTY_CAT   = { emoji:'📦', label:'' };
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function iCls(err) {
   return [
-    'w-full px-3 py-2 rounded-xl border text-sm text-gray-900',
-    'placeholder-gray-400 transition focus:outline-none focus:ring-2',
-    err ? 'border-red-400 focus:ring-red-200 bg-red-50'
-        : 'border-gray-200 focus:ring-gray-300 bg-white',
+    'w-full px-3.5 py-2.5 rounded-xl border text-sm text-gray-900',
+    'placeholder-gray-400 transition focus:outline-none focus:ring-4',
+    err ? 'border-red-300 focus:ring-red-100 bg-red-50/40'
+        : 'border-gray-200 focus:border-gray-400 focus:ring-gray-100 bg-white',
   ].join(' ');
+}
+
+// Consistent field label + grouped section heading shared across the manage forms.
+const FIELD_LABEL = 'block text-xs font-semibold text-gray-700 mb-1.5';
+
+function FormSection({ title, action, children }) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2.5">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{title}</h4>
+        {action}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
 }
 
 // ── ImageUploader ─────────────────────────────────────────────────────────────
@@ -512,39 +527,41 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     <div className="space-y-4">
 
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-700">
-          Products
-          <span className="ml-1.5 text-xs font-normal text-gray-400">({products.length})</span>
-        </p>
-        {!drawerOpen && (
-          atProdLimit ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
-                Limit: {limits.products} products
-              </span>
-              <a href="/plans"
-                 onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
-                 className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
-                 style={{ backgroundColor: themeColor }}>
-                Upgrade →
-              </a>
-            </div>
-          ) : (
-            <button type="button" onClick={openAdd}
-                    className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg
-                               text-white transition-colors hover:opacity-90"
-                    style={{ backgroundColor: themeColor }}>
-              <Plus size={12} /> Add Product
-            </button>
-          )
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-extrabold text-gray-900">Products</h3>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{products.length}</span>
+        </div>
+        {atProdLimit ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+              Limit: {limits.products} products
+            </span>
+            <a href="/plans"
+               onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
+               className="text-xs font-bold text-white px-2.5 py-1.5 rounded-lg transition-colors"
+               style={{ backgroundColor: themeColor }}>
+              Upgrade →
+            </a>
+          </div>
+        ) : (
+          <button type="button" onClick={openAdd}
+                  className="flex items-center gap-1.5 text-sm font-bold px-3.5 py-2 rounded-xl
+                             text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+                  style={{ backgroundColor: themeColor }}>
+            <Plus size={15} strokeWidth={2.5} /> Add Product
+          </button>
         )}
       </div>
 
-      {/* Product list */}
-      {products.length === 0 && activeForm !== 'product' && (
-        <div className="text-center py-8 text-sm text-gray-400">
-          No products yet — click "Add Product" to get started.
+      {/* Empty state */}
+      {products.length === 0 && (
+        <div className="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-gray-300 shadow-sm">
+            <Package size={22} />
+          </div>
+          <p className="text-sm font-semibold text-gray-700">No products yet</p>
+          <p className="text-xs text-gray-400 mt-1">Tap “Add Product” to put your first item on the page.</p>
         </div>
       )}
 
@@ -612,129 +629,118 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       />
       {/* Drawer panel — slides in from the right (opposite the nav menu) */}
       {drawerOpen && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0"
-               style={{ borderBottomColor: `${themeColor}33` }}>
-            <p className="text-sm font-bold text-gray-900">
-              {editingId !== null ? 'Edit Product' : 'Add Product'}
-            </p>
-            <button type="button" onClick={resetForm}
-                    className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-              <X size={18} />
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-pl-slide-in-right">
+          {/* Branded header */}
+          <div className="flex-shrink-0 flex items-start justify-between px-5 py-4 text-white"
+               style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}cc)` }}>
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold leading-tight">
+                {editingId !== null ? 'Edit Product' : 'New Product'}
+              </p>
+              <p className="text-xs text-white/75 mt-0.5">
+                {editingId !== null ? 'Update the details below' : 'Add an item to your page'}
+              </p>
+            </div>
+            <button type="button" onClick={resetForm} aria-label="Close"
+                    className="p-2 -mr-1 -mt-0.5 rounded-lg text-white/90 hover:bg-white/15 transition-colors flex-shrink-0">
+              <X size={20} />
             </button>
           </div>
 
-          {/* Scrollable form body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Product Name <span className="text-red-500">*</span>
-              </label>
-              <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
-                     value={form.name}
-                     onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
-                     className={iCls(errors.name)} />
-              {errors.name && <p className="mt-0.5 text-xs text-red-500">{errors.name}</p>}
-            </div>
+          {/* Scrollable, sectioned form body */}
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 bg-gray-50/40">
 
-            {/* Category */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Category <span className="text-red-500">*</span>
-              </label>
-              <select value={form.category}
-                      onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
-                      className={iCls(errors.category)}>
-                <option value="">Select category…</option>
-                {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-              </select>
-              {errors.category && <p className="mt-0.5 text-xs text-red-500">{errors.category}</p>}
-            </div>
-
-            {/* Price & MRP */}
-            <div className="grid grid-cols-2 gap-3">
+            <FormSection title="Basics">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Price ₹ <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                  <input type="number" inputMode="numeric" min="0" placeholder="349"
-                         value={form.price}
-                         onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
-                         className={[iCls(errors.price), 'pl-7'].join(' ')} />
-                </div>
-                {errors.price && <p className="mt-0.5 text-xs text-red-500">{errors.price}</p>}
+                <label className={FIELD_LABEL}>Product Name <span className="text-red-500">*</span></label>
+                <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
+                       value={form.name}
+                       onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
+                       className={iCls(errors.name)} />
+                {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  MRP ₹ <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                  <input type="number" inputMode="numeric" min="0" placeholder="499"
-                         value={form.mrp}
-                         onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
-                         className={[iCls(false), 'pl-7'].join(' ')} />
+                <label className={FIELD_LABEL}>Category <span className="text-red-500">*</span></label>
+                <select value={form.category}
+                        onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
+                        className={iCls(errors.category)}>
+                  <option value="">Select category…</option>
+                  {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+                {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
+              </div>
+            </FormSection>
+
+            <FormSection title="Pricing">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={FIELD_LABEL}>Price <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                    <input type="number" inputMode="numeric" min="0" placeholder="349"
+                           value={form.price}
+                           onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
+                           className={[iCls(errors.price), 'pl-7'].join(' ')} />
+                  </div>
+                  {errors.price && <p className="mt-1 text-xs text-red-500">{errors.price}</p>}
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>MRP <span className="text-gray-400 font-normal">· optional</span></label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                    <input type="number" inputMode="numeric" min="0" placeholder="499"
+                           value={form.mrp}
+                           onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
+                           className={[iCls(false), 'pl-7'].join(' ')} />
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* Unit */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
-              <select value={form.unit}
-                      onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
-                      className={iCls(false)}>
-                {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-              {form.unit === 'Other…' && (
-                <input type="text" placeholder="e.g. per roll, per bundle"
-                       value={form.unitCustom}
-                       onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
-                       className={[iCls(false), 'mt-2'].join(' ')} />
-              )}
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Description <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <input type="text" placeholder="Short description"
-                     value={form.description}
-                     onChange={e => setForm(p => ({...p, description:e.target.value}))}
-                     className={iCls(false)} />
-            </div>
-
-            {/* Image */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                Product Image <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
-            </div>
-
-            {/* Variants — collapsed by default, expand with "Add variants" */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-gray-600">
-                  Variants <span className="text-gray-400 font-normal">(Size, Colour, Weight…)</span>
-                </label>
-                {!showVariants && (
-                  <button type="button"
-                    onClick={() => setShowVariants(true)}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1">
-                    <Plus size={11} /> Add
-                  </button>
+              <div>
+                <label className={FIELD_LABEL}>Sold by</label>
+                <select value={form.unit}
+                        onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
+                        className={iCls(false)}>
+                  {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+                {form.unit === 'Other…' && (
+                  <input type="text" placeholder="e.g. per roll, per bundle"
+                         value={form.unitCustom}
+                         onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
+                         className={[iCls(false), 'mt-2'].join(' ')} />
                 )}
               </div>
-              {showVariants && (
-                <div className="rounded-xl border border-gray-200 p-3 space-y-3 bg-gray-50/50">
+            </FormSection>
+
+            <FormSection title="Details">
+              <div>
+                <label className={FIELD_LABEL}>Description <span className="text-gray-400 font-normal">· optional</span></label>
+                <input type="text" placeholder="Short description"
+                       value={form.description}
+                       onChange={e => setForm(p => ({...p, description:e.target.value}))}
+                       className={iCls(false)} />
+              </div>
+              <div>
+                <label className={FIELD_LABEL}>Product Image <span className="text-gray-400 font-normal">· optional</span></label>
+                <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Variants"
+              action={!showVariants && (
+                <button type="button" onClick={() => setShowVariants(true)}
+                  className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors">
+                  <Plus size={12} /> Add
+                </button>
+              )}>
+              {!showVariants ? (
+                <p className="text-xs text-gray-400 -mt-1">
+                  Add options like Size, Colour or Weight so customers pick one before ordering.
+                </p>
+              ) : (
+                <div className="rounded-xl border border-gray-200 p-3.5 space-y-3 bg-white">
                   <div>
-                    <p className="text-[11px] font-semibold text-gray-500 mb-1">Variant type</p>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Variant type</p>
                     <input type="text" placeholder="e.g. Size, Colour, Weight"
                       value={form.variantLabel}
                       onChange={e => setForm(p => ({ ...p, variantLabel: e.target.value }))}
@@ -748,13 +754,13 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                           <input type="text" placeholder={`e.g. ${['S','M','L','XL'][i] || 'Option'}`}
                             value={o.name}
                             onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
-                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                           <div className="relative w-24 flex-shrink-0">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                             <input type="number" inputMode="numeric" min={0} placeholder="price"
                               value={o.price}
                               onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
-                              className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                              className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                           </div>
                           <button type="button" aria-label="Remove"
                             onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
@@ -763,34 +769,35 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       ))}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pt-0.5">
                     <button type="button"
                       onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '' }] }))}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-700">
+                      className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
+                      style={{ color: themeColor }}>
                       <Plus size={13} /> Add option
                     </button>
                     <button type="button"
                       onClick={() => { setForm(p => ({ ...p, variantLabel: '', variantOptions: [] })); setShowVariants(false); }}
-                      className="text-xs text-red-400 hover:text-red-600">
-                      Remove variants
+                      className="text-xs font-semibold text-red-400 hover:text-red-600">
+                      Remove
                     </button>
                   </div>
-                  <p className="text-[11px] text-gray-400">Leave price blank to use the main price. Customer picks one option when ordering.</p>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Leave a price blank to use the main price. Customers pick one option when ordering.</p>
                 </div>
               )}
-            </div>
+            </FormSection>
           </div>
 
           {/* Footer actions */}
-          <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
-            <button type="button" onClick={submitProduct}
-                    className="flex-1 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: themeColor }}>
-              {editingId !== null ? 'Update Product' : 'Add Product'}
-            </button>
+          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 bg-white flex gap-3">
             <button type="button" onClick={resetForm}
-                    className="px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                    className="px-5 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
+            </button>
+            <button type="button" onClick={submitProduct}
+                    className="flex-1 py-3 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 active:scale-[0.99] transition-all"
+                    style={{ backgroundColor: themeColor }}>
+              {editingId !== null ? 'Save Changes' : 'Add Product'}
             </button>
           </div>
         </div>
@@ -877,11 +884,11 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
     <div className="space-y-4">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-700">
-          Categories
-          <span className="ml-1.5 text-xs font-normal text-gray-400">({userCats.length})</span>
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-extrabold text-gray-900">Categories</h3>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{userCats.length}</span>
+        </div>
         {activeForm !== 'category' && (
           atCatLimit ? (
             <div className="flex items-center gap-2">
@@ -897,18 +904,22 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
             </div>
           ) : (
             <button type="button" onClick={openAdd}
-                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
-                               border border-dashed border-gray-300 text-gray-500
-                               hover:border-gray-400 hover:text-gray-700 transition-colors">
-              <Plus size={12} /> Add Category
+                    className="flex items-center gap-1.5 text-sm font-bold px-3.5 py-2 rounded-xl
+                               text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+                    style={{ backgroundColor: themeColor }}>
+              <Plus size={15} strokeWidth={2.5} /> Add Category
             </button>
           )
         )}
       </div>
 
       {userCats.length === 0 && activeForm !== 'category' && (
-        <div className="text-center py-6 text-sm text-gray-400">
-          No categories yet. Add one to get started.
+        <div className="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-gray-300 shadow-sm">
+            <Tag size={22} />
+          </div>
+          <p className="text-sm font-semibold text-gray-700">No categories yet</p>
+          <p className="text-xs text-gray-400 mt-1">Group your products so customers can browse easily.</p>
         </div>
       )}
 

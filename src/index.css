@@ -129,6 +129,11 @@
     from { opacity: 0; transform: translateY(28px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  /* Right-edge slide-in for side panels / drawers */
+  @keyframes pl-slide-in-right {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
 
   .animate-pl-float      { animation: pl-float 6s ease-in-out infinite; }
   .animate-pl-float-slow { animation: pl-float-slow 8s ease-in-out infinite; }
@@ -140,6 +145,7 @@
   .animate-pl-aurora     { animation: pl-aurora 18s ease-in-out infinite; }
   .animate-pl-glow       { animation: pl-glow 5s ease-in-out infinite; }
   .animate-pl-marquee-slow { animation: pl-marquee 40s linear infinite; }
+  .animate-pl-slide-in-right { animation: pl-slide-in-right 0.28s ease-out both; }
 
   /* Shimmering gradient text — apply to a span with bg-clip-text */
   .pl-shimmer-text {
