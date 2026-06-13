@@ -38,11 +38,13 @@ export function discountPercent(price, mrp) {
  *   total     — the final amount the customer pays
  */
 export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
-  const { taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive = false } = cartConfig;
+  const { taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive: storeInclusive = false } = cartConfig;
 
-  // Each item's GST rate: its own `gstRate` (set per product for mixed-rate
-  // stores), else the store-wide default rate.
-  const rateFor = (item) => (item.gstRate != null ? item.gstRate : taxRate);
+  // Per item: GST rate and whether it's inclusive/exclusive. Each can be set on
+  // the product to override the store-wide defaults (mixed-rate / mixed-mode
+  // stores); otherwise the store settings apply.
+  const rateFor      = (item) => (item.gstRate != null ? item.gstRate : taxRate);
+  const inclusiveFor = (item) => (item.taxInclusive != null ? item.taxInclusive : storeInclusive);
 
   const subtotal = items.reduce(
     (sum, item) => sum + item.price * item.qty,
@@ -60,21 +62,31 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     : subtotal >= freeShippingAbove ? 0
     : shippingCharge;
 
-  // GST is summed per line so a cart can mix rates (e.g. 5% dry fruit + 18% oil).
-  //  • inclusive — listed prices ALREADY contain GST; back-calculate the portion
-  //    inside each line for the invoice (not added to the total).
-  //  • exclusive (default / legacy) — GST is added on top.
-  const taxRaw = items.reduce((sum, item) => {
+  // GST summed per line so a cart can mix rates (5% dry fruit + 18% oil) and even
+  // mix modes. `taxRaw` is the total GST shown; `addedTax` is only the part added
+  // on top (exclusive lines) — inclusive lines already sit inside the subtotal.
+  let taxRaw = 0;
+  let addedTax = 0;
+  for (const item of items) {
     const r = rateFor(item);
+    if (r <= 0) continue;
     const line = item.price * item.qty;
-    return sum + (taxInclusive ? line - line / (1 + r) : line * r);
-  }, 0);
+    if (inclusiveFor(item)) {
+      taxRaw += line - line / (1 + r);          // back-calculated, not added
+    } else {
+      const t = line * r;
+      taxRaw   += t;
+      addedTax += t;                            // added on top of the subtotal
+    }
+  }
   const tax = Math.round(taxRaw);
 
-  // If every taxed line shares one rate, expose it so the UI can label "GST (5%)";
-  // otherwise it's a mix and the label drops the percentage.
-  const rates = new Set(items.filter(i => rateFor(i) > 0).map(rateFor));
+  // Labels: expose the single rate when all taxed lines share one (else null),
+  // and "inclusive" only when every taxed line is inclusive.
+  const taxed = items.filter((i) => rateFor(i) > 0);
+  const rates = new Set(taxed.map(rateFor));
   const taxUniformPct = rates.size === 1 ? Math.round([...rates][0] * 100) : null;
+  const taxInclusive  = taxed.length > 0 && taxed.every(inclusiveFor);
 
   return {
     subtotal,
@@ -83,6 +95,6 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     shipping,
     taxInclusive,
     taxUniformPct,
-    total: taxInclusive ? subtotal + shipping : subtotal + tax + shipping,
+    total: subtotal + Math.round(addedTax) + shipping,
   };
 }

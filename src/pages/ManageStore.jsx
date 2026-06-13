@@ -50,7 +50,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', variantLabel:'', variantOptions:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[] };
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -444,6 +444,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       description: product.description || '',
       image:       product.image       || '',
       gstRate:     product.gstRate != null ? product.gstRate : '',
+      taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
       variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '' })) : [],
     });
@@ -487,6 +488,12 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
     // Per-product GST: '' means "use the store default rate" → store undefined.
     const gstRate    = form.gstRate === '' || form.gstRate == null ? undefined : Number(form.gstRate);
+    // Per-product inclusive/exclusive override — only meaningful alongside a
+    // custom rate; '' (Same as store) and the no-custom-rate case store undefined.
+    const taxInclusive = gstRate == null ? undefined
+      : form.taxMode === 'inclusive' ? true
+      : form.taxMode === 'exclusive' ? false
+      : undefined;
 
     let newProducts;
     if (editingId !== null) {
@@ -495,7 +502,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, variants }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants }
           : p
       );
     } else {
@@ -510,6 +517,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         unit:        finalUnit,
         gstRate,
+        taxInclusive,
         variants,
         badge:       null,
         badgeColor:  null,
@@ -742,9 +750,30 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                        className={iCls(false)} />
               )}
               {form.gstRate !== '' && (
-                <p className="text-[11px] text-gray-400 -mt-1">
-                  This item uses its own GST rate instead of the store default.
-                </p>
+                <div>
+                  <label className={FIELD_LABEL}>This item's GST is…</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { v: '',          t: 'Same as store' },
+                      { v: 'inclusive', t: 'Included' },
+                      { v: 'exclusive', t: 'Extra' },
+                    ].map(opt => {
+                      const active = form.taxMode === opt.v;
+                      return (
+                        <button key={opt.v || 'def'} type="button"
+                          onClick={() => setForm(p => ({ ...p, taxMode: opt.v }))}
+                          className={['rounded-xl border px-2 py-2 text-xs font-semibold transition-all active:scale-95',
+                            active ? 'text-white border-transparent shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'].join(' ')}
+                          style={active ? { backgroundColor: themeColor } : undefined}>
+                          {opt.t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-400 leading-relaxed">
+                    Whether this item's price already includes its GST or has it added at checkout. “Same as store” follows your Settings.
+                  </p>
+                </div>
               )}
             </FormSection>
 
