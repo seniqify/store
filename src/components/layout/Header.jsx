@@ -12,9 +12,7 @@ export default function Header({ cartCount = 0, onCartOpen }) {
 
   // Top-strip message adapts to the business type (default: product store).
   const infoStrip = {
-    hotel:      '🛎️ Bookings confirmed instantly on WhatsApp',
-    service:    '💬 Free consultation on WhatsApp',
-    restaurant: '🍽️ Order — confirmed on WhatsApp',
+    service: '💬 Free consultation on WhatsApp',
   }[businessType] ?? `🚚 Free delivery above ₹${cart.freeShippingAbove}`;
 
   return (

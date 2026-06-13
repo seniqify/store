@@ -15,6 +15,7 @@ import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
+  Menu, LogOut,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -398,19 +399,21 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const limits      = getPlanLimits(plan);
   const atProdLimit = !canAddProduct(plan, products.length);
 
-  const [activeForm,    setActiveForm]    = useState(null);  // 'product' | null
+  const [drawerOpen,    setDrawerOpen]    = useState(false);
+  const [showVariants,  setShowVariants]  = useState(false);
   const [form,          setForm]          = useState(EMPTY_PROD);
   const [editingId,     setEditingId]     = useState(null);
   const [errors,        setErrors]        = useState({});
   const [dirty,         setDirty]         = useState(false);
 
-  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setActiveForm(null); }
+  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setDrawerOpen(false); }
 
   function openAdd() {
     setForm(EMPTY_PROD);
     setEditingId(null);
     setErrors({});
-    setActiveForm('product');
+    setShowVariants(false);
+    setDrawerOpen(true);
   }
 
   function openEdit(product) {
@@ -429,7 +432,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     });
     setEditingId(product.id);
     setErrors({});
-    setActiveForm('product');
+    setShowVariants(!!(product.variants?.label && product.variants?.options?.length > 0));
+    setDrawerOpen(true);
   }
 
   function validate() {
@@ -512,7 +516,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           Products
           <span className="ml-1.5 text-xs font-normal text-gray-400">({products.length})</span>
         </p>
-        {activeForm !== 'product' && (
+        {!drawerOpen && (
           atProdLimit ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
@@ -591,16 +595,34 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         })}
       </div>
 
-      {/* Inline product form */}
-      {activeForm === 'product' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            {editingId !== null ? 'Edit Product' : 'New Product'}
-          </p>
+      {/* ── Product Form Drawer (slides in from right) ────────────────────── */}
+      {/* Backdrop */}
+      <div
+        className={[
+          'fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
+          drawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
+        ].join(' ')}
+        onClick={resetForm}
+      />
+      {/* Drawer panel — slides in from the right (opposite the nav menu) */}
+      {drawerOpen && (
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0"
+               style={{ borderBottomColor: `${themeColor}33` }}>
+            <p className="text-sm font-bold text-gray-900">
+              {editingId !== null ? 'Edit Product' : 'Add Product'}
+            </p>
+            <button type="button" onClick={resetForm}
+                    className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+              <X size={18} />
+            </button>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Scrollable form body */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
             {/* Name */}
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Product Name <span className="text-red-500">*</span>
               </label>
@@ -625,6 +647,35 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               {errors.category && <p className="mt-0.5 text-xs text-red-500">{errors.category}</p>}
             </div>
 
+            {/* Price & MRP */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Price ₹ <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                  <input type="number" inputMode="numeric" min="0" placeholder="349"
+                         value={form.price}
+                         onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
+                         className={[iCls(errors.price), 'pl-7'].join(' ')} />
+                </div>
+                {errors.price && <p className="mt-0.5 text-xs text-red-500">{errors.price}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  MRP ₹ <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                  <input type="number" inputMode="numeric" min="0" placeholder="499"
+                         value={form.mrp}
+                         onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
+                         className={[iCls(false), 'pl-7'].join(' ')} />
+                </div>
+              </div>
+            </div>
+
             {/* Unit */}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
@@ -634,44 +685,15 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
               {form.unit === 'Other…' && (
-                <input type="text" placeholder="e.g. per roll, per bundle" autoFocus
+                <input type="text" placeholder="e.g. per roll, per bundle"
                        value={form.unitCustom}
                        onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
                        className={[iCls(false), 'mt-2'].join(' ')} />
               )}
             </div>
 
-            {/* Price */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Price ₹ <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                <input type="number" inputMode="numeric" min="0" placeholder="349"
-                       value={form.price}
-                       onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
-                       className={[iCls(errors.price), 'pl-7'].join(' ')} />
-              </div>
-              {errors.price && <p className="mt-0.5 text-xs text-red-500">{errors.price}</p>}
-            </div>
-
-            {/* MRP */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                MRP ₹ <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                <input type="number" inputMode="numeric" min="0" placeholder="499"
-                       value={form.mrp}
-                       onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
-                       className={[iCls(false), 'pl-7'].join(' ')} />
-              </div>
-            </div>
-
             {/* Description */}
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Description <span className="text-gray-400 font-normal">(optional)</span>
               </label>
@@ -682,61 +704,86 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
             </div>
 
             {/* Image */}
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">
                 Product Image <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
             </div>
 
-            {/* Variants */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                Variants <span className="text-gray-400 font-normal">(optional — e.g. Size, Colour, Weight)</span>
-              </label>
-              <div className="rounded-xl border border-gray-200 p-3 space-y-2.5 bg-gray-50/50">
-                <input type="text" placeholder="Option type — e.g. Size"
-                  value={form.variantLabel}
-                  onChange={e => setForm(p => ({ ...p, variantLabel: e.target.value }))}
-                  className={iCls(false)} />
-                {(form.variantOptions || []).map((o, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <input type="text" placeholder="Option — e.g. M"
-                      value={o.name}
-                      onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
-                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
-                    <div className="relative w-24 flex-shrink-0">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
-                      <input type="number" inputMode="numeric" min={0} placeholder="price"
-                        value={o.price}
-                        onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
-                        className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
-                    </div>
-                    <button type="button" aria-label="Remove option"
-                      onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
-                      className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
-                  </div>
-                ))}
-                <button type="button"
-                  onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '' }] }))}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-700">
-                  <Plus size={13} /> Add option
-                </button>
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Leave price blank to use the main price. Customers pick one option before adding to cart.
-                </p>
+            {/* Variants — collapsed by default, expand with "Add variants" */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-600">
+                  Variants <span className="text-gray-400 font-normal">(Size, Colour, Weight…)</span>
+                </label>
+                {!showVariants && (
+                  <button type="button"
+                    onClick={() => setShowVariants(true)}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1">
+                    <Plus size={11} /> Add
+                  </button>
+                )}
               </div>
+              {showVariants && (
+                <div className="rounded-xl border border-gray-200 p-3 space-y-3 bg-gray-50/50">
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1">Variant type</p>
+                    <input type="text" placeholder="e.g. Size, Colour, Weight"
+                      value={form.variantLabel}
+                      onChange={e => setForm(p => ({ ...p, variantLabel: e.target.value }))}
+                      className={iCls(false)} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options</p>
+                    <div className="space-y-2">
+                      {(form.variantOptions || []).map((o, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input type="text" placeholder={`e.g. ${['S','M','L','XL'][i] || 'Option'}`}
+                            value={o.name}
+                            onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
+                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                          <div className="relative w-24 flex-shrink-0">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                            <input type="number" inputMode="numeric" min={0} placeholder="price"
+                              value={o.price}
+                              onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
+                              className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                          </div>
+                          <button type="button" aria-label="Remove"
+                            onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
+                            className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button type="button"
+                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '' }] }))}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-700">
+                      <Plus size={13} /> Add option
+                    </button>
+                    <button type="button"
+                      onClick={() => { setForm(p => ({ ...p, variantLabel: '', variantOptions: [] })); setShowVariants(false); }}
+                      className="text-xs text-red-400 hover:text-red-600">
+                      Remove variants
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400">Leave price blank to use the main price. Customer picks one option when ordering.</p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          {/* Footer actions */}
+          <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
             <button type="button" onClick={submitProduct}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                    className="flex-1 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
                     style={{ backgroundColor: themeColor }}>
               {editingId !== null ? 'Update Product' : 'Add Product'}
             </button>
             <button type="button" onClick={resetForm}
-                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-gray-700">
+                    className="px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-gray-700 transition-colors">
               Cancel
             </button>
           </div>
@@ -1574,6 +1621,7 @@ export default function ManageStore() {
   const [storePin,    setStorePin]    = useState('');
   const [config,      setConfig]      = useState(null);
   const [tab,         setTab]         = useState('orders');
+  const [menuOpen,    setMenuOpen]    = useState(false);   // left slide-out nav drawer
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
   const saveTimerRef = useRef(null);
@@ -1679,23 +1727,16 @@ export default function ManageStore() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40">
 
-      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      {/* ── Top bar (hamburger + current section title) ─────────────────────── */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
-        <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow-sm"
-                 style={{ backgroundColor: themeColor + '20' }}>
-              {config.logoEmoji || '🏪'}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-gray-900 truncate leading-tight">{config.businessName}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                Page live · Manage
-              </p>
-            </div>
-          </div>
-
+        <div className="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
+          <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu"
+                  className="p-2 -ml-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
+            <Menu size={22} />
+          </button>
+          <p className="text-base font-extrabold text-gray-900 truncate flex-1">
+            {TABS.find(t => t.key === tab)?.label || 'Manage'}
+          </p>
           <Link to={`/${businessSlug}`}
                 className="flex items-center gap-1.5 text-xs font-bold text-white
                            transition-all flex-shrink-0 rounded-lg px-3 py-2
@@ -1721,29 +1762,76 @@ export default function ManageStore() {
         </div>
       )}
 
-      {/* ── Tab navigation ──────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-100 sticky top-16 z-10">
-        <div className="max-w-lg mx-auto px-4 flex overflow-x-auto scrollbar-hide">
+      {/* ── Slide-out left nav drawer ───────────────────────────────────────── */}
+      <div
+        className={[
+          'fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
+          menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
+        ].join(' ')}
+        onClick={() => setMenuOpen(false)}
+      />
+      <aside
+        className={[
+          'fixed inset-y-0 left-0 z-50 w-72 max-w-[82%] flex flex-col text-white shadow-2xl',
+          'transition-transform duration-300 ease-out',
+          menuOpen ? 'translate-x-0' : '-translate-x-full',
+        ].join(' ')}
+        style={{ background: `linear-gradient(180deg, ${themeColor}, ${themeColor}e0)` }}
+      >
+        {/* Profile header */}
+        <div className="px-5 pt-7 pb-5">
+          <div className="flex items-center gap-3">
+            {config.logo ? (
+              <img src={config.logo} alt="" className="w-14 h-14 rounded-full object-cover ring-2 ring-white/50 flex-shrink-0" />
+            ) : (
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-white/15 ring-2 ring-white/40 flex-shrink-0">
+                {config.logoEmoji || '🏪'}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-extrabold leading-tight truncate">{config.businessName}</p>
+              <p className="text-xs text-white/70 truncate">pocketlink.store/{businessSlug}</p>
+            </div>
+            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
+                    className="p-1.5 rounded-lg text-white/80 hover:bg-white/15 transition-colors flex-shrink-0">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="h-px bg-white/15 mx-5" />
+
+        {/* Nav items */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {TABS.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
               <button
                 key={key}
                 type="button"
-                onClick={() => setTab(key)}
+                onClick={() => { setTab(key); setMenuOpen(false); }}
                 className={[
-                  'flex-1 min-w-[4.75rem] flex items-center justify-center gap-1.5 py-3.5 text-xs font-semibold',
-                  'border-b-2 transition-colors',
-                  active ? '' : 'border-transparent text-gray-400 hover:text-gray-600',
-                ].join(' ')}
-                style={active ? { borderColor: themeColor, color: themeColor } : undefined}>
-                <Icon size={14} />
+                  'w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold transition-colors',
+                  active ? 'bg-white/20 text-white' : 'text-white/85 hover:bg-white/10',
+                ].join(' ')}>
+                <Icon size={19} className="flex-shrink-0" />
                 {label}
               </button>
             );
           })}
+        </nav>
+
+        {/* Footer — lock the panel (re-asks for PIN) */}
+        <div className="px-3 pb-6 pt-2 border-t border-white/15 mx-2">
+          <button
+            type="button"
+            onClick={() => { setMenuOpen(false); setPinVerified(false); setStorePin(''); }}
+            className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold text-white/85 hover:bg-white/10 transition-colors">
+            <LogOut size={19} className="flex-shrink-0" />
+            Lock & Exit
+          </button>
         </div>
-      </div>
+      </aside>
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
       <main className="max-w-lg mx-auto px-4 py-6">

@@ -16,6 +16,19 @@ function absImage(src, origin) {
   return null;                                  // data: URLs etc. — skip
 }
 
+// Short, stable token over the fields that change the dynamic /api/og card.
+// Appended to the og:image URL so a logo/name/brand edit yields a NEW image URL
+// — which busts the CDN cache and prompts scrapers to re-fetch the fresh card.
+function ogToken(config) {
+  const basis = [
+    config.logo, config.logoEmoji, config.businessName,
+    config.tagline, config.theme && config.theme.primary,
+  ].join('|');
+  let h = 0;
+  for (let i = 0; i < basis.length; i++) h = (Math.imul(h, 31) + basis.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 const TYPE_SCHEMA = {
   restaurant: 'Restaurant',
   hotel:      'LodgingBusiness',
@@ -42,7 +55,7 @@ export function storeSeo(config, slug, origin) {
   // The owner's cover photo wins; otherwise a dynamic branded card (their
   // logo/emoji + name + brand colour, rendered by /api/og) — never the generic
   // PocketLink image, so every shared link looks shop-specific.
-  const image = absImage(config.coverImage, origin) || `${origin}/api/og?slug=${encodeURIComponent(slug)}`;
+  const image = absImage(config.coverImage, origin) || `${origin}/api/og?slug=${encodeURIComponent(slug)}&v=${ogToken(config)}`;
   const wa    = String(config.whatsappNumber || '').replace(/\D/g, '');
   const products = Array.isArray(config.products) ? config.products.slice(0, 40) : [];
 

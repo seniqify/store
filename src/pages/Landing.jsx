@@ -29,9 +29,7 @@ const VALUE_PROPS = [
 
 const USE_CASES = [
   { emoji: '🛒', label: 'Retail & Wholesale', desc: 'Electronics, groceries, apparel, manufacturers', color: '#0d9488' },
-  { emoji: '🍽️', label: 'Restaurants & Food', desc: 'Cafes, cloud kitchens, bakeries, tiffins',        color: '#f97316' },
   { emoji: '🔧', label: 'Services & Agencies', desc: 'Salons, repairs, consultants, home services',     color: '#6366f1' },
-  { emoji: '🏨', label: 'Lodges & Stay',       desc: 'Lodges, resorts, homestays, guest houses',         color: '#0ea5e9' },
 ];
 
 const TESTIMONIALS = [
@@ -82,11 +80,8 @@ const PRICING_PLANS = [
 // Scrolling strip of business types under the hero
 const MARQUEE = [
   { emoji: '🛒', label: 'Kirana & Grocery' },
-  { emoji: '🍰', label: 'Bakeries' },
-  { emoji: '🍽️', label: 'Restaurants' },
   { emoji: '💐', label: 'Florists' },
   { emoji: '🔧', label: 'Repairs & Services' },
-  { emoji: '🏨', label: 'Lodges & Stay' },
   { emoji: '👗', label: 'Boutiques' },
   { emoji: '💇', label: 'Salons' },
   { emoji: '💼', label: 'Consultants' },
@@ -128,12 +123,10 @@ function Reveal({ children, delay = 0, className = '' }) {
 
 /* ── Headline word that cycles through business types ────────────────── */
 const ROTATING = [
-  { word: 'shop',       color: '#34d399' },
-  { word: 'restaurant', color: '#fbbf24' },
-  { word: 'boutique',   color: '#f472b6' },
-  { word: 'salon',      color: '#a78bfa' },
-  { word: 'hotel',      color: '#38bdf8' },
-  { word: 'studio',     color: '#5eead4' },
+  { word: 'shop',     color: '#34d399' },
+  { word: 'boutique', color: '#f472b6' },
+  { word: 'salon',    color: '#a78bfa' },
+  { word: 'studio',   color: '#5eead4' },
 ];
 
 function RotatingWord() {
@@ -459,24 +452,6 @@ const BIZ_RECIPES = [
     ],
   },
   {
-    key: 'hotel', match: ['hotel', 'stay', 'lodge', 'resort', 'inn', 'rooms', 'homestay', 'sunset'],
-    emoji: '🏨', tagline: 'Your home away from home', from: '#38bdf8', to: '#0284c7',
-    promo: '🌙 Early-bird · 25% off bookings', accent: '#0284c7',
-    products: [
-      { e: '🛏️', n: 'Deluxe Room', p: '₹2,400' }, { e: '🏊', n: 'Pool Suite', p: '₹4,800' },
-      { e: '🌅', n: 'Sea View', p: '₹3,600' },     { e: '👨‍👩‍👧', n: 'Family Room', p: '₹3,200' },
-    ],
-  },
-  {
-    key: 'food', match: ['restaurant', 'cafe', 'kitchen', 'food', 'biryani', 'pizza', 'dhaba', 'tiffin', 'tea'],
-    emoji: '🍽️', tagline: 'Hot & fresh, made to order', from: '#fb923c', to: '#ea580c',
-    promo: '🚚 Free delivery above ₹299', accent: '#ea580c',
-    products: [
-      { e: '🍛', n: 'Veg Biryani', p: '₹180' },  { e: '🍕', n: 'Margherita', p: '₹249' },
-      { e: '🍔', n: 'Paneer Burger', p: '₹149' }, { e: '🥤', n: 'Cold Coffee', p: '₹99' },
-    ],
-  },
-  {
     key: 'electronics', match: ['electronic', 'mobile', 'gadget', 'computer', 'tech', 'repair', 'digital'],
     emoji: '📱', tagline: 'Latest tech, best prices', from: '#34d399', to: '#0d9488',
     promo: '⚡ Mega Sale · up to 40% off', accent: '#0d9488',
@@ -499,7 +474,7 @@ const BIZ_RECIPES = [
 // Default shown before the user types (also the first auto-demo)
 const DEFAULT_RECIPE = BIZ_RECIPES[0];
 // Names the builder auto-types when idle
-const DEMO_NAMES = ['Sharma Sweets', 'Glow Salon', 'Sunset Hotel', 'Spice Kitchen', 'TechHub Mobiles', 'Bloom Boutique'];
+const DEMO_NAMES = ['Glow Salon', 'TechHub Mobiles', 'Bloom Boutique'];
 
 function recipeFor(name) {
   const n = name.toLowerCase();
@@ -1043,7 +1018,7 @@ export default function Landing() {
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
             {USE_CASES.map(({ emoji, label, desc, color }, idx) => (
               <Reveal
                 key={label}
@@ -1131,7 +1106,7 @@ export default function Landing() {
                     <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
                       <ShoppingBag size={13} style={{ color: biz.theme.primary }} />
                       {biz.products.length}{' '}
-                      {{ restaurant: 'dishes', service: 'services', hotel: 'rooms' }[biz.businessType] ?? 'products'}
+                      {{ service: 'services' }[biz.businessType] ?? 'products'}
                     </span>
                     <span className="inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all text-emerald-300">
                       View <ChevronRight size={13} />

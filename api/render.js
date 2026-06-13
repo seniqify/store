@@ -142,7 +142,9 @@ export default async function handler(req, res) {
         html = html.replace('</head>', `<script>window.__PL_CONFIG__=${cfgJson}</script>\n</head>`);
         html = injectBody(html, storeSplash(config) + hiddenForBots(storeBody(config, slug, origin, seo)));
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=86400');
+        // Short edge cache so owner edits surface in the link preview quickly on
+        // re-scrape. The SPA also revalidates client-side, so humans never wait.
+        res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=600');
         res.status(200).send(html);
         return;
       }

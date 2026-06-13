@@ -6,7 +6,7 @@ import { X, ArrowLeft } from 'lucide-react';
  * A focused slide-over (right panel on desktop, full-screen on mobile) for the
  * order/checkout form — opened from the cart instead of an inline form hanging
  * off the bottom of the catalog. Generic shell: pass the template's own form as
- * `children`, so every business type (product, restaurant, …) shares the same
+ * `children`, so every business type (product, service) shares the same
  * checkout UX. Mirrors CartSidebar's stacking (z-[60]/[55]) so it sits above
  * the mobile tab bar.
  *

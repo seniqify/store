@@ -8,9 +8,7 @@ import { useI18n } from '../../i18n/I18nContext';
 
 const BUSINESS_TYPES = [
   { key: 'product',    emoji: '🛒', tint: '#0d9488' },
-  { key: 'restaurant', emoji: '🍽️', tint: '#ea580c' },
   { key: 'service',    emoji: '🛠️', tint: '#9333ea' },
-  { key: 'hotel',      emoji: '🏨', tint: '#6366f1' },
 ];
 
 export default function StepBusinessType({ selected, onSelect, onNext }) {

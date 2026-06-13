@@ -8,7 +8,7 @@ import StoreStatus      from './components/store/StoreStatus';
 import StoreReviews     from './components/store/StoreReviews';
 import ErrorBoundary    from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
-import { loadBusiness, listBusinesses } from './utils/BusinessLoader';
+import { loadBusiness, refreshBusiness, listBusinesses } from './utils/BusinessLoader';
 import { logStoreView } from './utils/viewService';
 import { applyTheme }   from './utils/theme';
 import { I18nProvider } from './i18n/I18nContext';
@@ -106,6 +106,11 @@ function BusinessShell() {
   const handleCartCountChange = useCallback((c) => setCartCount(c), []);
 
   useEffect(() => {
+    let alive = true;
+    // Always converge to the DB truth so owner edits (products, logo, cover)
+    // appear without a hard refresh — never trust a cached/SSR copy forever.
+    const applyFresh = (cfg) => { if (alive && cfg) setConfig({ ...cfg, plan: cfg.plan ?? 'free' }); };
+
     // Fast path: server-rendered store pages embed their config in the HTML
     // (window.__PL_CONFIG__) — hydrate instantly, no second DB fetch and no
     // "Loading page…" flash. Consumed once; SPA navigations use the loader.
@@ -116,22 +121,27 @@ function BusinessShell() {
       setNotFound(false);
       setLoading(false);
       logStoreView(businessSlug);
-      return;
+      // The embedded config can be edge-cached (up to the SSR s-maxage), so
+      // revalidate against the DB and patch in any newer version.
+      refreshBusiness(businessSlug).then(applyFresh).catch(() => {});
+      return () => { alive = false; };
     }
 
     setLoading(true);
     setNotFound(false);
     setConfig(null);
 
-    loadBusiness(businessSlug).then((cfg) => {
+    loadBusiness(businessSlug, { onFresh: applyFresh }).then((cfg) => {
+      if (!alive) return;
       if (cfg) {
-        setConfig(cfg);
+        setConfig({ ...cfg, plan: cfg.plan ?? 'free' });
         logStoreView(cfg.slug);   // count this visit (deduped per device/day)
       } else {
         setNotFound(true);
       }
       setLoading(false);
     });
+    return () => { alive = false; };
   }, [businessSlug]);
 
   if (loading)  return <LoadingScreen />;

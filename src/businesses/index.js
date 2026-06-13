@@ -10,15 +10,11 @@
  */
 
 import { aanyaBoutiqueConfig }  from './aanyaboutique';   // product / retail
-import { spiceRouteConfig }     from './spiceroute';      // restaurant / food
 import { glowUpConfig }         from './glowup';          // service / agency
-import { coralCourtyardConfig } from './coralcourtyard';  // lodges & stay
 
 const REGISTRY = {
-  aanyaboutique:  aanyaBoutiqueConfig,
-  spiceroute:     spiceRouteConfig,
-  glowup:         glowUpConfig,
-  coralcourtyard: coralCourtyardConfig,
+  aanyaboutique: aanyaBoutiqueConfig,
+  glowup:        glowUpConfig,
 };
 
 export default REGISTRY;

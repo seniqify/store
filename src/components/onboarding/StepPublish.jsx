@@ -8,7 +8,7 @@ import { useI18n } from '../../i18n/I18nContext';
  * (defaults to the last 4 of the WhatsApp number), and the Launch button.
  */
 
-const TYPE_TO_MODE = { product: 'product', restaurant: 'menuitem', service: 'service', hotel: 'room' };
+const TYPE_TO_MODE = { product: 'product', service: 'service' };
 
 export default function StepPublish({ data, config, saving, saveError, onBack, onPublish, onPinChange }) {
   const { t } = useI18n();

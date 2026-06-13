@@ -2,7 +2,7 @@
 const ORIGIN  = 'https://www.pocketlink.store';
 const MARKET  = 'https://market.pocketlink.store/';   // consumer marketplace home
 const STATIC  = ['/', '/plans', '/start', '/terms', '/privacy'];
-const DEMOS   = ['aanyaboutique', 'spiceroute', 'glowup', 'coralcourtyard'];
+const DEMOS   = ['aanyaboutique', 'glowup'];
 
 export default async function handler(req, res) {
   const SUPABASE_URL  = process.env.VITE_SUPABASE_URL;

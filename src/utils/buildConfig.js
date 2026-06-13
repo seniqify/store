@@ -35,14 +35,6 @@ export const FEATURE_SUGGESTIONS = {
     { emoji: '↩️', title: 'Easy Returns',      desc: 'Hassle-free'      },
     { emoji: '🏷️', title: 'Best Prices',       desc: 'Great value'      },
   ],
-  restaurant: [
-    { emoji: '🌶️', title: 'Cooked Fresh',      desc: 'Made to order'    },
-    { emoji: '🥡', title: 'Hygienic Packing',  desc: 'Sealed & safe'    },
-    { emoji: '⚡', title: 'Quick Prep',        desc: 'Hot & fast'       },
-    { emoji: '🌿', title: 'Pure Veg',          desc: '100% vegetarian'  },
-    { emoji: '🚚', title: 'Home Delivery',     desc: 'To your door'     },
-    { emoji: '💬', title: 'WhatsApp Orders',   desc: 'Order on chat'    },
-  ],
   service: [
     { emoji: '✨', title: 'Expert Team',       desc: 'Skilled pros'     },
     { emoji: '🏠', title: 'At-home Service',   desc: 'We come to you'   },
@@ -51,23 +43,11 @@ export const FEATURE_SUGGESTIONS = {
     { emoji: '⭐', title: 'Top Rated',         desc: 'Trusted by many'  },
     { emoji: '💯', title: 'Satisfaction',      desc: 'Guaranteed'       },
   ],
-  hotel: [
-    { emoji: '🏊', title: 'Swimming Pool',     desc: ''                 },
-    { emoji: '🍳', title: 'Breakfast',         desc: 'Complimentary'    },
-    { emoji: '📶', title: 'Free Wi-Fi',        desc: 'Full property'    },
-    { emoji: '🚗', title: 'Free Parking',      desc: ''                 },
-    { emoji: '❄️', title: 'Air Conditioning',  desc: ''                 },
-    { emoji: '🛎️', title: 'Room Service',      desc: '24×7'             },
-    { emoji: '🍽️', title: 'Restaurant',        desc: 'On-site dining'   },
-    { emoji: '🏞️', title: 'Scenic View',       desc: ''                 },
-  ],
 };
 
 export const DEFAULT_TAGLINES = {
-  product:    'Quality products, delivered. Order on WhatsApp.',
-  restaurant: 'Fresh, delicious food — order on WhatsApp.',
-  service:    'Trusted services, just a message away.',
-  hotel:      'A comfortable stay, booked on WhatsApp.',
+  product: 'Quality products, delivered. Order on WhatsApp.',
+  service: 'Trusted services, just a message away.',
 };
 
 export function buildBusinessConfig(wizardData, existingSlugs = []) {

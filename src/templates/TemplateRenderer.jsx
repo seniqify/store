@@ -3,15 +3,11 @@ import { useBusinessConfig } from '../contexts/BusinessContext';
 import ProductTemplate from '../pages/Home';
 
 // Lazy-load non-product templates — only downloaded when needed
-const RestaurantTemplate = lazy(() => import('./RestaurantTemplate'));
 const ServiceTemplate    = lazy(() => import('./ServiceTemplate'));
-const HotelTemplate      = lazy(() => import('./HotelTemplate'));
 
 const TEMPLATES = {
-  product:    ProductTemplate,
-  restaurant: RestaurantTemplate,
-  service:    ServiceTemplate,
-  hotel:      HotelTemplate,
+  product: ProductTemplate,
+  service: ServiceTemplate,
 };
 
 function TemplateFallback() {

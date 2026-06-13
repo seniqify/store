@@ -6,8 +6,8 @@ import { getStoreStatus } from '../../utils/storeHours';
 /**
  * StoreStatus — a slim "Open now / Closed" strip shown under the store header.
  * Lives in the shared store shell so it appears for every template
- * (product / restaurant / service / hotel). Renders nothing unless the owner
- * has enabled business hours. Re-evaluates every minute.
+ * (product / service). Renders nothing unless the owner has enabled
+ * business hours. Re-evaluates every minute.
  */
 export default function StoreStatus() {
   const config = useBusinessConfig();

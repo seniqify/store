@@ -31,12 +31,8 @@ export const STRINGS = {
     'type.sub': 'Tap the one that fits — you can change anything later.',
     'type.product.label': 'Shop / Products',
     'type.product.desc': 'Kirana, clothes, electronics, hardware…',
-    'type.restaurant.label': 'Food / Restaurant',
-    'type.restaurant.desc': 'Restaurant, tiffin, bakery, sweets…',
     'type.service.label': 'Services',
     'type.service.desc': 'Salon, repairs, tailor, tuition…',
-    'type.hotel.label': 'Stay / Rooms',
-    'type.hotel.desc': 'Lodge, hotel, homestay, resort…',
     'type.footer': 'Not sure? Pick the closest — it only sets your page layout.',
 
     // Step: Details
@@ -138,9 +134,7 @@ export const STRINGS = {
 
     // Business nouns by type
     'noun.product': 'shop',
-    'noun.restaurant': 'restaurant',
     'noun.service': 'business',
-    'noun.hotel': 'property',
     // Item label sets by mode
     'mode.product.plural': 'Products', 'mode.product.singular': 'Product', 'mode.product.add': 'Add Product', 'mode.product.itemS': 'product', 'mode.product.itemP': 'products',
     'mode.menuitem.plural': 'Menu Items', 'mode.menuitem.singular': 'Menu Item', 'mode.menuitem.add': 'Add Menu Item', 'mode.menuitem.itemS': 'dish', 'mode.menuitem.itemP': 'dishes',
@@ -163,12 +157,8 @@ export const STRINGS = {
     'type.sub': 'जो सही लगे उसे चुनें — बाद में सब कुछ बदल सकते हैं।',
     'type.product.label': 'दुकान / प्रोडक्ट',
     'type.product.desc': 'किराना, कपड़े, इलेक्ट्रॉनिक्स, हार्डवेयर…',
-    'type.restaurant.label': 'खाना / रेस्टोरेंट',
-    'type.restaurant.desc': 'रेस्टोरेंट, टिफ़िन, बेकरी, मिठाई…',
     'type.service.label': 'सेवाएँ',
     'type.service.desc': 'सैलून, मरम्मत, दर्ज़ी, ट्यूशन…',
-    'type.hotel.label': 'ठहराव / कमरे',
-    'type.hotel.desc': 'लॉज, होटल, होमस्टे, रिज़ॉर्ट…',
     'type.footer': 'पक्का नहीं? सबसे करीबी चुनें — यह सिर्फ़ पेज का लेआउट तय करता है।',
 
     'det.heading': 'आपकी {noun} की जानकारी',
@@ -264,9 +254,7 @@ export const STRINGS = {
     'ok.nudge': '✨ और बेहतर दिखाना है? Manage → Settings में कभी भी लोगो, कवर फ़ोटो और पेमेंट जानकारी जोड़ें।',
 
     'noun.product': 'दुकान',
-    'noun.restaurant': 'रेस्टोरेंट',
     'noun.service': 'व्यवसाय',
-    'noun.hotel': 'प्रॉपर्टी',
     'mode.product.plural': 'प्रोडक्ट', 'mode.product.singular': 'प्रोडक्ट', 'mode.product.add': 'प्रोडक्ट जोड़ें', 'mode.product.itemS': 'प्रोडक्ट', 'mode.product.itemP': 'प्रोडक्ट',
     'mode.menuitem.plural': 'मेन्यू आइटम', 'mode.menuitem.singular': 'मेन्यू आइटम', 'mode.menuitem.add': 'मेन्यू आइटम जोड़ें', 'mode.menuitem.itemS': 'व्यंजन', 'mode.menuitem.itemP': 'व्यंजन',
     'mode.service.plural': 'सेवाएँ', 'mode.service.singular': 'सेवा', 'mode.service.add': 'सेवा जोड़ें', 'mode.service.itemS': 'सेवा', 'mode.service.itemP': 'सेवाएँ',
@@ -288,12 +276,8 @@ export const STRINGS = {
     'type.sub': 'योग्य वाटेल तो निवडा — नंतर काहीही बदलता येईल.',
     'type.product.label': 'दुकान / वस्तू',
     'type.product.desc': 'किराणा, कपडे, इलेक्ट्रॉनिक्स, हार्डवेअर…',
-    'type.restaurant.label': 'खाणं / रेस्टॉरंट',
-    'type.restaurant.desc': 'रेस्टॉरंट, डबा, बेकरी, मिठाई…',
     'type.service.label': 'सेवा',
     'type.service.desc': 'सलून, दुरुस्ती, शिंपी, शिकवणी…',
-    'type.hotel.label': 'मुक्काम / खोल्या',
-    'type.hotel.desc': 'लॉज, हॉटेल, होमस्टे, रिसॉर्ट…',
     'type.footer': 'खात्री नाही? जवळचा निवडा — हे फक्त पेजची मांडणी ठरवतं.',
 
     'det.heading': 'तुमच्या {noun}ची माहिती',
@@ -389,9 +373,7 @@ export const STRINGS = {
     'ok.nudge': '✨ अधिक छान दिसायचंय? Manage → Settings मध्ये कधीही लोगो, कव्हर फोटो व पेमेंट माहिती जोडा.',
 
     'noun.product': 'दुकान',
-    'noun.restaurant': 'रेस्टॉरंट',
     'noun.service': 'व्यवसाय',
-    'noun.hotel': 'प्रॉपर्टी',
     'mode.product.plural': 'प्रॉडक्ट', 'mode.product.singular': 'प्रॉडक्ट', 'mode.product.add': 'प्रॉडक्ट जोडा', 'mode.product.itemS': 'प्रॉडक्ट', 'mode.product.itemP': 'प्रॉडक्ट',
     'mode.menuitem.plural': 'मेनू आयटम', 'mode.menuitem.singular': 'मेनू आयटम', 'mode.menuitem.add': 'मेनू आयटम जोडा', 'mode.menuitem.itemS': 'पदार्थ', 'mode.menuitem.itemP': 'पदार्थ',
     'mode.service.plural': 'सेवा', 'mode.service.singular': 'सेवा', 'mode.service.add': 'सेवा जोडा', 'mode.service.itemS': 'सेवा', 'mode.service.itemP': 'सेवा',
