@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft, showBrandBadge } from '../utils/planLimits';
 import {
@@ -595,7 +596,12 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         })}
       </div>
 
-      {/* ── Product Form Drawer (slides in from right) ────────────────────── */}
+      {/* ── Product Form Drawer ─────────────────────────────────────────────
+          Portaled to <body>: the section card uses animate-pl-fade-up, whose
+          `both` fill-mode leaves a transform that would otherwise trap this
+          fixed-position drawer inside the card. ─────────────────────────────*/}
+      {typeof document !== 'undefined' && createPortal(
+        <>
       {/* Backdrop */}
       <div
         className={[
@@ -788,6 +794,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
             </button>
           </div>
         </div>
+      )}
+        </>,
+        document.body,
       )}
 
       <SaveBar
