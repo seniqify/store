@@ -457,6 +457,19 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     if (!form.name.trim())             e.name     = 'Product name is required.';
     if (!form.category)                e.category = 'Please select a category.';
     if (!form.price || Number(form.price) <= 0) e.price = 'Enter a valid price.';
+
+    // Variants: once the seller starts adding them, each option needs a name AND
+    // its own price. Otherwise a blank price silently falls back to the main
+    // price, so every option (250 g, 500 g…) would show the main 1 kg price.
+    const startedVariants = showVariants && (form.variantLabel.trim() || (form.variantOptions || []).some(o => String(o.name || '').trim() || (o.price !== '' && o.price != null)));
+    if (startedVariants) {
+      const opts = form.variantOptions || [];
+      if (!form.variantLabel.trim())                       e.variants = 'Name the option type (e.g. Size, Weight).';
+      else if (!opts.length)                               e.variants = 'Add at least one option, or remove variants.';
+      else if (opts.some(o => !String(o.name || '').trim())) e.variants = 'Give every option a name.';
+      else if (opts.some(o => o.price === '' || o.price == null || !(Number(o.price) > 0)))
+        e.variants = 'Set a price for every option — otherwise they all show the main price.';
+    }
     return e;
   }
 
@@ -743,23 +756,23 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                     <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Variant type</p>
                     <input type="text" placeholder="e.g. Size, Colour, Weight"
                       value={form.variantLabel}
-                      onChange={e => setForm(p => ({ ...p, variantLabel: e.target.value }))}
+                      onChange={e => { setForm(p => ({ ...p, variantLabel: e.target.value })); setErrors(p => ({ ...p, variants: '' })); }}
                       className={iCls(false)} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options</p>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options &amp; their prices</p>
                     <div className="space-y-2">
                       {(form.variantOptions || []).map((o, i) => (
                         <div key={i} className="flex gap-2 items-center">
-                          <input type="text" placeholder={`e.g. ${['S','M','L','XL'][i] || 'Option'}`}
+                          <input type="text" placeholder={`e.g. ${['250 g','500 g','1 kg','2 kg'][i] || 'Option'}`}
                             value={o.name}
-                            onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
+                            onChange={e => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) })); setErrors(p => ({ ...p, variants: '' })); }}
                             className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                           <div className="relative w-24 flex-shrink-0">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                             <input type="number" inputMode="numeric" min={0} placeholder="price"
                               value={o.price}
-                              onChange={e => setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
+                              onChange={e => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) })); setErrors(p => ({ ...p, variants: '' })); }}
                               className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                           </div>
                           <button type="button" aria-label="Remove"
@@ -782,7 +795,10 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       Remove
                     </button>
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">Leave a price blank to use the main price. Customers pick one option when ordering.</p>
+                  {errors.variants && (
+                    <p className="text-xs text-red-500 font-medium">{errors.variants}</p>
+                  )}
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). Customers pick one before ordering.</p>
                 </div>
               )}
             </FormSection>
