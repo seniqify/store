@@ -25,7 +25,7 @@ export default function CartSummary({
   ctaLabel,
 }) {
   const config = useBusinessConfig();
-  const { subtotal, savings, tax, shipping, total } = calcCartTotals(cart, config.cart);
+  const { subtotal, savings, tax, shipping, total, taxInclusive } = calcCartTotals(cart, config.cart);
   const { cart: cartConfig, upi } = config;
 
   const itemCount = cart.reduce((sum, i) => sum + i.qty, 0);
@@ -68,10 +68,11 @@ export default function CartSummary({
           </div>
         )}
 
-        {/* GST */}
-        {!compact && (
+        {/* GST — hidden at 0%. When prices are tax-inclusive it's shown as an
+            "included" line (informational), not added to the total. */}
+        {!compact && taxPct > 0 && (
           <div className="flex items-center justify-between text-gray-500">
-            <span>GST ({taxPct}%)</span>
+            <span>GST ({taxPct}%){taxInclusive ? ' · incl.' : ''}</span>
             <span className="font-medium text-gray-700 tabular-nums">
               {formatINR(tax)}
             </span>

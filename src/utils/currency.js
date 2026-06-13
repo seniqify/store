@@ -38,7 +38,7 @@ export function discountPercent(price, mrp) {
  *   total     — the final amount the customer pays
  */
 export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
-  const { taxRate, freeShippingAbove, shippingCharge } = cartConfig;
+  const { taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive = false } = cartConfig;
 
   const subtotal = items.reduce(
     (sum, item) => sum + item.price * item.qty,
@@ -51,18 +51,25 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     return sum + (item.mrp - item.price) * item.qty;
   }, 0);
 
-  const tax = Math.round(subtotal * taxRate);
-
   const shipping =
     items.length === 0            ? 0
     : subtotal >= freeShippingAbove ? 0
     : shippingCharge;
+
+  // Two GST modes:
+  //  • inclusive — listed prices ALREADY contain GST. Don't add it again; just
+  //    back-calculate the portion sitting inside the subtotal for the invoice.
+  //  • exclusive (default / legacy) — GST is added on top of the subtotal.
+  const tax = taxInclusive
+    ? Math.round(subtotal - subtotal / (1 + taxRate))
+    : Math.round(subtotal * taxRate);
 
   return {
     subtotal,
     savings,
     tax,
     shipping,
-    total: subtotal + tax + shipping,
+    taxInclusive,
+    total: taxInclusive ? subtotal + shipping : subtotal + tax + shipping,
   };
 }

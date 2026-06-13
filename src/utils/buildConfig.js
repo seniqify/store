@@ -146,6 +146,7 @@ export function buildBusinessConfig(wizardData, existingSlugs = []) {
       taxRate:           Number(gstRate) || 0,
       freeShippingAbove: Number(freeDeliveryAbove) || 999,
       shippingCharge:    Number(deliveryCharge) || 0,
+      taxInclusive:      false,   // GST added on top by default; owner can switch to inclusive in Settings
     },
 
     hero: {

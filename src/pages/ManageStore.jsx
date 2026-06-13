@@ -1501,6 +1501,35 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             </select>
           </div>
 
+          {/* Inclusive vs exclusive — only relevant once a GST rate is set */}
+          {(config.cart?.taxRate ?? 0.05) > 0 && (
+            <div>
+              <label className={lCls()}>Your listed prices…</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { v: true,  t: 'Include GST', d: 'Price is final' },
+                  { v: false, t: 'GST extra',   d: 'Added at checkout' },
+                ].map(opt => {
+                  const active = !!config.cart?.taxInclusive === opt.v;
+                  return (
+                    <button key={String(opt.v)} type="button"
+                      onClick={() => update({ cart: { ...config.cart, taxInclusive: opt.v } })}
+                      className={['rounded-xl border px-3 py-2.5 text-left transition-all active:scale-[0.98]',
+                        active ? 'text-white border-transparent shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'].join(' ')}
+                      style={active ? { backgroundColor: themeColor } : undefined}>
+                      <span className="block text-sm font-bold">{opt.t}</span>
+                      <span className={['block text-[11px]', active ? 'text-white/80' : 'text-gray-400'].join(' ')}>{opt.d}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
+                <strong className="text-gray-500">Include GST</strong> — the listed price is the final price; GST is shown as already included.
+                <strong className="text-gray-500"> GST extra</strong> — {Math.round((config.cart?.taxRate ?? 0.05) * 100)}% is added on top at checkout.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className={lCls()}>GST Number <span className="text-gray-400 font-normal">(optional)</span></label>
             <input type="text" placeholder="33XXXXX1234Z1Z5" maxLength={15}
