@@ -446,7 +446,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       gstRate:     product.gstRate != null ? product.gstRate : '',
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
-      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '' })) : [],
+      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '' })) : [],
     });
     setEditingId(product.id);
     setErrors({});
@@ -482,7 +482,11 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     const finalUnit  = form.unit === 'Other…' ? (form.unitCustom.trim() || 'per piece') : form.unit;
     const finalImage = form.image?.trim() || '';
     const cleanOpts  = (form.variantOptions || [])
-      .map(o => ({ name: String(o.name || '').trim(), price: (o.price === '' || o.price == null) ? null : Number(o.price) }))
+      .map(o => ({
+        name:  String(o.name || '').trim(),
+        price: (o.price === '' || o.price == null) ? null : Number(o.price),
+        mrp:   (o.mrp === '' || o.mrp == null) ? null : Number(o.mrp),
+      }))
       .filter(o => o.name);
     const variants   = (form.variantLabel.trim() && cleanOpts.length)
       ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
@@ -813,31 +817,45 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       className={iCls(false)} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options &amp; their prices</p>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options — each with its own price &amp; MRP</p>
                     <div className="space-y-2">
-                      {(form.variantOptions || []).map((o, i) => (
-                        <div key={i} className="flex gap-2 items-center">
-                          <input type="text" placeholder={`e.g. ${['250 g','500 g','1 kg','2 kg'][i] || 'Option'}`}
-                            value={o.name}
-                            onChange={e => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) })); setErrors(p => ({ ...p, variants: '' })); }}
-                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
-                          <div className="relative w-24 flex-shrink-0">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
-                            <input type="number" inputMode="numeric" min={0} placeholder="price"
-                              value={o.price}
-                              onChange={e => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) })); setErrors(p => ({ ...p, variants: '' })); }}
-                              className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                      {(form.variantOptions || []).map((o, i) => {
+                        const setOpt = (patch) => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, ...patch } : x) })); setErrors(p => ({ ...p, variants: '' })); };
+                        return (
+                        <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-2.5 space-y-2">
+                          <div className="flex gap-2 items-center">
+                            <input type="text" placeholder={`Option — e.g. ${['250 g','500 g','1 kg','2 kg'][i] || 'name'}`}
+                              value={o.name}
+                              onChange={e => setOpt({ name: e.target.value })}
+                              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                            <button type="button" aria-label="Remove option"
+                              onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
+                              className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
                           </div>
-                          <button type="button" aria-label="Remove"
-                            onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
-                            className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                              <input type="number" inputMode="numeric" min={0} placeholder="Price *"
+                                value={o.price}
+                                onChange={e => setOpt({ price: e.target.value })}
+                                className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                              <input type="number" inputMode="numeric" min={0} placeholder="MRP"
+                                value={o.mrp}
+                                onChange={e => setOpt({ mrp: e.target.value })}
+                                className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-0.5">
                     <button type="button"
-                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '' }] }))}
+                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '' }] }))}
                       className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
                       style={{ color: themeColor }}>
                       <Plus size={13} /> Add option
@@ -851,7 +869,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   {errors.variants && (
                     <p className="text-xs text-red-500 font-medium">{errors.variants}</p>
                   )}
-                  <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). Customers pick one before ordering.</p>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). MRP is optional — add it to show a strike-through &amp; “You save” for that size.</p>
                 </div>
               )}
             </FormSection>
