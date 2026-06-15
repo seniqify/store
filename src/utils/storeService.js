@@ -107,19 +107,19 @@ export async function verifyPin(slug, pin) {
 }
 
 /**
- * Reset PIN after verifying ownership via WhatsApp number.
- * The store's whatsappNumber (stored in config) is the identity proof.
- * Throws if the number doesn't match.
+ * Reset PIN after proving control of the store's WhatsApp number via a one-time
+ * OTP (sent through otpService). The RPC verifies, server-side, that the OTP is
+ * valid + unexpired AND that the number matches the store — so knowing the
+ * (public) number alone is no longer enough to take over a store.
+ * Throws if the OTP/number is invalid.
  */
-export async function resetPin(slug, newPin, whatsappNumber) {
-  // Ownership (matching WhatsApp number) is verified server-side in the RPC, and
-  // the PIN column is no longer writable directly by the anon role.
+export async function resetPin(slug, newPin, whatsappNumber, code) {
   const hashedPin = await hashPin(newPin);
   const { data, error } = await supabase.rpc('reset_store_pin', {
-    p_slug: slug, p_whatsapp: whatsappNumber, p_new_hashed_pin: hashedPin,
+    p_slug: slug, p_whatsapp: whatsappNumber, p_code: String(code || ''), p_new_hashed_pin: hashedPin,
   });
   if (error) throw new Error(error.message);
-  if (data === false) throw new Error('WhatsApp number does not match this store. Please try again.');
+  if (data === false) throw new Error('Incorrect or expired OTP. Please try again.');
 }
 
 /**

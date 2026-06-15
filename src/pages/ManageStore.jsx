@@ -22,6 +22,7 @@ import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
 import { loadBusiness }                               from '../utils/BusinessLoader';
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
+import { sendOtp }                                       from '../utils/otpService';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
@@ -222,6 +223,9 @@ function PinGate({ slug, onVerified }) {
 
   // Recovery state
   const [phone,    setPhone]    = useState('');
+  const [otpSent,  setOtpSent]  = useState(false);
+  const [code,     setCode]     = useState('');
+  const [sending,  setSending]  = useState(false);
   const [newPin,   setNewPin]   = useState('');
   const [confPin,  setConfPin]  = useState('');
   const [success,  setSuccess]  = useState(false);
@@ -240,15 +244,30 @@ function PinGate({ slug, onVerified }) {
     }
   }
 
-  // ── Recovery ───────────────────────────────────────────────────────────────
+  // ── Recovery: step 1 — send an OTP to the store's WhatsApp number ────────────
+  async function handleSendOtp(e) {
+    e.preventDefault();
+    if (phone.replace(/\D/g,'').length !== 10) { setError('Enter a valid 10-digit WhatsApp number'); return; }
+    setSending(true); setError('');
+    try {
+      await sendOtp(`91${phone.replace(/\D/g,'').slice(0,10)}`);
+      setOtpSent(true);
+    } catch (err) {
+      setError(err.message || 'Could not send the code. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // ── Recovery: step 2 — verify the OTP + set the new PIN (checked server-side) ─
   async function handleRecover(e) {
     e.preventDefault();
-    if (phone.replace(/\D/g,'').length < 10) { setError('Enter a valid 10-digit WhatsApp number'); return; }
+    if (code.replace(/\D/g,'').length !== 6) { setError('Enter the 6-digit code from WhatsApp'); return; }
     if (newPin.length !== 4)  { setError('New PIN must be exactly 4 digits'); return; }
     if (newPin !== confPin)   { setError('PINs do not match'); return; }
     setChecking(true); setError('');
     try {
-      await resetPin(slug, newPin, phone);
+      await resetPin(slug, newPin, `91${phone.replace(/\D/g,'').slice(0,10)}`, code.replace(/\D/g,''));
       setSuccess(true);
     } catch (err) {
       setError(err.message);
@@ -259,7 +278,7 @@ function PinGate({ slug, onVerified }) {
 
   function switchMode(m) {
     setMode(m); setError('');
-    setPin(''); setPhone(''); setNewPin(''); setConfPin(''); setSuccess(false);
+    setPin(''); setPhone(''); setOtpSent(false); setCode(''); setNewPin(''); setConfPin(''); setSuccess(false);
   }
 
   return (
@@ -312,63 +331,98 @@ function PinGate({ slug, onVerified }) {
           <>
             <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Reset Your PIN</h1>
             <p className="text-sm text-gray-500 text-center mb-6">
-              Enter the WhatsApp number linked to this page to verify ownership.
+              {otpSent
+                ? 'Enter the 6-digit code we sent on WhatsApp, then set a new PIN.'
+                : 'We’ll send a one-time code to the WhatsApp number linked to this page.'}
             </p>
 
-            <form onSubmit={handleRecover} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                  WhatsApp Number (linked to store)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
+            {/* Step 1 — number → send OTP */}
+            {!otpSent && (
+              <form onSubmit={handleSendOtp} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    WhatsApp Number (linked to store)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
+                    <input
+                      type="tel" inputMode="numeric" placeholder="98765 43210" maxLength={10}
+                      value={phone}
+                      onChange={(e) => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setError(''); }}
+                      className="w-full pl-12 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
+                                 bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">{error}</p>
+                )}
+
+                <button type="submit" disabled={sending}
+                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                                   hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
+                  {sending ? 'Sending code…' : 'Send code on WhatsApp →'}
+                </button>
+              </form>
+            )}
+
+            {/* Step 2 — OTP + new PIN */}
+            {otpSent && (
+              <form onSubmit={handleRecover} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">6-digit code</label>
                   <input
-                    type="tel" inputMode="numeric" placeholder="98765 43210" maxLength={10}
-                    value={phone}
-                    onChange={(e) => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setError(''); }}
-                    className="w-full pl-12 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
-                               bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                    type="number" inputMode="numeric" placeholder="• • • • • •"
+                    value={code}
+                    onChange={(e) => { setCode(e.target.value.replace(/\D/g,'').slice(0,6)); setError(''); }}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
+                               text-xl font-bold tracking-[0.3em] text-gray-900 bg-white
+                               focus:outline-none focus:ring-2 focus:ring-gray-300"
                     autoFocus
                   />
+                  <button type="button" onClick={handleSendOtp} disabled={sending}
+                          className="mt-1.5 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">
+                    {sending ? 'Resending…' : 'Resend code'}
+                  </button>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">New PIN</label>
-                <input
-                  type="number" inputMode="numeric" placeholder="• • • •"
-                  value={newPin}
-                  onChange={(e) => { setNewPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
-                             text-xl font-bold tracking-widest text-gray-900 bg-white
-                             focus:outline-none focus:ring-2 focus:ring-gray-300"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">New PIN</label>
+                  <input
+                    type="number" inputMode="numeric" placeholder="• • • •"
+                    value={newPin}
+                    onChange={(e) => { setNewPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
+                               text-xl font-bold tracking-widest text-gray-900 bg-white
+                               focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Confirm New PIN</label>
-                <input
-                  type="number" inputMode="numeric" placeholder="• • • •"
-                  value={confPin}
-                  onChange={(e) => { setConfPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
-                             text-xl font-bold tracking-widest text-gray-900 bg-white
-                             focus:outline-none focus:ring-2 focus:ring-gray-300"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Confirm New PIN</label>
+                  <input
+                    type="number" inputMode="numeric" placeholder="• • • •"
+                    value={confPin}
+                    onChange={(e) => { setConfPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
+                               text-xl font-bold tracking-widest text-gray-900 bg-white
+                               focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  />
+                </div>
 
-              {error && (
-                <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">
-                  {error}
-                </p>
-              )}
+                {error && (
+                  <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">{error}</p>
+                )}
 
-              <button type="submit" disabled={checking}
-                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                                 hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
-                {checking ? 'Verifying…' : 'Reset PIN →'}
-              </button>
-            </form>
+                <button type="submit" disabled={checking}
+                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
+                                   hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
+                  {checking ? 'Verifying…' : 'Reset PIN →'}
+                </button>
+              </form>
+            )}
 
             <button type="button" onClick={() => switchMode('login')}
                     className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors text-center">
