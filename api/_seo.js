@@ -50,7 +50,24 @@ export function storeSeo(config, slug, origin) {
   else if (cat)    title = `${name} — ${cat}`;
   title += ' | Order on WhatsApp';
 
-  const description = `${tagline}${city ? ` Based in ${city}.` : ''} Browse the catalogue and order directly on WhatsApp — no app needed.`.slice(0, 300);
+  // Build a description that's UNIQUE per store even when the owner never wrote
+  // a custom tagline (otherwise every page gets a near-identical meta description
+  // → Google treats them as duplicates). Lead with the tagline when it's real,
+  // else with name + category + city, then fold in a few product names.
+  const productNames = (Array.isArray(config.products) ? config.products : [])
+    .map((p) => p && p.name).filter(Boolean);
+  const sample = productNames.slice(0, 4).join(', ');
+  const genericTagline = !config.tagline
+    || /order\s+(from|on|via).*whatsapp/i.test(config.tagline)
+    || /just a message away/i.test(config.tagline);
+  const lead = genericTagline
+    ? `${name}${cat ? ` — ${cat}` : ''}${city ? ` in ${city}` : ''}.`
+    : tagline.replace(/\.?$/, '.');
+  const description = [
+    lead,
+    sample ? `Shop ${sample}${productNames.length > 4 ? ' & more' : ''}.` : '',
+    'Order directly on WhatsApp — no app needed.',
+  ].filter(Boolean).join(' ').slice(0, 300);
   const url   = `${origin}/${slug}`;
   // The owner's cover photo wins; otherwise a dynamic branded card (their
   // logo/emoji + name + brand colour, rendered by /api/og) — never the generic
@@ -63,7 +80,7 @@ export function storeSeo(config, slug, origin) {
     '@context': 'https://schema.org',
     '@type': TYPE_SCHEMA[config.businessType] || 'LocalBusiness',
     name,
-    description: tagline,
+    description,
     url,
     image,
     areaServed: city || 'India',

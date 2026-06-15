@@ -246,7 +246,7 @@ export default function Footer() {
       {showBrandBadge(effectivePlan(config)) && (
         <div className="bg-gray-950 py-2.5 px-4 text-center border-t border-gray-800/50">
           <a
-            href="https://pocketlink.store"
+            href="https://www.pocketlink.store"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-[11px] text-gray-600
