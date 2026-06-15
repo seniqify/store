@@ -155,6 +155,19 @@ export async function findStoreByPhone(phone) {
  * Writes nothing — safe for anonymous/public use. Only named stores are returned.
  */
 export async function listStores() {
+  // Preferred source: the `marketplace_listing` view, which adds a `search_text`
+  // column (store name + category + tagline + product names) so the marketplace
+  // can match an item search — not just the store name. If the view isn't
+  // present yet (migration not run), fall back to the base table so the
+  // marketplace still works (just without product-level search).
+  const viewCols =
+    'slug, created_at, businessName, tagline, category, businessType, city, state, area, ' +
+    'address, logo, logoEmoji, coverImage, whatsappNumber, theme, hours, search_text';
+  const viaView = await supabase.from('marketplace_listing').select(viewCols).limit(500);
+  if (!viaView.error && viaView.data) {
+    return viaView.data.filter((c) => c && c.businessName);
+  }
+
   const { data, error } = await supabase
     .from('stores')
     .select(`slug, created_at,

@@ -180,7 +180,9 @@ export default function Marketplace() {
       if (category !== 'All' && b.category !== category) return false;
       if (city !== 'All' && b.city !== city) return false;
       if (!q) return true;
-      return [b.name, b.category, b.city, b.location, b.tagline]
+      // `b.search` includes product names (from the marketplace_listing view),
+      // so an item query like "dryfruit" or "dress" surfaces stores selling it.
+      return [b.name, b.category, b.city, b.location, b.tagline, b.search]
         .filter(Boolean).some((f) => f.toLowerCase().includes(q));
     });
   }, [businesses, query, category, city, savedOnly, favs]);

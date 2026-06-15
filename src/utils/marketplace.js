@@ -51,6 +51,9 @@ export function normalizeBusiness(config, { demo = false } = {}) {
     logoEmoji:      config.logoEmoji || '🏪',
     coverImage:     config.coverImage || null,
     whatsappNumber: config.whatsappNumber || '',
+    // Lower-cased haystack (name + category + tagline + product names) from the
+    // marketplace_listing view, so search matches items, not just store names.
+    search:         config.search_text || '',
     hours:          config.hours || null,   // real open/closed on the card
     primary:        config.theme?.primary || '#0d9488',
     primaryDark:    config.theme?.primaryDark || '#0f766e',
