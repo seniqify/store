@@ -60,17 +60,11 @@ export default async function handler(req) {
           background: 'white', borderRadius: '36px', padding: '34px 34px 26px',
         },
       },
-        // Brand row
-        h('div', { style: { display: 'flex', alignItems: 'center', marginBottom: '20px' } },
-          h('div', {
-            style: {
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '44px', height: '44px', borderRadius: '13px', marginRight: '12px',
-              fontSize: '26px', background: `linear-gradient(135deg, ${BRAND}, ${DARK})`,
-            },
-          }, '🛍️'),
-          h('div', { style: { display: 'flex', fontSize: '32px', fontWeight: 800, color: DARK } }, 'PocketLink'),
-        ),
+        // Brand logo (real PocketLink wordmark)
+        h('img', {
+          src: `${SITE}/pocketlink-wordmark.png`, width: 360, height: 73,
+          style: { width: '360px', height: '73px', marginBottom: '22px' },
+        }),
         // QR
         h('div', { style: { display: 'flex', padding: '8px' } },
           h('img', { src: qrSrc, width: 372, height: 372, style: { width: '372px', height: '372px' } }),
