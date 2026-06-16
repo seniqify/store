@@ -7,6 +7,7 @@ import StepProducts     from '../components/onboarding/StepProducts';
 import StepPublish      from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness, cacheStore } from '../utils/businessStorage';
+import { sendWelcome }              from '../utils/otpService';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists, clearPendingSignup, updateStore } from '../utils/storeService';
 import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
@@ -313,6 +314,10 @@ export default function Onboarding() {
       // wait). The success screen shows right away; photos then move to Storage
       // in the background (uploadImagesInBackground) and swap in their CDN URLs.
       await saveBusiness(config, pin, ownerPhone);
+
+      // Best-effort: WhatsApp the owner their store link + QR + "Manage" button.
+      // Never blocks the launch — a failed send must not break onboarding.
+      sendWelcome(ownerPhone, config.businessName, slug).catch(() => {});
 
       sessionStorage.removeItem('pocketlink_verified_phone');
       sessionStorage.removeItem('pocketlink_plan');

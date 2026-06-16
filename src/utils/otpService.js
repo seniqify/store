@@ -30,3 +30,12 @@ export async function sendOtp(phone) {
 export async function verifyOtp(phone, code) {
   return call({ action: 'verify', phone, code });
 }
+
+/**
+ * Fire the store-registration welcome message over WhatsApp — store link, QR
+ * image, and a "Manage my store" button. Best-effort: callers should not let a
+ * failure block onboarding.
+ */
+export async function sendWelcome(phone, businessName, slug) {
+  return call({ action: 'welcome', phone, businessName, slug });
+}

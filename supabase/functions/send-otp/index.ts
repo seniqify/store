@@ -24,7 +24,7 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { action, phone, code } = await req.json();
+    const { action, phone, code, businessName, slug } = await req.json();
     if (!phone) return json({ error: 'phone is required' }, 400);
 
     const supabase = createClient(
@@ -86,6 +86,38 @@ serve(async (req: Request) => {
 
       // One-time use — delete after successful verify
       await supabase.from('otp_codes').delete().eq('phone', phone);
+      return json({ success: true });
+    }
+
+    // ── WELCOME (store-registration confirmation: link + QR + manage button) ──
+    if (action === 'welcome') {
+      if (!slug) return json({ error: 'slug is required' }, 400);
+
+      const SITE = 'https://www.pocketlink.store';
+      const WELCOME_URL = Deno.env.get('SENIQIFY_WELCOME_TEMPLATE_URL')
+        ?? 'https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/6q73jsblu0/process';
+
+      const receiver = String(phone).replace(/\D/g, '');
+      const apiKey   = Deno.env.get('SENIQIFY_API_KEY');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      const waRes = await fetch(WELCOME_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          receiver,
+          values: {
+            '1': String(businessName || 'your store'),   // body {{1}} — business name
+            '2': `${SITE}/${slug}`,                       // body {{2}} — store link
+            '3': `${slug}/manage`,                        // button {{1}} — dynamic /manage suffix
+          },
+          media_url: `${SITE}/api/qr?slug=${encodeURIComponent(slug)}`, // header — QR image
+        }),
+      });
+      const waBody = await waRes.text();
+      if (!waRes.ok) throw new Error(`Seniqify welcome ${waRes.status}: ${waBody}`);
+
       return json({ success: true });
     }
 
