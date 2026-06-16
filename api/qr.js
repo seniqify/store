@@ -125,7 +125,7 @@ export default async function handler(req) {
       h('div', {
         style: {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '20px', borderTop: '1px solid #eef2f1',
+          padding: '20px 20px 34px', borderTop: '1px solid #eef2f1', flexShrink: 0,
         },
       },
         h('div', { style: { display: 'flex', color: '#9ca3af', fontSize: '19px', fontWeight: 600, marginRight: '12px' } }, 'Powered by'),
