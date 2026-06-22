@@ -46,21 +46,36 @@ serve(async (req: Request) => {
       if (insertErr) throw new Error(insertErr.message);
 
       // ── Seniqify WhatsApp API ────────────────────────────────────────────
+      // Their template endpoint can take ~60s to RESPOND. We don't need to wait
+      // for that response — the request reaches them immediately — so fire it in
+      // the background and return now, instead of freezing the signup screen for
+      // a minute. (Delivery speed itself is on Seniqify's side.)
       const apiKey   = Deno.env.get('SENIQIFY_API_KEY');
       const receiver = String(phone).replace(/\D/g, ''); // e.g. 919876543210
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-      const waRes  = await fetch(SENIQIFY_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ receiver, values: { '1': otp } }),
-      });
-      const waBody = await waRes.text();
+      const dispatchOtp = async () => {
+        try {
+          const waRes = await fetch(SENIQIFY_URL, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ receiver, values: { '1': otp } }),
+          });
+          if (!waRes.ok) console.error(`Seniqify ${waRes.status}: ${await waRes.text()}`);
+        } catch (e) {
+          console.error('Seniqify send error:', (e as Error)?.message);
+        }
+      };
 
-      if (!waRes.ok) {
-        throw new Error(`Seniqify ${waRes.status}: ${waBody}`);
+      // EdgeRuntime.waitUntil keeps the function alive to finish the send after
+      // the response is returned (Supabase Edge supports it). Fallback: await.
+      const ER = (globalThis as any).EdgeRuntime;
+      if (ER && typeof ER.waitUntil === 'function') {
+        ER.waitUntil(dispatchOtp());
+      } else {
+        await dispatchOtp();
       }
 
       return json({ success: true });

@@ -4,7 +4,9 @@ import { ArrowRight, MessageCircle, Check } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
 import { findStoreByPhone, getPendingSignup } from '../utils/storeService';
 
-const RESEND_SECONDS = 30;
+// Longer resend window: each send REPLACES the stored code, so resending before
+// a slow WhatsApp message lands would invalidate the code the user is waiting on.
+const RESEND_SECONDS = 60;
 
 // WhatsApp OTP is live (Seniqify template "optpt" / h042vmds6w). Set this to
 // false to bypass verification (the number is still captured and the flow
@@ -236,6 +238,7 @@ export default function Start() {
                   <p className="text-xs text-white/55 mt-1 leading-snug">
                     We sent a 6-digit code to <span className="font-semibold text-white">+91 {digits}</span>
                   </p>
+                  <p className="text-[11px] text-white/40 mt-1">It can take up to a minute to arrive.</p>
                 </div>
 
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
