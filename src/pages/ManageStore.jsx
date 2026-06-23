@@ -1278,8 +1278,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
     }
   }
 
-  // Derive editable values from config
-  const digits = (config.whatsappNumber || '').replace(/\D/g,'').slice(-10);
+  // Derive the editable 10-digit local number by stripping the stored "91"
+  // country-code prefix (not slice(-10), which leaks "91" back in while editing).
+  const digits = (config.whatsappNumber || '').replace(/\D/g,'').replace(/^91/, '').slice(0, 10);
 
   function update(partial) {
     onChange(partial);
@@ -1293,9 +1294,11 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
   }
 
   function updatePhone(val) {
-    const d = val.replace(/\D/g,'').slice(0,10);
-    const formatted = d.length === 10 ? `+91 ${d.slice(0,5)} ${d.slice(5)}` : `+91 ${d}`;
-    onChange({ whatsappNumber: `91${d}`, phone: formatted });
+    // Strip any leading 91 the user pastes, then keep the 10-digit local number.
+    const d = val.replace(/\D/g,'').replace(/^91(?=\d{10})/, '').slice(0,10);
+    const formatted = d.length === 10 ? `+91 ${d.slice(0,5)} ${d.slice(5)}` : (d ? `+91 ${d}` : '');
+    // Store empty when cleared (don't force a bare "91"), so the field can be emptied.
+    onChange({ whatsappNumber: d ? `91${d}` : '', phone: formatted });
     setDirty(true);
   }
 
