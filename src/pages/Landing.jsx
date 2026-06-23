@@ -24,7 +24,7 @@ const VALUE_PROPS = [
   { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Free to start',        desc: 'Launch a real, working page on the free plan. Upgrade only when you outgrow it.' },
+  { Icon: Gift,       title: 'Affordable from day one',        desc: 'Build your page free; publish for just ₹129/mo. Upgrade only when you outgrow it.' },
 ];
 
 const USE_CASES = [
@@ -35,7 +35,7 @@ const USE_CASES = [
 const TESTIMONIALS = [
   { emoji: '👩🏽‍🍳', name: 'Priya Sharma',  biz: 'Sharma Sweets, Jaipur',     quote: 'Set up my sweet shop in one evening. Festival orders now come straight to WhatsApp — no more lost messages.' },
   { emoji: '👨🏽‍🔧', name: 'Imran Khan',    biz: 'QuickFix Repairs, Delhi',   quote: 'My customers just tap the link and book. Zero commission means I keep everything I earn.' },
-  { emoji: '👩🏽‍💼', name: 'Anjali Rao',     biz: 'Bloom Boutique, Bengaluru', quote: 'It looks like an expensive website but it was free and took ten minutes. My Instagram bio finally has a real business page.' },
+  { emoji: '👩🏽‍💼', name: 'Anjali Rao',     biz: 'Bloom Boutique, Bengaluru', quote: 'It looks like an expensive website but it cost me next to nothing and took ten minutes. My Instagram bio finally has a real business page.' },
 ];
 
 const STATS = [
@@ -48,11 +48,11 @@ const STATS = [
 // Pricing plans — 4 tiers (yearly = 12× monthly, billed on /plans + /checkout)
 const PRICING_PLANS = [
   {
-    name: 'Free', icon: '🌱', tagline: 'Get started today', accent: '#9ca3af',
-    price: 0, originalPrice: null, priceNote: 'forever · no card needed',
-    popular: false, to: '/start', cta: 'Start Free',
-    features: ['10 products · 2 categories', 'WhatsApp orders', 'Shareable page link', 'GST-inclusive pricing'],
-    caveat: '“Powered by PocketLink” badge',
+    name: 'Starter', icon: '🌱', tagline: 'Go live for less', accent: '#9ca3af',
+    price: 129, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: false, to: '/start?plan=starter', cta: 'Get Started',
+    features: ['10 products · 2 categories', 'WhatsApp orders', 'Shareable page link', 'No “Powered by” badge'],
+    caveat: null,
   },
   {
     name: 'Pro', icon: '🚀', tagline: 'Look professional & get found', accent: '#34d399',
@@ -702,7 +702,7 @@ export default function Landing() {
                 <span className="absolute top-0 left-0 h-full w-1/3 bg-white/30 blur-md pl-sheen" />
               </span>
               <MessageCircle size={14} className="relative" />
-              <span className="relative">Create Free Page</span>
+              <span className="relative">Create My Page</span>
             </Link>
           </div>
         </nav>
@@ -721,7 +721,7 @@ export default function Landing() {
                     <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                   </span>
-                  Free · No tech skills · Live in 2 minutes
+                  Free to build · No tech skills · Live in 2 minutes
                 </div>
 
                 <h1 className="text-[2.6rem] sm:text-6xl lg:text-[4.1rem] font-extrabold
@@ -764,7 +764,7 @@ export default function Landing() {
                     <span className="absolute inset-0 overflow-hidden rounded-2xl">
                       <span className="absolute top-0 left-0 h-full w-1/3 bg-white/30 blur-md pl-sheen" />
                     </span>
-                    <span className="relative">Create My Free Page</span>
+                    <span className="relative">Create My Page</span>
                     <ArrowRight size={18} className="relative transition-transform group-hover:translate-x-1" />
                   </Link>
                   <a
@@ -775,15 +775,6 @@ export default function Landing() {
                   >
                     <Sparkles size={15} className="text-emerald-300" />
                     See it live
-                  </a>
-                  <a
-                    href="https://market.pocketlink.store"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-white/70
-                               hover:text-white transition-colors px-5 py-4 rounded-2xl border border-white/15
-                               hover:border-white/30 hover:bg-white/5 w-full sm:w-auto justify-center"
-                  >
-                    Explore Local Businesses
-                    <ArrowRight size={15} className="text-emerald-300" />
                   </a>
                 </div>
 
@@ -972,7 +963,7 @@ export default function Landing() {
               <span className="text-white/45">Nothing it doesn't.</span>
             </h2>
             <p className="text-sm sm:text-base text-white/55 max-w-xl mx-auto">
-              Built for Indian businesses that sell on WhatsApp — fast, fair and genuinely free to start.
+              Built for Indian businesses that sell on WhatsApp — fast, fair and affordable from day one.
             </p>
           </Reveal>
 
@@ -1318,11 +1309,11 @@ export default function Landing() {
           </Reveal>
           <div className="space-y-3">
             {[
-              { q: 'Is PocketLink really free?', a: 'Yes. The Free plan gives you a fully working page with up to 2 products — no credit card, no expiry. Upgrade only when you need more products or want to remove the badge.' },
+              { q: 'How much does PocketLink cost?', a: 'Building your store is free. To publish it and keep it live, the Starter plan is ₹129/month — 10 products, no setup fee, cancel anytime. Upgrade to Pro or Business for more.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
-              { q: 'What is the “Powered by PocketLink” badge?', a: 'Free pages show a small “Powered by PocketLink” link at the bottom of the page. It disappears on Pro and higher plans.' },
+              { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — every paid plan (Starter and up) is free of the PocketLink badge, so your page is 100% your own brand.' },
               { q: 'How do paid plans get activated?', a: 'Complete payment and send us a WhatsApp confirmation with your transaction ID. We activate your plan within 2–4 hours. Automated billing is on our roadmap.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
               { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
@@ -1376,7 +1367,7 @@ export default function Landing() {
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
                 Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
-                free forever to start, no credit card, no setup fee.
+                free to build, then just ₹129/mo to publish — no setup fee.
               </p>
               <Link
                 to="/start"
@@ -1387,7 +1378,7 @@ export default function Landing() {
                 <span className="absolute inset-0 overflow-hidden rounded-2xl">
                   <span className="absolute top-0 left-0 h-full w-1/3 bg-emerald-200/40 blur-md pl-sheen" />
                 </span>
-                <span className="relative">Create My Free Page</span>
+                <span className="relative">Create My Page</span>
                 <ArrowRight size={18} className="relative transition-transform group-hover:translate-x-1" />
               </Link>
               <p className="text-emerald-100/80 text-xs mt-4">Join shops across India already selling on WhatsApp</p>
@@ -1434,7 +1425,7 @@ export default function Landing() {
             <div>
               <p className="text-[11px] font-bold text-white/40 uppercase tracking-widest mb-4">Get started</p>
               <ul className="space-y-2.5 text-sm text-white/60">
-                <li><Link to="/start" className="hover:text-emerald-300 transition-colors">Create free page</Link></li>
+                <li><Link to="/start" className="hover:text-emerald-300 transition-colors">Create your page</Link></li>
                 <li><Link to="/plans" className="hover:text-emerald-300 transition-colors">Plans</Link></li>
               </ul>
             </div>

@@ -1,9 +1,27 @@
 export const PLANS = {
+  // 'free' is no longer offered to new users — kept as the internal fallback a
+  // lapsed paid store degrades to (page stays live, badge returns), and for
+  // grandfathered existing free stores.
   free: {
     name:            'Free',
     products:        10,
     categories:      2,
     badge:           true,
+    verified:        false,
+    promoBanner:     false,
+    discountCodes:   false,
+    orderHistory:    false,
+    analytics:       false,
+    variants:        false,
+    prioritySupport: false,
+  },
+  // Starter — the new paid entry tier (₹129). Same limits as the old Free, but
+  // no "Powered by PocketLink" badge (they're paying).
+  starter: {
+    name:            'Starter',
+    products:        10,
+    categories:      2,
+    badge:           false,
     verified:        false,
     promoBanner:     false,
     discountCodes:   false,

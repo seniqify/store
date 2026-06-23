@@ -10,6 +10,10 @@ const PERIODS = [
 
 // monthly list rate + total amount actually charged (yearly = rate × 10 → 2 months free)
 const PRICING = {
+  starter: {
+    monthly: { rate: 129, charge: 129  },
+    yearly:  { rate: 129, charge: 1290 },
+  },
   pro: {
     monthly: { rate: 249,  charge: 249   },
     yearly:  { rate: 249,  charge: 2490  },
@@ -27,11 +31,11 @@ const PRICING = {
 // ── Plans (highlights = always shown · features = inside the dropdown) ─────────
 const PLANS = [
   {
-    key: 'free', name: 'Free', tagline: 'Get online today',
-    accent: '#64748b', cta: 'Start Free',
-    highlights: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link'],
-    features: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link', 'GST-ready pricing', 'UPI + Bank + COD checkout'],
-    missing: ['Carries a small “Powered by PocketLink” badge', 'No Verified badge'],
+    key: 'starter', name: 'Starter', tagline: 'Go live for less',
+    accent: '#64748b', cta: 'Get Started',
+    highlights: ['10 products · 2 categories', 'WhatsApp order messages', 'No “Powered by” badge'],
+    features: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link', 'No “Powered by PocketLink” badge', 'GST-ready pricing', 'UPI + Bank + COD checkout'],
+    missing: ['No Verified badge', 'No order history / analytics'],
   },
   {
     key: 'pro', name: 'Pro', tagline: 'Look professional & get found',
@@ -86,10 +90,10 @@ const UNIVERSAL = [
 ];
 
 const FAQS = [
-  { q: 'Is the free plan really free?', a: 'Yes — free forever, no credit card. Your page stays live on Free for as long as you like.' },
+  { q: 'How much does it cost to start?', a: 'Building your store is free. To publish it and keep it live, the Starter plan is ₹129/month — no setup fee, cancel anytime.' },
   { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission.' },
   { q: 'Is yearly cheaper?', a: 'Yes — pay yearly and 2 months are free: you pay for 10 months, not 12. Same plan and features at a lower effective price, and it auto-renews yearly so your page never lapses.' },
-  { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. If you downgrade, your page simply moves to the Free plan; it never goes offline.' },
+  { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. Your page keeps working; you simply lose the paid features — it never goes offline.' },
   { q: 'How do I pay?', a: 'Securely via UPI, debit/credit card or net banking. You get a GST invoice for every payment.' },
   { q: 'How soon does my plan activate?', a: 'Instantly. The moment your payment succeeds, your plan is live — no waiting, no manual confirmation.' },
 ];
@@ -105,9 +109,10 @@ export default function Plans() {
   const togglePlan = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
 
   function choosePlan(planKey) {
-    if (planKey === 'free') {
-      if (!phone) { navigate('/start'); return; }
-      sessionStorage.setItem('pocketlink_plan', 'free');
+    // Starter = build free, pay ₹129 to publish → go straight to building.
+    if (planKey === 'starter') {
+      sessionStorage.setItem('pocketlink_plan', 'starter');
+      if (!phone) { navigate('/start?plan=starter'); return; }
       navigate('/onboarding');
       return;
     }
@@ -160,7 +165,7 @@ export default function Plans() {
             <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grows with you</span>
           </h1>
           <p className="text-white/55 text-sm sm:text-base max-w-md mx-auto">
-            Start free. Upgrade only when you’re ready. No contracts, no per-order fees — ever.
+            Build free. Publish from ₹129/mo. Upgrade only when you’re ready — no contracts, no per-order fees, ever.
           </p>
         </div>
 
@@ -365,7 +370,7 @@ export default function Plans() {
         <div className="mt-12 text-center">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-white/80">
             <ShieldCheck size={16} className="text-emerald-400" />
-            Try it free — upgrade only when it’s paying for itself.
+            Build it free — go live for ₹129, upgrade only when it’s paying for itself.
           </p>
         </div>
       </div>

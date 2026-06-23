@@ -10,10 +10,71 @@ import { saveBusiness, cacheStore } from '../utils/businessStorage';
 import { sendWelcome }              from '../utils/otpService';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists, clearPendingSignup, updateStore } from '../utils/storeService';
+import { supabase }                from '../lib/supabase';
 import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
 import { defaultIcon, DEFAULT_CATEGORY } from '../utils/businessCategories';
 import { useI18n } from '../i18n/I18nContext';
 import LanguageSwitcher from '../components/ui/LanguageSwitcher';
+
+// ── Pay-to-publish helpers (Razorpay) ───────────────────────────────────────
+function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+
+// Paid term length before the next auto-charge (+grace). Webhook renews it.
+function termExpiry(period) {
+  const days = period === 'yearly' ? 368 : 33;
+  return new Date(Date.now() + days * 86400000).toISOString();
+}
+
+// Take payment for the store's plan, returning { subId, expires } on success or
+// null if the customer dismissed the checkout. Razorpay opens as a modal, so the
+// built store (component state) is preserved while paying.
+async function payToPublish(planKey, period, phone) {
+  const ok = await loadRazorpay();
+  if (!ok) throw new Error('Could not load the payment SDK. Check your connection.');
+
+  const { data: subData } = await supabase.functions.invoke('create-razorpay-subscription', {
+    body: { plan: planKey, period, phone },
+  });
+  if (subData?.error || !subData?.subscription_id) {
+    throw new Error(subData?.error ?? 'Could not start the subscription.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const rzp = new window.Razorpay({
+      key:             subData.key_id,
+      subscription_id: subData.subscription_id,
+      name:            'PocketLink',
+      description:     'Publish your store · auto-renews · cancel anytime',
+      prefill:         { contact: String(phone).replace(/^91/, '') },
+      theme:           { color: '#0d9488' },
+      modal:           { ondismiss: () => resolve(null) },
+      handler: async (response) => {
+        try {
+          const { data: v } = await supabase.functions.invoke('verify-razorpay-payment', {
+            body: {
+              razorpay_payment_id:      response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_signature:       response.razorpay_signature,
+            },
+          });
+          if (v?.verified) resolve({ subId: subData.subscription_id, expires: termExpiry(period) });
+          else reject(new Error(v?.error ?? 'Payment verification failed.'));
+        } catch (e) { reject(e); }
+      },
+    });
+    rzp.on('payment.failed', (resp) => reject(new Error(resp.error?.description ?? 'Payment failed. Please try again.')));
+    rzp.open();
+  });
+}
 
 const INITIAL = {
   businessType:      '',
@@ -262,7 +323,7 @@ export default function Onboarding() {
   const [launched,      setLaunched]      = useState(false);
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
-  const [plan,          setPlan]          = useState('free');
+  const [plan,          setPlan]          = useState('starter');
   const [planExpiresAt, setPlanExpiresAt] = useState(null);
 
   // Gate: require phone from /start → redirect if missing
@@ -272,7 +333,7 @@ export default function Onboarding() {
     setOwnerPhone(phone);
     // Prefill the WhatsApp number from the just-verified phone — no need to ask again.
     setData(d => ({ ...d, whatsappNumber: d.whatsappNumber || phone.replace(/\D/g, '').slice(-10) }));
-    setPlan(sessionStorage.getItem('pocketlink_plan') || 'free');
+    setPlan(sessionStorage.getItem('pocketlink_plan') || 'starter');
     setPlanExpiresAt(sessionStorage.getItem('pocketlink_plan_expires') || null);
   }, [navigate]);
 
@@ -308,6 +369,23 @@ export default function Onboarding() {
         slug = `${config.slug}${attempt++}`;
       }
       config = { ...config, slug };
+
+      // ── Build free, pay to publish ──────────────────────────────────────────
+      // If this store has no paid term yet (e.g. the Starter build-first flow),
+      // take payment now. Prepaid plans (Pro/Business via /checkout) already have
+      // planExpiresAt set and skip this. Cancelling leaves the build intact.
+      if (!config.planExpiresAt) {
+        let paid;
+        try {
+          paid = await payToPublish(config.plan || 'starter', 'monthly', ownerPhone);
+        } catch (err) {
+          setSaveError(err.message || 'Payment failed. Please try again.');
+          setSaving(false);
+          return;
+        }
+        if (!paid) { setSaving(false); return; }   // customer dismissed checkout
+        config = { ...config, planExpiresAt: paid.expires, razorpaySubscriptionId: paid.subId };
+      }
 
       // Save the page immediately with photos kept as-is, so "Launch" feels
       // instant even on a slow field connection (one insert, no image upload

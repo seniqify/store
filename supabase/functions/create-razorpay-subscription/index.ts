@@ -10,6 +10,7 @@ const CORS = {
 // 1000); WhatsApp API is a Premium-only feature. All older plans (starter 149,
 // the old pro/business, and their yearly variants) are retired but left dormant.
 const PLAN_IDS: Record<string, Record<string, string>> = {
+  starter:  { monthly: 'plan_T534Tj7pKAPhOP', yearly: 'plan_T534TvGMXAl18M' },
   pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },
   business: { monthly: 'plan_Szqmn3xin5zwQY', yearly: 'plan_SzqmnDgFhQFC5y' },
   premium:  { monthly: 'plan_SzqmnPq8JoWcSc', yearly: 'plan_SzqmnZ9M5keufj' },
