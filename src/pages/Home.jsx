@@ -6,11 +6,12 @@ import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
 import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
+import StoreAssistant from '../components/store/StoreAssistant';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR } from '../utils/currency';
-import { isVerified, effectivePlan } from '../utils/planLimits';
+import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
 
 /**
  * Home — the main storefront page.
@@ -353,6 +354,17 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onCartClick={() => setCartOpen(true)}
         categoriesTarget="products"
       />
+
+      {/* ── AI assistant (Premium stores only) ──────────────────────────── */}
+      {config.slug && hasFeature(effectivePlan(config), 'aiEmployee') && (
+        <StoreAssistant
+          slug={config.slug}
+          businessName={businessName}
+          themeColor={primary}
+          logoEmoji={logoEmoji ?? '🏪'}
+          waLink={waLink}
+        />
+      )}
     </div>
   );
 }

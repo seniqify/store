@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Lock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Lock, Sparkles, Clock } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
 
 const DAY = 86400000;
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h < 12 ? 'am' : 'pm'}`; };
 
 /**
  * Sales analytics — derived entirely from the orders table (no extra setup).
- * Both paid tiers (Standard & Premium) include analytics; a lapsed/free page
- * sees an upsell.
+ * Both paid tiers include analytics: Standard sees the core dashboard; Premium
+ * (`advanced`) also gets behavioural insights — returning customers, peak hours,
+ * best day and the revenue trend. A lapsed/unpaid page sees an upsell.
  */
-export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false }) {
+export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false, advanced = false }) {
   const [orders, setOrders] = useState(null);
   const [views,  setViews]  = useState(null);
 
@@ -90,6 +93,35 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const top = Object.entries(pmap).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5);
   const topMax = Math.max(1, ...top.map(([, v]) => v.rev));
 
+  // ── Advanced (Premium) metrics — behaviour from the same orders ──
+  // Returning customers: buyers (by phone) with more than one order.
+  const byPhone = {};
+  for (const o of valid) { if (o.customer_phone) byPhone[o.customer_phone] = (byPhone[o.customer_phone] || 0) + 1; }
+  const returning  = Object.values(byPhone).filter((n) => n > 1).length;
+  const repeatRate = customers ? Math.round((returning / customers) * 100) : 0;
+
+  // Peak ordering hours (0–23) and busiest weekday.
+  const hours = Array(24).fill(0);
+  const dows  = Array(7).fill(0);
+  for (const o of valid) {
+    const d = new Date(o.created_at);
+    hours[d.getHours()]++;
+    dows[d.getDay()]++;
+  }
+  const peakHour = hours.some((n) => n > 0) ? hours.indexOf(Math.max(...hours)) : null;
+  const maxHour  = Math.max(1, ...hours);
+  const bestDow  = dows.some((n) => n > 0) ? dows.indexOf(Math.max(...dows)) : null;
+
+  // Revenue over the last 14 days (parallels the orders-per-day chart).
+  const revDays = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(now - (13 - i) * DAY);
+    const key = d.toDateString();
+    const rev = valid.filter((o) => new Date(o.created_at).toDateString() === key)
+                     .reduce((s, o) => s + (Number(o.total) || 0), 0);
+    return { label: d.toLocaleDateString('en-IN', { day: 'numeric' }), rev };
+  });
+  const maxRev = Math.max(1, ...revDays.map((d) => d.rev));
+
   if (orders.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
@@ -157,6 +189,80 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
           ))}
         </div>
       </div>
+
+      {advanced ? (
+        <>
+          {/* ── Advanced insights (Premium) ── */}
+          <div className="flex items-center gap-2 pt-1">
+            <Sparkles size={15} style={{ color: themeColor }} />
+            <h3 className="text-sm font-extrabold text-gray-900">Advanced insights</h3>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-white px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: themeColor }}>Premium</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label="Returning customers" value={returning}
+                  sub={<span className="text-[11px] text-gray-400">{repeatRate}% of buyers reorder</span>} />
+            <Stat label="Busiest day" value={bestDow === null ? '—' : DOW[bestDow]}
+                  sub={<span className="text-[11px] text-gray-400">most orders land here</span>} />
+          </div>
+
+          {/* Revenue trend */}
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+            <p className="text-sm font-bold text-gray-900 mb-3">Revenue · last 14 days</p>
+            <div className="flex items-end gap-1.5 h-28">
+              {revDays.map((d, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full rounded-t-md transition-all" title={formatINR(d.rev)}
+                       style={{ height: `${(d.rev / maxRev) * 100}%`, minHeight: d.rev ? 4 : 2,
+                                backgroundColor: d.rev ? themeColor : '#e5e7eb' }} />
+                  <span className="text-[8px] text-gray-300">{d.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Peak ordering hours */}
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                <Clock size={14} className="text-gray-400" /> Peak ordering hours
+              </p>
+              {peakHour !== null && (
+                <span className="text-[11px] font-semibold" style={{ color: themeColor }}>Busiest ~{fmtHour(peakHour)}</span>
+              )}
+            </div>
+            <div className="flex items-end gap-[3px] h-20">
+              {hours.map((n, h) => (
+                <div key={h} className="flex-1 rounded-t-sm transition-all" title={`${fmtHour(h)} · ${n} order${n === 1 ? '' : 's'}`}
+                     style={{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 3 : 1,
+                              backgroundColor: h === peakHour ? themeColor : `${themeColor}33` }} />
+              ))}
+            </div>
+            <div className="flex justify-between text-[8px] text-gray-300 mt-1">
+              <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* ── Standard → tease the Premium insights ── */
+        <div className="rounded-2xl border border-dashed p-5 text-center"
+             style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
+          <div className="w-11 h-11 mx-auto rounded-2xl flex items-center justify-center mb-2"
+               style={{ backgroundColor: `${themeColor}1a` }}>
+            <Sparkles size={18} style={{ color: themeColor }} />
+          </div>
+          <p className="font-extrabold text-gray-900 text-sm">Unlock advanced insights</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+            See returning customers, peak ordering hours, your busiest day and revenue trends with Premium.
+          </p>
+          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', '')}
+             className="inline-flex items-center gap-1.5 mt-4 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm"
+             style={{ backgroundColor: themeColor }}>
+            Upgrade to Premium →
+          </a>
+        </div>
+      )}
     </div>
   );
 }

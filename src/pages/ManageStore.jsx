@@ -1924,9 +1924,10 @@ export default function ManageStore() {
   const daysLeft   = trialDaysLeft(config);
   const onTrial    = rawPlan !== 'free' && daysLeft !== null && daysLeft > 0;
   const trialEnded = rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
-  const planName   = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
+  const planName   = getPlanLimits(rawPlan).name;
 
-  const analyticsEnabled = !!getPlanLimits(effectivePlan(config)).analytics;
+  const analyticsEnabled  = !!getPlanLimits(effectivePlan(config)).analytics;
+  const analyticsAdvanced = getPlanLimits(effectivePlan(config)).analytics === 'full';
   const TABS = [
     { key: 'orders',     label: 'Orders',     icon: ShoppingBag },
     { key: 'analytics',  label: 'Stats',      icon: BarChart3 },
@@ -2060,7 +2061,7 @@ export default function ManageStore() {
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
-            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} />
+            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} advanced={analyticsAdvanced} />
           </div>
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
