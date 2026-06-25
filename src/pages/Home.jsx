@@ -6,7 +6,7 @@ import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
 import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
-import StoreAssistant from '../components/store/StoreAssistant';
+import StoreSearchBar from '../components/store/StoreSearchBar';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
@@ -189,6 +189,19 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       </header>
 
+      {/* ── Hero search / ask bar (product search for all; AI answers on Premium) ── */}
+      {(products.length > 0 || hasFeature(effectivePlan(config), 'aiEmployee')) && (
+        <StoreSearchBar
+          products={products}
+          primary={primary}
+          onAddToCart={addToCart}
+          slug={config.slug}
+          businessName={businessName}
+          waLink={waLink}
+          aiEnabled={Boolean(config.slug) && hasFeature(effectivePlan(config), 'aiEmployee')}
+        />
+      )}
+
       {/* ── Offer ribbon ─────────────────────────────────────────────────── */}
       {promoText && (
         <div className="w-full px-3 sm:px-4 mt-4">
@@ -354,17 +367,6 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onCartClick={() => setCartOpen(true)}
         categoriesTarget="products"
       />
-
-      {/* ── AI assistant (Premium stores only) ──────────────────────────── */}
-      {config.slug && hasFeature(effectivePlan(config), 'aiEmployee') && (
-        <StoreAssistant
-          slug={config.slug}
-          businessName={businessName}
-          themeColor={primary}
-          logoEmoji={logoEmoji ?? '🏪'}
-          waLink={waLink}
-        />
-      )}
     </div>
   );
 }
