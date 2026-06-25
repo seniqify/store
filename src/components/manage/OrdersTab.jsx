@@ -4,12 +4,30 @@ import { fetchOrders, setOrderStatus } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 
 const STATUS = {
-  new:       { label: 'New',       emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
-  confirmed: { label: 'Confirmed', emoji: '✅', cls: 'bg-emerald-100 text-emerald-700' },
-  delivered: { label: 'Delivered', emoji: '📦', cls: 'bg-blue-100 text-blue-700' },
-  cancelled: { label: 'Cancelled', emoji: '✖️', cls: 'bg-gray-100 text-gray-500' },
+  new:        { label: 'New',             emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
+  confirmed:  { label: 'Confirmed',       emoji: '✅', cls: 'bg-emerald-100 text-emerald-700' },
+  dispatched: { label: 'Out for delivery', emoji: '🛵', cls: 'bg-indigo-100 text-indigo-700' },
+  delivered:  { label: 'Delivered',       emoji: '📦', cls: 'bg-blue-100 text-blue-700' },
+  cancelled:  { label: 'Cancelled',       emoji: '✖️', cls: 'bg-gray-100 text-gray-500' },
 };
-const FILTERS = ['all', 'new', 'confirmed', 'delivered', 'cancelled'];
+const FILTERS = ['all', 'new', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
+
+// Customer-facing WhatsApp update for each status change. Sent from the owner's
+// own number via a prefilled wa.me link (one tap) — no API needed.
+function updateMsg(status, o, storeName) {
+  const name = o.customer_name?.trim() || 'there';
+  const at   = storeName ? ` at ${storeName}` : '';
+  switch (status) {
+    case 'confirmed':
+      return `Hi ${name}, your order${at} is confirmed ✅ We're preparing it now and will let you know when it's on the way. Thank you! 🙏`;
+    case 'dispatched':
+      return `Hi ${name}, good news — your order${at} is out for delivery 🛵 It'll reach you shortly!`;
+    case 'delivered':
+      return `Hi ${name}, your order${at} has been delivered 📦 Thank you for shopping with us — we'd love to serve you again! 🙏`;
+    default:
+      return `Hi ${name}, thank you for your order${at}! 🙏`;
+  }
+}
 
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -106,6 +124,12 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             })}
           </div>
 
+          {/* How updates work */}
+          <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
+            <MessageCircle size={12} className="text-emerald-500 flex-shrink-0" />
+            Each status button opens WhatsApp so you can send the customer a ready-made update.
+          </p>
+
           {/* Order cards */}
           <div className="space-y-3">
             {filtered.map((o) => (
@@ -128,6 +152,25 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
   const waMsg = encodeURIComponent(
     `Hi ${o.customer_name || 'there'}, thank you for your order${storeName ? ` at ${storeName}` : ''}! 🙏`
   );
+  // wa.me link prefilled with the status-update message for `status`.
+  const waUpdate = (status) => `https://wa.me/91${phone}?text=${encodeURIComponent(updateMsg(status, o, storeName))}`;
+
+  // Advance the order to `to` and, when we have the customer's number, open
+  // WhatsApp prefilled with that status's update so the owner can send it in one
+  // tap (the anchor's href is the user gesture; onClick persists the new status).
+  function Advance({ to, label, style, className }) {
+    const cls = `inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 ${className || ''}`;
+    return phone ? (
+      <a href={waUpdate(to)} target="_blank" rel="noopener noreferrer" onClick={() => onStatus(o.id, to)}
+         className={cls} style={style} title="Opens WhatsApp to notify the customer">
+        <MessageCircle size={13} /> {label}
+      </a>
+    ) : (
+      <button disabled={busy} onClick={() => onStatus(o.id, to)} className={cls} style={style}>
+        {label}
+      </button>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -182,20 +225,23 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
             </a>
           </>
         )}
-        <div className="flex gap-2 ml-auto">
+        <div className="flex flex-wrap gap-2 ml-auto justify-end">
           {o.status === 'new' && (
-            <button disabled={busy} onClick={() => onStatus(o.id, 'confirmed')}
-              className="text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50" style={{ backgroundColor: themeColor }}>
-              ✅ Confirm
-            </button>
+            <Advance to="confirmed" label="Confirm & notify" style={{ backgroundColor: themeColor }} />
           )}
           {o.status === 'confirmed' && (
-            <button disabled={busy} onClick={() => onStatus(o.id, 'delivered')}
-              className="text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 bg-blue-600 hover:bg-blue-700">
-              📦 Mark Delivered
-            </button>
+            <Advance to="dispatched" label="Out for delivery" className="bg-indigo-600 hover:bg-indigo-700" />
           )}
-          {(o.status === 'new' || o.status === 'confirmed') && (
+          {o.status === 'dispatched' && (
+            <Advance to="delivered" label="Mark Delivered" className="bg-blue-600 hover:bg-blue-700" />
+          )}
+          {o.status === 'delivered' && phone && (
+            <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
+              <MessageCircle size={13} /> Re-send update
+            </a>
+          )}
+          {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
               className="text-xs font-semibold text-red-500 px-2.5 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50">
               Cancel

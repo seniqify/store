@@ -24,7 +24,7 @@ const VALUE_PROPS = [
   { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Affordable from day one',        desc: 'Build your page free; publish for just ₹129/mo. Upgrade only when you outgrow it.' },
+  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'One flat price from ₹500/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
 ];
 
 const USE_CASES = [
@@ -41,38 +41,24 @@ const TESTIMONIALS = [
 const STATS = [
   { value: '2 min', label: 'to go live' },
   { value: '0%',    label: 'order commission' },
-  { value: '₹0',    label: 'to get started' },
+  { value: '2',     label: 'simple plans' },
   { value: '∞',     label: 'orders, no limits' },
 ];
 
-// Pricing plans — 4 tiers (yearly = 12× monthly, billed on /plans + /checkout)
+// Pricing plans — 2 tiers (yearly = 10× monthly, billed on /plans + /checkout)
 const PRICING_PLANS = [
   {
-    name: 'Starter', icon: '🌱', tagline: 'Go live for less', accent: '#9ca3af',
-    price: 129, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: false, to: '/start?plan=starter', cta: 'Get Started',
-    features: ['10 products · 2 categories', 'WhatsApp orders', 'Shareable page link', 'No “Powered by” badge'],
-    caveat: null,
-  },
-  {
-    name: 'Pro', icon: '🚀', tagline: 'Look professional & get found', accent: '#34d399',
-    price: 249, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: false, to: '/start?plan=pro', cta: 'Get Pro',
-    features: ['50 products · 10 categories', 'Verified badge', 'Order history & analytics', 'No PocketLink badge'],
-    caveat: null,
-  },
-  {
-    name: 'Business', icon: '👑', tagline: 'Sell without limits', accent: '#818cf8',
+    name: 'Standard', icon: '🛍️', tagline: 'Everything you need to sell', accent: '#34d399',
     price: 500, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: true, to: '/start?plan=business', cta: 'Get Business',
-    features: ['Unlimited products & categories', 'Discount codes & coupons', 'Product variants', 'Priority support'],
+    popular: true, to: '/start?plan=business', cta: 'Get Standard',
+    features: ['50 products · 10 categories', 'Verified badge — no PocketLink branding', 'Variants, coupons & order updates', 'Order history + basic analytics'],
     caveat: null,
   },
   {
-    name: 'Premium', icon: '👑', tagline: 'For serious sellers', accent: '#f59e0b',
+    name: 'Premium', icon: '👑', tagline: 'Unlimited + your AI assistant', accent: '#a78bfa',
     price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
     popular: false, to: '/start?plan=premium', cta: 'Get Premium',
-    features: ['Everything in Business', 'Dedicated WhatsApp support', 'Personal onboarding & setup help', 'Early access to new features'],
+    features: ['Unlimited products & categories', 'AI assistant answers customers 24/7', 'Advanced analytics + auto WhatsApp updates', 'Offers engine + priority support'],
     caveat: null,
   },
 ];
@@ -721,7 +707,7 @@ export default function Landing() {
                     <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                   </span>
-                  Free to build · No tech skills · Live in 2 minutes
+                  Simple pricing · No tech skills · Live in 2 minutes
                 </div>
 
                 <h1 className="text-[2.6rem] sm:text-6xl lg:text-[4.1rem] font-extrabold
@@ -851,7 +837,7 @@ export default function Landing() {
             <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">
               From idea to first order<br className="hidden sm:block" /> in three steps.
             </h2>
-            <p className="text-sm sm:text-base text-gray-500">No designers. No developers. No monthly fee to start.</p>
+            <p className="text-sm sm:text-base text-gray-500">No designers. No developers. Live in minutes.</p>
           </Reveal>
 
           <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-5">
@@ -1170,18 +1156,18 @@ export default function Landing() {
                           bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
                           before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">Pricing</p>
             <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
-              Pay nothing to start.<br className="hidden sm:block" />
+              Two simple plans.<br className="hidden sm:block" />
               <span className="pl-shimmer-text bg-clip-text text-transparent"
                     style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
-                Upgrade when you grow.
+                No commission, ever.
               </span>
             </h2>
             <p className="text-sm sm:text-base text-white/55 max-w-md mx-auto">
-              No credit card. No commission. No surprises — just one fair price when you're ready.
+              No setup fee. No commission. No per-order cuts — just one fair monthly price.
             </p>
           </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-stretch max-w-3xl mx-auto">
             {PRICING_PLANS.map((plan, idx) => (
               <Reveal key={plan.name} delay={idx * 0.1}
                 className={plan.popular ? 'lg:-mt-4 lg:-mb-4' : ''}>
@@ -1289,7 +1275,7 @@ export default function Landing() {
 
           {/* Trust strip */}
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-white/45">
-            <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> 6-month &amp; yearly plans save more</span>
+            <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> Yearly plans save 2 months</span>
             <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> Cancel anytime</span>
             <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-400" /> 0% commission on every plan</span>
           </div>
@@ -1309,12 +1295,12 @@ export default function Landing() {
           </Reveal>
           <div className="space-y-3">
             {[
-              { q: 'How much does PocketLink cost?', a: 'Building your store is free. To publish it and keep it live, the Starter plan is ₹129/month — 10 products, no setup fee, cancel anytime. Upgrade to Pro or Business for more.' },
+              { q: 'How much does PocketLink cost?', a: 'Two plans: Standard at ₹500/month (a complete store, up to 50 products) and Premium at ₹1000/month (unlimited products plus the AI assistant, advanced analytics and the offers engine). No setup fee, cancel anytime.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
-              { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — every paid plan (Starter and up) is free of the PocketLink badge, so your page is 100% your own brand.' },
-              { q: 'How do paid plans get activated?', a: 'Complete payment and send us a WhatsApp confirmation with your transaction ID. We activate your plan within 2–4 hours. Automated billing is on our roadmap.' },
+              { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — both paid plans are free of the PocketLink badge, so your page is 100% your own brand.' },
+              { q: 'How do paid plans get activated?', a: 'Instantly. Pay securely by UPI, card or net banking and your plan goes live the moment payment succeeds — no waiting, no manual confirmation.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
               { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
             ].map(({ q, a }, idx) => (
@@ -1367,7 +1353,7 @@ export default function Landing() {
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
                 Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
-                free to build, then just ₹129/mo to publish — no setup fee.
+                from ₹500/mo, no commission and no setup fee. Cancel anytime.
               </p>
               <Link
                 to="/start"

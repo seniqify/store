@@ -8,7 +8,8 @@ const DAY = 86400000;
 
 /**
  * Sales analytics — derived entirely from the orders table (no extra setup).
- * Gated to plans that include analytics (Pro/Business); others see an upsell.
+ * Both paid tiers (Standard & Premium) include analytics; a lapsed/free page
+ * sees an upsell.
  */
 export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false }) {
   const [orders, setOrders] = useState(null);
@@ -23,22 +24,22 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Upsell (Free / Starter) ──
+  // ── Upsell (lapsed / unpaid page) ──
   if (!enabled) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-8 text-center">
         <div className="w-14 h-14 mx-auto rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
           <Lock size={22} className="text-gray-400" />
         </div>
-        <h3 className="font-extrabold text-gray-900">Sales analytics is a Pro feature</h3>
+        <h3 className="font-extrabold text-gray-900">Sales analytics needs an active plan</h3>
         <p className="text-sm text-gray-500 mt-1.5 max-w-xs mx-auto">
-          See your revenue, best-selling products, daily order trends and more. Upgrade to unlock it.
+          See your revenue, best-selling products, daily order trends and more. Renew your plan to unlock it.
         </p>
         <a href="/plans"
            onClick={() => sessionStorage.setItem('pocketlink_verified_phone', '')}
            className="inline-flex items-center gap-2 mt-5 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg"
            style={{ backgroundColor: themeColor }}>
-          Upgrade to Pro →
+          See plans →
         </a>
       </div>
     );

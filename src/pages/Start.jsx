@@ -135,7 +135,7 @@ export default function Start() {
           <div className="inline-flex items-center gap-2 bg-white/5 border border-white/15 text-emerald-300
                           text-[11px] font-semibold px-3 py-1.5 rounded-full mb-5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Free · No tech skills · Live in minutes
+            Simple setup · No tech skills · Live in minutes
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white leading-[1.1] tracking-tight">
@@ -222,7 +222,7 @@ export default function Start() {
                 </button>
 
                 <div className="flex items-center justify-center gap-4 text-[11px] text-white/45 pt-1">
-                  <span className="inline-flex items-center gap-1"><Check size={11} className="text-emerald-400" /> Free plan</span>
+                  <span className="inline-flex items-center gap-1"><Check size={11} className="text-emerald-400" /> 0% commission</span>
                   <span className="inline-flex items-center gap-1"><Check size={11} className="text-emerald-400" /> No app</span>
                   <span className="inline-flex items-center gap-1"><Check size={11} className="text-emerald-400" /> 2-min setup</span>
                 </div>

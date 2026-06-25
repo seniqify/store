@@ -5,20 +5,21 @@ import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
 
 const PLAN_INFO = {
+  // 'pro' retired from the offered tiers; kept for any grandfathered Pro renewal.
   pro: {
     name:  'Pro',
     color: '#10b981',
     features: ['50 products', '10 categories', 'Verified badge', 'Order history'],
   },
   business: {
-    name:  'Business',
-    color: '#8b5cf6',
-    features: ['Unlimited products', 'Unlimited categories', 'Discount codes', 'Priority support'],
+    name:  'Standard',
+    color: '#10b981',
+    features: ['50 products', 'Verified badge', 'Variants & coupons', 'Order updates + analytics'],
   },
   premium: {
     name:  'Premium',
-    color: '#f59e0b',
-    features: ['Everything in Business', 'Dedicated support', 'Personal setup help', 'Early access to new features'],
+    color: '#8b5cf6',
+    features: ['Unlimited products', 'AI assistant', 'Advanced analytics', 'Auto updates + priority support'],
   },
 };
 

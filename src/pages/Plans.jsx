@@ -10,14 +10,6 @@ const PERIODS = [
 
 // monthly list rate + total amount actually charged (yearly = rate × 10 → 2 months free)
 const PRICING = {
-  starter: {
-    monthly: { rate: 129, charge: 129  },
-    yearly:  { rate: 129, charge: 1290 },
-  },
-  pro: {
-    monthly: { rate: 249,  charge: 249   },
-    yearly:  { rate: 249,  charge: 2490  },
-  },
   business: {
     monthly: { rate: 500,  charge: 500   },
     yearly:  { rate: 500,  charge: 5000  },
@@ -29,49 +21,38 @@ const PRICING = {
 };
 
 // ── Plans (highlights = always shown · features = inside the dropdown) ─────────
+// Two tiers. 'business' is shown as "Standard" (₹500, 50 products); 'premium'
+// (₹1000) is unlimited + the AI assistant, advanced analytics and offers engine.
 const PLANS = [
   {
-    key: 'starter', name: 'Starter', tagline: 'Go live for less',
-    accent: '#64748b', cta: 'Get Started',
-    highlights: ['10 products · 2 categories', 'WhatsApp order messages', 'No “Powered by” badge'],
-    features: ['10 products · 2 categories', 'WhatsApp order messages', 'Your own shareable link', 'No “Powered by PocketLink” badge', 'GST-ready pricing', 'UPI + Bank + COD checkout'],
-    missing: ['No Verified badge', 'No order history / analytics'],
-  },
-  {
-    key: 'pro', name: 'Pro', tagline: 'Look professional & get found',
-    accent: '#10b981', cta: 'Get Pro',
-    highlights: ['50 products · 10 categories', 'Verified badge ✓', 'Order history & analytics'],
+    key: 'business', name: 'Standard', tagline: 'Everything you need to sell', popular: true,
+    accent: '#10b981', cta: 'Get Standard',
+    highlights: ['50 products · 10 categories', 'Verified badge ✓', 'Variants, coupons & order updates'],
     features: [
       '50 products · 10 categories',
       'No “Powered by” badge — 100% your brand',
       'Verified badge — instant customer trust',
-      'Promo banners & page announcements',
-      'Order history + sales analytics',
-      'Email support',
-    ],
-  },
-  {
-    key: 'business', name: 'Business', tagline: 'Sell without limits', popular: true,
-    accent: '#8b5cf6', cta: 'Get Business',
-    highlights: ['Unlimited products & categories', 'Discount codes & coupons', 'Variants — size, colour & more'],
-    features: [
-      'Everything in Pro',
-      'Unlimited products & categories',
-      'Discount codes & coupons',
       'Product variants — size, colour & more',
-      'Advanced sales analytics',
-      'Priority support',
+      'Discount codes & coupons',
+      'Promo banners & page announcements',
+      'Order management + full order history',
+      'Basic sales analytics',
+      'Branded QR code for your shop',
+      'One-tap WhatsApp order updates',
     ],
   },
   {
-    key: 'premium', name: 'Premium', tagline: 'For serious sellers',
-    accent: '#f59e0b', cta: 'Get Premium',
-    highlights: ['Everything in Business', '👑 Dedicated priority support', 'Personal onboarding & setup help'],
+    key: 'premium', name: 'Premium', tagline: 'Unlimited + your AI assistant',
+    accent: '#8b5cf6', cta: 'Get Premium',
+    highlights: ['Unlimited products & categories', '🤖 AI assistant answers customers', 'Advanced analytics + auto updates'],
     features: [
-      'Everything in Business',
-      'Dedicated WhatsApp support — talk to a real person',
-      'Personal onboarding & store setup help',
-      'Early access to new features',
+      'Everything in Standard',
+      'Unlimited products & categories',
+      'AI Business Assistant — answers customers 24/7',
+      'Advanced analytics — returning customers, conversion, peak hours',
+      'Automatic WhatsApp order updates',
+      'Offers engine — flash, weekend & festival sales',
+      'Priority WhatsApp support + personal setup',
     ],
   },
 ];
@@ -90,7 +71,8 @@ const UNIVERSAL = [
 ];
 
 const FAQS = [
-  { q: 'How much does it cost to start?', a: 'Building your store is free. To publish it and keep it live, the Starter plan is ₹129/month — no setup fee, cancel anytime.' },
+  { q: 'What do the two plans cost?', a: 'Standard is ₹500/month — a complete store with up to 50 products. Premium is ₹1000/month — unlimited products plus the AI assistant, advanced analytics and the offers engine. No setup fee, cancel anytime.' },
+  { q: 'What’s the difference between Standard and Premium?', a: 'Standard gives you everything to sell properly — your page, variants, coupons, order updates and basic analytics — capped at 50 products. Premium removes the product limit and adds the AI assistant that answers customers 24/7, advanced analytics, automatic WhatsApp order updates and scheduled offers.' },
   { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission.' },
   { q: 'Is yearly cheaper?', a: 'Yes — pay yearly and 2 months are free: you pay for 10 months, not 12. Same plan and features at a lower effective price, and it auto-renews yearly so your page never lapses.' },
   { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. Your page keeps working; you simply lose the paid features — it never goes offline.' },
@@ -109,13 +91,8 @@ export default function Plans() {
   const togglePlan = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
 
   function choosePlan(planKey) {
-    // Starter = build free, pay ₹129 to publish → go straight to building.
-    if (planKey === 'starter') {
-      sessionStorage.setItem('pocketlink_plan', 'starter');
-      if (!phone) { navigate('/start?plan=starter'); return; }
-      navigate('/onboarding');
-      return;
-    }
+    // Both tiers are paid → confirm phone, then pay at /checkout (which sets the
+    // plan + expiry before sending the new signup into onboarding).
     if (phone) {
       navigate(`/checkout/${planKey}?period=${period}`);
     } else {
@@ -161,11 +138,11 @@ export default function Plans() {
             <Sparkles size={12} /> Launch pricing — lock in these rates
           </span>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white mb-3 tracking-tight">
-            Pick the plan that{' '}
-            <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grows with you</span>
+            Two simple plans that{' '}
+            <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grow with you</span>
           </h1>
           <p className="text-white/55 text-sm sm:text-base max-w-md mx-auto">
-            Build free. Publish from ₹129/mo. Upgrade only when you’re ready — no contracts, no per-order fees, ever.
+            Start at ₹500/mo for a complete store. Step up to Premium for unlimited products and your AI assistant — no contracts, no per-order fees, ever.
           </p>
         </div>
 
@@ -191,7 +168,7 @@ export default function Plans() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start max-w-3xl mx-auto">
           {PLANS.map((plan) => {
             const p        = plan.key === 'free' ? null : PRICING[plan.key][period];
             // On yearly, headline the true effective per-month (10 months' charge
@@ -245,7 +222,7 @@ export default function Plans() {
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
-                          ≈ ₹{perDay}/day{plan.key === 'pro' ? ' · less than a chai' : ''}
+                          ≈ ₹{perDay}/day{plan.key === 'business' ? ' · less than a chai' : ''}
                         </span>
                         {period === 'yearly' && (
                           <span className="text-[11px] font-bold text-emerald-300">Save ₹{yearSave.toLocaleString('en-IN')}/yr</span>
@@ -370,7 +347,7 @@ export default function Plans() {
         <div className="mt-12 text-center">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-white/80">
             <ShieldCheck size={16} className="text-emerald-400" />
-            Build it free — go live for ₹129, upgrade only when it’s paying for itself.
+            Start with Standard — step up to Premium only when it’s paying for itself.
           </p>
         </div>
       </div>

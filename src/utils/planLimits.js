@@ -30,6 +30,8 @@ export const PLANS = {
     variants:        false,
     prioritySupport: false,
   },
+  // 'pro' (₹249) is retired from the offered tiers but kept so any grandfathered
+  // Pro store keeps resolving to its old limits.
   pro: {
     name:            'Pro',
     products:        50,
@@ -43,33 +45,47 @@ export const PLANS = {
     variants:        false,
     prioritySupport: false,
   },
+  // ── Standard — the ₹500 entry tier. A complete, professional store, capped at
+  // 50 products. (Internal key stays 'business' so the existing Razorpay ₹500
+  // plan_id and any current Business stores keep working.) ──
   business: {
-    name:            'Business',
-    products:        Infinity,
-    categories:      Infinity,
-    badge:           false,
-    verified:        true,
-    promoBanner:     true,
-    discountCodes:   true,
-    orderHistory:    true,
-    analytics:       'full',
-    variants:        true,
-    prioritySupport: true,
-    whatsappApi:     false,   // WhatsApp API number connect is Premium-only
+    name:             'Standard',
+    products:         50,
+    categories:       10,
+    badge:            false,
+    verified:         true,
+    promoBanner:      true,
+    discountCodes:    true,
+    orderHistory:     true,
+    analytics:        'basic',
+    variants:         true,
+    prioritySupport:  false,
+    aiEmployee:       false,
+    offersEngine:     false,
+    autoOrderUpdates: false,   // Standard sends order updates one tap at a time
+    festivalMode:     false,
+    whatsappApi:      false,
   },
+  // ── Premium — the ₹1000 growth tier. Unlimited everything plus the AI
+  // assistant, advanced analytics, automatic WhatsApp updates and the offers
+  // engine. The clear reasons to step up from Standard. ──
   premium: {
-    name:            'Premium',
-    products:        Infinity,
-    categories:      Infinity,
-    badge:           false,
-    verified:        true,
-    promoBanner:     true,
-    discountCodes:   true,
-    orderHistory:    true,
-    analytics:       'full',
-    variants:        true,
-    prioritySupport: true,
-    whatsappApi:     false,   // WhatsApp API connect is built later — flip when it ships
+    name:             'Premium',
+    products:         Infinity,
+    categories:       Infinity,
+    badge:            false,
+    verified:         true,
+    promoBanner:      true,
+    discountCodes:    true,
+    orderHistory:     true,
+    analytics:        'full',
+    variants:         true,
+    prioritySupport:  true,
+    aiEmployee:       true,
+    offersEngine:     true,
+    autoOrderUpdates: true,
+    festivalMode:     false,   // Festival Mode ships later — flip when it's built
+    whatsappApi:      false,   // WhatsApp API connect is built later — flip when it ships
   },
 };
 
@@ -101,9 +117,9 @@ export function isPaidPlan(plan) {
   return !showBrandBadge(plan);
 }
 
-// The "Verified" store badge is a trust signal reserved for the higher tiers
-// (Pro & Business). Starter is paid but does NOT get Verified — gate the badge
-// on this, not isPaidPlan.
+// The "Verified" store badge is a trust signal carried by the offered paid
+// tiers (Standard & Premium, plus grandfathered Pro). Gate the badge on this,
+// not isPaidPlan.
 export function isVerified(plan) {
   return getPlanLimits(plan).verified === true;
 }
