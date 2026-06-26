@@ -16,7 +16,7 @@ import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
-  Menu, LogOut,
+  Menu, LogOut, Percent,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -33,6 +33,7 @@ import OrdersTab                                       from '../components/manag
 import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
 import ReachCard                                       from '../components/manage/ReachCard';
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
+import OffersTab                                        from '../components/manage/OffersTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1398,68 +1399,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         </a>
       )}
 
-      {/* Promo Banner */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <div className="h-px flex-1 bg-gray-100" />
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Announcement Banner</span>
-          <div className="h-px flex-1 bg-gray-100" />
-        </div>
-        <div>
-          <label className={lCls()}>
-            Promo Message
-            <span className="text-gray-400 font-normal ml-1">(optional)</span>
-          </label>
-          <input
-            type="text"
-            maxLength={100}
-            placeholder="e.g. 🎉 Free delivery this week! · 10% off on orders above ₹500"
-            value={config.promoText || ''}
-            onChange={e => update({ promoText: e.target.value })}
-            className={iCls(false)}
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            Start with an emoji 🚚 then your heading · optional subtitle.
-            Use <strong className="text-gray-500">·</strong> to separate heading from subtitle.
-          </p>
-          <p className="mt-0.5 text-[11px] text-gray-400 italic">
-            e.g. 🚚 Free delivery today · On all orders above ₹999
-          </p>
-          {config.promoText && (() => {
-            const emoji    = config.promoText.match(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+/u)?.[0] ?? null;
-            const noEmoji  = config.promoText.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+\s*/u, '').trim();
-            const parts    = noEmoji.split(/\s*[·•\-–]\s*/);
-            const heading  = parts[0] ?? '';
-            const sub      = parts[1] ?? null;
-            const primary  = config.theme?.primary ?? themeColor;
-            return (
-              <div className="mt-3 rounded-2xl overflow-hidden relative"
-                   style={{ backgroundColor: `${primary}18` }}>
-                <div className="absolute inset-0 opacity-20 pointer-events-none"
-                     style={{
-                       backgroundImage: `radial-gradient(circle, ${primary}40 1px, transparent 1px)`,
-                       backgroundSize: '18px 18px',
-                     }} />
-                <div className="relative flex items-stretch min-h-[80px]">
-                  <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 px-4 py-3">
-                    <p className="font-extrabold text-sm text-gray-900 leading-tight">{heading}</p>
-                    {sub && <p className="text-xs text-gray-500">{sub}</p>}
-                    <span className="mt-1 self-start text-[10px] font-bold text-white px-2.5 py-1 rounded-lg"
-                          style={{ backgroundColor: primary }}>
-                      Order Now →
-                    </span>
-                  </div>
-                  <div className="flex-shrink-0 w-20 flex items-end justify-center pb-1 pr-1 pt-2 relative">
-                    <div className="absolute bottom-1 right-0 w-16 h-16 rounded-full"
-                         style={{ backgroundColor: `${primary}20` }} />
-                    <span className="relative text-4xl leading-none select-none">{emoji ?? '🎉'}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
+      {/* Promo banner moved to the Offers tab (Offers → Announcement banner) */}
 
       {/* Business Info */}
       <div>
@@ -1934,6 +1874,7 @@ export default function ManageStore() {
     { key: 'reviews',    label: 'Reviews',    icon: Star      },
     { key: 'products',   label: 'Products',   icon: Package  },
     { key: 'categories', label: 'Categories', icon: Tag      },
+    { key: 'offers',     label: 'Offers',     icon: Percent  },
     { key: 'settings',   label: 'Settings',   icon: Settings2 },
   ];
 
@@ -2080,6 +2021,15 @@ export default function ManageStore() {
           )}
           {tab === 'categories' && (
             <ManageCategories
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+            />
+          )}
+          {tab === 'offers' && (
+            <OffersTab
               config={config}
               onChange={handleChange}
               onSave={handleSave}
