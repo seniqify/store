@@ -4,7 +4,7 @@ import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronD
 import { listStores } from '../utils/storeService';
 import { fetchAllRatings } from '../utils/reviewService';
 import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
-import { categoryMeta } from '../utils/businessCategories';
+import { categoryMeta, MARKETPLACE_DEPRIORITIZED_CATEGORIES } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
 import { getFavs, toggleFav, getRecents, addRecent, bumpMarketplaceVisit } from '../utils/shopMemory';
 import BusinessCard from '../components/marketplace/BusinessCard';
@@ -163,9 +163,16 @@ export default function Marketplace() {
     return m;
   }, [businesses]);
 
-  // Only show categories that actually have businesses, most-listed first.
+  // Categories that actually have businesses, most-listed first — but the
+  // generic catch-alls (Other Retail/Services, Wholesale & Manufacturing) are
+  // always pushed to the end so specific categories lead.
   const presentCategories = useMemo(
-    () => Object.keys(countByCategory).sort((a, b) => countByCategory[b] - countByCategory[a]),
+    () => Object.keys(countByCategory).sort((a, b) => {
+      const da = MARKETPLACE_DEPRIORITIZED_CATEGORIES.has(a) ? 1 : 0;
+      const db = MARKETPLACE_DEPRIORITIZED_CATEGORIES.has(b) ? 1 : 0;
+      if (da !== db) return da - db;
+      return countByCategory[b] - countByCategory[a];
+    }),
     [countByCategory],
   );
 

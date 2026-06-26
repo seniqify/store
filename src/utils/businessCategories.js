@@ -67,6 +67,13 @@ export const MARKETPLACE_HIDDEN_CATEGORIES = new Set([
   'Lodge & Stay', 'Homestay', 'Hotel',
 ]);
 
+// Generic / B2B catch-all categories — kept in the marketplace but always sorted
+// to the END (never leading the chips/tiles), even when they have the most stores.
+export const MARKETPLACE_DEPRIORITIZED_CATEGORIES = new Set([
+  'Other Retail', 'Other Services',
+  'Wholesale & Manufacturing', 'Manufacturer', 'Wholesaler', 'Wholesale', 'Manufacturing',
+]);
+
 // Flat lookup: category id -> { emoji, grad, type }
 const META = {};
 let _i = 0;
