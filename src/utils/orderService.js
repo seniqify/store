@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { calcCartTotals } from './currency';
+import { couponDiscountFor } from './offers';
 import { hashPin } from './pinHash';
 
 /**
@@ -13,21 +14,24 @@ import { hashPin } from './pinHash';
  */
 
 /** Best-effort: record an order. Never throws — must not block the WhatsApp handoff. */
-export async function saveOrder(customerDetails = {}, cart = [], config = {}) {
+export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null) {
   // Skip demo stores (slug stripped) and empty carts.
   if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return;
   try {
     const { subtotal, tax, shipping, total } = calcCartTotals(cart, config.cart);
+    const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
+    const netTotal = Math.max(0, total - couponDiscount);
+    const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
     await supabase.from('orders').insert({
       store_slug:     config.slug,
       customer_name:  customerDetails.partyName || customerDetails.name || '',
       customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),
       destination:    customerDetails.destination || customerDetails.city || '',
       payment_method: customerDetails.paymentMethod || '',
-      notes:          customerDetails.notes || '',
+      notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
       items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
       item_count:     cart.reduce((s, i) => s + i.qty, 0),
-      subtotal, tax, shipping, total,
+      subtotal, tax, shipping, total: netTotal,
       status:         'new',
     });
   } catch {

@@ -7,6 +7,7 @@ import {
   sendOrderOnWhatsApp,
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
+import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink } from '../../utils/upiLink';
 
@@ -63,11 +64,34 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const [submitted,   setSubmitted]   = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Coupon entered at checkout (validated against the store's live coupons).
+  const [couponInput,   setCouponInput]   = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError,   setCouponError]   = useState('');
+
   const config = useBusinessConfig();
   const { subtotal, tax, shipping, total } = calcCartTotals(cart, config.cart);
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;
+
+  const coupons        = config.coupons || [];
+  const couponDiscount = appliedCoupon ? couponDiscountFor(appliedCoupon, subtotal) : 0;
+  const finalTotal     = Math.max(0, total - couponDiscount);
+
+  function applyCoupon() {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    const c = coupons.find((x) => String(x.code || '').toUpperCase() === code);
+    if (!c || !isCouponLive(c)) { setAppliedCoupon(null); setCouponError('Invalid or expired code.'); return; }
+    if (c.minOrder && subtotal < Number(c.minOrder)) {
+      setAppliedCoupon(null);
+      setCouponError(`Add ${formatINR(Number(c.minOrder) - subtotal)} more to use this code (min ${formatINR(c.minOrder)}).`);
+      return;
+    }
+    setAppliedCoupon(c); setCouponError('');
+  }
+  function removeCoupon() { setAppliedCoupon(null); setCouponInput(''); setCouponError(''); }
 
   // Preview is only meaningful once the required fields + cart are ready
   const canPreview =
@@ -92,7 +116,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     }
     if (cartEmpty) return;
 
-    sendOrderOnWhatsApp(formData, cart, config);
+    sendOrderOnWhatsApp(formData, cart, config, appliedCoupon);
     setSubmitted(true);
   }
 
@@ -173,7 +197,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             </p>
             <pre className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono
                             bg-white border border-gray-200 rounded-xl px-4 py-3 overflow-x-auto">
-              {generateWhatsAppMessage(formData, cart, config)}
+              {generateWhatsAppMessage(formData, cart, config, appliedCoupon)}
             </pre>
           </div>
         </div>
@@ -289,13 +313,13 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
                   href={buildUpiLink({
                     upi:       config.upi,
                     payeeName: config.businessName || config.name,
-                    amount:    total,
+                    amount:    finalTotal,
                     note:      `Order — ${config.businessName || config.name || 'Store'}`,
                   })}
                   className="mt-3 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700
                              text-white text-sm font-bold py-2.5 rounded-xl transition-colors active:scale-[0.98]"
                 >
-                  📲 Pay {formatINR(total)} now via UPI
+                  📲 Pay {formatINR(finalTotal)} now via UPI
                 </a>
               )}
               <p className="text-[10px] text-blue-400 text-center mt-1.5">
@@ -427,13 +451,58 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
                 </span>
               </div>
 
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-green-700">
+                  <span className="flex items-center gap-1">🎟️ Coupon {appliedCoupon.code}</span>
+                  <span className="font-semibold tabular-nums">− {formatINR(couponDiscount)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between pt-1.5 border-t border-dashed border-gray-200">
                 <span className="font-bold text-gray-900">Total</span>
                 <span className="font-extrabold text-brand-dark text-base tabular-nums">
-                  {formatINR(total)}
+                  {formatINR(finalTotal)}
                 </span>
               </div>
             </div>
+
+            {/* ── Coupon code ────────────────────────────────────────────── */}
+            {coupons.length > 0 && (
+              appliedCoupon ? (
+                <div className="flex items-center justify-between gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-green-700 min-w-0">
+                    <span className="flex-shrink-0">🎟️</span>
+                    <span className="font-mono truncate">{appliedCoupon.code}</span>
+                    <span className="text-green-600 font-normal">applied</span>
+                  </span>
+                  <button type="button" onClick={removeCoupon}
+                    className="text-xs font-semibold text-gray-400 hover:text-red-500 flex-shrink-0">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Have a coupon code?"
+                      value={couponInput}
+                      onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), applyCoupon())}
+                      className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-mono tracking-wide
+                                 uppercase text-gray-900 placeholder:font-sans placeholder:normal-case placeholder:tracking-normal
+                                 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                      maxLength={20}
+                    />
+                    <button type="button" onClick={applyCoupon} disabled={!couponInput.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                      Apply
+                    </button>
+                  </div>
+                  {couponError && <p className="mt-1.5 text-xs text-red-500">{couponError}</p>}
+                </div>
+              )
+            )}
 
             {/* Send Order on WhatsApp */}
             <button

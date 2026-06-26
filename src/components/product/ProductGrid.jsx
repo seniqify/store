@@ -35,8 +35,12 @@ export default function ProductGrid({
   const [activeCategory, setActiveCategory] = useState('all');
   const [fading, setFading]                 = useState(false);
   const [query, setQuery]                   = useState('');
+  const [saleOnly, setSaleOnly]             = useState(false);
   const [visible, setVisible]               = useState(PAGE_SIZE);
   const pendingCategory                     = useRef(null);
+
+  const anyOnSale  = products.some((p) => p._onSale);
+  const saleCount  = products.filter((p) => p._onSale).length;
 
   // ── Animated category switch ───────────────────────────────────────────
   function handleCategoryChange(id) {
@@ -57,13 +61,14 @@ export default function ProductGrid({
     activeCategory === 'all'
       ? products
       : products.filter((p) => p.category === activeCategory);
+  const bySale = saleOnly ? byCategory.filter((p) => p._onSale) : byCategory;
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? byCategory.filter((p) => p.name.toLowerCase().includes(q))
-    : byCategory;
+    ? bySale.filter((p) => p.name.toLowerCase().includes(q))
+    : bySale;
 
-  // Reset the visible window whenever the result set changes (new category/search).
-  useEffect(() => { setVisible(PAGE_SIZE); }, [activeCategory, q]);
+  // Reset the visible window whenever the result set changes (new category/search/sale).
+  useEffect(() => { setVisible(PAGE_SIZE); }, [activeCategory, q, saleOnly]);
 
   const shown     = filtered.slice(0, visible);
   const remaining = filtered.length - shown.length;
@@ -124,6 +129,19 @@ export default function ProductGrid({
             </button>
           )}
         </div>
+
+        {/* On-sale filter — only when a live sale covers some products */}
+        {anyOnSale && (
+          <button type="button" onClick={() => setSaleOnly((v) => !v)}
+            className={[
+              'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition-all active:scale-95',
+              saleOnly
+                ? 'bg-rose-500 text-white border-transparent shadow-sm'
+                : 'bg-white text-rose-600 border-rose-200 hover:border-rose-300',
+            ].join(' ')}>
+            🔥 On sale {saleOnly ? '✓' : `· ${saleCount}`}
+          </button>
+        )}
 
         {/* Category tabs — wired to the animated switch handler */}
         <CategoryTabs

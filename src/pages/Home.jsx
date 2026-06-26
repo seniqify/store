@@ -7,11 +7,13 @@ import CartSummary from '../components/cart/CartSummary';
 import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
 import StoreSearchBar from '../components/store/StoreSearchBar';
+import StoreSaleBanner from '../components/store/StoreSaleBanner';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
+import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 
 /**
  * Home — the main storefront page.
@@ -44,6 +46,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const primary     = theme?.primary ?? '#0d9488';
   const primaryDark = theme?.primaryDark ?? '#0f766e';
   const freeAbove   = config.cart?.freeShippingAbove ?? 0;
+
+  // Scheduled sales (Premium): bake live sale prices into the products customers
+  // see + add to cart, and surface a live sale banner with countdown.
+  const offers       = config.offers || [];
+  const liveOffers   = offers.filter((o) => isOfferLive(o));
+  const saleProducts = applyOffersToProducts(products, offers);
 
   // Parse promo text for the offer ribbon
   const promoEmoji = promoText
@@ -192,7 +200,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       {/* ── Hero search / ask bar (product search for all; AI answers on Premium) ── */}
       {(products.length > 0 || hasFeature(effectivePlan(config), 'aiEmployee')) && (
         <StoreSearchBar
-          products={products}
+          products={saleProducts}
           primary={primary}
           onAddToCart={addToCart}
           slug={config.slug}
@@ -202,8 +210,10 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         />
       )}
 
-      {/* ── Offer ribbon ─────────────────────────────────────────────────── */}
-      {promoText && (
+      {/* ── Sale banner (live scheduled sale) → else static promo ribbon ───── */}
+      {liveOffers.length > 0 ? (
+        <StoreSaleBanner offers={liveOffers} primary={primary} primaryDark={primaryDark} />
+      ) : promoText ? (
         <div className="w-full px-3 sm:px-4 mt-4">
           <div className="max-w-7xl mx-auto relative overflow-hidden rounded-2xl shadow-sm"
                style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
@@ -224,7 +234,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* ── Feature chips ─────────────────────────────────────────────────── */}
       {features?.length > 0 && (
@@ -256,7 +266,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           <div className="w-full lg:flex-1 min-w-0 overflow-hidden space-y-6">
 
             <ProductGrid
-              products={products}
+              products={saleProducts}
               categories={categories}
               cart={cart}
               onAddToCart={addToCart}

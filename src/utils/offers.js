@@ -103,3 +103,67 @@ export function isCouponLive(c, now = new Date()) {
   if (c.expiresAt && now > endOfDay(c.expiresAt)) return false;
   return true;
 }
+
+// The rupee discount a coupon gives on a subtotal (0 if not usable / under min).
+export function couponDiscountFor(coupon, subtotal, now = new Date()) {
+  if (!coupon || !isCouponLive(coupon, now)) return 0;
+  if (coupon.minOrder && subtotal < Number(coupon.minOrder)) return 0;
+  const v = Number(coupon.discountValue) || 0;
+  const d = coupon.discountType === 'flat' ? v : Math.round((subtotal * v) / 100);
+  return Math.max(0, Math.min(d, subtotal));
+}
+
+// Return a copy of products with live sale prices baked in: the discounted price
+// becomes `price`, the pre-sale price becomes `mrp` (so the existing card/cart
+// strikethrough + "you save" machinery shows the sale), plus `_onSale`/`_saleName`.
+// Variant option prices get the same treatment. Untouched if no live offer covers it.
+export function applyOffersToProducts(products = [], offers = [], now = new Date()) {
+  const live = offers.filter((o) => isOfferLive(o, now));
+  if (!live.length) return products;
+
+  return products.map((p) => {
+    let best = null;
+    for (const o of live) {
+      if (!offerCoversProduct(o, p)) continue;
+      if (best == null || applyDiscount(p.price, o) < applyDiscount(p.price, best)) best = o;
+    }
+    if (!best) return p;
+
+    const np = { ...p, _onSale: true, _saleName: best.name };
+    if (p.price != null) {
+      const sp = applyDiscount(p.price, best);
+      if (sp < p.price) { np.price = sp; np.mrp = p.price; }
+    }
+    if (p.variants?.options?.length) {
+      np.variants = {
+        ...p.variants,
+        options: p.variants.options.map((opt) => {
+          if (opt.price == null) return opt;
+          const osp = applyDiscount(opt.price, best);
+          return osp < opt.price ? { ...opt, price: osp, mrp: opt.price } : opt;
+        }),
+      };
+    }
+    return np;
+  });
+}
+
+// When does a live sale end? Used for the storefront countdown. null = no countdown
+// (e.g. an "always on" sale). Handles date ranges, weekends and daily happy-hours.
+export function offerEndsAt(offer, now = new Date()) {
+  const sc = offer?.schedule || {};
+  if (sc.type === 'range' && sc.end) return endOfDay(sc.end);
+  if (sc.type === 'happyHours' && sc.to) {
+    const [th, tm] = sc.to.split(':').map(Number);
+    const d = new Date(now); d.setHours(th, tm, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  if (sc.type === 'weekend') {
+    const d = new Date(now);
+    d.setDate(d.getDate() + ((7 - d.getDay()) % 7));   // this/next Sunday
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+  return null;
+}

@@ -1,4 +1,5 @@
 import { calcCartTotals, formatINR } from './currency';
+import { couponDiscountFor } from './offers';
 import { saveOrder } from './orderService';
 
 /**
@@ -38,9 +39,11 @@ const PAYMENT_LABELS = {
   cheque: 'Cheque',
 };
 
-export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}) {
+export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}, coupon = null) {
   const cartConfig = businessConfig.cart ?? { taxRate: 0, freeShippingAbove: 999, shippingCharge: 49 };
   const { subtotal, tax, shipping, total, taxInclusive, taxUniformPct } = calcCartTotals(cart, cartConfig);
+  const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
+  const finalTotal = Math.max(0, total - couponDiscount);
 
   const lines = [];
 
@@ -89,7 +92,8 @@ export function generateWhatsAppMessage(customerDetails, cart, businessConfig = 
   lines.push(`Subtotal: ${formatINR(subtotal)}`);
   if (tax > 0) lines.push(`GST${taxUniformPct != null ? ` (${taxUniformPct}%)` : ''}${taxInclusive ? ' incl.' : ''}: ${formatINR(tax)}`);
   lines.push(`Delivery: ${shipping === 0 ? 'FREE' : formatINR(shipping)}`);
-  lines.push(`*Total: ${formatINR(total)}*`);
+  if (couponDiscount > 0) lines.push(`Coupon (${coupon.code}): -${formatINR(couponDiscount)}`);
+  lines.push(`*Total: ${formatINR(finalTotal)}*`);
 
   // ── Optional notes ──────────────────────────────────────────────────────────
   if (customerDetails.notes?.trim()) {
@@ -105,8 +109,8 @@ export function generateWhatsAppMessage(customerDetails, cart, businessConfig = 
  * Returns the full wa.me deep-link with the message encoded via encodeURIComponent.
  * Uses the business's own WhatsApp number from businessConfig.
  */
-export function generateWhatsAppURL(customerDetails, cart, businessConfig = {}) {
-  const message = generateWhatsAppMessage(customerDetails, cart, businessConfig);
+export function generateWhatsAppURL(customerDetails, cart, businessConfig = {}, coupon = null) {
+  const message = generateWhatsAppMessage(customerDetails, cart, businessConfig, coupon);
   const encoded = encodeURIComponent(message);
   const number  = businessConfig.whatsappNumber ?? '';
   return `https://wa.me/${number}?text=${encoded}`;
@@ -117,9 +121,9 @@ export function generateWhatsAppURL(customerDetails, cart, businessConfig = {}) 
  * Opens WhatsApp in a new tab with the pre-filled order message.
  * Mobile: opens the WhatsApp app directly via the wa.me deep link.
  */
-export function sendOrderOnWhatsApp(customerDetails, cart, businessConfig = {}) {
+export function sendOrderOnWhatsApp(customerDetails, cart, businessConfig = {}, coupon = null) {
   // Record the order first (best-effort, fire-and-forget — never blocks WhatsApp).
-  saveOrder(customerDetails, cart, businessConfig);
-  const url = generateWhatsAppURL(customerDetails, cart, businessConfig);
+  saveOrder(customerDetails, cart, businessConfig, coupon);
+  const url = generateWhatsAppURL(customerDetails, cart, businessConfig, coupon);
   window.open(url, '_blank', 'noopener,noreferrer');
 }
