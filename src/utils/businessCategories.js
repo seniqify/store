@@ -50,6 +50,23 @@ const PALETTE = [
   ['#a3e635', '#65a30d'], ['#38bdf8', '#0284c7'], ['#f59e0b', '#b45309'],
 ];
 
+// Legacy / food / hospitality categories some existing stores use that aren't
+// offered as onboarding sub-categories. Listed here so the marketplace styles
+// them with a real emoji + colour instead of the grey "🏪" fallback.
+const EXTRA_CATEGORIES = [
+  ['Restaurant', '🍽️'], ['Cafe & Tea', '☕'], ['Bakery & Cakes', '🍰'],
+  ['Sweets & Bakery', '🧁'], ['Cloud Kitchen', '🍱'], ['Food & Beverage', '🍔'],
+  ['Home & Textiles', '🧺'], ['Lodge & Stay', '🏨'], ['Homestay', '🏡'], ['Hotel', '🏨'],
+];
+
+// Categories hidden from the consumer marketplace — hospitality + dining don't
+// fit the WhatsApp-order model, so businesses in these categories aren't listed
+// (and their tiles/chips don't appear).
+export const MARKETPLACE_HIDDEN_CATEGORIES = new Set([
+  'Restaurant', 'Cafe & Tea', 'Cloud Kitchen', 'Food & Beverage',
+  'Lodge & Stay', 'Homestay', 'Hotel',
+]);
+
 // Flat lookup: category id -> { emoji, grad, type }
 const META = {};
 let _i = 0;
@@ -58,6 +75,9 @@ for (const [type, list] of Object.entries(SUBCATEGORIES)) {
     META[id] = { emoji, grad: PALETTE[_i % PALETTE.length], type };
     _i++;
   }
+}
+for (const [id, emoji] of EXTRA_CATEGORIES) {
+  if (!META[id]) { META[id] = { emoji, grad: PALETTE[_i % PALETTE.length], type: 'product' }; _i++; }
 }
 
 /** Emoji + gradient for a category id (falls back to a neutral chip). */

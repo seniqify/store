@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Sparkles, Store, ArrowRight, X, MapPin, MessageCircle, ChevronDown, ArrowUp, Heart, History } from 'lucide-react';
 import { listStores } from '../utils/storeService';
 import { fetchAllRatings } from '../utils/reviewService';
-import { normalizeBusiness } from '../utils/marketplace';
+import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
 import { categoryMeta } from '../utils/businessCategories';
 import { whatsappLink } from '../utils/theme';
 import { getFavs, toggleFav, getRecents, addRecent, bumpMarketplaceVisit } from '../utils/shopMemory';
@@ -144,7 +144,9 @@ export default function Marketplace() {
     let alive = true;
     (async () => {
       const [rows, ratingMap] = await Promise.all([listStores(), fetchAllRatings()]);
-      const real = rows.map((c) => normalizeBusiness(c, { demo: false }));
+      // Only list contactable, relevant stores: real WhatsApp number + a category
+      // that isn't hidden (hospitality/dining). Drops demo/placeholder seeds too.
+      const real = rows.map((c) => normalizeBusiness(c, { demo: false })).filter(isMarketplaceVisible);
       if (alive) { setBusinesses(real); setRatings(ratingMap); setLoading(false); }
     })();
     return () => { alive = false; };

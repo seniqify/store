@@ -3,7 +3,23 @@
  * Nothing here writes to the DB or mutates store data.
  */
 
-import { DEFAULT_CATEGORY } from './businessCategories';
+import { DEFAULT_CATEGORY, MARKETPLACE_HIDDEN_CATEGORIES } from './businessCategories';
+
+// A contactable WhatsApp number is required to be discoverable — this filters
+// out demo/seed stores (placeholder 9000000000) and anything with no real number.
+export function hasRealWhatsApp(numberLike) {
+  const d = String(numberLike || '').replace(/\D/g, '').replace(/^91/, '');
+  if (d.length < 10) return false;
+  if (d === '9000000000') return false;        // the demo placeholder
+  if (/^(\d)\1{9}$/.test(d)) return false;      // all-identical digits
+  return true;
+}
+
+// Should a normalized business appear in the consumer marketplace?
+// Needs a real WhatsApp number and a category that isn't hidden (hospitality/dining).
+export function isMarketplaceVisible(biz) {
+  return hasRealWhatsApp(biz?.whatsappNumber) && !MARKETPLACE_HIDDEN_CATEGORIES.has(biz?.category);
+}
 
 /** A store's marketplace category: its chosen sub-category, else a type default. */
 export function deriveCategory(config) {
