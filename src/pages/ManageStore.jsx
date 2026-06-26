@@ -16,7 +16,7 @@ import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
-  Menu, LogOut, Percent,
+  Menu, LogOut, Percent, Sparkles,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -34,6 +34,7 @@ import AnalyticsTab                                    from '../components/manag
 import ReachCard                                       from '../components/manage/ReachCard';
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
 import OffersTab                                        from '../components/manage/OffersTab';
+import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1868,14 +1869,16 @@ export default function ManageStore() {
 
   const analyticsEnabled  = !!getPlanLimits(effectivePlan(config)).analytics;
   const analyticsAdvanced = getPlanLimits(effectivePlan(config)).analytics === 'full';
+  const aiInsightsEnabled = !!getPlanLimits(effectivePlan(config)).aiEmployee;
   const TABS = [
-    { key: 'orders',     label: 'Orders',     icon: ShoppingBag },
-    { key: 'analytics',  label: 'Stats',      icon: BarChart3 },
-    { key: 'reviews',    label: 'Reviews',    icon: Star      },
-    { key: 'products',   label: 'Products',   icon: Package  },
-    { key: 'categories', label: 'Categories', icon: Tag      },
-    { key: 'offers',     label: 'Offers',     icon: Percent  },
-    { key: 'settings',   label: 'Settings',   icon: Settings2 },
+    { key: 'orders',     label: 'Orders',      icon: ShoppingBag },
+    { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
+    { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
+    { key: 'reviews',    label: 'Reviews',     icon: Star      },
+    { key: 'products',   label: 'Products',    icon: Package  },
+    { key: 'categories', label: 'Categories',  icon: Tag      },
+    { key: 'offers',     label: 'Offers',      icon: Percent  },
+    { key: 'settings',   label: 'Settings',    icon: Settings2 },
   ];
 
   return (
@@ -2007,6 +2010,11 @@ export default function ManageStore() {
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
             <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} />
+          </div>
+        ) : tab === 'insights' ? (
+          <div className="animate-pl-fade-up">
+            <AiInsightsTab slug={businessSlug} pin={storePin} themeColor={themeColor}
+                           enabled={aiInsightsEnabled} businessName={config.businessName} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">

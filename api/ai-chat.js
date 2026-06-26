@@ -79,6 +79,43 @@ function buildSystem(config) {
   return L.join('\n');
 }
 
+// ── AI Insights capture ──────────────────────────────────────────────────────
+// Classify the customer's intent from the question (cheap heuristics; refined by
+// the insights LLM pass later). Stored per search so the dashboard stays fast.
+function classifyIntent(q, config) {
+  const s = String(q || '').toLowerCase();
+  if (/(under|below|less than|cheaper|cheap|budget|affordable|₹|rs\.?\s*\d|price|cost|expensive)/.test(s)) return 'budget';
+  if (/(deliver|delivery|shipping|courier|charge|cod|cash on|how long|when will)/.test(s)) return 'delivery';
+  if (/(do you have|in stock|available|stock|sell|carry|got any)/.test(s)) return 'availability';
+  const cats = [...new Set((config.products || []).map((p) => String(p.category || '').toLowerCase()).filter(Boolean))];
+  if (cats.some((c) => c && s.includes(c))) return 'category';
+  return 'feature';
+}
+
+// Does the question map to something we actually stock? false ⇒ a "missed
+// opportunity" (customer wanted something not in the catalogue).
+function productMatched(q, config) {
+  const s = String(q || '').toLowerCase();
+  const tokens = new Set(s.split(/\W+/).filter((w) => w.length >= 3));
+  for (const p of config.products || []) {
+    const name = String(p.name || '').toLowerCase();
+    if (name && (s.includes(name) || name.split(/\W+/).some((w) => w.length >= 3 && tokens.has(w)))) return true;
+    if (p.category && s.includes(String(p.category).toLowerCase())) return true;
+  }
+  return false;
+}
+
+// Best-effort: record a search for the AI Insights dashboard. Never throws.
+async function logSearch(row) {
+  try {
+    await fetch(`${SB}/rest/v1/ai_searches`, {
+      method: 'POST',
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(row),
+    });
+  } catch { /* logging must never affect the customer's answer */ }
+}
+
 // Keep only clean, alternating-ish text turns, capped, starting from a user turn.
 function sanitize(messages) {
   const out = [];
@@ -129,6 +166,20 @@ export default async function handler(req, res) {
       .map((b) => b.text)
       .join('')
       .trim();
+
+    // ── AI Insights: log this search (best-effort, before responding) ──
+    const question = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+    if (question) {
+      const unsure = /\b(not sure|don.?t have|isn.?t listed|can.?t find|couldn.?t|unable|not available|don.?t carry|no info)\b/i.test(reply);
+      await logSearch({
+        store_slug: slug,
+        question:   question.slice(0, 300),
+        reply:      reply.slice(0, 600),
+        answered:   reply.length > 0 && !unsure,
+        matched:    productMatched(question, config),
+        intent:     classifyIntent(question, config),
+      });
+    }
 
     res.status(200).json({
       reply: reply || "Sorry, I couldn't answer that — please tap “Order on WhatsApp” to ask the shop.",
