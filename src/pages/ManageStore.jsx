@@ -27,6 +27,7 @@ import { cacheStore, clearCachedStore }               from '../utils/businessSto
 import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
 import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/businessCategories';
+import { suggestProductDetails }                     from '../utils/productAi';
 import LocationPicker                                 from '../components/LocationPicker';
 import IconPicker                                     from '../components/IconPicker';
 import OrdersTab                                       from '../components/manage/OrdersTab';
@@ -53,7 +54,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], attributes:[] };
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -477,8 +478,47 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const [editingId,     setEditingId]     = useState(null);
   const [errors,        setErrors]        = useState({});
   const [dirty,         setDirty]         = useState(false);
+  const [aiLoading,     setAiLoading]     = useState(false);
+  const [aiNote,        setAiNote]        = useState('');
 
-  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setDrawerOpen(false); }
+  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setDrawerOpen(false); }
+
+  // ✨ AI Auto-fill — suggest category, a priced variant axis and attributes
+  // from the product name (+ image). Owner fills prices/values; never blocks.
+  async function autoFill() {
+    const name = form.name.trim();
+    if (!name || aiLoading) return;
+    setAiLoading(true); setAiNote('');
+    const res = await suggestProductDetails({
+      slug: config.slug, name, image: form.image || undefined,
+      categories: userCats.map((c) => c.label),
+    });
+    setAiLoading(false);
+    if (res.error) {
+      setAiNote(res.error === 'AI Auto-fill is available on paid plans.'
+        ? 'Auto-fill is available on a paid plan.'
+        : 'Couldn’t suggest details right now — please try again.');
+      return;
+    }
+    const match = userCats.find((c) => c.label.toLowerCase() === String(res.category || '').toLowerCase());
+    const attributes = (res.attributes || []).map((a) => ({ key: a.key, label: a.label, options: a.options, value: '' }));
+    if (res.variant) setShowVariants(true);
+    setForm((p) => ({
+      ...p,
+      category: match ? match.id : p.category,
+      ...(res.variant
+        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '' })) }
+        : {}),
+      attributes,
+    }));
+    const parts = [];
+    if (res.variant) parts.push(`${res.variant.label} options (add prices)`);
+    if (attributes.length) parts.push(`${attributes.length} detail${attributes.length === 1 ? '' : 's'}`);
+    setAiNote(
+      (match ? `Category set to “${match.label}”. ` : res.category ? `Suggested category “${res.category}” — add it in Categories. ` : '') +
+      (parts.length ? `Filled ${parts.join(' + ')}.` : 'No extra details suggested.'),
+    );
+  }
 
   function openAdd() {
     setForm(EMPTY_PROD);
@@ -503,9 +543,11 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
       variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '' })) : [],
+      attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
     });
     setEditingId(product.id);
     setErrors({});
+    setAiNote('');
     setShowVariants(!!(product.variants?.label && product.variants?.options?.length > 0));
     setDrawerOpen(true);
   }
@@ -546,6 +588,10 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       .filter(o => o.name);
     const variants   = (form.variantLabel.trim() && cleanOpts.length)
       ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
+    // Descriptive attributes (AI-suggested or manual) — only keep ones with a value.
+    const attributes = (form.attributes || [])
+      .filter(a => a.value != null && String(a.value).trim())
+      .map(a => ({ key: a.key, label: a.label, value: String(a.value).trim() }));
     // Per-product GST: '' means "use the store default rate" → store undefined.
     const gstRate    = form.gstRate === '' || form.gstRate == null ? undefined : Number(form.gstRate);
     // Per-product inclusive/exclusive override — only meaningful alongside a
@@ -562,7 +608,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants, attributes }
           : p
       );
     } else {
@@ -579,6 +625,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         gstRate,
         taxInclusive,
         variants,
+        attributes,
         badge:       null,
         badgeColor:  null,
       }];
@@ -743,6 +790,15 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                        onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
                        className={iCls(errors.name)} />
                 {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+                {/* ✨ AI Auto-fill — category + variant + attributes from the name */}
+                <button type="button" onClick={autoFill} disabled={!form.name.trim() || aiLoading}
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40 active:scale-95 transition-transform"
+                  style={{ backgroundColor: themeColor }}>
+                  {aiLoading
+                    ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Thinking…</>
+                    : <><Star size={13} /> Auto-fill details</>}
+                </button>
+                {aiNote && <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{aiNote}</p>}
               </div>
               <div>
                 <label className={FIELD_LABEL}>Category <span className="text-red-500">*</span></label>
@@ -929,6 +985,35 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 </div>
               )}
             </FormSection>
+
+            {/* Attributes (AI-suggested or manual) — buyer-facing details */}
+            {form.attributes.length > 0 && (
+              <FormSection title="Details">
+                {form.attributes.map((a, i) => {
+                  const setVal = (v) => setForm(p => ({ ...p, attributes: p.attributes.map((x, idx) => idx === i ? { ...x, value: v } : x) }));
+                  return (
+                    <div key={`${a.key}-${i}`}>
+                      <label className={FIELD_LABEL}>{a.label}</label>
+                      <div className="flex gap-2">
+                        {a.options?.length ? (
+                          <select value={a.value} onChange={e => setVal(e.target.value)} className={iCls(false)}>
+                            <option value="">Select {a.label.toLowerCase()}…</option>
+                            {a.options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input type="text" value={a.value} onChange={e => setVal(e.target.value)} className={iCls(false)} />
+                        )}
+                        <button type="button" aria-label="Remove detail"
+                          onClick={() => setForm(p => ({ ...p, attributes: p.attributes.filter((_, idx) => idx !== i) }))}
+                          className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:text-red-500 flex-shrink-0">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </FormSection>
+            )}
           </div>
 
           {/* Footer actions */}

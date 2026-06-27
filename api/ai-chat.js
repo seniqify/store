@@ -63,7 +63,10 @@ function buildSystem(config) {
     const cat   = p.category ? ` [${p.category}]` : '';
     const stock = p.inStock === false ? ' (OUT OF STOCK)' : '';
     const desc  = p.description ? ` — ${String(p.description).slice(0, 160)}` : '';
-    return `- ${p.name}${cat}: ${priceLabel(p)}${stock}${desc}`;
+    const attrs = Array.isArray(p.attributes) && p.attributes.length
+      ? ` {${p.attributes.filter((a) => a && a.label && a.value).map((a) => `${a.label}: ${a.value}`).join('; ')}}`
+      : '';
+    return `- ${p.name}${cat}: ${priceLabel(p)}${stock}${desc}${attrs}`;
   });
 
   L.push(`\nCATALOGUE (${products.length} item${products.length === 1 ? '' : 's'}):`);

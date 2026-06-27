@@ -136,6 +136,13 @@ export default function ProductCard({
           <p className="text-[10px] text-gray-400 leading-none">{product.unit}</p>
         )}
 
+        {/* Attributes (e.g. Eggless · Chocolate) — one compact line */}
+        {Array.isArray(product.attributes) && product.attributes.length > 0 && (
+          <p className="text-[10px] text-gray-400 leading-tight line-clamp-1">
+            {product.attributes.map((a) => a.value).filter(Boolean).slice(0, 3).join(' · ')}
+          </p>
+        )}
+
         {/* Price — MRP strike-through reflects the selected variant's own MRP */}
         <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1">
           <span className="text-[17px] font-extrabold text-gray-900 tabular-nums tracking-tight">
