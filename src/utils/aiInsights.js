@@ -145,7 +145,7 @@ export function analyzeSearches(rows = []) {
 export function buildInsightSummary(insights, period = 'last 30 days') {
   return {
     period,
-    total: insights.total.month,
+    total: insights.total.month || insights.total.all,
     topSearches: insights.topKeywords.slice(0, 10),
     notFound:    insights.notFound.slice(0, 8),
     unanswered:  insights.unanswered.slice(0, 8),

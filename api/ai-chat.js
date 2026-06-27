@@ -80,6 +80,13 @@ function buildSystem(config) {
 }
 
 // ── AI Insights capture ──────────────────────────────────────────────────────
+// Category names too generic to be a meaningful "match" signal (a store whose
+// category is literally "products" must not match every query containing it).
+const GENERIC_CATS = new Set(['products', 'product', 'items', 'item', 'other', 'others', 'misc', 'general', 'retail', 'services', 'service', 'all']);
+const meaningfulCats = (config) =>
+  [...new Set((config.products || []).map((p) => String(p.category || '').toLowerCase()).filter(Boolean))]
+    .filter((c) => c.length >= 4 && !GENERIC_CATS.has(c));
+
 // Classify the customer's intent from the question (cheap heuristics; refined by
 // the insights LLM pass later). Stored per search so the dashboard stays fast.
 function classifyIntent(q, config) {
@@ -88,8 +95,7 @@ function classifyIntent(q, config) {
   if (/(under|below|less than|cheaper|cheap|budget|affordable|₹|rs\.?\s*\d|price|cost|expensive|sasta|saste|kitne|kitna|daam|bhav|kimat|kimmat|rupay|paise|स्वस्त|सस्त|किंमत|कितने|कितना|दाम|भाव|रुपय|पैसे|किमत)/.test(s)) return 'budget';
   if (/(deliver|delivery|shipping|courier|charge|cod|cash on|how long|when will|pahuch|pohoch|ghar|डिलिव्हरी|डिलिवरी|पोहोच|पहुंच|पहुँच|घर|कुरियर)/.test(s)) return 'delivery';
   if (/(do you have|in stock|available|stock|sell|carry|got any|hai kya|kya hai|milega|milegi|milel|aahe ka|मिळेल|आहे का|है क्या|मिलेगा|उपलब्ध)/.test(s)) return 'availability';
-  const cats = [...new Set((config.products || []).map((p) => String(p.category || '').toLowerCase()).filter(Boolean))];
-  if (cats.some((c) => c && s.includes(c))) return 'category';
+  if (meaningfulCats(config).some((c) => s.includes(c))) return 'category';
   return 'feature';
 }
 
@@ -99,12 +105,12 @@ function productMatched(q, config) {
   const s = String(q || '').toLowerCase();
   // Unicode-aware split so Hinglish/Devanagari words aren't shredded.
   const tokens = new Set(s.split(/[^\p{L}\p{N}\p{M}]+/u).filter((w) => w.length >= 3));
+  const cats = meaningfulCats(config);
   for (const p of config.products || []) {
     const name = String(p.name || '').toLowerCase();
     if (name && (s.includes(name) || name.split(/[^\p{L}\p{N}\p{M}]+/u).some((w) => w.length >= 3 && tokens.has(w)))) return true;
-    if (p.category && s.includes(String(p.category).toLowerCase())) return true;
   }
-  return false;
+  return cats.some((c) => s.includes(c));
 }
 
 // Best-effort: record a search for the AI Insights dashboard. Never throws.
