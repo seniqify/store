@@ -16,7 +16,7 @@ import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
-  Menu, LogOut, Percent, Sparkles,
+  Menu, LogOut, Percent, Sparkles, Users,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -36,6 +36,7 @@ import ReachCard                                       from '../components/manag
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
 import OffersTab                                        from '../components/manage/OffersTab';
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
+import CustomersTab                                      from '../components/manage/CustomersTab';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1957,6 +1958,7 @@ export default function ManageStore() {
   const aiInsightsEnabled = !!getPlanLimits(effectivePlan(config)).aiEmployee;
   const TABS = [
     { key: 'orders',     label: 'Orders',      icon: ShoppingBag },
+    { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
     { key: 'reviews',    label: 'Reviews',     icon: Star      },
@@ -2087,6 +2089,10 @@ export default function ManageStore() {
         {tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
+          </div>
+        ) : tab === 'customers' ? (
+          <div className="animate-pl-fade-up">
+            <CustomersTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName} />
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
