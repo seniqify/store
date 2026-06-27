@@ -84,9 +84,10 @@ function buildSystem(config) {
 // the insights LLM pass later). Stored per search so the dashboard stays fast.
 function classifyIntent(q, config) {
   const s = String(q || '').toLowerCase();
-  if (/(under|below|less than|cheaper|cheap|budget|affordable|₹|rs\.?\s*\d|price|cost|expensive)/.test(s)) return 'budget';
-  if (/(deliver|delivery|shipping|courier|charge|cod|cash on|how long|when will)/.test(s)) return 'delivery';
-  if (/(do you have|in stock|available|stock|sell|carry|got any)/.test(s)) return 'availability';
+  // Patterns cover English, Hinglish (roman) and Devanagari (Hindi + Marathi).
+  if (/(under|below|less than|cheaper|cheap|budget|affordable|₹|rs\.?\s*\d|price|cost|expensive|sasta|saste|kitne|kitna|daam|bhav|kimat|kimmat|rupay|paise|स्वस्त|सस्त|किंमत|कितने|कितना|दाम|भाव|रुपय|पैसे|किमत)/.test(s)) return 'budget';
+  if (/(deliver|delivery|shipping|courier|charge|cod|cash on|how long|when will|pahuch|pohoch|ghar|डिलिव्हरी|डिलिवरी|पोहोच|पहुंच|पहुँच|घर|कुरियर)/.test(s)) return 'delivery';
+  if (/(do you have|in stock|available|stock|sell|carry|got any|hai kya|kya hai|milega|milegi|milel|aahe ka|मिळेल|आहे का|है क्या|मिलेगा|उपलब्ध)/.test(s)) return 'availability';
   const cats = [...new Set((config.products || []).map((p) => String(p.category || '').toLowerCase()).filter(Boolean))];
   if (cats.some((c) => c && s.includes(c))) return 'category';
   return 'feature';
@@ -96,10 +97,11 @@ function classifyIntent(q, config) {
 // opportunity" (customer wanted something not in the catalogue).
 function productMatched(q, config) {
   const s = String(q || '').toLowerCase();
-  const tokens = new Set(s.split(/\W+/).filter((w) => w.length >= 3));
+  // Unicode-aware split so Hinglish/Devanagari words aren't shredded.
+  const tokens = new Set(s.split(/[^\p{L}\p{N}\p{M}]+/u).filter((w) => w.length >= 3));
   for (const p of config.products || []) {
     const name = String(p.name || '').toLowerCase();
-    if (name && (s.includes(name) || name.split(/\W+/).some((w) => w.length >= 3 && tokens.has(w)))) return true;
+    if (name && (s.includes(name) || name.split(/[^\p{L}\p{N}\p{M}]+/u).some((w) => w.length >= 3 && tokens.has(w)))) return true;
     if (p.category && s.includes(String(p.category).toLowerCase())) return true;
   }
   return false;

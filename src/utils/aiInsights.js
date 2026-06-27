@@ -20,23 +20,38 @@ export async function fetchAiSearches(slug, pin) {
   }
 }
 
-// Words too generic to be useful as product keywords.
+// Words too generic to be useful as product keywords — English, Hinglish (Roman
+// Hindi/Marathi) and Devanagari (Hindi + Marathi), so insights work whatever
+// language the customer types in.
 const STOPWORDS = new Set([
-  'the','a','an','is','are','am','do','does','you','your','have','has','any','can','could','would',
-  'i','my','me','we','our','for','of','to','in','on','at','and','or','with','what','which','how',
+  // English
+  'the','an','is','are','am','do','does','you','your','have','has','any','can','could','would',
+  'my','me','we','our','for','of','to','in','on','at','and','or','with','what','which','how',
   'much','many','this','that','it','its','please','want','need','get','got','there','here','near',
   'available','availability','stock','sell','carry','show','tell','give','about','some','also','from',
-  'price','prices','cost','costs','rate','rates','rs','inr','under','below','above','over','than','less',
+  'price','prices','cost','costs','rate','rates','inr','under','below','above','over','than','less',
   'more','cheap','cheaper','budget','best','good','quality','buy','order','delivery','deliver','charge',
-  'charges','shipping','time','today','open','closed','number','contact','hi','hii','hello','hey','ok',
-  'okay','yes','no','thanks','thank','pls','plz','sir','madam','bro','hai','kya','hain','he','ka','ki',
+  'charges','shipping','time','today','open','closed','number','contact','hello','hey','okay',
+  'yes','thanks','thank','pls','plz','sir','madam','bro',
+  // Hinglish (roman)
+  'hai','hain','kya','kaise','kaisa','kitne','kitna','kitni','milega','milegi','milta','mujhe','muje',
+  'chahiye','chaiye','aapke','aapka','aap','paas','accha','achha','sasta','saste','daam','bhav','kimat',
+  'kimmat','rupay','rupaye','paisa','paise','aur','hua','hoga','karo','karna','dena','do','ho','hu','hu',
+  'mai','main','mera','meri','mere','koi','konsa','kaunsa','wala','wali','batao','dikha','dikhao',
+  // Devanagari (Hindi + Marathi)
+  'है','हैं','क्या','कैसे','आप','आपके','आपका','पास','मुझे','चाहिए','का','की','के','को','से','में','और',
+  'यह','वह','कितने','कितना','कैसा','मिलेगा','मिलेगी','अच्छा','दाम','भाव','कोई','कौन','कौनसा','हो','कर',
+  'दिखाओ','बताओ','सस्ता','रुपये','पैसे','कीमत',
+  'आहे','मला','पाहिजे','किती','कसे','कसा','मिळेल','आणि','हे','ते','चा','ची','चे','ला','मध्ये','पण','का',
 ]);
+
+const hasDevanagari = (w) => /[ऀ-ॿ]/.test(w);
 
 function tokenize(q) {
   return String(q || '')
-    .toLowerCase()
-    .split(/[^a-z0-9₹]+/)
-    .filter((w) => w.length >= 3 && !STOPWORDS.has(w) && !/^\d+$/.test(w));
+    .toLowerCase()                       // no-op for Devanagari, lowercases Latin
+    .split(/[^\p{L}\p{N}\p{M}₹]+/u)      // keep letters, numbers & combining marks (Devanagari matras)
+    .filter((w) => (w.length >= 3 || hasDevanagari(w)) && !STOPWORDS.has(w) && !/^₹?[\d,]+$/.test(w));
 }
 
 function topN(countMap, n) {

@@ -50,6 +50,7 @@ function buildPrompt(config, s) {
 - Each recommendation is ONE short sentence, concrete, and references the real numbers above (e.g. "Customers searched 'Creatine' 18 times but you don't sell it — consider adding it.").
 - Prioritise: products to add (things searched but not stocked), pricing gaps (lots of budget searches), and info to add to the store (e.g. delivery charges if asked often).
 - Plain, friendly language a shopkeeper understands. No jargon. Use ₹ for money.
+- Searches may be in English, Hindi, Marathi or Hinglish — write the advice in simple English, but keep the customer's original search words in quotes.
 - Return ONLY a JSON array of strings, nothing else. Example: ["...", "..."]`);
   return L.join('\n');
 }
