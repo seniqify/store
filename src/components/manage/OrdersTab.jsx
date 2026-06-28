@@ -158,12 +158,13 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
   // Advance the order to `to` and, when we have the customer's number, open
   // WhatsApp prefilled with that status's update so the owner can send it in one
   // tap (the anchor's href is the user gesture; onClick persists the new status).
-  function Advance({ to, label, style, className }) {
-    const cls = `inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 ${className || ''}`;
+  function Advance({ to, label, style, className, full }) {
+    const size = full ? 'w-full justify-center py-2.5 text-sm' : 'px-3 py-2 text-xs';
+    const cls = `inline-flex items-center gap-1.5 font-bold text-white rounded-xl active:scale-95 disabled:opacity-50 ${size} ${className || ''}`;
     return phone ? (
       <a href={waUpdate(to)} target="_blank" rel="noopener noreferrer" onClick={() => onStatus(o.id, to)}
          className={cls} style={style} title="Opens WhatsApp to notify the customer">
-        <MessageCircle size={13} /> {label}
+        <MessageCircle size={14} /> {label}
       </a>
     ) : (
       <button disabled={busy} onClick={() => onStatus(o.id, to)} className={cls} style={style}>
@@ -210,47 +211,49 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
         <p className="px-4 mt-2 text-xs text-gray-500"><span className="font-semibold text-gray-600">Note:</span> {o.notes}</p>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3 mt-2 border-t border-gray-100">
-        {phone && (
-          <>
-            <a href={`https://wa.me/91${phone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
-               className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95"
-               style={{ backgroundColor: '#25D366' }}>
-              <MessageCircle size={14} /> WhatsApp
-            </a>
-            <a href={`tel:+91${phone}`}
-               className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
-              <Phone size={13} /> Call
-            </a>
-          </>
+      {/* Actions — primary next step on top (full width), contact + cancel below */}
+      <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-2">
+        {o.status === 'new' && (
+          <Advance to="confirmed" label="Confirm & notify" full style={{ backgroundColor: themeColor }} />
         )}
-        <div className="flex flex-wrap gap-2 ml-auto justify-end">
-          {o.status === 'new' && (
-            <Advance to="confirmed" label="Confirm & notify" style={{ backgroundColor: themeColor }} />
-          )}
-          {o.status === 'confirmed' && (
-            <Advance to="dispatched" label="Out for delivery" className="bg-indigo-600 hover:bg-indigo-700" />
-          )}
-          {o.status === 'dispatched' && (
-            <Advance to="delivered" label="Mark Delivered" className="bg-blue-600 hover:bg-blue-700" />
-          )}
-          {o.status === 'delivered' && phone && (
-            <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
-               className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
-              <MessageCircle size={13} /> Re-send update
-            </a>
+        {o.status === 'confirmed' && (
+          <Advance to="dispatched" label="Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
+        )}
+        {o.status === 'dispatched' && (
+          <Advance to="delivered" label="Mark Delivered" full className="bg-blue-600 hover:bg-blue-700" />
+        )}
+        {o.status === 'delivered' && phone && (
+          <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
+             className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95">
+            <MessageCircle size={13} /> Re-send delivered update
+          </a>
+        )}
+
+        {/* Contact the customer + cancel/reopen */}
+        <div className="flex items-center gap-2">
+          {phone && (
+            <>
+              <a href={`https://wa.me/91${phone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                 className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-xl active:scale-95"
+                 style={{ backgroundColor: '#25D366' }}>
+                <MessageCircle size={14} /> WhatsApp
+              </a>
+              <a href={`tel:+91${phone}`}
+                 className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
+                <Phone size={13} /> Call
+              </a>
+            </>
           )}
           {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
-              className="text-xs font-semibold text-red-500 px-2.5 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50">
+              className="flex-shrink-0 text-xs font-semibold text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50">
               Cancel
             </button>
           )}
           {o.status === 'cancelled' && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'new')}
-              className="text-xs font-semibold text-gray-500 px-2.5 py-2 rounded-xl hover:bg-gray-100 active:scale-95 disabled:opacity-50">
-              Reopen
+              className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50">
+              Reopen order
             </button>
           )}
         </div>
