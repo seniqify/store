@@ -16,7 +16,7 @@
 -- ════════════════════════════════════════════════════════════════════════════
 
 create table if not exists public.store_whatsapp (
-  store_slug    text primary key references public.stores(slug) on delete cascade,
+  store_slug    text primary key,   -- one row per store; integrity enforced by the PIN check in the RPCs
   template_url  text,
   api_key       text,
   var_templates jsonb       not null default '["{name}"]'::jsonb,  -- per-variable value templates

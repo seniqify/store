@@ -157,10 +157,12 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
       </div>
 
       {result ? (
-        <div className={`text-xs font-semibold ${result.ok ? 'text-emerald-700' : 'text-red-600'}`}>
-          {result.ok
-            ? `✅ Sent to ${result.sent} customer${result.sent === 1 ? '' : 's'}${result.failed ? ` · ${result.failed} failed` : ''}.`
-            : `⚠️ ${result.error}`}
+        <div className={`text-xs font-semibold ${result.ok && !result.failed ? 'text-emerald-700' : 'text-red-600'}`}>
+          {!result.ok
+            ? `⚠️ ${result.error}`
+            : result.failed
+              ? `⚠️ ${result.sent} sent · ${result.failed} failed${result.error ? ` — ${prettyErr(result.error)}` : ''}`
+              : `✅ Sent to ${result.sent} customer${result.sent === 1 ? '' : 's'}.`}
           <button onClick={() => setResult(null)} className="ml-2 underline text-gray-500 font-normal">Done</button>
         </div>
       ) : confirming ? (
@@ -186,6 +188,19 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
       )}
     </div>
   );
+}
+
+// Make the BSP's raw error human-readable, e.g. {"errors":{"values.2":["The
+// values.2 field is required."]}} → "The values.2 field is required."
+function prettyErr(raw) {
+  try {
+    const j = JSON.parse(raw);
+    const first = j?.errors && Object.values(j.errors)?.[0];
+    const msg = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : null);
+    return (msg || j?.message || raw).toString().slice(0, 140);
+  } catch {
+    return String(raw).slice(0, 140);
+  }
 }
 
 function Field({ label, children }) {

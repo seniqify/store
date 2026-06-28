@@ -61,6 +61,7 @@ serve(async (req: Request) => {
     // when the request lands.
     let sent = 0;
     let failed = 0;
+    let lastError = '';
     for (let i = 0; i < clean.length; i += BATCH_SIZE) {
       const batch = clean.slice(i, i + BATCH_SIZE);
       try {
@@ -73,15 +74,19 @@ serve(async (req: Request) => {
           sent += batch.length;
         } else {
           failed += batch.length;
-          console.error(`send-campaign batch ${res.status}: ${(await res.text()).slice(0, 300)}`);
+          lastError = (await res.text()).slice(0, 300);
+          console.error(`send-campaign batch ${res.status}: ${lastError}`);
         }
       } catch (e) {
         failed += batch.length;
-        console.error('send-campaign batch error:', (e as Error)?.message);
+        lastError = (e as Error)?.message || 'network error';
+        console.error('send-campaign batch error:', lastError);
       }
     }
 
-    return json({ success: failed === 0, sent, failed });
+    // Surface the BSP's reason (e.g. "values.2 field is required") so the owner
+    // can fix it, instead of a silent "failed" count.
+    return json({ success: failed === 0, sent, failed, error: failed ? lastError : undefined });
   } catch (err) {
     console.error('send-campaign error:', err);
     return json({ error: (err as Error).message ?? 'Internal error' }, 500);
