@@ -3,6 +3,7 @@ import { Users, RefreshCw, Search, MessageCircle, Phone, ChevronDown, Megaphone 
 import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildCustomers, summarizeCustomers, segmentCounts, SEGMENTS } from '../../utils/customers';
+import CampaignPanel from './CampaignPanel';
 
 /**
  * CustomersTab — the owner's customer list, built entirely from their orders.
@@ -93,13 +94,17 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
         )}
       </div>
 
-      {/* Segment hint + future broadcast teaser */}
+      {/* Segment hint */}
       {seg !== 'all' && SEGMENTS[seg] && (
         <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
           <Megaphone size={12} className="flex-shrink-0" style={{ color: themeColor }} />
-          {SEGMENTS[seg].desc}. Tap a customer to message them — one-tap broadcast to a whole segment is coming soon.
+          {SEGMENTS[seg].desc}.
         </p>
       )}
+
+      {/* WhatsApp campaign — connect once, then broadcast to the active segment */}
+      <CampaignPanel slug={slug} pin={pin} businessName={businessName}
+                     audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
 
       {/* Customer list */}
       <div className="space-y-2">
