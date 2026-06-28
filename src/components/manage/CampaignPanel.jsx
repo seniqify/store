@@ -35,7 +35,6 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
   async function save() {
     setSaveErr('');
     if (!form.templateUrl.trim()) { setSaveErr('Paste the template API URL from Seniqify.'); return; }
-    if (!cfg?.configured && !form.apiKey.trim()) { setSaveErr('Paste your API key.'); return; }
     setSaving(true);
     try {
       const varTemplates = form.varTemplates.map((t) => t.trim()).filter(Boolean);
@@ -83,7 +82,7 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
           <p className="font-bold text-gray-900 text-sm">Connect WhatsApp campaigns</p>
         </div>
         <p className="text-[12px] text-gray-500 leading-relaxed">
-          Create &amp; get a template approved on Seniqify, then paste its API link and key below.
+          Create &amp; get a template approved on Seniqify, then paste its API link below.
           Sending &amp; delivery happen on Seniqify — PocketLink just personalises &amp; sends to your customers.
         </p>
 
@@ -93,9 +92,9 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-emerald-200" />
         </Field>
 
-        <Field label={cfg.configured ? 'API key (leave blank to keep saved)' : 'API key (Bearer token)'}>
+        <Field label="API key (optional — only if your template needs one)">
           <input value={form.apiKey} onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
-            placeholder={cfg.api_key_masked ? `${cfg.api_key_masked} (saved)` : 'Paste your key'}
+            placeholder={cfg.api_key_masked ? `${cfg.api_key_masked} (saved)` : 'Leave blank if you only have the link'}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-emerald-200" />
         </Field>
 

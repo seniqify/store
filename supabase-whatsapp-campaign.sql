@@ -74,7 +74,7 @@ begin
 
   return query
     select
-      (w.template_url is not null and w.template_url <> '' and w.api_key is not null) as configured,
+      (w.template_url is not null and w.template_url <> '') as configured,  -- the URL is the credential; key is optional
       coalesce(w.template_url, '') as template_url,
       case when w.api_key is null or w.api_key = '' then ''
            else '••••' || right(w.api_key, 4) end as api_key_masked,

@@ -38,16 +38,15 @@ serve(async (req: Request) => {
       .from('stores').select('pin').eq('slug', slug).maybeSingle();
     if (!store || store.pin !== hashedPin) return json({ error: 'Unauthorized.' }, 403);
 
-    // Owner's saved WhatsApp credentials.
+    // Owner's saved WhatsApp credentials. The template URL is the credential;
+    // a Bearer key is optional (some Seniqify templates need one, some don't).
     const { data: cfg } = await supabase
       .from('store_whatsapp').select('template_url, api_key').eq('store_slug', slug).maybeSingle();
-    if (!cfg?.template_url || !cfg?.api_key)
+    if (!cfg?.template_url)
       return json({ error: 'WhatsApp is not connected for this store yet.' }, 400);
 
-    const headers: Record<string, string> = {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${cfg.api_key}`,
-    };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cfg.api_key) headers['Authorization'] = `Bearer ${cfg.api_key}`;
 
     // Normalise + de-dup recipients by receiver number.
     const seen = new Set<string>();
