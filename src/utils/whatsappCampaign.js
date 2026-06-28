@@ -14,6 +14,18 @@ import { hashPin } from './pinHash';
 const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-campaign`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+/**
+ * Pull the actual endpoint out of whatever the owner pastes — they often paste
+ * the whole Seniqify block ("Template Name … Payload … API URL: https://…").
+ * Prefers a `…/process` URL; strips trailing quotes/punctuation.
+ */
+export function cleanTemplateUrl(input) {
+  const text = String(input || '').trim();
+  const m = text.match(/https?:\/\/\S+?\/process\b/i) || text.match(/https?:\/\/\S+/i);
+  const url = m ? m[0] : text;
+  return url.replace(/["'`,)\]}>]+$/, '').trim();
+}
+
 /** Replace {name}/{shop}/{orders} tokens in a variable template for one customer. */
 export function fillToken(tpl, customer = {}, shop = '') {
   return String(tpl ?? '')
@@ -59,7 +71,7 @@ export async function saveWhatsappConfig(slug, pin, { templateUrl, apiKey = '', 
   const { error } = await supabase.rpc('set_store_whatsapp', {
     p_slug: slug,
     p_hashed_pin: hashed,
-    p_template_url: templateUrl,
+    p_template_url: cleanTemplateUrl(templateUrl),
     p_api_key: apiKey,
     p_var_templates: varTemplates,
   });
