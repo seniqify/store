@@ -73,22 +73,22 @@ export default function CategoryTabs({ categories = [], products = [], selected,
             onKeyDown={(e) => handleKeyDown(e, cat.id)}
             disabled={isEmpty}
             className={[
-              'flex-shrink-0 inline-flex items-center gap-1.5 rounded-full border',
-              'px-3.5 py-2 text-sm font-semibold whitespace-nowrap select-none',
+              'flex-shrink-0 inline-flex items-center gap-2 rounded-full border-2',
+              'px-4 py-2.5 text-[15px] font-bold whitespace-nowrap select-none',
               'transition-all duration-200 active:scale-95',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
               isActive
-                ? 'bg-brand text-white border-transparent shadow-md shadow-brand/25'
+                ? 'bg-brand text-white border-brand shadow-lg shadow-brand/30 scale-[1.03]'
                 : isEmpty
                 ? 'bg-white text-gray-300 border-gray-100 cursor-not-allowed'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-brand/40 hover:text-brand',
+                : 'bg-white text-gray-700 border-gray-200 hover:border-brand hover:text-brand hover:bg-brand/5',
             ].join(' ')}
           >
-            <span className="text-base leading-none">{cat.emoji}</span>
+            <span className="text-[18px] leading-none">{cat.emoji}</span>
             <span>{cat.label}</span>
             <span className={[
-              'text-[11px] font-bold tabular-nums leading-none',
-              isActive ? 'text-white/80' : isEmpty ? 'text-gray-300' : 'text-gray-400',
+              'text-[11px] font-bold tabular-nums leading-none px-1.5 py-0.5 rounded-full',
+              isActive ? 'bg-white/25 text-white' : isEmpty ? 'bg-gray-50 text-gray-300' : 'bg-gray-100 text-gray-500',
             ].join(' ')}>
               {count}
             </span>

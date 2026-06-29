@@ -146,13 +146,22 @@ export default function ProductGrid({
           </button>
         )}
 
-        {/* Category tabs — wired to the animated switch handler */}
-        <CategoryTabs
-          categories={categories}
-          products={products}
-          selected={activeCategory}
-          onChange={handleCategoryChange}
-        />
+        {/* Category section — labelled + prominent so it reads as the primary
+            way to browse the catalogue. */}
+        {categories.length > 1 && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 text-[13px] font-extrabold text-gray-800">
+              <span className="w-1 h-4 rounded-full bg-brand inline-block flex-shrink-0" />
+              Shop by category
+            </p>
+            <CategoryTabs
+              categories={categories}
+              products={products}
+              selected={activeCategory}
+              onChange={handleCategoryChange}
+            />
+          </div>
+        )}
       </div>
 
       {/* Product grid — fades out briefly on category change */}
