@@ -228,18 +228,27 @@ export default function Footer() {
       {/* â"€â"€ Bottom bar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       <div className="border-t border-gray-800 py-4 px-4
                       flex flex-col sm:flex-row items-center justify-between
-                      gap-2 text-xs text-gray-500">
-        <span>© {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳</span>
-        {slug && (
-          <Link
-            to={`/${slug}/manage`}
-            className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-300
-                       transition-colors duration-150"
-          >
-            <Settings size={11} />
-            <span>Manage page</span>
-          </Link>
-        )}
+                      gap-2.5 text-xs text-gray-500">
+        <span className="order-2 sm:order-1 text-center sm:text-left">
+          © {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳
+        </span>
+        <div className="order-1 sm:order-2 flex items-center gap-3 flex-wrap justify-center">
+          <Link to="/terms" target="_blank" rel="noopener noreferrer"
+                className="hover:text-gray-300 transition-colors duration-150">Terms</Link>
+          <span className="text-gray-700">·</span>
+          <Link to="/privacy" target="_blank" rel="noopener noreferrer"
+                className="hover:text-gray-300 transition-colors duration-150">Privacy</Link>
+          {slug && (
+            <>
+              <span className="text-gray-700">·</span>
+              <Link to={`/${slug}/manage`}
+                    className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-300 transition-colors duration-150">
+                <Settings size={11} />
+                <span>Manage</span>
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
       {/* â"€â"€ "Powered by PocketLink" — shown on free plan only â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
