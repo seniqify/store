@@ -1,127 +1,160 @@
-import { Link } from 'react-router-dom';
+import {
+  FileCheck, Store, ClipboardCheck, Ban, CreditCard, Copyright,
+  ShieldAlert, Scale, Power, RefreshCw, Landmark,
+} from 'lucide-react';
+import LegalPage, { Bullets, Callout } from '../components/legal/LegalPage';
 
-const LAST_UPDATED = 'May 2025';
+const LAST_UPDATED = 'June 2026';
+
+const SECTIONS = [
+  {
+    id: 'acceptance', title: 'Acceptance of terms', icon: FileCheck,
+    content: (
+      <p>
+        By accessing or using PocketLink (“the Platform”), you agree to be bound by these Terms of
+        Service and our <a href="/privacy">Privacy Policy</a>. If you do not agree, please do not use
+        the Platform.
+      </p>
+    ),
+  },
+  {
+    id: 'what', title: 'What PocketLink is', icon: Store,
+    content: (
+      <>
+        <p>
+          PocketLink lets Indian businesses create an online storefront and receive orders over
+          WhatsApp. There are two separate money flows — and the difference matters:
+        </p>
+        <Bullets items={[
+          <><strong>Subscription fees</strong> — what you (the business owner) pay PocketLink for a paid plan, handled by our payment partner, Razorpay.</>,
+          <><strong>Customer orders</strong> — what a shopper pays your shop. PocketLink is <strong>not a party</strong> to these; we do not process, hold or refund money between you and your customers.</>,
+        ]} />
+      </>
+    ),
+  },
+  {
+    id: 'responsibilities', title: 'Your responsibilities', icon: ClipboardCheck,
+    content: (
+      <Bullets items={[
+        'You are solely responsible for the accuracy of your storefront content, prices and stock.',
+        'You must comply with all applicable Indian laws and GST regulations.',
+        'You must not list prohibited, counterfeit or illegal products.',
+        'You are responsible for fulfilling, delivering and supporting every order placed through your page.',
+        'Keep your management PIN confidential — anyone with it can edit your store.',
+      ]} />
+    ),
+  },
+  {
+    id: 'prohibited', title: 'Prohibited uses', icon: Ban,
+    content: (
+      <>
+        <p>You may not use the Platform to:</p>
+        <Bullets items={[
+          'Sell counterfeit, illegal, unsafe or restricted products.',
+          'Spam, deceive, scam or defraud customers.',
+          'Impersonate another business or use misleading brand names.',
+          'Hack, overload, scrape or reverse-engineer the Platform.',
+        ]} />
+      </>
+    ),
+  },
+  {
+    id: 'billing', title: 'Subscriptions, billing & refunds', icon: CreditCard,
+    content: (
+      <>
+        <p>PocketLink offers paid plans billed in advance for the chosen period (monthly or yearly) through Razorpay. By subscribing, you agree that:</p>
+        <Bullets items={[
+          'Fees are charged upfront at the start of each billing period.',
+          'Cancelling stops future renewals only — your plan stays active until the end of the period you already paid for.',
+          'Plan features and pricing may change; we’ll give notice of any increase before it applies to you.',
+        ]} />
+        <Callout tone="rose" title="No-refund policy">
+          <p>
+            <strong>All payments and subscription fees are final and non-refundable under any
+            circumstances.</strong> This includes (without limitation) unused time, partial billing
+            periods, plan downgrades, voluntary cancellation, lack of use, or suspension/termination
+            of your account for a breach of these Terms. No refunds, credits or pro-rated returns
+            will be issued.
+          </p>
+        </Callout>
+        <p className="text-[13px] text-gray-400">
+          Refunds for any product or service a customer buys from a shop are solely between that
+          customer and the shop — PocketLink is not involved.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: 'ip', title: 'Intellectual property', icon: Copyright,
+    content: (
+      <p>
+        The PocketLink name, logo and Platform code are owned by us. You retain ownership of the
+        content you upload (product names, images, descriptions). By uploading it, you grant us a
+        non-exclusive licence to host and display it on the Platform so your store can function.
+      </p>
+    ),
+  },
+  {
+    id: 'as-is', title: 'Service provided “as is”', icon: ShieldAlert,
+    content: (
+      <p>
+        The Platform is provided “as is” and “as available”, without warranties of any kind. We do
+        not guarantee uninterrupted or error-free availability, and we are not liable for any loss of
+        orders, revenue, data or goodwill arising from downtime or bugs.
+      </p>
+    ),
+  },
+  {
+    id: 'liability', title: 'Limitation of liability', icon: Scale,
+    content: (
+      <p>
+        To the maximum extent permitted by law, PocketLink shall not be liable for any indirect,
+        incidental, special or consequential damages arising from your use of the Platform. Where
+        liability cannot be excluded, it is limited to the amount you paid us in the three months
+        before the claim.
+      </p>
+    ),
+  },
+  {
+    id: 'termination', title: 'Suspension & termination', icon: Power,
+    content: (
+      <p>
+        We may suspend or terminate any store that violates these Terms, with or without notice. As
+        stated above, suspension or termination for a breach does not entitle you to any refund.
+      </p>
+    ),
+  },
+  {
+    id: 'changes', title: 'Changes to these terms', icon: RefreshCw,
+    content: (
+      <p>
+        We may update these Terms from time to time. Continued use of the Platform after an update
+        means you accept the revised Terms. The “last updated” date above always reflects the current
+        version.
+      </p>
+    ),
+  },
+  {
+    id: 'law', title: 'Governing law', icon: Landmark,
+    content: (
+      <p>
+        These Terms are governed by the laws of India. Any disputes are subject to the exclusive
+        jurisdiction of the courts of India.
+      </p>
+    ),
+  },
+];
 
 export default function Terms() {
   return (
-    <div className="min-h-screen bg-white">
-
-      {/* Nav */}
-      <nav className="border-b border-gray-100 bg-white/90 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-72 w-auto" />
-          </Link>
-          <span className="text-gray-300">Â·</span>
-          <span className="text-sm text-gray-500">Terms of Service</span>
-        </div>
-      </nav>
-
-      <main className="max-w-3xl mx-auto px-4 py-12">
-        <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Terms of Service</h1>
-        <p className="text-sm text-gray-400 mb-10">Last updated: {LAST_UPDATED}</p>
-
-        <div className="prose prose-sm prose-gray max-w-none space-y-8 text-gray-700">
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">1. Acceptance of Terms</h2>
-            <p>
-              By accessing or using PocketLink ("the Platform"), you agree to be bound by these Terms
-              of Service. If you do not agree, please do not use the Platform.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">2. Description of Service</h2>
-            <p>
-              PocketLink allows Indian businesses to create a business page and receive
-              orders via WhatsApp. We do not process payments, hold inventory, or act as a party
-              in any transaction between a business owner and their customers.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">3. Business Owner Responsibilities</h2>
-            <ul className="list-disc list-inside space-y-1">
-              <li>You are solely responsible for the accuracy of your page's content.</li>
-              <li>You must comply with all applicable Indian laws and GST regulations.</li>
-              <li>You must not list prohibited or illegal products.</li>
-              <li>You are responsible for fulfilling orders placed through your page.</li>
-              <li>Keep your page management PIN confidential.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">4. Prohibited Uses</h2>
-            <p>You may not use the Platform to:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>Sell counterfeit, illegal, or harmful products.</li>
-              <li>Spam, deceive, or defraud customers.</li>
-              <li>Attempt to hack, overload, or reverse-engineer the Platform.</li>
-              <li>Create pages with misleading brand names or impersonate others.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">5. Intellectual Property</h2>
-            <p>
-              The PocketLink brand, logo, and Platform code are owned by us. Business owners retain
-              ownership of the content they upload (product names, images, descriptions).
-              By uploading content you grant us a non-exclusive licence to host and display it
-              on the Platform.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">6. Disclaimer of Warranties</h2>
-            <p>
-              The Platform is provided "as is" without any warranty. We do not guarantee
-              uninterrupted availability, and we are not liable for any loss of orders,
-              revenue, or data.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">7. Limitation of Liability</h2>
-            <p>
-              To the maximum extent permitted by law, PocketLink shall not be liable for any
-              indirect, incidental, or consequential damages arising from your use of the Platform.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">8. Termination</h2>
-            <p>
-              We reserve the right to suspend or terminate any page that violates these Terms,
-              with or without notice.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">9. Governing Law</h2>
-            <p>
-              These Terms are governed by the laws of India. Any disputes shall be subject to
-              the exclusive jurisdiction of the courts in India.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">10. Contact</h2>
-            <p>
-              For questions about these Terms, contact us at{' '}
-              <a href="mailto:hello@pocketlink.store" className="text-teal-600 hover:underline">
-                hello@pocketlink.store
-              </a>.
-            </p>
-          </section>
-        </div>
-      </main>
-
-      <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400">
-        <Link to="/" className="hover:text-gray-700 transition-colors">← Back to PocketLink</Link>
-        <span className="mx-3">Â·</span>
-        <Link to="/privacy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
-      </footer>
-    </div>
+    <LegalPage
+      kicker="Legal"
+      title="Terms of Service"
+      lastUpdated={LAST_UPDATED}
+      intro="These terms govern your use of PocketLink. We've kept them in plain language so you actually know what you're agreeing to."
+      summary="PocketLink gives Indian businesses a WhatsApp storefront. You run your shop; we provide the software. Paid plans are billed in advance and are non-refundable. You're responsible for your products, orders and following the law."
+      sections={SECTIONS}
+      other={{ to: '/privacy', label: 'Privacy Policy' }}
+    />
   );
 }
