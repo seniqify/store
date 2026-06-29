@@ -1946,11 +1946,14 @@ export default function ManageStore() {
   // ── Management Dashboard ──────────────────────────────────────────────────
   const themeColor = config.theme?.primary || '#0d9488';
 
-  // Free-trial / renewal state (coupon-granted plans expire; see effectivePlan)
+  // Free-trial / renewal state (coupon-granted plans expire; see effectivePlan).
+  // A store with a Razorpay subscription is a paying customer — NOT on a trial —
+  // so the "Free … trial" banners must never show for them.
   const rawPlan    = config.plan || 'free';
+  const isPaying   = !!config.razorpaySubscriptionId;
   const daysLeft   = trialDaysLeft(config);
-  const onTrial    = rawPlan !== 'free' && daysLeft !== null && daysLeft > 0;
-  const trialEnded = rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
+  const onTrial    = !isPaying && rawPlan !== 'free' && daysLeft !== null && daysLeft > 0;
+  const trialEnded = !isPaying && rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
   const planName   = getPlanLimits(rawPlan).name;
 
   const analyticsEnabled  = !!getPlanLimits(effectivePlan(config)).analytics;
