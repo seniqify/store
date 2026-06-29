@@ -30,7 +30,7 @@ const PAGE_SIZE = 24;
 export default function ProductGrid({
   products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease, onSetQty,
   heading = 'Our Products', nounSingular = 'product', nounPlural = 'products',
-  searchPlaceholder = 'Search products…',
+  searchPlaceholder = 'Search products…', showSearch = true,
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [fading, setFading]                 = useState(false);
@@ -110,25 +110,28 @@ export default function ProductGrid({
       {/* Sticky filter bar — search + category tabs stay reachable while scrolling
           a long catalogue (sticks just below the store header at top-14). */}
       <div className="sticky top-14 z-30 py-2.5 mb-3 bg-[#f8fafc] space-y-3">
-        {/* Search */}
-        <div className="relative w-full">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm
-                       text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2
-                       focus:ring-brand/30 focus:border-brand transition-all"
-          />
-          {query && (
-            <button onClick={() => setQuery('')} aria-label="Clear search"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-              <X size={15} />
-            </button>
-          )}
-        </div>
+        {/* Search — hidden when the page's hero search bar already covers it
+            (avoids two search boxes stacked on the storefront). */}
+        {showSearch && (
+          <div className="relative w-full">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm
+                         text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2
+                         focus:ring-brand/30 focus:border-brand transition-all"
+            />
+            {query && (
+              <button onClick={() => setQuery('')} aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* On-sale filter — only when a live sale covers some products */}
         {anyOnSale && (

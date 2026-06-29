@@ -273,6 +273,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onIncrease={increaseQty}
               onDecrease={decreaseQty}
               onSetQty={setQty}
+              showSearch={false}   /* the hero StoreSearchBar above already searches */
             />
 
           </div>
