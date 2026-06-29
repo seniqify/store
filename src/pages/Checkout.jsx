@@ -47,6 +47,23 @@ function loadRazorpayScript() {
   });
 }
 
+// Retry a flaky async step (a transient DB/network blip shouldn't lose a paid plan).
+async function retry(fn, tries = 3, delayMs = 700) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); }
+    catch (e) { lastErr = e; if (i < tries - 1) await new Promise((r) => setTimeout(r, delayMs)); }
+  }
+  throw lastErr;
+}
+
+// Shown when the payment was (likely) captured but a follow-up step on our side
+// hiccuped. The razorpay-webhook provisions the plan server-side regardless, so
+// we reassure instead of telling a paying customer their payment "failed".
+const PAID_BUT_PENDING =
+  'If money was deducted, please do NOT pay again — your plan will activate within a few minutes. ' +
+  'Message us on WhatsApp if it doesn’t.';
+
 export default function Checkout() {
   const { plan: planKey }  = useParams();
   const [searchParams]     = useSearchParams();
@@ -108,8 +125,12 @@ export default function Checkout() {
             },
           },
           handler: async (response) => {
+            // Razorpay has captured the payment by the time this fires. From here
+            // on we NEVER tell the customer their payment "failed" — the webhook
+            // provisions the plan server-side as a safety net, so any hiccup on
+            // our side should reassure, not alarm.
             try {
-              // 4. Verify signature on backend (payment_id | subscription_id)
+              // 4. Verify the signature on the backend (payment_id | subscription_id)
               const { data: verifyData } = await supabase.functions.invoke(
                 'verify-razorpay-payment',
                 {
@@ -121,29 +142,25 @@ export default function Checkout() {
                 },
               );
 
-              if (verifyData?.verified) {
-                const expires = termExpiry(period);
-                const subId   = subData.subscription_id;
-                // Existing store for this phone → upgrade it (renewal);
-                // otherwise it's a new signup → carry the plan into onboarding.
-                const existing = await findStoreByPhone(phone);
-                if (existing) {
-                  await upgradePlan(existing, planKey, expires, subId);
-                  navigate(`/${existing}/manage`);
-                } else {
-                  // Persist the payment so it survives leaving onboarding (resume, no re-charge)
-                  await savePendingSignup(phone, planKey, expires, subId);
-                  sessionStorage.setItem('pocketlink_plan', planKey);
-                  sessionStorage.setItem('pocketlink_plan_expires', expires);
-                  sessionStorage.setItem('pocketlink_subscription_id', subId);
-                  navigate('/onboarding');
-                }
-                resolve(true);
-              } else {
-                throw new Error(verifyData?.error ?? 'Payment verification failed.');
+              if (!verifyData?.verified) {
+                // Couldn't verify the signature — but money may still have been
+                // deducted. Don't scare a paying customer; the webhook recovers it.
+                setPaying(false);
+                setPayError(PAID_BUT_PENDING);
+                resolve(null);
+                return;
               }
+
+              // 5. Provision using OUR known plan/period (not the server's echo),
+              //    with retries so a transient DB blip doesn't lose a paid plan.
+              await provisionPaidPlan(subData.subscription_id);
+              resolve(true);
             } catch (err) {
-              reject(err);
+              // Payment almost certainly succeeded but a follow-up step failed.
+              // The webhook will still provision the plan — reassure the customer.
+              setPaying(false);
+              setPayError(PAID_BUT_PENDING);
+              resolve(null);
             }
           },
         };
@@ -157,6 +174,26 @@ export default function Checkout() {
     } catch (err) {
       setPayError(err.message ?? 'Something went wrong. Please try again.');
       setPaying(false);
+    }
+  }
+
+  // Apply the just-paid plan. Existing store for this phone → upgrade it
+  // (renewal); otherwise it's a new signup → carry the plan into onboarding.
+  // Each DB step is retried so a transient blip after a real payment doesn't
+  // strand the customer; the razorpay-webhook is the server-side backstop.
+  async function provisionPaidPlan(subId) {
+    const expires  = termExpiry(period);
+    const existing = await retry(() => findStoreByPhone(phone));
+    if (existing) {
+      await retry(() => upgradePlan(existing, planKey, expires, subId));
+      navigate(`/${existing}/manage`);
+    } else {
+      // Best-effort persist; the webhook also records this by phone.
+      await retry(() => savePendingSignup(phone, planKey, expires, subId)).catch(() => {});
+      sessionStorage.setItem('pocketlink_plan', planKey);
+      sessionStorage.setItem('pocketlink_plan_expires', expires);
+      sessionStorage.setItem('pocketlink_subscription_id', subId);
+      navigate('/onboarding');
     }
   }
 

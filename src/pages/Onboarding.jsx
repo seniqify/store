@@ -9,7 +9,7 @@ import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness, cacheStore } from '../utils/businessStorage';
 import { sendWelcome }              from '../utils/otpService';
 import { listSlugs }           from '../utils/BusinessLoader';
-import { slugExists, clearPendingSignup, updateStore } from '../utils/storeService';
+import { slugExists, clearPendingSignup, updateStore, getPendingSignup } from '../utils/storeService';
 import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
 import { defaultIcon, DEFAULT_CATEGORY } from '../utils/businessCategories';
 import { useI18n } from '../i18n/I18nContext';
@@ -272,8 +272,26 @@ export default function Onboarding() {
     setOwnerPhone(phone);
     // Prefill the WhatsApp number from the just-verified phone — no need to ask again.
     setData(d => ({ ...d, whatsappNumber: d.whatsappNumber || phone.replace(/\D/g, '').slice(-10) }));
-    setPlan(sessionStorage.getItem('pocketlink_plan') || 'business');
-    setPlanExpiresAt(sessionStorage.getItem('pocketlink_plan_expires') || null);
+    const ssPlan = sessionStorage.getItem('pocketlink_plan');
+    const ssExp  = sessionStorage.getItem('pocketlink_plan_expires');
+    if (ssPlan && ssExp) {
+      setPlan(ssPlan);
+      setPlanExpiresAt(ssExp);
+    } else {
+      // No plan in this browser — but they may have paid and lost their session
+      // (e.g. the post-payment step hiccuped, or they switched devices). The
+      // razorpay-webhook records the paid plan by phone, so recover it here so a
+      // paying customer never has to pay again.
+      getPendingSignup(phone).then((p) => {
+        if (p?.plan && p?.planExpiresAt) {
+          setPlan(p.plan);
+          setPlanExpiresAt(p.planExpiresAt);
+          sessionStorage.setItem('pocketlink_plan', p.plan);
+          sessionStorage.setItem('pocketlink_plan_expires', p.planExpiresAt);
+          if (p.subscriptionId) sessionStorage.setItem('pocketlink_subscription_id', p.subscriptionId);
+        }
+      }).catch(() => {});
+    }
   }, [navigate]);
 
   function update(partial) {

@@ -40,10 +40,16 @@ serve(async (req) => {
     if (!phone) return new Response('ok', { status: 200 });
 
     // Decide the new expiry based on the event
+    const period     = sub.notes?.period ?? 'monthly';
+    const fallbackMs = (period === 'yearly' ? 368 : 33) * 86400000;
     let planExpiresAt: string | null = null;
-    if (type === 'subscription.charged') {
-      // Renewal succeeded → entitled until the next charge (+grace)
-      planExpiresAt = new Date(currentEnd + GRACE_MS).toISOString();
+    let active = false; // true for paid/active events (vs. a stop event)
+    if (type === 'subscription.charged' || type === 'subscription.activated') {
+      // Paid / now active → entitled until the next charge (+grace). On a fresh
+      // activation current_end may not be set yet, so fall back to one cycle.
+      const baseEnd = sub.current_end ? sub.current_end * 1000 : (Date.now() + fallbackMs);
+      planExpiresAt = new Date(baseEnd + GRACE_MS).toISOString();
+      active = true;
     } else if (
       type === 'subscription.cancelled' ||
       type === 'subscription.completed' ||
@@ -53,7 +59,7 @@ serve(async (req) => {
       // Stops renewing → stays active until the end of the cycle already paid for
       planExpiresAt = new Date(currentEnd).toISOString();
     } else {
-      return new Response('ok', { status: 200 }); // activated/authenticated/pending — nothing to do
+      return new Response('ok', { status: 200 }); // authenticated/pending — nothing to do
     }
 
     // Update the store for this phone number (service-role bypasses RLS)
@@ -81,6 +87,17 @@ serve(async (req) => {
         .from('stores')
         .update({ config: newConfig, updated_at: new Date().toISOString() })
         .eq('slug', store.slug);
+    } else if (active && plan) {
+      // No store yet → a first-time subscriber who paid but hasn't built their
+      // store (or whose browser failed after paying). Record the paid plan by
+      // phone so onboarding applies it automatically — no double payment, no
+      // manual coupon needed. Mirrors the client's savePendingSignup.
+      await supabase
+        .from('pending_signups')
+        .upsert(
+          { phone: last10, plan, plan_expires_at: planExpiresAt, subscription_id: sub.id },
+          { onConflict: 'phone' },
+        );
     }
 
     return new Response('ok', { status: 200 });

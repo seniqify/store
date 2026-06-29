@@ -6,6 +6,10 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function json(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+
 async function hmacHex(secret: string, message: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -15,80 +19,50 @@ async function hmacHex(secret: string, message: string): Promise<string> {
     ['sign'],
   );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Verify a Razorpay payment by signature ONLY.
+//
+// Why no further Razorpay API calls: the signature is what proves the payment is
+// authentic, and once it matches, the money is real. Previously this function
+// also fetched the subscription/order to read `notes.plan` — and if that second
+// call was slow or blipped, the whole thing fell into the catch and returned
+// verified:false, flipping a genuine, captured payment to "failed". The client
+// already knows the plan/period it's paying for, so we don't fetch it here.
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const body = await req.json();
     const {
       razorpay_order_id,
       razorpay_subscription_id,
       razorpay_payment_id,
       razorpay_signature,
-    } = body;
+    } = await req.json();
 
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
     if (!keySecret) throw new Error('Razorpay secret not configured');
-    const keyId = Deno.env.get('RAZORPAY_KEY_ID');
-    const auth  = btoa(`${keyId}:${keySecret}`);
 
-    // ── Subscription (auto-debit) — signature is payment_id|subscription_id ──────
-    if (razorpay_subscription_id) {
-      if (!razorpay_payment_id || !razorpay_signature) throw new Error('Missing payment details');
-
-      const computed = await hmacHex(keySecret, `${razorpay_payment_id}|${razorpay_subscription_id}`);
-      if (computed !== razorpay_signature) {
-        return new Response(
-          JSON.stringify({ verified: false, error: 'Payment signature mismatch' }),
-          { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
-        );
-      }
-
-      // Read plan/period back from the subscription's notes
-      const subRes = await fetch(`https://api.razorpay.com/v1/subscriptions/${razorpay_subscription_id}`, {
-        headers: { 'Authorization': `Basic ${auth}` },
-      });
-      const sub    = await subRes.json();
-      const plan   = sub.notes?.plan ?? null;
-      const period = sub.notes?.period ?? 'monthly';
-
-      return new Response(
-        JSON.stringify({ verified: true, plan, period, subscription_id: razorpay_subscription_id }),
-        { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
-      );
+    if (!razorpay_payment_id || !razorpay_signature) {
+      return json({ verified: false, error: 'Missing payment details' });
     }
 
-    // ── One-time order (legacy) — signature is order_id|payment_id ───────────────
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      throw new Error('Missing payment details');
-    }
+    // Subscriptions sign payment_id|subscription_id; one-time orders sign
+    // order_id|payment_id.
+    const message = razorpay_subscription_id
+      ? `${razorpay_payment_id}|${razorpay_subscription_id}`
+      : razorpay_order_id
+        ? `${razorpay_order_id}|${razorpay_payment_id}`
+        : null;
 
-    const computed = await hmacHex(keySecret, `${razorpay_order_id}|${razorpay_payment_id}`);
-    if (computed !== razorpay_signature) {
-      return new Response(
-        JSON.stringify({ verified: false, error: 'Payment signature mismatch' }),
-        { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
-      );
-    }
+    if (!message) return json({ verified: false, error: 'Missing order or subscription id' });
 
-    const ordRes = await fetch(`https://api.razorpay.com/v1/orders/${razorpay_order_id}`, {
-      headers: { 'Authorization': `Basic ${auth}` },
-    });
-    const order  = await ordRes.json();
-    const plan   = order.notes?.plan ?? null;
-    const period = order.notes?.period ?? 'monthly';
+    const computed = await hmacHex(keySecret, message);
+    const ok = computed === razorpay_signature;
 
-    return new Response(
-      JSON.stringify({ verified: true, plan, period }),
-      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
-    );
+    return json(ok ? { verified: true } : { verified: false, error: 'Payment signature mismatch' });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ verified: false, error: (err as Error).message }),
-      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
-    );
+    return json({ verified: false, error: (err as Error).message });
   }
 });
