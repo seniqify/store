@@ -1,15 +1,11 @@
 import { useEffect, useRef, useMemo } from 'react';
 
 /**
- * CategoryTabs
- * ────────────────────────────────────────────────────────────────────────────
- * Tab-bar component that replaces the old pill-style CategoryFilter.
+ * CategoryTabs — horizontal pill/chip category filter.
  *
- * Features:
- *  • Animated sliding underline indicator that moves between tabs
- *  • Per-category product count badge (grayed-out when 0)
- *  • Horizontally scrollable on mobile — active tab always scrolls into view
- *  • Keyboard accessible (arrow keys move between tabs)
+ * Modern q-commerce style (Blinkit/Swiggy): the active category is a solid
+ * brand-filled pill; the rest are clean white outlines. Scrolls horizontally,
+ * keeps the active pill in view, and stays keyboard accessible.
  *
  * Props:
  *   categories  { id, label, emoji }[]  — from BUSINESS_CONFIG.categories
@@ -18,39 +14,26 @@ import { useEffect, useRef, useMemo } from 'react';
  *   onChange    (id: string) => void
  */
 export default function CategoryTabs({ categories = [], products = [], selected, onChange }) {
-  const tabsRef   = useRef(null);           // scroll container
-  const btnRefs   = useRef({});             // map of id → button DOM node
-  const barRef    = useRef(null);           // the sliding underline bar
+  const tabsRef = useRef(null);     // scroll container
+  const btnRefs = useRef({});       // id → button node
 
-  // ── Per-category product counts ─────────────────────────────────────────
+  // Per-category product counts.
   const counts = useMemo(() => {
     const map = { all: products.length };
-    products.forEach((p) => {
-      map[p.category] = (map[p.category] || 0) + 1;
-    });
+    products.forEach((p) => { map[p.category] = (map[p.category] || 0) + 1; });
     return map;
   }, [products]);
 
-  // ── Move the sliding underline ──────────────────────────────────────────
+  // Keep the active pill scrolled into view.
   useEffect(() => {
-    const btn       = btnRefs.current[selected];
+    const btn = btnRefs.current[selected];
     const container = tabsRef.current;
-    const bar       = barRef.current;
-    if (!btn || !container || !bar) return;
-
-    // Position + width relative to the scroll container
-    const btnLeft  = btn.offsetLeft;
-    const btnWidth = btn.offsetWidth;
-
-    bar.style.transform = `translateX(${btnLeft}px)`;
-    bar.style.width     = `${btnWidth}px`;
-
-    // Auto-scroll so active tab is visible with a bit of margin
-    const scrollLeft  = btnLeft - container.offsetWidth / 2 + btnWidth / 2;
+    if (!btn || !container) return;
+    const scrollLeft = btn.offsetLeft - container.offsetWidth / 2 + btn.offsetWidth / 2;
     container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
   }, [selected]);
 
-  // ── Keyboard navigation (← → arrow keys) ────────────────────────────────
+  // ← → arrow-key navigation between pills.
   function handleKeyDown(e, currentId) {
     const ids = categories.map((c) => c.id);
     const idx = ids.indexOf(currentId);
@@ -68,76 +51,50 @@ export default function CategoryTabs({ categories = [], products = [], selected,
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      {/* Scroll container */}
-      <div
-        ref={tabsRef}
-        className="flex overflow-x-auto scrollbar-hide relative"
-        role="tablist"
-        aria-label="Product categories"
-      >
-        {categories.map((cat) => {
-          const isActive = selected === cat.id;
-          const count    = counts[cat.id] ?? 0;
-          const isEmpty  = count === 0;
+    <div
+      ref={tabsRef}
+      className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 py-1"
+      role="tablist"
+      aria-label="Product categories"
+    >
+      {categories.map((cat) => {
+        const isActive = selected === cat.id;
+        const count    = counts[cat.id] ?? 0;
+        const isEmpty  = count === 0;
 
-          return (
-            <button
-              key={cat.id}
-              ref={(el) => { btnRefs.current[cat.id] = el; }}
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`panel-${cat.id}`}
-              onClick={() => !isEmpty && onChange(cat.id)}
-              onKeyDown={(e) => handleKeyDown(e, cat.id)}
-              disabled={isEmpty}
-              className={[
-                // base layout
-                'flex-shrink-0 flex items-center gap-1.5 px-4 sm:px-5 py-3.5',
-                'text-sm font-medium whitespace-nowrap',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-                'transition-colors duration-200 select-none',
-                // per-state colours
-                isActive
-                  ? 'bg-brand/5 text-brand font-semibold'
-                  : isEmpty
-                  ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50',
-              ].join(' ')}
-            >
-              {/* Emoji */}
-              <span className="text-base leading-none">{cat.emoji}</span>
-
-              {/* Label */}
-              <span>{cat.label}</span>
-
-              {/* Count badge */}
-              <span
-                className={[
-                  'text-xs px-1.5 py-0.5 rounded-full font-semibold leading-none',
-                  isActive
-                    ? 'bg-brand/10 text-brand'
-                    : isEmpty
-                    ? 'bg-gray-100 text-gray-300'
-                    : 'bg-gray-100 text-gray-400',
-                ].join(' ')}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-
-        {/* ── Sliding underline indicator ──────────────────────────────── */}
-        {/* Positioned at the bottom of the tab bar, moves via JS transform */}
-        <div
-          ref={barRef}
-          className="absolute bottom-0 left-0 h-[3px] bg-brand rounded-full
-                     transition-all duration-250 ease-in-out pointer-events-none"
-          style={{ width: 0 }}
-          aria-hidden="true"
-        />
-      </div>
+        return (
+          <button
+            key={cat.id}
+            ref={(el) => { btnRefs.current[cat.id] = el; }}
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`panel-${cat.id}`}
+            onClick={() => !isEmpty && onChange(cat.id)}
+            onKeyDown={(e) => handleKeyDown(e, cat.id)}
+            disabled={isEmpty}
+            className={[
+              'flex-shrink-0 inline-flex items-center gap-1.5 rounded-full border',
+              'px-3.5 py-2 text-sm font-semibold whitespace-nowrap select-none',
+              'transition-all duration-200 active:scale-95',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+              isActive
+                ? 'bg-brand text-white border-transparent shadow-md shadow-brand/25'
+                : isEmpty
+                ? 'bg-white text-gray-300 border-gray-100 cursor-not-allowed'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-brand/40 hover:text-brand',
+            ].join(' ')}
+          >
+            <span className="text-base leading-none">{cat.emoji}</span>
+            <span>{cat.label}</span>
+            <span className={[
+              'text-[11px] font-bold tabular-nums leading-none',
+              isActive ? 'text-white/80' : isEmpty ? 'text-gray-300' : 'text-gray-400',
+            ].join(' ')}>
+              {count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
