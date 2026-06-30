@@ -16,7 +16,7 @@ import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
-  Menu, LogOut, Percent, Sparkles, Users,
+  Menu, LogOut, Percent, Sparkles, Users, Bot,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -37,6 +37,7 @@ import ReviewsTab                                       from '../components/mana
 import OffersTab                                        from '../components/manage/OffersTab';
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 import CustomersTab                                      from '../components/manage/CustomersTab';
+import AssistantTab                                      from '../components/manage/AssistantTab';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2023,6 +2024,7 @@ export default function ManageStore() {
   const analyticsAdvanced = getPlanLimits(effectivePlan(config)).analytics === 'full';
   const aiInsightsEnabled = !!getPlanLimits(effectivePlan(config)).aiEmployee;
   const TABS = [
+    { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: 'Orders',      icon: ShoppingBag },
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
@@ -2152,7 +2154,11 @@ export default function ManageStore() {
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
                      upgrade={!analyticsEnabled} phone={config.whatsappNumber} />
         )}
-        {tab === 'orders' ? (
+        {tab === 'assistant' ? (
+          <div className="animate-pl-fade-up">
+            <AssistantTab config={config} themeColor={themeColor} onGoTab={setTab} businessName={config.businessName} />
+          </div>
+        ) : tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
           </div>
