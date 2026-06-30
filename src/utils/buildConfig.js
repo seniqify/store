@@ -24,6 +24,24 @@ export const THEME_PRESETS = {
   '#e11d48': { primary: '#e11d48', primaryDark: '#be123c', accent: '#f59e0b', accentDark: '#d97706' }, // rose
 };
 
+// Darken a hex colour by a factor (0–1). Used to derive a "dark" shade for any
+// custom brand colour so hovers/dark accents match instead of staying teal.
+export function darkenHex(hex, factor = 0.82) {
+  const h = String(hex || '').replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return hex;
+  const n = parseInt(full, 16);
+  const r = Math.round(((n >> 16) & 255) * factor);
+  const g = Math.round(((n >> 8) & 255) * factor);
+  const b = Math.round((n & 255) * factor);
+  return '#' + [r, g, b].map((x) => Math.max(0, Math.min(255, x)).toString(16).padStart(2, '0')).join('');
+}
+
+// Build a full theme from any custom brand colour (keeps the shared amber accent).
+export function customTheme(hex) {
+  return { primary: hex, primaryDark: darkenHex(hex, 0.82), accent: '#f59e0b', accentDark: '#d97706' };
+}
+
 
 // Type-appropriate highlight/amenity suggestions, shared with the onboarding form.
 export const FEATURE_SUGGESTIONS = {

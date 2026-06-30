@@ -24,7 +24,7 @@ import { loadBusiness }                               from '../utils/BusinessLoa
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
 import { sendOtp }                                       from '../utils/otpService';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
-import { THEME_PRESETS, FEATURE_SUGGESTIONS }         from '../utils/buildConfig';
+import { THEME_PRESETS, FEATURE_SUGGESTIONS, customTheme } from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
 import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/businessCategories';
 import { suggestProductDetails }                     from '../utils/productAi';
@@ -37,6 +37,7 @@ import ReviewsTab                                       from '../components/mana
 import OffersTab                                        from '../components/manage/OffersTab';
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 import CustomersTab                                      from '../components/manage/CustomersTab';
+import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1376,8 +1377,14 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
   }
 
   function updateTheme(hex) {
-    const theme = THEME_PRESETS[hex] ?? THEME_PRESETS['#0d9488'];
-    onChange({ theme });
+    // A preset keeps its hand-tuned shades; any other colour derives its own.
+    const theme = THEME_PRESETS[hex] ?? customTheme(hex);
+    onChange({ theme: { ...config.theme, ...theme } });
+    setDirty(true);
+  }
+
+  function updateBanner(banner) {
+    onChange({ theme: { ...(config.theme || {}), banner } });
     setDirty(true);
   }
 
@@ -1558,9 +1565,65 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
                   )}
                 </button>
               ))}
+
+              {/* Custom colour — pick ANY brand colour via the OS picker. The
+                  darker hover shade is derived automatically (customTheme). */}
+              {(() => {
+                const current  = config.theme?.primary || '#0d9488';
+                const isCustom = !THEME_PRESETS[current];
+                return (
+                  <label title="Custom colour"
+                         className={[
+                           'relative w-9 h-9 rounded-full cursor-pointer flex items-center justify-center overflow-hidden transition-all',
+                           isCustom ? 'ring-2 ring-offset-2 ring-gray-700 scale-110' : 'hover:scale-105 opacity-90 hover:opacity-100',
+                         ].join(' ')}
+                         style={isCustom
+                           ? { backgroundColor: current }
+                           : { background: 'conic-gradient(from 90deg, #ef4444, #f59e0b, #16a34a, #06b6d4, #6366f1, #ec4899, #ef4444)' }}>
+                    {isCustom ? (
+                      <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 text-white" fill="none">
+                        <path d="M2 7l3.5 3.5L12 3.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <Plus size={15} className="text-white drop-shadow" strokeWidth={3} />
+                    )}
+                    <input type="color" value={current} onChange={(e) => updateTheme(e.target.value)}
+                           aria-label="Pick a custom brand colour"
+                           className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </label>
+                );
+              })()}
             </div>
+            <p className="mt-2 text-xs text-gray-400">Pick a preset or tap the rainbow swatch for any colour — your whole store recolours instantly.</p>
           </div>
         </div>
+      </div>
+
+      {/* Banner style — the colored header behind the store card (no cover photo) */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Banner Style</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        <div className="grid grid-cols-4 gap-2.5">
+          {BANNER_STYLES.map(({ id, label }) => {
+            const selected = (config.theme?.banner || 'aurora') === id;
+            return (
+              <button key={id} type="button" onClick={() => updateBanner(id)}
+                className={[
+                  'rounded-xl overflow-hidden border-2 transition-all active:scale-95',
+                  selected ? 'border-gray-800 shadow-md' : 'border-gray-100 hover:border-gray-300',
+                ].join(' ')}>
+                <div className="h-12 w-full">
+                  <HeroBanner style={id} primary={themeColor} primaryDark={config.theme?.primaryDark || themeColor} />
+                </div>
+                <div className={['text-[11px] font-bold text-center py-1.5', selected ? 'text-gray-800' : 'text-gray-400'].join(' ')}>{label}</div>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-gray-400">Shown on your store when you haven't added a cover photo.</p>
       </div>
 
       {/* Logo & Cover */}

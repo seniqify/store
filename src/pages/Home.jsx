@@ -7,6 +7,7 @@ import CartSummary from '../components/cart/CartSummary';
 import CustomerDetailsForm, { INITIAL_CUSTOMER_DETAILS } from '../components/form/CustomerDetailsForm';
 import StoreTabBar from '../components/layout/StoreTabBar';
 import StoreSearchBar from '../components/store/StoreSearchBar';
+import HeroBanner from '../components/store/HeroBanner';
 import StoreSaleBanner from '../components/store/StoreSaleBanner';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
@@ -125,15 +126,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           {coverImage ? (
             <img src={coverImage} alt={businessName} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full relative"
-                 style={{ background: `linear-gradient(135deg, ${primary} 0%, ${primaryDark} 100%)` }}>
-              <div className="absolute -top-12 -right-8 w-60 h-60 rounded-full"
-                   style={{ background: '#fff', opacity: 0.15, filter: 'blur(50px)' }} />
-              <div className="absolute -bottom-20 left-1/4 w-56 h-56 rounded-full"
-                   style={{ background: '#000', opacity: 0.18, filter: 'blur(50px)' }} />
-              <div className="absolute inset-0"
-                   style={{ opacity: 0.08, backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
-            </div>
+            <HeroBanner style={config.theme?.banner} primary={primary} primaryDark={primaryDark} />
           )}
           {coverImage && (
             <div className="absolute inset-0"
