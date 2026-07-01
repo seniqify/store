@@ -63,21 +63,43 @@ export async function uploadSingleImage(base64DataUrl, slug, name = 'image') {
 }
 
 /**
- * Upload all base64 product images for a config.
+ * Upload all base64 product images for a config — both the main product image
+ * and any per-variant option images (e.g. a photo for each colour).
  * Returns updated products array with Storage URLs.
  * Keeps original value on any per-image failure.
  */
 export async function uploadConfigImages(products, slug) {
   return Promise.all(
     (products || []).map(async (product) => {
-      if (!isBase64Image(product.image)) return product;
-      try {
-        const url = await uploadProductImage(product.image, slug);
-        return { ...product, image: url };
-      } catch (err) {
-        console.warn(`Image upload skipped for "${product.name}":`, err.message);
-        return product; // fallback: keep base64 (works but large)
+      let next = product;
+
+      // Main product image
+      if (isBase64Image(product.image)) {
+        try {
+          next = { ...next, image: await uploadProductImage(product.image, slug) };
+        } catch (err) {
+          console.warn(`Image upload skipped for "${product.name}":`, err.message);
+        }
       }
+
+      // Per-variant option images (only touch options that hold a fresh base64)
+      const opts = product.variants?.options;
+      if (Array.isArray(opts) && opts.some((o) => isBase64Image(o?.image))) {
+        const uploaded = await Promise.all(
+          opts.map(async (o) => {
+            if (!isBase64Image(o?.image)) return o;
+            try {
+              return { ...o, image: await uploadProductImage(o.image, slug) };
+            } catch (err) {
+              console.warn(`Variant image upload skipped for "${product.name} · ${o.name}":`, err.message);
+              return o; // fallback: keep base64
+            }
+          })
+        );
+        next = { ...next, variants: { ...product.variants, options: uploaded } };
+      }
+
+      return next;
     })
   );
 }

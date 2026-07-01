@@ -86,7 +86,9 @@ function FormSection({ title, action, children }) {
 }
 
 // ── ImageUploader ─────────────────────────────────────────────────────────────
-function ImageUploader({ value, onChange }) {
+// `compact` renders a small square tile (used per variant option, e.g. a photo
+// for each colour); the default is the full uploader used for product/logo/cover.
+function ImageUploader({ value, onChange, compact = false }) {
   const [dragOver, setDragOver] = useState(false);
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -117,6 +119,33 @@ function ImageUploader({ value, onChange }) {
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  // ── Compact tile (variant option photo) ──────────────────────────────────
+  if (compact) {
+    return (
+      <div className="relative w-[52px] h-[52px] flex-shrink-0">
+        {hasImage ? (
+          <>
+            <img src={value} alt="" className="w-full h-full object-cover rounded-lg border border-gray-200" onError={() => onChange('')} />
+            <button type="button" onClick={() => fileRef.current?.click()} aria-label="Change photo" className="absolute inset-0 rounded-lg" />
+            <button type="button" onClick={() => onChange('')} aria-label="Remove photo"
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-900 text-white flex items-center justify-center shadow">
+              <X size={11} />
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="w-full h-full rounded-lg border-2 border-dashed border-gray-200 bg-white hover:border-gray-300
+                       flex flex-col items-center justify-center gap-0.5 text-gray-400 transition-colors">
+            <ImagePlus size={15} />
+            <span className="text-[9px] font-semibold leading-none">Photo</span>
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+               onChange={(e) => compressAndSet(e.target.files?.[0])} />
+      </div>
+    );
   }
 
   if (hasImage) {
@@ -510,7 +539,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       ...p,
       category: match ? match.id : p.category,
       ...(res.variant
-        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '' })) }
+        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '', image: '' })) }
         : {}),
       attributes,
     }));
@@ -545,7 +574,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       gstRate:     product.gstRate != null ? product.gstRate : '',
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
-      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '' })) : [],
+      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', image: o.image || '' })) : [],
       attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
     });
     setEditingId(product.id);
@@ -587,6 +616,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         name:  String(o.name || '').trim(),
         price: (o.price === '' || o.price == null) ? null : Number(o.price),
         mrp:   (o.mrp === '' || o.mrp == null) ? null : Number(o.mrp),
+        image: (o.image && String(o.image).trim()) ? o.image : null,
       }))
       .filter(o => o.name);
     const variants   = (form.variantLabel.trim() && cleanOpts.length)
@@ -932,35 +962,42 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       className={iCls(false)} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options — each with its own price &amp; MRP</p>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options — each with its own price, MRP &amp; optional photo</p>
                     <div className="space-y-2">
                       {(form.variantOptions || []).map((o, i) => {
                         const setOpt = (patch) => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, ...patch } : x) })); setErrors(p => ({ ...p, variants: '' })); };
                         return (
-                        <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-2.5 space-y-2">
-                          <div className="flex gap-2 items-center">
-                            <input type="text" placeholder={`Option — e.g. ${['250 g','500 g','1 kg','2 kg'][i] || 'name'}`}
-                              value={o.name}
-                              onChange={e => setOpt({ name: e.target.value })}
-                              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
-                            <button type="button" aria-label="Remove option"
-                              onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
-                              className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
-                              <input type="number" inputMode="numeric" min={0} placeholder="Price *"
-                                value={o.price}
-                                onChange={e => setOpt({ price: e.target.value })}
-                                className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
-                            </div>
-                            <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
-                              <input type="number" inputMode="numeric" min={0} placeholder="MRP"
-                                value={o.mrp}
-                                onChange={e => setOpt({ mrp: e.target.value })}
-                                className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                        <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-2.5">
+                          <div className="flex gap-2.5">
+                            {/* Optional per-option photo — e.g. each colour. Swaps the
+                                product image when the customer picks this option. */}
+                            <ImageUploader compact value={o.image} onChange={v => setOpt({ image: v })} />
+                            <div className="flex-1 min-w-0 space-y-2">
+                              <div className="flex gap-2 items-center">
+                                <input type="text" placeholder={`Option — e.g. ${['Black','White','Red','Blue'][i] || 'name'}`}
+                                  value={o.name}
+                                  onChange={e => setOpt({ name: e.target.value })}
+                                  className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                                <button type="button" aria-label="Remove option"
+                                  onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
+                                  className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                                  <input type="number" inputMode="numeric" min={0} placeholder="Price *"
+                                    value={o.price}
+                                    onChange={e => setOpt({ price: e.target.value })}
+                                    className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                                </div>
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                                  <input type="number" inputMode="numeric" min={0} placeholder="MRP"
+                                    value={o.mrp}
+                                    onChange={e => setOpt({ mrp: e.target.value })}
+                                    className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -970,7 +1007,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   </div>
                   <div className="flex items-center justify-between pt-0.5">
                     <button type="button"
-                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '' }] }))}
+                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '', image: '' }] }))}
                       className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
                       style={{ color: themeColor }}>
                       <Plus size={13} /> Add option
@@ -984,7 +1021,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   {errors.variants && (
                     <p className="text-xs text-red-500 font-medium">{errors.variants}</p>
                   )}
-                  <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). MRP is optional — add it to show a strike-through &amp; “You save” for that size.</p>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). MRP is optional. Add a <strong>photo</strong> to an option (e.g. each colour) and the product picture changes when customers pick it — leave it empty for sizes/weights.</p>
                 </div>
               )}
             </FormSection>
@@ -1625,6 +1662,38 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           })}
         </div>
         <p className="mt-2 text-xs text-gray-400">Shown on your store when you haven't added a cover photo.</p>
+      </div>
+
+      {/* Local Referrals — when a customer searches for something OUTSIDE this
+          store's categories, offer a gentle link to find it on the PocketLink
+          marketplace. Never triggers for what the store actually sells. */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-gray-100" />
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Local Referrals</span>
+          <div className="h-px flex-1 bg-gray-100" />
+        </div>
+        {(() => {
+          const on = config.localReferrals !== false;
+          return (
+            <div className="flex items-start gap-3">
+              <button type="button" role="switch" aria-checked={on}
+                onClick={() => update({ localReferrals: !on })}
+                className={['relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full p-0 transition-colors mt-0.5', on ? '' : 'bg-gray-200'].join(' ')}
+                style={on ? { backgroundColor: themeColor } : undefined}>
+                <span aria-hidden="true"
+                  className={['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform', on ? 'translate-x-6' : 'translate-x-1'].join(' ')} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-gray-800">Help customers find items you don’t sell</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                  When someone searches for something <strong>outside your categories</strong>, show a gentle “find it at nearby PocketLink shops” link.
+                  You’re <strong>never</strong> referred out for what you actually sell — and other shops send their customers to you the same way. A win-win referral chain.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Logo & Cover */}

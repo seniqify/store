@@ -200,6 +200,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           businessName={businessName}
           waLink={waLink}
           aiEnabled={Boolean(config.slug) && hasFeature(effectivePlan(config), 'aiEmployee')}
+          referrals={config.localReferrals !== false}
         />
       )}
 

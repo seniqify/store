@@ -22,6 +22,10 @@ export default function ProductCard({
   const [selVariant, setSelVariant] = useState(hasVariants ? variants.options[0].name : null);
   const selOpt       = hasVariants ? (variants.options.find((o) => o.name === selVariant) || variants.options[0]) : null;
 
+  // Image follows the selected variant when that option has its own photo (e.g.
+  // a Black / White tee shows the matching colour); otherwise the base image.
+  const displayImage = (selOpt && selOpt.image) ? selOpt.image : product.image;
+
   // Price AND MRP/discount follow the selected variant — never the base values,
   // which would otherwise show a discount that doesn't match the shown price.
   // A variant's MRP is its own; if it has none, no strike-through is shown.
@@ -39,6 +43,7 @@ export default function ProductCard({
         id:           `${product.id}::${opt.name}`,
         variant:      opt.name,
         variantLabel: variants.label,
+        image:        opt.image || product.image,   // cart line shows the chosen variant's photo
         price:        opt.price != null ? opt.price : product.price,
         mrp:          opt.mrp   != null ? opt.mrp   : undefined,
       }, 1);
@@ -61,13 +66,13 @@ export default function ProductCard({
       {/* ── Image ─────────────────────────────────────────────────── */}
       <div className="relative w-full aspect-square bg-gray-50 overflow-hidden flex-shrink-0">
 
-        {product.image ? (
+        {displayImage ? (
           <>
             {!imgLoaded && (
               <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
             )}
             <img
-              src={product.image}
+              src={displayImage}
               alt={product.name}
               loading="lazy"
               onLoad={() => setImgLoaded(true)}

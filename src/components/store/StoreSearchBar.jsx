@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Sparkles, Search, X, MessageCircle, ArrowRight } from 'lucide-react';
+import { Sparkles, Search, X, MessageCircle, ArrowRight, Store } from 'lucide-react';
 import { formatINR } from '../../utils/currency';
+import { similarProducts } from '../../utils/similar';
 
 /**
  * StoreSearchBar — the hero "ask or search" bar under the store header.
@@ -15,7 +16,8 @@ import { formatINR } from '../../utils/currency';
  * ProductGrid's internal state, so it works regardless of how products render.
  */
 export default function StoreSearchBar({
-  products = [], primary = '#0d9488', onAddToCart, slug, businessName = 'this shop', waLink, aiEnabled = false,
+  products = [], primary = '#0d9488', onAddToCart, slug, businessName = 'this shop', waLink,
+  aiEnabled = false, referrals = true,
 }) {
   const [query,     setQuery]     = useState('');
   const [focused,   setFocused]   = useState(false);
@@ -59,6 +61,13 @@ export default function StoreSearchBar({
   // True when the listed products came purely from the AI answer (not a typed
   // search hit) — lets us label them "Recommended" instead of "N matches".
   const fromAi = matches.length === 0 && aiMatches.length > 0;
+
+  // When nothing in this store matches, surface the closest things it DOES sell
+  // (instead of a dead end). Skipped while the AI is still thinking.
+  const similar = useMemo(() => {
+    if (!q || aiLoading || displayMatches.length > 0) return [];
+    return similarProducts(query, products, { limit: 4 });
+  }, [q, aiLoading, displayMatches, query, products]);
 
   // A few tappable example prompts shown while the bar is empty.
   const examples = useMemo(() => {
@@ -231,17 +240,49 @@ export default function StoreSearchBar({
                     <ProductRow key={p.id} product={p} primary={primary} onAdd={onAddToCart} onJump={jumpToProducts} />
                   ))}
                 </>
-              ) : (
-                !hasAi && (
-                  <div className="px-3 py-6 text-center">
-                    <p className="text-sm text-gray-500">No products match “{query.trim()}”.</p>
-                    {waLink && (
-                      <a href={waLink} target="_blank" rel="noopener noreferrer"
-                         className="inline-flex items-center gap-1.5 mt-2 text-[13px] font-semibold text-[#1ebe5d]">
-                        <MessageCircle size={13} /> Ask on WhatsApp
+              ) : !aiLoading && (
+                similar.length > 0 ? (
+                  /* In the store's range — keep it in-store, never refer out.
+                     Show the closest things this shop actually sells. */
+                  <>
+                    <p className="px-2 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                      Not an exact match — you might like
+                    </p>
+                    {similar.map((p) => (
+                      <ProductRow key={p.id} product={p} primary={primary} onAdd={onAddToCart} onJump={jumpToProducts} />
+                    ))}
+                    {!hasAi && waLink && <WhatsAppRow waLink={waLink} />}
+                  </>
+                ) : (
+                  /* Out of the store's range (nothing similar). Only here do we
+                     offer the marketplace — and only if the owner left local
+                     referrals on. The merchant is never referred out for their
+                     own categories, so no competitor ever shows on their page. */
+                  <>
+                    {!hasAi && (
+                      <p className="px-3 pt-4 pb-1 text-center text-sm text-gray-500">
+                        We don’t stock “{query.trim()}” here.
+                      </p>
+                    )}
+
+                    {referrals && (
+                      <a href={`/marketplace?q=${encodeURIComponent(query.trim())}`}
+                         className="mt-1.5 mx-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                         style={{ border: `1px dashed ${primary}55` }}>
+                        <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: `${primary}14`, color: primary }}>
+                          <Store size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-bold text-gray-800 leading-tight">Can’t find it here?</span>
+                          <span className="block text-[11px] text-gray-500 leading-tight">Search nearby shops on PocketLink</span>
+                        </span>
+                        <ArrowRight size={15} className="flex-shrink-0" style={{ color: primary }} />
                       </a>
                     )}
-                  </div>
+
+                    {!hasAi && waLink && <WhatsAppRow waLink={waLink} />}
+                  </>
                 )
               )}
             </div>
@@ -273,6 +314,16 @@ function referencedProducts(reply, products) {
     if (core.length >= 3 && text.includes(core)) out.push(p);
   }
   return out.slice(0, 6);
+}
+
+// "Ask on WhatsApp" fallback row — shown when the shop can't answer/stock it.
+function WhatsAppRow({ waLink }) {
+  return (
+    <a href={waLink} target="_blank" rel="noopener noreferrer"
+       className="mt-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-[#1ebe5d]">
+      <MessageCircle size={13} /> Ask on WhatsApp
+    </a>
+  );
 }
 
 // One product result row. Tapping the row jumps to the grid; "Add" adds simple

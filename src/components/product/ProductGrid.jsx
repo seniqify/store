@@ -1,23 +1,40 @@
-import { useState, useRef, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Search, X, ChevronDown } from 'lucide-react';
 import ProductCard from './ProductCard';
-import CategoryTabs from './CategoryTabs';
+import CategoryCircles from './CategoryCircles';
 import EmptyState from '../ui/EmptyState';
 
 // Products shown before a "Show more" tap. Keeps big catalogues fast to render
 // and scannable — a 100-item store no longer paints as one endless scroll.
 const PAGE_SIZE = 24;
 
+// Lowest price a product sells at (min variant option price, else base price).
+function priceOf(p) {
+  const opts = p.variants?.options;
+  if (Array.isArray(opts) && opts.length) {
+    const ps = opts.map((o) => Number(o.price)).filter((n) => !Number.isNaN(n));
+    if (ps.length) return Math.min(...ps);
+  }
+  return Number(p.price) || 0;
+}
+
+const SORTS = [
+  { id: 'popular',    label: 'Popular' },
+  { id: 'price-asc',  label: 'Price: Low to High' },
+  { id: 'price-desc', label: 'Price: High to Low' },
+  { id: 'name',       label: 'Name: A to Z' },
+];
+
 /**
  * ProductGrid
  * ────────────────────────────────────────────────────────────────────────────
- * Renders a sticky filter bar (search + CategoryTabs) over a responsive grid of
- * ProductCards.
+ * Renders a sticky filter bar (circular category rail + sort) over a responsive
+ * grid of ProductCards.
  *
  * Behavior:
- *  • Clicking a category tab filters the grid with a smooth fade-out/in.
- *  • Search + category tabs stay stuck below the store header while scrolling,
- *    so navigation is always one tap away on long catalogues.
+ *  • Circular category tiles filter the grid with a smooth fade-out/in.
+ *  • A Sort dropdown reorders the results (popular / price / name).
+ *  • The rail + sort stay stuck below the store header while scrolling.
  *  • Only PAGE_SIZE products render at first; "Show more" reveals the rest.
  *  • onAddToCart receives (product, qty) — quantity chosen on the card.
  *
@@ -29,13 +46,14 @@ const PAGE_SIZE = 24;
  */
 export default function ProductGrid({
   products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease, onSetQty,
-  heading = 'Our Products', nounSingular = 'product', nounPlural = 'products',
+  nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…', showSearch = true,
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [fading, setFading]                 = useState(false);
   const [query, setQuery]                   = useState('');
   const [saleOnly, setSaleOnly]             = useState(false);
+  const [sortBy, setSortBy]                 = useState('popular');
   const [visible, setVisible]               = useState(PAGE_SIZE);
   const pendingCategory                     = useRef(null);
 
@@ -56,7 +74,7 @@ export default function ProductGrid({
     }, 150);
   }
 
-  // ── Filtered product list (category + search) ──────────────────────────
+  // ── Filtered product list (category + search + sale) ───────────────────
   const byCategory =
     activeCategory === 'all'
       ? products
@@ -67,11 +85,20 @@ export default function ProductGrid({
     ? bySale.filter((p) => p.name.toLowerCase().includes(q))
     : bySale;
 
-  // Reset the visible window whenever the result set changes (new category/search/sale).
-  useEffect(() => { setVisible(PAGE_SIZE); }, [activeCategory, q, saleOnly]);
+  // ── Sort (popular keeps the owner's original order) ────────────────────
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    if (sortBy === 'price-asc')       arr.sort((a, b) => priceOf(a) - priceOf(b));
+    else if (sortBy === 'price-desc') arr.sort((a, b) => priceOf(b) - priceOf(a));
+    else if (sortBy === 'name')       arr.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return arr;
+  }, [filtered, sortBy]);
 
-  const shown     = filtered.slice(0, visible);
-  const remaining = filtered.length - shown.length;
+  // Reset the visible window whenever the result set/order changes.
+  useEffect(() => { setVisible(PAGE_SIZE); }, [activeCategory, q, saleOnly, sortBy]);
+
+  const shown     = sorted.slice(0, visible);
+  const remaining = sorted.length - shown.length;
 
   // ── Cart qty lookup ────────────────────────────────────────────────────
   function getCartQty(id) {
@@ -80,38 +107,17 @@ export default function ProductGrid({
     return cart.reduce((s, i) => (i.id === id || String(i.id).startsWith(prefix) ? s + i.qty : s), 0);
   }
 
-  // Category label for the heading
+  // Category label for the results line
   const activeCatLabel =
     categories.find((c) => c.id === activeCategory)?.label ?? 'All Products';
 
   return (
     <section className="w-full min-w-0 overflow-hidden">
 
-      {/* Section heading */}
-      <div className="mb-3 min-w-0">
-        <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2.5">
-          <span className="w-1.5 h-6 rounded-full bg-brand inline-block flex-shrink-0" />
-          {heading}
-        </h2>
-        <p className="text-sm text-gray-500 mt-1 ml-4">
-          <span
-            key={`${activeCategory}-${q}`}   // re-mount to animate count
-            className="inline-block animate-in fade-in duration-300"
-          >
-            <span className="font-semibold text-brand-dark">{filtered.length}</span>
-            {' '}{filtered.length === 1 ? nounSingular : nounPlural}
-            {q
-              ? <> matching “{query.trim()}”</>
-              : <> in <span className="font-medium text-gray-700">{activeCatLabel}</span></>}
-          </span>
-        </p>
-      </div>
-
-      {/* Sticky filter bar — search + category tabs stay reachable while scrolling
-          a long catalogue (sticks just below the store header at top-14). */}
-      <div className="sticky top-14 z-30 py-2.5 mb-3 bg-[#f8fafc] space-y-3">
-        {/* Search — hidden when the page's hero search bar already covers it
-            (avoids two search boxes stacked on the storefront). */}
+      {/* Sticky filter bar — category rail + sort stay reachable while
+          scrolling a long catalogue (sticks below the store header at top-14). */}
+      <div className="sticky top-14 z-30 pt-2 pb-2.5 mb-3 bg-[#f8fafc] space-y-3">
+        {/* Search — hidden when the page's hero search bar already covers it. */}
         {showSearch && (
           <div className="relative w-full">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -133,34 +139,58 @@ export default function ProductGrid({
           </div>
         )}
 
-        {/* On-sale filter — only when a live sale covers some products */}
-        {anyOnSale && (
-          <button type="button" onClick={() => setSaleOnly((v) => !v)}
-            className={[
-              'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition-all active:scale-95',
-              saleOnly
-                ? 'bg-rose-500 text-white border-transparent shadow-sm'
-                : 'bg-white text-rose-600 border-rose-200 hover:border-rose-300',
-            ].join(' ')}>
-            🔥 On sale {saleOnly ? '✓' : `· ${saleCount}`}
-          </button>
-        )}
+        {/* Results count + on-sale filter + Sort */}
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm text-gray-500 min-w-0 truncate">
+            <span
+              key={`${activeCategory}-${q}-${sortBy}`}   // re-mount to animate
+              className="inline-block animate-in fade-in duration-300"
+            >
+              <span className="font-bold text-brand-dark tabular-nums">{sorted.length}</span>
+              {' '}{sorted.length === 1 ? nounSingular : nounPlural}
+              {q
+                ? <> matching “{query.trim()}”</>
+                : <> in <span className="font-medium text-gray-700">{activeCatLabel}</span></>}
+            </span>
+          </p>
 
-        {/* Category section — labelled + prominent so it reads as the primary
-            way to browse the catalogue. */}
-        {categories.length > 1 && (
-          <div className="space-y-2">
-            <p className="flex items-center gap-2 text-[13px] font-extrabold text-gray-800">
-              <span className="w-1 h-4 rounded-full bg-brand inline-block flex-shrink-0" />
-              Shop by category
-            </p>
-            <CategoryTabs
-              categories={categories}
-              products={products}
-              selected={activeCategory}
-              onChange={handleCategoryChange}
-            />
+          {/* On-sale filter — only when a live sale covers some products */}
+          {anyOnSale && (
+            <button type="button" onClick={() => setSaleOnly((v) => !v)}
+              className={[
+                'flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full border transition-all active:scale-95',
+                saleOnly
+                  ? 'bg-rose-500 text-white border-transparent shadow-sm'
+                  : 'bg-white text-rose-600 border-rose-200 hover:border-rose-300',
+              ].join(' ')}>
+              🔥 Sale {saleOnly ? '✓' : `· ${saleCount}`}
+            </button>
+          )}
+
+          {/* Sort dropdown (native for reliable mobile pickers) */}
+          <div className="relative flex-shrink-0 ml-auto">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              aria-label="Sort products"
+              className="appearance-none pl-3 pr-7 py-1.5 rounded-full border border-gray-200 bg-white
+                         text-xs font-bold text-gray-700 focus:outline-none focus:border-brand cursor-pointer">
+              {SORTS.map((s) => (
+                <option key={s.id} value={s.id}>{s.id === 'popular' ? 'Sort: Popular' : s.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
+        </div>
+
+        {/* Category rail — round tiles are the primary way to browse. */}
+        {categories.length > 1 && (
+          <CategoryCircles
+            categories={categories}
+            products={products}
+            selected={activeCategory}
+            onChange={handleCategoryChange}
+          />
         )}
       </div>
 
@@ -171,7 +201,7 @@ export default function ProductGrid({
           fading ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0',
         ].join(' ')}
       >
-        {filtered.length === 0 ? (
+        {sorted.length === 0 ? (
           <EmptyState
             icon="🔍"
             title={q ? `No ${nounPlural} match “${query.trim()}”` : `No ${nounPlural} in this category`}
@@ -203,7 +233,7 @@ export default function ProductGrid({
                   Show {Math.min(PAGE_SIZE, remaining)} more
                 </button>
                 <p className="text-xs text-gray-400">
-                  Showing {shown.length} of {filtered.length} {filtered.length === 1 ? nounSingular : nounPlural}
+                  Showing {shown.length} of {sorted.length} {sorted.length === 1 ? nounSingular : nounPlural}
                 </p>
               </div>
             )}
