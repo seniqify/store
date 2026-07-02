@@ -107,19 +107,37 @@ export function storeSeo(config, slug, origin, rating = null) {
             bestRating: '5', worstRating: '1',
           } }
       : {}),
-    ...(products.length
-      ? { makesOffer: products.slice(0, 20).map((p) => {
-            const img = absImage(p.image, origin);
-            return {
-              '@type': 'Offer',
-              itemOffered: { '@type': 'Product', name: p.name, ...(img ? { image: img } : {}) },
-              ...(p.price != null ? { price: String(p.price), priceCurrency: 'INR' } : {}),
-              availability: p.inStock === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
-              url,
-            };
-          }) }
-      : {}),
   };
+
+  // Product nodes — each with its OWN offers, so they're valid product snippets
+  // (a Product without offers/review/rating is rejected). Variant products use an
+  // AggregateOffer (low→high). Products with no determinable price are skipped
+  // rather than emitted as invalid (price-less Products can't be a rich result).
+  const avail = (p) => (p.inStock === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock');
+  function productNode(p) {
+    if (!p || !p.name) return null;
+    const img  = absImage(p.image, origin);
+    const opts = p.variants && Array.isArray(p.variants.options) ? p.variants.options : null;
+    let offers = null;
+    if (opts && opts.length) {
+      const prices = opts.map((o) => Number(o.price)).filter((n) => !Number.isNaN(n) && n > 0);
+      if (prices.length) {
+        offers = {
+          '@type': 'AggregateOffer',
+          lowPrice: String(Math.min(...prices)),
+          highPrice: String(Math.max(...prices)),
+          offerCount: String(prices.length),
+          priceCurrency: 'INR',
+          availability: avail(p),
+        };
+      }
+    } else if (p.price != null && Number(p.price) > 0) {
+      offers = { '@type': 'Offer', price: String(p.price), priceCurrency: 'INR', availability: avail(p), url };
+    }
+    if (!offers) return null;   // no price → not a valid product snippet
+    return { '@type': 'Product', name: p.name, ...(img ? { image: img } : {}), offers };
+  }
+  const productNodes = products.slice(0, 30).map(productNode).filter(Boolean);
 
   // Breadcrumb: Marketplace → this store (helps Google show a breadcrumb trail).
   const breadcrumb = {
@@ -130,7 +148,7 @@ export function storeSeo(config, slug, origin, rating = null) {
     ],
   };
 
-  const ld = { '@context': 'https://schema.org', '@graph': [business, breadcrumb] };
+  const ld = { '@context': 'https://schema.org', '@graph': [business, ...productNodes, breadcrumb] };
 
   return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null };
 }
