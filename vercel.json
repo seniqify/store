@@ -4,7 +4,6 @@
   ],
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
-    { "source": "/", "destination": "/api/render?path=/" },
     { "source": "/marketplace", "destination": "/api/render?path=/marketplace" },
     { "source": "/explore", "destination": "/api/render?path=/explore" },
     { "source": "/sell", "destination": "/index.html" },
