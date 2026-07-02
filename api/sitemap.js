@@ -18,17 +18,24 @@ export default async function handler(req, res) {
     }
   } catch { /* still emit static + demos */ }
 
+  // priority/changefreq: the marketplace root is the most important page, the
+  // merchant landing next, then individual stores, then the rest.
+  const prio = (p) => (p === '/' ? '1.0' : p === '/sell' ? '0.9' : '0.6');
+  const freq = (p) => (p === '/' ? 'daily' : 'weekly');
+
   const urls = [
-    ...STATIC.map((p) => ({ loc: ORIGIN + p })),
-    ...DEMOS.map((s) => ({ loc: `${ORIGIN}/demo/${s}` })),
+    ...STATIC.map((p) => ({ loc: ORIGIN + p, priority: prio(p), changefreq: freq(p) })),
+    ...DEMOS.map((s) => ({ loc: `${ORIGIN}/demo/${s}`, priority: '0.4', changefreq: 'monthly' })),
     ...stores
       .filter((s) => s && s.slug)
-      .map((s) => ({ loc: `${ORIGIN}/${s.slug}`, lastmod: s.updated_at })),
+      .map((s) => ({ loc: `${ORIGIN}/${s.slug}`, lastmod: s.updated_at, priority: '0.8', changefreq: 'weekly' })),
   ];
 
   const body = urls.map((u) => {
     const lm = u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : '';
-    return `  <url><loc>${u.loc}</loc>${lm}</url>`;
+    const cf = u.changefreq ? `<changefreq>${u.changefreq}</changefreq>` : '';
+    const pr = u.priority ? `<priority>${u.priority}</priority>` : '';
+    return `  <url><loc>${u.loc}</loc>${lm}${cf}${pr}</url>`;
   }).join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

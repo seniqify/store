@@ -38,7 +38,9 @@ const TYPE_SCHEMA = {
 
 
 // ── Store page ────────────────────────────────────────────────────────────────
-export function storeSeo(config, slug, origin) {
+// `rating` (optional) = { avg, count } from approved reviews → drives the
+// star rich result in Google when there's at least one real review.
+export function storeSeo(config, slug, origin, rating = null) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
   const city    = config.city || '';
@@ -76,9 +78,11 @@ export function storeSeo(config, slug, origin) {
   const wa    = String(config.whatsappNumber || '').replace(/\D/g, '');
   const products = Array.isArray(config.products) ? config.products.slice(0, 40) : [];
 
-  const ld = {
-    '@context': 'https://schema.org',
+  const hasRating = rating && rating.count > 0 && rating.avg > 0;
+
+  const business = {
     '@type': TYPE_SCHEMA[config.businessType] || 'LocalBusiness',
+    '@id': `${url}#business`,
     name,
     description,
     url,
@@ -95,16 +99,40 @@ export function storeSeo(config, slug, origin) {
             addressCountry: 'IN',
           } }
       : {}),
+    ...(hasRating
+      ? { aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: String(rating.avg),
+            reviewCount: String(rating.count),
+            bestRating: '5', worstRating: '1',
+          } }
+      : {}),
     ...(products.length
-      ? { makesOffer: products.slice(0, 20).map((p) => ({
-            '@type': 'Offer',
-            itemOffered: { '@type': 'Product', name: p.name },
-            ...(p.price ? { price: String(p.price), priceCurrency: 'INR' } : {}),
-          })) }
+      ? { makesOffer: products.slice(0, 20).map((p) => {
+            const img = absImage(p.image, origin);
+            return {
+              '@type': 'Offer',
+              itemOffered: { '@type': 'Product', name: p.name, ...(img ? { image: img } : {}) },
+              ...(p.price != null ? { price: String(p.price), priceCurrency: 'INR' } : {}),
+              availability: p.inStock === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+              url,
+            };
+          }) }
       : {}),
   };
 
-  return { title, description, url, image, ld, name, city, cat, tagline, wa, products };
+  // Breadcrumb: Marketplace → this store (helps Google show a breadcrumb trail).
+  const breadcrumb = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/` },
+      { '@type': 'ListItem', position: 2, name, item: url },
+    ],
+  };
+
+  const ld = { '@context': 'https://schema.org', '@graph': [business, breadcrumb] };
+
+  return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null };
 }
 
 export function storeBody(config, slug, origin, seo) {
@@ -117,10 +145,11 @@ export function storeBody(config, slug, origin, seo) {
   <h1>${esc(seo.name)}</h1>
   <p>${esc(seo.tagline)}</p>
   ${sub ? `<p>${esc(sub)}</p>` : ''}
+  ${seo.rating ? `<p>Rated ${esc(seo.rating.avg)} out of 5 by ${esc(seo.rating.count)} customer${seo.rating.count === 1 ? '' : 's'}.</p>` : ''}
   ${config.address ? `<p>${esc(config.address)}</p>` : ''}
   <p><a href="${esc(wa)}">Order on WhatsApp</a></p>
   ${items ? `<h2>Products</h2><ul>${items}</ul>` : ''}
-  <p><a href="${origin}/marketplace">Discover more local businesses on PocketLink</a></p>
+  <p><a href="${origin}/">Discover more local businesses on PocketLink</a></p>
 </main>`;
 }
 
@@ -153,13 +182,21 @@ export function marketplaceSeo(stores, origin, storeOrigin = origin) {
 }
 
 export function marketplaceBody(stores, origin) {
+  const uniq = (vals) => [...new Set(vals.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))];
+  const cats   = uniq(stores.map((s) => s.config && s.config.category)).slice(0, 24);
+  const cities = uniq(stores.map((s) => s.config && s.config.city)).slice(0, 24);
   const items = stores.slice(0, 100).map((s) => {
     const c = s.config || {};
-    return `<li><a href="${origin}/${esc(s.slug)}">${esc(c.businessName || s.slug)}</a>${c.tagline ? ` — ${esc(c.tagline)}` : ''}</li>`;
+    const meta = [c.category, c.city].filter(Boolean).join(', ');
+    return `<li><a href="${origin}/${esc(s.slug)}">${esc(c.businessName || s.slug)}</a>${c.tagline ? ` — ${esc(c.tagline)}` : (meta ? ` — ${esc(meta)}` : '')}</li>`;
   }).join('');
   return `<main style="max-width:680px;margin:0 auto;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#111">
   <h1>Discover Local Businesses Near You</h1>
-  <p>Browse local shops, eateries and services and order directly on WhatsApp — no app, no login.</p>
+  <p>PocketLink is a local marketplace to browse shops, restaurants, salons and services near you and order directly on WhatsApp — no app, no login, 0% commission.</p>
+  ${cats.length ? `<h2>Browse by category</h2><p>${cats.map(esc).join(' · ')}</p>` : ''}
+  ${cities.length ? `<h2>Shops by city</h2><p>${cities.map(esc).join(' · ')}</p>` : ''}
+  <h2>Businesses on PocketLink</h2>
   ${items ? `<ul>${items}</ul>` : '<p>No businesses listed yet. Be the first to list yours.</p>'}
+  <p><a href="${origin}/sell">List your business free on PocketLink</a></p>
 </main>`;
 }

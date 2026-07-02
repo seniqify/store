@@ -100,13 +100,13 @@ export default async function handler(req, res) {
           // Slim selection: the listing only needs name + tagline per store —
           // never pull full configs (products) for the whole table.
           const r = await fetch(
-            `${SUPABASE_URL}/rest/v1/stores?select=slug,name:config->>businessName,tagline:config->>tagline&limit=200`,
+            `${SUPABASE_URL}/rest/v1/stores?select=slug,name:config->>businessName,tagline:config->>tagline,category:config->>category,city:config->>city&limit=200`,
             { headers: dbHeaders },
           );
           if (r.ok) {
             stores = (await r.json())
               .filter((s) => s.name)
-              .map((s) => ({ slug: s.slug, config: { businessName: s.name, tagline: s.tagline } }));
+              .map((s) => ({ slug: s.slug, config: { businessName: s.name, tagline: s.tagline, category: s.category, city: s.city } }));
           }
         }
       } catch { /* empty marketplace still renders */ }
@@ -136,7 +136,23 @@ export default async function handler(req, res) {
       } catch { /* fall through to SPA */ }
 
       if (config && config.businessName) {
-        const seo = storeSeo(config, slug, origin);
+        // Approved-review aggregate → star rich result (best-effort, never blocks).
+        let rating = null;
+        try {
+          const rr = await fetch(
+            `${SUPABASE_URL}/rest/v1/reviews?store_slug=eq.${encodeURIComponent(slug)}&status=eq.approved&select=rating`,
+            { headers: dbHeaders },
+          );
+          if (rr.ok) {
+            const rows = await rr.json();
+            if (Array.isArray(rows) && rows.length) {
+              const sum = rows.reduce((s, x) => s + (Number(x.rating) || 0), 0);
+              rating = { avg: Math.round((sum / rows.length) * 10) / 10, count: rows.length };
+            }
+          }
+        } catch { /* no rating → no aggregateRating; page still renders */ }
+
+        const seo = storeSeo(config, slug, origin, rating);
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —
         // no second DB fetch, no "Loading page…" screen. (Escape </script>.)
