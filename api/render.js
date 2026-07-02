@@ -4,6 +4,7 @@ import { esc, storeSeo, storeBody, marketplaceSeo, marketplaceBody } from './_se
 
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
+  'sell', 'marketplace', 'explore',
   'demo', 'sitemap.xml', 'robots.txt', 'llms.txt', 'favicon.svg', 'og-image.jpg',
   'icons.svg', 'pocketlink-logo.svg', 'assets', 'api', 'manage',
 ]);
@@ -87,8 +88,9 @@ export default async function handler(req, res) {
     const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY;
     const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
 
-    // ── Marketplace (path on the main domain, or the root of market.*) ──
-    if (path === '/marketplace' || path === '/explore' || (host.startsWith('market.') && path === '/')) {
+    // ── Marketplace — now the root of the main domain (plus /marketplace and
+    //    /explore aliases; the retired market.* subdomain 301s here). ──
+    if (path === '/' || path === '/marketplace' || path === '/explore') {
       // Store pages always live on the main domain, whichever host serves the
       // marketplace — links must not point at market.*/slug.
       const storeOrigin = 'https://www.pocketlink.store';

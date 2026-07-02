@@ -675,7 +675,7 @@ export default function Landing() {
               <a href="#features" className="hover:text-white transition-colors">Features</a>
               <a href="#demos"    className="hover:text-white transition-colors">Demos</a>
               <a href="#pricing"  className="hover:text-white transition-colors">Pricing</a>
-              <a href="https://market.pocketlink.store" className="hover:text-white transition-colors">Explore</a>
+              <a href="/" className="hover:text-white transition-colors">Explore</a>
             </div>
 
             <Link

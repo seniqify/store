@@ -10,7 +10,7 @@ import { getFavs, toggleFav, getRecents, addRecent, bumpMarketplaceVisit } from 
 import BusinessCard from '../components/marketplace/BusinessCard';
 
 /**
- * Marketplace — the consumer discovery home at market.pocketlink.store.
+ * Marketplace — the consumer discovery home at the root of pocketlink.store.
  * Premium dark hero (aurora, rotating gradient word, live stat counters) over a
  * utility-first body: sticky search + category chips with counts, an area
  * picker, and browse sections that get out of the way the moment the customer

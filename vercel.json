@@ -1,12 +1,13 @@
 {
   "redirects": [
-    { "source": "/marketplace", "destination": "https://market.pocketlink.store/", "permanent": true },
-    { "source": "/explore", "destination": "https://market.pocketlink.store/", "permanent": true }
+    { "source": "/:p*", "has": [{ "type": "host", "value": "market.pocketlink.store" }], "destination": "https://www.pocketlink.store/:p*", "permanent": true }
   ],
   "rewrites": [
-    { "source": "/:p*", "has": [{ "type": "host", "value": "market.pocketlink.store" }], "destination": "/index.html" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
-    { "source": "/", "destination": "/index.html" },
+    { "source": "/", "destination": "/api/render?path=/" },
+    { "source": "/marketplace", "destination": "/api/render?path=/marketplace" },
+    { "source": "/explore", "destination": "/api/render?path=/explore" },
+    { "source": "/sell", "destination": "/index.html" },
     { "source": "/start", "destination": "/index.html" },
     { "source": "/plans", "destination": "/index.html" },
     { "source": "/onboarding", "destination": "/index.html" },

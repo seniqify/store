@@ -129,8 +129,8 @@ export function marketplaceSeo(stores, origin, storeOrigin = origin) {
   const n = stores.length;
   const title = 'Discover Local Businesses Near You | PocketLink Marketplace';
   const description = `Browse ${n ? `${n}+ ` : ''}local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.`;
-  // On the consumer subdomain the marketplace lives at the root.
-  const url = origin.includes('//market.') ? `${origin}/` : `${origin}/marketplace`;
+  // The marketplace is now the root of the site.
+  const url = `${origin}/`;
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',

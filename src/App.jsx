@@ -178,10 +178,11 @@ function ScrollToTop() {
   return null;
 }
 
-// ── Consumer marketplace subdomain ────────────────────────────────────────────
-// market.pocketlink.store serves ONLY the marketplace (customer traffic).
-// Stores, onboarding, manage etc. stay on the main domain — every other path on
-// the subdomain bounces back there so shared links keep working everywhere.
+// ── Retired consumer subdomain ────────────────────────────────────────────────
+// The marketplace now lives at the ROOT of the main domain (pocketlink.store).
+// The old market.pocketlink.store 301s to the main domain at the edge
+// (vercel.json); this client guard is a belt-and-braces fallback so any request
+// that still reaches the SPA on that host bounces to the same path on main.
 const MAIN_ORIGIN   = 'https://www.pocketlink.store';
 const isMarketHost  = typeof window !== 'undefined' && window.location.hostname.startsWith('market.');
 
@@ -203,18 +204,16 @@ export default function App() {
         <Suspense fallback={<PageLoader />}>
           {isMarketHost ? (
             <Routes>
-              <Route path="/"            element={<Marketplace />} />
-              <Route path="/marketplace" element={<Marketplace />} />
-              <Route path="/explore"     element={<Marketplace />} />
-              <Route path="*"            element={<ToMainSite />} />
+              <Route path="*" element={<ToMainSite />} />
             </Routes>
           ) : (
           <Routes>
-            <Route path="/"                      element={<Landing />} />
-            <Route path="/start"                 element={<Start />} />
-            <Route path="/plans"                 element={<Plans />} />
+            <Route path="/"                      element={<Marketplace />} />
+            <Route path="/sell"                  element={<Landing />} />
             <Route path="/marketplace"           element={<Marketplace />} />
             <Route path="/explore"               element={<Marketplace />} />
+            <Route path="/start"                 element={<Start />} />
+            <Route path="/plans"                 element={<Plans />} />
             <Route path="/checkout/:plan"        element={<Checkout />} />
             <Route path="/onboarding"            element={<Onboarding />} />
             <Route path="/terms"                 element={<Terms />} />
