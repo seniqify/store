@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { ShoppingCart, MessageCircle, Check } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check, Star, Share2 } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import CartSidebar from '../components/cart/CartSidebar';
 import CheckoutSheet from '../components/cart/CheckoutSheet';
@@ -14,6 +14,7 @@ import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
+import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 
 /**
@@ -68,6 +69,29 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const waLink      = whatsappLink(whatsappNumber, businessName);
   const { total }   = calcCartTotals(cart, config.cart);
 
+  // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──
+  const [heroRating, setHeroRating] = useState(null);
+  useEffect(() => {
+    if (!config.slug) return;
+    let alive = true;
+    fetchReviews(config.slug).then((r) => { if (alive) setHeroRating(reviewStats(r)); });
+    return () => { alive = false; };
+  }, [config.slug]);
+
+  // Share the store like a profile — native share sheet where available,
+  // clipboard fallback on desktop.
+  const [shareCopied, setShareCopied] = useState(false);
+  async function shareStore() {
+    const url = window.location.href.split('?')[0];
+    if (navigator.share) {
+      try { await navigator.share({ title: businessName, text: `Order from ${businessName} on WhatsApp`, url }); } catch { /* dismissed */ }
+    } else {
+      navigator.clipboard?.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
+  }
+
   // ── SEO: update document title + meta tags for this store ────────────────
   const prevTitle = useRef(document.title);
   useEffect(() => {
@@ -120,9 +144,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   return (
     <div className={['min-h-screen bg-[#f8fafc] w-full overflow-x-hidden lg:pb-0', itemCount > 0 ? 'pb-32' : 'pb-16'].join(' ')}>
 
-      {/* ── Store hero: cover image OR branded gradient + overlapping card ── */}
+      {/* ── Store hero: cover image OR branded gradient + personal-brand card ── */}
       <header className="relative w-full">
-        <div className="relative w-full h-40 sm:h-56 overflow-hidden">
+        <div className="relative w-full h-44 sm:h-56 overflow-hidden">
           {coverImage ? (
             <img src={coverImage} alt={businessName} className="w-full h-full object-cover" />
           ) : (
@@ -132,60 +156,133 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
             <div className="absolute inset-0"
                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 55%)' }} />
           )}
+          {/* Share (mobile) — floats on the banner like a profile action */}
+          <button type="button" onClick={shareStore} aria-label="Share this store"
+            className="sm:hidden absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur
+                       border border-white/60 text-gray-600 flex items-center justify-center shadow-md active:scale-95">
+            {shareCopied ? <Check size={15} className="text-emerald-600" /> : <Share2 size={15} />}
+          </button>
         </div>
 
+        {/* soft brand glow bleeding out from under the card */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-28 sm:top-44 w-[34rem] max-w-full h-44 rounded-full blur-3xl pointer-events-none"
+             style={{ background: `${primary}1c` }} />
+
         <div className="max-w-7xl mx-auto px-3 sm:px-4">
-          <div className="relative z-10 -mt-12 sm:-mt-16 bg-white rounded-3xl border border-gray-100
-                          shadow-xl shadow-gray-300/30 p-4 sm:p-6">
-            <div className="flex items-start gap-3 sm:gap-5">
-              {/* Avatar */}
-              {logo ? (
-                <img src={logo} alt={businessName}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-white
-                             shadow-md flex-shrink-0 -mt-10 sm:-mt-14 bg-white" />
-              ) : (
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center
-                                text-3xl sm:text-4xl ring-4 ring-white shadow-md flex-shrink-0 -mt-10 sm:-mt-14"
-                     style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
-                  <span className="drop-shadow-sm">{logoEmoji ?? '🏪'}</span>
-                </div>
-              )}
+          {/* Personal-brand card: gradient hairline border (brand → white) around
+              a glass body with a soft brand wash. The colour is the store's own
+              theme colour, chosen by the owner in Manage → Settings. */}
+          <div className="relative z-10 -mt-14 sm:-mt-20 rounded-3xl p-[1.5px] animate-pl-fade-up"
+               style={{
+                 background: `linear-gradient(140deg, ${primary}45, ${primary}10 45%, rgba(255,255,255,0.9))`,
+                 boxShadow: `0 24px 48px -20px ${primary}38, 0 12px 32px rgba(15,23,42,0.08)`,
+               }}>
+            {/* Matte body: fully opaque white with a whisper of brand tint baked
+                into the top — no translucency, no blur */}
+            <div className="relative rounded-[22px] p-4 sm:p-6"
+                 style={{ background: `linear-gradient(180deg, ${primary}0a 0%, rgba(255,255,255,0) 45%), #ffffff` }}>
 
-              <div className="flex-1 min-w-0 pt-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-lg sm:text-2xl font-extrabold text-gray-900 leading-tight">{businessName}</h1>
-                  {isVerified(effectivePlan(config)) && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
-                                     px-2 py-0.5 rounded-full flex-shrink-0">
-                      <Check size={10} strokeWidth={3} /> Verified
-                    </span>
+              {/* Brand dot texture fading down the card's top wash (same dotted
+                  idiom as the promo ribbon) — pure decoration, kept whisper-quiet */}
+              <div aria-hidden className="absolute inset-x-0 top-0 h-24 rounded-t-[22px] pointer-events-none"
+                   style={{
+                     backgroundImage: `radial-gradient(${primary}21 1px, transparent 1px)`,
+                     backgroundSize: '12px 12px',
+                     maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)',
+                     WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)',
+                   }} />
+
+              {/* Mobile: centered profile composition · Desktop: left-aligned row */}
+              <div className="relative flex flex-col items-center text-center
+                              sm:flex-row sm:items-start sm:text-left gap-3 sm:gap-5">
+
+                {/* Logo — brand gradient ring + white gap (story-ring style) so
+                    it pops on any card, even white-background logos */}
+                <div className="flex-shrink-0 -mt-14 sm:-mt-16 rounded-2xl p-[3px]"
+                     style={{
+                       background: `linear-gradient(135deg, ${primary}, ${primaryDark})`,
+                       boxShadow: `0 14px 30px -8px ${primary}59`,
+                     }}>
+                  <div className="rounded-[13px] bg-white p-[3px]">
+                    {logo ? (
+                      <img src={logo} alt={businessName}
+                           className="w-20 h-20 rounded-[10px] object-cover bg-white" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-[10px] flex items-center justify-center text-4xl"
+                           style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
+                        <span className="drop-shadow-sm">{logoEmoji ?? '🏪'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-0 pt-0.5 w-full">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-950 leading-tight tracking-tight"
+                        style={{ fontFamily: "'Poppins', system-ui, sans-serif" }}>{businessName}</h1>
+                    {isVerified(effectivePlan(config)) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
+                                       px-2 py-0.5 rounded-full flex-shrink-0">
+                        <Check size={10} strokeWidth={3} /> Verified
+                      </span>
+                    )}
+                    {heroRating?.count > 0 && (
+                      <button type="button"
+                        onClick={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10
+                                   px-2 py-0.5 rounded-full flex-shrink-0 active:scale-95 transition-transform"
+                        aria-label={`Rated ${heroRating.avg} by ${heroRating.count} customers — read reviews`}>
+                        <Star size={10} fill="currentColor" /> {heroRating.avg} ({heroRating.count})
+                      </button>
+                    )}
+                  </div>
+                  {(tagline || config.category) && (
+                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      {tagline || `${config.category}${config.city ? ` · ${config.city}` : ''}`}
+                    </p>
                   )}
-                </div>
-                {tagline && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{tagline}</p>}
 
-                {/* Trust chips */}
-                <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <Chip>🛍️ {products.length} products</Chip>
-                  <Chip>💬 Order on WhatsApp</Chip>
-                  {freeAbove > 0 && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                  {/* Trust chips */}
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+                    <Chip>🛍️ {products.length} products</Chip>
+                    <Chip>💬 Order on WhatsApp</Chip>
+                    {freeAbove > 0 && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                    {config.city && <Chip>📍 {config.city}</Chip>}
+                  </div>
+                </div>
+
+                {/* WhatsApp CTA + share (desktop) */}
+                <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={shareStore} aria-label="Share this store"
+                      className="w-10 h-10 rounded-xl bg-white/80 border border-gray-200 text-gray-500
+                                 hover:text-gray-800 hover:bg-white flex items-center justify-center
+                                 shadow-sm transition-all active:scale-95">
+                      {shareCopied ? <Check size={15} className="text-emerald-600" /> : <Share2 size={15} />}
+                    </button>
+                    <a href={waLink} target="_blank" rel="noopener noreferrer"
+                       className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d]
+                                  text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-emerald-500/25
+                                  transition-all active:scale-95">
+                      <MessageCircle size={16} /> Order on WhatsApp
+                    </a>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 pr-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Usually replies within minutes
+                  </span>
                 </div>
               </div>
 
-              {/* WhatsApp CTA (desktop) */}
+              {/* WhatsApp CTA (mobile) */}
               <a href={waLink} target="_blank" rel="noopener noreferrer"
-                 className="hidden sm:inline-flex items-center gap-2 flex-shrink-0 bg-[#25D366] hover:bg-[#1ebe5d]
-                            text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-emerald-500/25
-                            transition-all active:scale-95">
+                 className="sm:hidden mt-4 flex items-center justify-center gap-2 bg-[#25D366]
+                            text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99]">
                 <MessageCircle size={16} /> Order on WhatsApp
               </a>
+              <p className="sm:hidden mt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Usually replies within minutes
+              </p>
             </div>
-
-            {/* WhatsApp CTA (mobile) */}
-            <a href={waLink} target="_blank" rel="noopener noreferrer"
-               className="sm:hidden mt-4 flex items-center justify-center gap-2 bg-[#25D366]
-                          text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99]">
-              <MessageCircle size={16} /> Order on WhatsApp
-            </a>
           </div>
         </div>
       </header>
@@ -376,11 +473,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   );
 }
 
-// Small rounded trust chip used in the store hero.
+// Small rounded trust chip used in the store hero — tinted with the store's
+// brand colour (bg-brand/* reads the per-store theme CSS vars).
 function Chip({ children }) {
   return (
     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600
-                     bg-gray-50 border border-gray-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+                     bg-brand/5 border border-brand/15 rounded-full px-2.5 py-1 whitespace-nowrap">
       {children}
     </span>
   );

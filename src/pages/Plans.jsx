@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ShieldCheck, Sparkles, Star, ArrowRight, Zap } from 'lucide-react';
+import { findStoreByPhone } from '../utils/storeService';
 
 // ── Billing periods ───────────────────────────────────────────────────────────
 const PERIODS = [
@@ -126,8 +127,19 @@ export default function Plans() {
   const [period, setPeriod] = useState('monthly');
   const [faq,    setFaq]    = useState(null);
 
-  function choosePlan(planKey) {
-    if (planKey === 'free') { navigate('/start'); return; }
+  async function choosePlan(planKey) {
+    if (planKey === 'free') {
+      // Phone already verified this session → never ask for it again:
+      // an owner with a page goes to Manage; a verified new user goes
+      // straight into onboarding (Start would just bounce them back here).
+      if (phone) {
+        const existing = await findStoreByPhone(phone).catch(() => null);
+        navigate(existing ? `/${existing}/manage` : '/onboarding');
+        return;
+      }
+      navigate('/start');
+      return;
+    }
     if (phone) {
       navigate(`/checkout/${planKey}?period=${period}`);
     } else {

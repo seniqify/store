@@ -86,7 +86,7 @@ export default function StoreReviews() {
   }
 
   return (
-    <section className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-10">
+    <section id="reviews" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-10 scroll-mt-20">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
 
         {/* Header — aggregate */}
