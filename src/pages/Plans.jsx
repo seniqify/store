@@ -1,60 +1,99 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Check, X, Zap, ChevronDown, ShieldCheck, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ShieldCheck, Sparkles, Star, ArrowRight, Zap } from 'lucide-react';
 
-// ── Billing periods (yearly = 10× monthly — pay for 10, get 12 = 2 months free) ──
+// ── Billing periods ───────────────────────────────────────────────────────────
 const PERIODS = [
-  { key: 'monthly', label: 'Monthly', badge: null          },
-  { key: 'yearly',  label: 'Yearly',  badge: '2 months free' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'yearly',  label: 'Yearly'  },
 ];
 
-// monthly list rate + total amount actually charged (yearly = rate × 10 → 2 months free)
+// Front-end price DISPLAY only. The amount actually debited comes from the
+// Razorpay plan_id in supabase/functions/create-razorpay-subscription — these
+// numbers MUST match the amount of the plan_id wired there, or a customer sees
+// one price and gets charged another. Internal keys are unchanged for
+// grandfathering: 'business' = Growth, 'premium' = Pro.
 const PRICING = {
-  business: {
-    monthly: { rate: 500,  charge: 500   },
-    yearly:  { rate: 500,  charge: 5000  },
-  },
-  premium: {
-    monthly: { rate: 1000, charge: 1000  },
-    yearly:  { rate: 1000, charge: 10000 },
-  },
+  business: { monthly: 199, yearly: 1999 },   // Growth
+  premium:  { monthly: 599, yearly: 5999 },   // Pro
 };
 
-// ── Plans (highlights = always shown · features = inside the dropdown) ─────────
-// Two tiers. 'business' is shown as "Standard" (₹500, 50 products); 'premium'
-// (₹1000) is unlimited + the AI assistant, advanced analytics and offers engine.
+// Optional marketplace add-on (not self-serve yet — activation goes through
+// support on WhatsApp; founder enables it manually).
+const FEATURED_PRICE = 299;
+const SUPPORT_WA = '918482840808';
+
+// ── Plans ──────────────────────────────────────────────────────────────────────
 const PLANS = [
   {
-    key: 'business', name: 'Standard', tagline: 'Everything you need to sell', popular: true,
-    accent: '#10b981', cta: 'Get Standard',
-    highlights: ['50 products · 10 categories', 'Verified badge ✓', 'Variants, coupons & order updates'],
+    key: 'free',
+    name: 'Free',
+    best: 'For businesses getting started',
+    accent: '#e2e8f0',
+    cta: 'Start Free',
+    features: [
+      '10 products · 3 categories',
+      'AI product search',
+      'AI shopping assistant (limited)',
+      'WhatsApp orders + QR code',
+      'Marketplace listing',
+      'Basic store analytics',
+      'Mobile-ready store + basic SEO',
+      'Cart & order management',
+    ],
+    footnote: 'PocketLink branding shown',
+  },
+  {
+    key: 'business',
+    name: 'Growth',
+    best: 'For growing businesses',
+    popular: true,
+    accent: '#10b981',
+    cta: 'Upgrade to Growth',
+    inherits: 'Free',
     features: [
       '50 products · 10 categories',
-      'No “Powered by” badge — 100% your brand',
-      'Verified badge — instant customer trust',
-      'Product variants — size, colour & more',
-      'Discount codes & coupons',
-      'Promo banners & page announcements',
-      'Order management + full order history',
-      'Basic sales analytics',
-      'Branded QR code for your shop',
-      'One-tap WhatsApp order updates',
+      'Remove PocketLink branding',
+      'Verified business badge',
+      'Unlimited AI product search',
+      'AI product assistant',
+      'Product variants',
+      'Coupons & discounts',
+      'Online payments',
+      'Order history',
+      'Customer insights & sales analytics',
+      'Store theme customization',
+      'Business hours & delivery settings',
+      'AI auto-fill · smart categories',
+      'Priority support',
     ],
   },
   {
-    key: 'premium', name: 'Premium', tagline: 'Unlimited + your AI assistant',
-    accent: '#8b5cf6', cta: 'Get Premium',
-    highlights: ['Unlimited products & categories', '🤖 AI assistant answers customers', 'Advanced analytics + auto updates'],
+    key: 'premium',
+    name: 'Pro',
+    best: 'For businesses that want to scale',
+    accent: '#8b5cf6',
+    cta: 'Go Pro',
+    inherits: 'Growth',
     features: [
-      'Everything in Standard',
       'Unlimited products & categories',
-      'AI Business Assistant — answers customers 24/7',
-      'Advanced analytics — returning customers, conversion, peak hours',
-      'Automatic WhatsApp order updates',
+      'Unlimited AI assistant usage',
+      'AI business insights',
+      'Advanced analytics — returning customers, conversion & peak hours',
       'Offers engine — flash, weekend & festival sales',
-      'Priority WhatsApp support + personal setup',
+      'Auto WhatsApp order updates',
+      'Priority support',
+      'Early access to new features',
     ],
   },
+];
+
+const FEATURED_BENEFITS = [
+  'Higher search ranking',
+  'Featured badge',
+  'Priority listing',
+  'Festival promotions',
+  'More customer visibility',
 ];
 
 const GUARANTEES = [
@@ -67,32 +106,28 @@ const GUARANTEES = [
 
 const UNIVERSAL = [
   ['🔗', 'Shareable link'], ['💬', 'WhatsApp orders'], ['📱', 'Mobile-first'], ['⚡', 'Live in 2 min'],
-  ['🆓', 'No app for buyers'], ['💰', 'GST-ready'], ['🏦', 'UPI + Bank + COD'], ['🔒', 'Secure & private'],
+  ['🆓', 'No app for buyers'], ['🛍️', 'Marketplace listing'], ['🏦', 'UPI + Bank + COD'], ['🔒', 'Secure & private'],
 ];
 
 const FAQS = [
-  { q: 'What do the two plans cost?', a: 'Standard is ₹500/month — a complete store with up to 50 products. Premium is ₹1000/month — unlimited products plus the AI assistant, advanced analytics and the offers engine. No setup fee, cancel anytime.' },
-  { q: 'What’s the difference between Standard and Premium?', a: 'Standard gives you everything to sell properly — your page, variants, coupons, order updates and basic analytics — capped at 50 products. Premium removes the product limit and adds the AI assistant that answers customers 24/7, advanced analytics, automatic WhatsApp order updates and scheduled offers.' },
-  { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission.' },
-  { q: 'Is yearly cheaper?', a: 'Yes — pay yearly and 2 months are free: you pay for 10 months, not 12. Same plan and features at a lower effective price, and it auto-renews yearly so your page never lapses.' },
-  { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. Your page keeps working; you simply lose the paid features — it never goes offline.' },
-  { q: 'How do I pay?', a: 'Securely via UPI, debit/credit card or net banking. You get a GST invoice for every payment.' },
-  { q: 'How soon does my plan activate?', a: 'Instantly. The moment your payment succeeds, your plan is live — no waiting, no manual confirmation.' },
+  { q: 'How much does PocketLink cost?', a: 'Free is ₹0 forever. Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
+  { q: 'What’s the difference between Growth and Pro?', a: 'Growth removes PocketLink branding and gives you a verified store with variants, coupons, online payments, customer insights and the AI product assistant — up to 50 products. Pro removes every limit and adds unlimited AI assistant usage, AI business insights, advanced analytics (returning customers, conversion, peak hours), the offers engine, automatic WhatsApp order updates and priority support.' },
+  { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission on every plan.' },
+  { q: 'Is paying yearly cheaper?', a: 'Yes. Growth is ₹1,999/year (save ₹389 vs monthly) and Pro is ₹5,999/year (save ₹1,189) — roughly two months free. It auto-renews yearly so your store never lapses.' },
+  { q: 'What is the Featured Store add-on?', a: 'An optional ₹299/month boost that lifts your shop’s ranking inside the PocketLink Marketplace — a featured badge, priority listing and festival promotions for more customer visibility. Add it on top of any plan.' },
+  { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. Your store keeps working; you simply lose the paid features, it never goes offline.' },
+  { q: 'How do I pay and how soon does it activate?', a: 'Securely via UPI, debit/credit card or net banking through Razorpay, with a GST invoice for every payment. Your plan activates the instant payment succeeds — no waiting.' },
 ];
 
 export default function Plans() {
   const navigate = useNavigate();
   const phone    = sessionStorage.getItem('pocketlink_verified_phone');
 
-  const [period, setPeriod] = useState('monthly');    // monthly first; yearly = 12× (one payment)
-  const [open,   setOpen]   = useState({});            // which plan's feature dropdown is open
-  const [faq,    setFaq]    = useState(null);          // which FAQ is open
-
-  const togglePlan = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
+  const [period, setPeriod] = useState('monthly');
+  const [faq,    setFaq]    = useState(null);
 
   function choosePlan(planKey) {
-    // Both tiers are paid → confirm phone, then pay at /checkout (which sets the
-    // plan + expiry before sending the new signup into onboarding).
+    if (planKey === 'free') { navigate('/start'); return; }
     if (phone) {
       navigate(`/checkout/${planKey}?period=${period}`);
     } else {
@@ -100,6 +135,19 @@ export default function Plans() {
       navigate(`/start?plan=${planKey}&upgrade=1`);
     }
   }
+
+  function getFeatured() {
+    if (SUPPORT_WA) {
+      const msg = encodeURIComponent('Hi PocketLink — I’d like to add the Featured Store boost (₹299/mo) to my shop.');
+      window.open(`https://wa.me/${SUPPORT_WA}?text=${msg}`, '_blank', 'noopener');
+    } else {
+      navigate('/start');
+    }
+  }
+
+  const maxSave = Math.max(
+    ...Object.values(PRICING).map((p) => p.monthly * 12 - p.yearly),
+  );
 
   return (
     <div className="relative min-h-screen overflow-hidden"
@@ -135,31 +183,30 @@ export default function Plans() {
         <div className="text-center mb-9 animate-pl-fade-up">
           <span className="inline-flex items-center gap-2 bg-white/5 border border-white/15 text-emerald-300
                            text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
-            <Sparkles size={12} /> Launch pricing — lock in these rates
+            <Sparkles size={12} /> Simple, transparent pricing
           </span>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white mb-3 tracking-tight">
-            Two simple plans that{' '}
-            <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grow with you</span>
+            Pricing that{' '}
+            <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grows with you</span>
           </h1>
-          <p className="text-white/55 text-sm sm:text-base max-w-md mx-auto">
-            Start at ₹500/mo for a complete store. Step up to Premium for unlimited products and your AI assistant — no contracts, no per-order fees, ever.
+          <p className="text-white/55 text-sm sm:text-base max-w-lg mx-auto">
+            Start free. Upgrade when you’re ready. No contracts, no per-order fees — an AI storefront and local marketplace, all on WhatsApp.
           </p>
         </div>
 
         {/* Billing toggle */}
-        <div className="flex justify-center mb-12">
-          <div className="inline-flex bg-white/5 border border-white/10 rounded-2xl p-1 gap-1">
+        <div className="flex justify-center mb-11">
+          <div className="inline-flex items-center bg-white/5 border border-white/10 rounded-2xl p-1 gap-1">
             {PERIODS.map((p) => (
               <button key={p.key} onClick={() => setPeriod(p.key)}
                 className={[
-                  'relative px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-150',
+                  'relative px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-150',
                   period === p.key ? 'bg-white text-gray-900 shadow-sm' : 'text-white/55 hover:text-white',
                 ].join(' ')}>
                 {p.label}
-                {p.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white
-                                   text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
-                    {p.badge}
+                {p.key === 'yearly' && (
+                  <span className={`ml-2 text-[10px] font-bold ${period === 'yearly' ? 'text-emerald-600' : 'text-emerald-300'}`}>
+                    save ₹{maxSave.toLocaleString('en-IN')}
                   </span>
                 )}
               </button>
@@ -168,21 +215,18 @@ export default function Plans() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start max-w-5xl mx-auto">
           {PLANS.map((plan) => {
-            const p        = plan.key === 'free' ? null : PRICING[plan.key][period];
-            // On yearly, headline the true effective per-month (10 months' charge
-            // spread over 12) so the saving is visible at a glance.
-            const effMonth = p ? (period === 'yearly' ? Math.round(p.charge / 12) : p.rate) : null;
-            const perDay   = effMonth ? Math.round(effMonth / 30) : null;
-            const yearSave = p && period === 'yearly' ? p.rate * 2 : 0;   // 2 months free
-            const isOpen   = !!open[plan.key];
+            const price    = plan.key === 'free' ? null : PRICING[plan.key];
+            const effMonth = price ? (period === 'yearly' ? Math.round(price.yearly / 12) : price.monthly) : null;
+            const perDay   = effMonth ? Math.max(1, Math.round(effMonth / 30)) : null;
+            const save     = price ? price.monthly * 12 - price.yearly : 0;
             const popular  = plan.popular;
 
             return (
               <div key={plan.key}
                 className={[
-                  'relative flex flex-col rounded-3xl p-6 transition-all duration-200',
+                  'relative flex flex-col rounded-3xl p-6 sm:p-7 transition-all duration-200',
                   popular
                     ? 'bg-white/[0.09] border-2 shadow-2xl lg:-translate-y-3'
                     : 'bg-white/[0.04] border border-white/10 hover:bg-white/[0.06]',
@@ -199,15 +243,16 @@ export default function Plans() {
                   </div>
                 )}
 
-                <h2 className="font-extrabold text-white text-xl">{plan.name}</h2>
-                <p className="text-xs text-white/45 mt-0.5 mb-5">{plan.tagline}</p>
+                <h2 className="font-extrabold text-lg"
+                    style={{ color: plan.key === 'free' ? '#ffffff' : plan.accent }}>{plan.name}</h2>
+                <p className="text-xs text-white/45 mt-0.5 mb-5">{plan.best}</p>
 
                 {/* Price */}
                 <div className="pb-5 mb-5 border-b border-white/10">
                   {plan.key === 'free' ? (
                     <>
-                      <p className="text-4xl font-extrabold text-white">Free</p>
-                      <p className="text-xs text-white/45 mt-1">forever · no card needed</p>
+                      <p className="text-4xl font-extrabold text-white">₹0<span className="text-base font-normal text-white/45">/mo</span></p>
+                      <p className="text-xs text-white/45 mt-1.5">forever · no card needed</p>
                     </>
                   ) : (
                     <>
@@ -216,78 +261,61 @@ export default function Plans() {
                           ₹{effMonth}<span className="text-base font-normal text-white/45">/mo</span>
                         </p>
                         {period === 'yearly' && (
-                          <span className="text-lg font-semibold text-white/35 line-through">₹{p.rate}</span>
+                          <span className="text-lg font-semibold text-white/35 line-through">₹{price.monthly}</span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                               style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
-                          ≈ ₹{perDay}/day{plan.key === 'business' ? ' · less than a chai' : ''}
+                          ≈ ₹{perDay}/day
                         </span>
                         {period === 'yearly' && (
-                          <span className="text-[11px] font-bold text-emerald-300">Save ₹{yearSave.toLocaleString('en-IN')}/yr</span>
+                          <span className="text-[11px] font-bold text-emerald-300">save ₹{save.toLocaleString('en-IN')}/yr</span>
                         )}
                       </div>
                       <p className="text-xs text-white/40 mt-2">
                         {period === 'monthly'
                           ? 'billed monthly · cancel anytime'
-                          : `₹${p.charge.toLocaleString('en-IN')} billed yearly · 2 months free`}
+                          : `₹${price.yearly.toLocaleString('en-IN')} billed yearly`}
                       </p>
                     </>
                   )}
                 </div>
 
-                {/* Highlights (always visible) */}
-                <ul className="space-y-2.5">
-                  {plan.highlights.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-white/80">
-                      <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: `${plan.accent}26` }}>
-                        <Check size={11} strokeWidth={3} style={{ color: plan.accent }} />
-                      </span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-
-                {/* What's included dropdown */}
-                <button onClick={() => togglePlan(plan.key)}
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
-                  {isOpen ? 'Hide details' : 'See everything included'}
-                  <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                <div className={`grid transition-all duration-300 ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
-                  <div className="overflow-hidden">
-                    <div className="rounded-2xl bg-black/20 border border-white/10 p-4 space-y-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-1">What’s included</p>
-                      {plan.features.map((f) => (
-                        <div key={f} className="flex items-start gap-2.5 text-[13px] text-white/75">
-                          <Check size={13} strokeWidth={3} className="mt-0.5 flex-shrink-0" style={{ color: plan.accent }} />
-                          {f}
-                        </div>
-                      ))}
-                      {plan.missing?.map((f) => (
-                        <div key={f} className="flex items-start gap-2.5 text-[13px] text-white/35">
-                          <X size={13} className="mt-0.5 flex-shrink-0" />
-                          <span>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 {/* CTA */}
                 <button onClick={() => choosePlan(plan.key)}
                   className={[
-                    'mt-6 w-full py-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98]',
+                    'w-full py-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1.5',
                     plan.key === 'free'
                       ? 'bg-white/10 text-white hover:bg-white/15 border border-white/10'
                       : 'text-white shadow-lg',
                   ].join(' ')}
                   style={plan.key !== 'free' ? { backgroundColor: plan.accent, boxShadow: `0 10px 30px ${plan.accent}40` } : {}}>
-                  {plan.cta} {plan.key !== 'free' && '→'}
+                  {plan.cta} {plan.key !== 'free' && <ArrowRight size={15} />}
                 </button>
+
+                {/* Features */}
+                <div className="mt-6">
+                  {plan.inherits && (
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-white/40 mb-3">
+                      Everything in {plan.inherits}, plus
+                    </p>
+                  )}
+                  <ul className="space-y-2.5">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5 text-[13px] text-white/80">
+                        <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
+                              style={{ backgroundColor: `${plan.accent}26` }}>
+                          <Check size={11} strokeWidth={3} style={{ color: plan.accent }} />
+                        </span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  {plan.footnote && (
+                    <p className="mt-4 text-[11px] text-white/35">{plan.footnote}</p>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -306,8 +334,55 @@ export default function Plans() {
           Prices exclusive of GST · Paid plans activate instantly after payment · Cancel anytime
         </p>
 
+        {/* ── Marketplace Promotion (add-ons) ── */}
+        <div className="mt-14">
+          <div className="text-center mb-6">
+            <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Marketplace Promotion</h3>
+            <p className="text-sm text-white/50 mt-1">Optional add-ons — stack on top of any plan</p>
+          </div>
+
+          <div className="max-w-2xl mx-auto rounded-3xl p-[1.5px] shadow-2xl"
+               style={{ background: 'linear-gradient(135deg, #f59e0b, #10b981 60%, #8b5cf6)' }}>
+            <div className="rounded-3xl bg-[#07130f] p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-6">
+                <div className="flex-1 min-w-0">
+                  <div className="inline-flex items-center gap-2 mb-3">
+                    <span className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-300/30 flex items-center justify-center">
+                      <Star size={18} className="text-amber-300" fill="currentColor" />
+                    </span>
+                    <h4 className="text-lg font-extrabold text-white">Featured Store</h4>
+                  </div>
+                  <p className="text-sm text-white/60 mb-4 max-w-sm">
+                    Get higher visibility inside the PocketLink Marketplace so more nearby customers discover you.
+                  </p>
+                  <ul className="grid sm:grid-cols-2 gap-x-5 gap-y-2">
+                    {FEATURED_BENEFITS.map((b) => (
+                      <li key={b} className="flex items-center gap-2 text-[13px] text-white/80">
+                        <Check size={13} strokeWidth={3} className="text-amber-300 flex-shrink-0" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="sm:text-right sm:pl-6 sm:border-l border-white/10 flex sm:flex-col items-center sm:items-end justify-between gap-3">
+                  <div>
+                    <p className="text-3xl font-extrabold text-white whitespace-nowrap">₹{FEATURED_PRICE}<span className="text-sm font-normal text-white/50">/mo</span></p>
+                    <p className="text-[11px] text-white/40 mt-0.5">cancel anytime</p>
+                  </div>
+                  <button onClick={getFeatured}
+                    className="inline-flex items-center gap-1.5 bg-white text-gray-900 font-bold text-sm px-5 py-3 rounded-xl
+                               hover:bg-amber-50 transition-colors active:scale-[0.98] whitespace-nowrap">
+                    Feature My Store <ArrowRight size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Every plan includes */}
-        <div className="mt-12 rounded-3xl bg-white/[0.03] border border-white/10 p-7">
+        <div className="mt-14 rounded-3xl bg-white/[0.03] border border-white/10 p-7">
           <h3 className="font-bold text-white/80 text-sm mb-6 text-center">Every plan includes</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {UNIVERSAL.map(([icon, text]) => (
@@ -320,7 +395,7 @@ export default function Plans() {
         </div>
 
         {/* FAQ */}
-        <div className="mt-12 max-w-2xl mx-auto">
+        <div className="mt-14 max-w-2xl mx-auto">
           <h3 className="text-center text-xl font-extrabold text-white mb-6">Questions, answered</h3>
           <div className="space-y-2.5">
             {FAQS.map((item, i) => {
@@ -347,7 +422,7 @@ export default function Plans() {
         <div className="mt-12 text-center">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-white/80">
             <ShieldCheck size={16} className="text-emerald-400" />
-            Start with Standard — step up to Premium only when it’s paying for itself.
+            Start free — upgrade to Growth only when it’s paying for itself.
           </p>
         </div>
       </div>

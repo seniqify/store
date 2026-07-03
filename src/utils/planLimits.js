@@ -5,7 +5,7 @@ export const PLANS = {
   free: {
     name:            'Free',
     products:        10,
-    categories:      2,
+    categories:      3,
     badge:           true,
     verified:        false,
     promoBanner:     false,
@@ -45,11 +45,12 @@ export const PLANS = {
     variants:        false,
     prioritySupport: false,
   },
-  // ── Standard — the ₹500 entry tier. A complete, professional store, capped at
-  // 50 products. (Internal key stays 'business' so the existing Razorpay ₹500
-  // plan_id and any current Business stores keep working.) ──
+  // ── Growth — the ₹199 entry paid tier (displayed "Growth"). A complete,
+  // professional store capped at 50 products, now including the AI product
+  // assistant and priority support. (Internal key stays 'business' so the
+  // existing Razorpay plan_id mapping and current stores keep working.) ──
   business: {
-    name:             'Standard',
+    name:             'Growth',
     products:         50,
     categories:       10,
     badge:            false,
@@ -59,33 +60,40 @@ export const PLANS = {
     orderHistory:     true,
     analytics:        'basic',
     variants:         true,
-    prioritySupport:  false,
-    aiEmployee:       false,
+    prioritySupport:  true,
+    aiEmployee:       true,     // Growth now includes the AI product assistant
     offersEngine:     false,
-    autoOrderUpdates: false,   // Standard sends order updates one tap at a time
+    autoOrderUpdates: false,   // Growth sends order updates one tap at a time
     festivalMode:     false,
     whatsappApi:      false,
   },
-  // ── Premium — the ₹1000 growth tier. Unlimited everything plus the AI
-  // assistant, advanced analytics, automatic WhatsApp updates and the offers
-  // engine. The clear reasons to step up from Standard. ──
+  // ── Pro — the ₹599 scale tier (displayed "Pro"; internal key stays 'premium').
+  // Unlimited everything plus the full AI dashboard, custom domain, marketplace
+  // priority ranking, team members and bulk import. The reasons to step up from
+  // Growth. (Some flags below are roadmap intent — copy is shown on the pricing
+  // page; enforce/gate them as each feature ships.) ──
   premium: {
-    name:             'Premium',
-    products:         Infinity,
-    categories:       Infinity,
-    badge:            false,
-    verified:         true,
-    promoBanner:      true,
-    discountCodes:    true,
-    orderHistory:     true,
-    analytics:        'full',
-    variants:         true,
-    prioritySupport:  true,
-    aiEmployee:       true,
-    offersEngine:     true,
-    autoOrderUpdates: true,
-    festivalMode:     false,   // Festival Mode ships later — flip when it's built
-    whatsappApi:      false,   // WhatsApp API connect is built later — flip when it ships
+    name:              'Pro',
+    products:          Infinity,
+    categories:        Infinity,
+    badge:             false,
+    verified:          true,
+    promoBanner:       true,
+    discountCodes:     true,
+    orderHistory:      true,
+    analytics:         'full',
+    variants:          true,
+    prioritySupport:   true,
+    aiEmployee:        true,
+    offersEngine:      true,
+    autoOrderUpdates:  true,
+    aiInsights:        true,    // AI customer/search/sales dashboards
+    customDomain:      true,    // roadmap — flip on gate when custom domains ship
+    marketplacePriority: true,  // roadmap — higher marketplace ranking
+    teamMembers:       true,    // roadmap — multiple logins
+    bulkImport:        true,    // roadmap — CSV/bulk product import
+    festivalMode:      false,   // Festival Mode ships later — flip when it's built
+    whatsappApi:       false,   // WhatsApp API connect is built later — flip when it ships
   },
 };
 

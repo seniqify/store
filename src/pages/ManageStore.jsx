@@ -2087,6 +2087,14 @@ export default function ManageStore() {
   const daysLeft   = trialDaysLeft(config);
   const onTrial    = !isPaying && rawPlan !== 'free' && daysLeft !== null && daysLeft > 0;
   const trialEnded = !isPaying && rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
+  // Subscription expiry states for PAYING customers. The webhook pushes
+  // planExpiresAt forward on every successful auto-charge (with ~3 days grace),
+  // so a paying store whose expiry is ≤3 days away means the renewal charge
+  // hasn't landed — warn before it lapses. Once it lapses, effectivePlan
+  // reverts to 'free' silently; subEnded surfaces that downgrade to the owner.
+  const renewalDue = isPaying && rawPlan !== 'free' && daysLeft !== null && daysLeft > 0 && daysLeft <= 3;
+  const subEnded   = isPaying && rawPlan !== 'free' && config.planExpiresAt && effectivePlan(config) === 'free';
+  const planLapsed = trialEnded || subEnded;
   const planName   = getPlanLimits(rawPlan).name;
 
   const analyticsEnabled  = !!getPlanLimits(effectivePlan(config)).analytics;
@@ -2139,6 +2147,18 @@ export default function ManageStore() {
       {trialEnded && (
         <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
           Your free {planName} trial ended — page is on Free now.{' '}
+          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Renew {planName} →</a>
+        </div>
+      )}
+      {renewalDue && (
+        <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
+          ⚠️ Your {planName} renewal payment hasn’t gone through — {daysLeft} {daysLeft === 1 ? 'day' : 'days'} before your page moves to Free.{' '}
+          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Renew now →</a>
+        </div>
+      )}
+      {subEnded && (
+        <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
+          Your {planName} subscription has ended — page is on Free now.{' '}
           <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Renew {planName} →</a>
         </div>
       )}
@@ -2219,6 +2239,44 @@ export default function ManageStore() {
         {/* Reach hook — only on the Orders tab (the default landing). Settings has
             its own "share your page" hero and Stats has its own views number, so
             showing it everywhere would stack duplicate share cards. */}
+        {/* Downgrade explainer — shown once a paid plan (trial or subscription)
+            has lapsed and the page is running on Free. Same card idiom as
+            ReachCard; reassures that nothing was deleted + one-tap renew. */}
+        {tab === 'orders' && planLapsed && (
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden mb-5">
+            <div className="px-4 pt-3.5 pb-3" style={{ background: `linear-gradient(135deg, ${themeColor}14, transparent)` }}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sparkles size={14} style={{ color: themeColor }} />
+                <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: themeColor }}>
+                  Plan update
+                </span>
+              </div>
+              <p className="text-base font-extrabold text-gray-900">
+                Your {planName} {subEnded ? 'subscription' : 'trial'} has ended
+              </p>
+            </div>
+            <div className="px-4 pt-3 pb-4">
+              <p className="text-sm text-gray-600">
+                Your page is on the <span className="font-semibold text-gray-800">Free</span> plan now.
+                Nothing has been deleted — your page and products are still live.
+              </p>
+              <div className="mt-3 space-y-1.5 text-xs text-gray-500">
+                <p>· “Powered by PocketLink” badge is back on your page</p>
+                <p>· Verified badge, AI assistant, Stats &amp; Offers are paused</p>
+                {(config.products || []).length > getPlanLimits('free').products && (
+                  <p>· You have {(config.products || []).length} products — Free includes {getPlanLimits('free').products}, so adding more is locked</p>
+                )}
+              </div>
+              <a href="/plans"
+                 onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
+                 className="mt-4 w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold
+                            text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+                 style={{ backgroundColor: themeColor }}>
+                Renew {planName} →
+              </a>
+            </div>
+          </div>
+        )}
         {tab === 'orders' && (
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
                      upgrade={!analyticsEnabled} phone={config.whatsappNumber} />

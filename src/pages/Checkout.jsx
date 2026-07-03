@@ -4,22 +4,23 @@ import { supabase } from '../lib/supabase';
 import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
 
+// Display names follow the pricing page: internal key 'business' = Growth,
+// 'premium' = Pro. ('pro' key is the retired ₹249 tier — grandfathered only.)
 const PLAN_INFO = {
-  // 'pro' retired from the offered tiers; kept for any grandfathered Pro renewal.
   pro: {
-    name:  'Pro',
+    name:  'Pro (legacy)',
     color: '#10b981',
     features: ['50 products', '10 categories', 'Verified badge', 'Order history'],
   },
   business: {
-    name:  'Standard',
+    name:  'Growth',
     color: '#10b981',
-    features: ['50 products', 'Verified badge', 'Variants & coupons', 'Order updates + analytics'],
+    features: ['50 products', 'Verified badge', 'Variants & coupons', 'AI assistant + priority support'],
   },
   premium: {
-    name:  'Premium',
+    name:  'Pro',
     color: '#8b5cf6',
-    features: ['Unlimited products', 'AI assistant', 'Advanced analytics', 'Auto updates + priority support'],
+    features: ['Unlimited products', 'Unlimited AI + insights', 'Advanced analytics', 'Auto updates + offers engine'],
   },
 };
 
@@ -28,12 +29,12 @@ const PERIOD_LABEL = {
   yearly:  '1 Year',
 };
 
-// yearly = 10× monthly (pay for 10, get 12 → 2 months free). Display only — the
-// amount actually debited comes from the Razorpay yearly plan_id on the backend.
+// Display only — the amount actually debited comes from the Razorpay plan_id on
+// the backend (create-razorpay-subscription). These MUST match those plan_ids.
 const CHARGES = {
-  pro:      { monthly: 249,  yearly: 2490  },
-  business: { monthly: 500,  yearly: 5000  },
-  premium:  { monthly: 1000, yearly: 10000 },
+  pro:      { monthly: 249, yearly: 2490 },   // legacy, grandfathered
+  business: { monthly: 199, yearly: 1999 },   // Growth
+  premium:  { monthly: 599, yearly: 5999 },   // Pro
 };
 
 function loadRazorpayScript() {
@@ -220,9 +221,10 @@ export default function Checkout() {
     }
   }
 
+  const yearSave    = (CHARGES[planKey]?.monthly ?? 0) * 12 - (CHARGES[planKey]?.yearly ?? 0);
   const billingNote = period === 'monthly'
     ? `₹${amount} billed monthly`
-    : `₹${amount.toLocaleString('en-IN')} billed yearly · 2 months free`;
+    : `₹${amount.toLocaleString('en-IN')} billed yearly${yearSave > 0 ? ` · save ₹${yearSave.toLocaleString('en-IN')}` : ''}`;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -5,15 +5,18 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Razorpay Plan IDs. plan → period → plan_id. Yearly = 10× monthly ("2 months
-// free"). Fresh set for the 3-tier structure (Pro 249 / Business 500 / Premium
-// 1000); WhatsApp API is a Premium-only feature. All older plans (starter 149,
-// the old pro/business, and their yearly variants) are retired but left dormant.
+// Razorpay Plan IDs. plan → period → plan_id. 2026-07 pricing: internal key
+// 'business' is displayed "Growth" (₹199/mo · ₹1,999/yr) and 'premium' is
+// displayed "Pro" (₹599/mo · ₹5,999/yr). The amounts debited are these plans'
+// amounts — they MUST match the prices shown in src/pages/Plans.jsx & Checkout.
+// All older plans (starter 149, legacy pro 249 'plan_Szqmm…', old business 500
+// 'plan_Szqmn3…', old premium 1000 'plan_SzqmnP…') are retired but permanent —
+// existing mandates keep charging them until migrated.
 const PLAN_IDS: Record<string, Record<string, string>> = {
   starter:  { monthly: 'plan_T534Tj7pKAPhOP', yearly: 'plan_T534TvGMXAl18M' },
-  pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },
-  business: { monthly: 'plan_Szqmn3xin5zwQY', yearly: 'plan_SzqmnDgFhQFC5y' },
-  premium:  { monthly: 'plan_SzqmnPq8JoWcSc', yearly: 'plan_SzqmnZ9M5keufj' },
+  pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },   // legacy ₹249 — grandfathered renewals only
+  business: { monthly: 'plan_T8tUVJDyKVHUqA', yearly: 'plan_T8tUVTmHtEauYl' },   // Growth ₹199 / ₹1,999
+  premium:  { monthly: 'plan_T8tUVd3OJkD8m8', yearly: 'plan_T8tUVnFLUkTGYl' },   // Pro ₹599 / ₹5,999
 };
 
 // How many billing cycles the mandate runs for before it ends (≈10 years each).
