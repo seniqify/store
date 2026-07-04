@@ -134,7 +134,13 @@ export default function Plans() {
       // straight into onboarding (Start would just bounce them back here).
       if (phone) {
         const existing = await findStoreByPhone(phone).catch(() => null);
-        navigate(existing ? `/${existing}/manage` : '/onboarding');
+        if (existing) { navigate(`/${existing}/manage`); return; }
+        // Hand onboarding the FREE plan explicitly (it must not fall back to a
+        // paid tier's limits), and clear any stale paid-plan session keys.
+        sessionStorage.setItem('pocketlink_plan', 'free');
+        sessionStorage.removeItem('pocketlink_plan_expires');
+        sessionStorage.removeItem('pocketlink_subscription_id');
+        navigate('/onboarding');
         return;
       }
       navigate('/start');

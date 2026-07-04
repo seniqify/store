@@ -262,7 +262,11 @@ export default function Onboarding() {
   const [launched,      setLaunched]      = useState(false);
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
-  const [plan,          setPlan]          = useState('business');
+  // Default to FREE limits — a signup only gets paid-tier limits when a paid
+  // plan is explicitly in the session (set by /checkout) or recovered from a
+  // pending paid signup. Defaulting to a paid tier showed Free signups the
+  // wrong product/category limits.
+  const [plan,          setPlan]          = useState('free');
   const [planExpiresAt, setPlanExpiresAt] = useState(null);
 
   // Gate: require phone from /start → redirect if missing
@@ -274,10 +278,13 @@ export default function Onboarding() {
     setData(d => ({ ...d, whatsappNumber: d.whatsappNumber || phone.replace(/\D/g, '').slice(-10) }));
     const ssPlan = sessionStorage.getItem('pocketlink_plan');
     const ssExp  = sessionStorage.getItem('pocketlink_plan_expires');
-    if (ssPlan && ssExp) {
+    if (ssPlan && ssPlan !== 'free' && ssExp) {
       setPlan(ssPlan);
       setPlanExpiresAt(ssExp);
     } else {
+      // Free signup (or nothing in the session) — still check for a pending
+      // PAID signup below so a customer who paid on another device/session
+      // never loses their plan.
       // No plan in this browser — but they may have paid and lost their session
       // (e.g. the post-payment step hiccuped, or they switched devices). The
       // razorpay-webhook records the paid plan by phone, so recover it here so a
@@ -306,15 +313,17 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      // Payment happens upfront at /checkout, which writes the plan + expiry into
-      // sessionStorage before routing here. If we somehow arrived without a paid
-      // term, send them to pick & pay a plan rather than publishing for free.
-      if (!planExpiresAt) {
+      // Paid plans pay upfront at /checkout, which writes the plan + expiry into
+      // sessionStorage before routing here — a paid plan arriving WITHOUT a term
+      // goes back to pick & pay. Free launches carry no expiry and publish
+      // directly (Free is a real offered tier on /plans).
+      if (plan !== 'free' && !planExpiresAt) {
         navigate('/plans', { replace: true });
         return;
       }
 
-      let config = { ...getConfig(), businessType: data.businessType || 'product', plan, planExpiresAt };
+      let config = { ...getConfig(), businessType: data.businessType || 'product', plan,
+                     ...(planExpiresAt ? { planExpiresAt } : {}) };
       const subId = sessionStorage.getItem('pocketlink_subscription_id');
       if (subId) config.razorpaySubscriptionId = subId;
       const pin  = data.pin.trim() || data.whatsappNumber.replace(/\D/g, '').slice(-4) || '1234';
