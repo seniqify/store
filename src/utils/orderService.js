@@ -6,6 +6,7 @@ import { hashPin } from './pinHash';
 /**
  * Order capture + retrieval.
  *  • saveOrder      — public (anon) insert when a customer places an order.
+ *  • saveLead       — public (anon) insert when a customer requests a service quote.
  *  • fetchOrders    — owner-only read, gated by the store PIN (server RPC).
  *  • setOrderStatus — owner-only status update, gated by the store PIN.
  *
@@ -36,6 +37,34 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
     });
   } catch {
     /* best-effort — a failed log must never break the customer's order */
+  }
+}
+
+/** Best-effort: record a service quote request as a lead — an order row with
+ *  zero totals, so leads never count as revenue in Stats. Never throws — must
+ *  not block the WhatsApp handoff. */
+export async function saveLead(form = {}, config = {}) {
+  if (!config?.slug || !form?.name || !Array.isArray(form.services) || form.services.length === 0) return;
+  try {
+    const items = form.services.map((name) => {
+      const svc = (config.products || []).find((p) => p.name === name);
+      return { name, price: svc?.price || 0, qty: 1, unit: svc?.unit || null };
+    });
+    await supabase.from('orders').insert({
+      store_slug:     config.slug,
+      customer_name:  String(form.name).trim().slice(0, 80),
+      customer_phone: String(form.phone || '').replace(/\D/g, '').slice(-10),
+      destination:    '',
+      payment_method: '',
+      notes:          [form.budget ? `Budget ₹${form.budget}` : '', String(form.notes || '').trim()]
+                        .filter(Boolean).join(' · ').slice(0, 500),
+      items,
+      item_count:     items.length,
+      subtotal: 0, tax: 0, shipping: 0, total: 0,
+      status:         'new',
+    });
+  } catch {
+    /* best-effort — a failed log must never break the customer's inquiry */
   }
 }
 

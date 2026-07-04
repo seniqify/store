@@ -3,20 +3,41 @@ import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag } from 'luc
 import { fetchOrders, setOrderStatus } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 
-const STATUS = {
+// Two vocabularies over the same rows: product stores see Orders (delivery
+// lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
+// the DB, different labels + WhatsApp messages.
+const STATUS_ORDERS = {
   new:        { label: 'New',             emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
   confirmed:  { label: 'Confirmed',       emoji: '✅', cls: 'bg-emerald-100 text-emerald-700' },
   dispatched: { label: 'Out for delivery', emoji: '🛵', cls: 'bg-indigo-100 text-indigo-700' },
   delivered:  { label: 'Delivered',       emoji: '📦', cls: 'bg-blue-100 text-blue-700' },
   cancelled:  { label: 'Cancelled',       emoji: '✖️', cls: 'bg-gray-100 text-gray-500' },
 };
-const FILTERS = ['all', 'new', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
+const STATUS_LEADS = {
+  new:        { label: 'New',       emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
+  confirmed:  { label: 'Contacted', emoji: '💬', cls: 'bg-emerald-100 text-emerald-700' },
+  dispatched: { label: 'In talks',  emoji: '🤝', cls: 'bg-indigo-100 text-indigo-700' },
+  delivered:  { label: 'Won',       emoji: '🎉', cls: 'bg-blue-100 text-blue-700' },
+  cancelled:  { label: 'Lost',      emoji: '✖️', cls: 'bg-gray-100 text-gray-500' },
+};
+const FILTERS_ORDERS = ['all', 'new', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
+const FILTERS_LEADS  = ['all', 'new', 'confirmed', 'delivered', 'cancelled'];
 
 // Customer-facing WhatsApp update for each status change. Sent from the owner's
 // own number via a prefilled wa.me link (one tap) — no API needed.
-function updateMsg(status, o, storeName) {
+function updateMsg(status, o, storeName, leads = false) {
   const name = o.customer_name?.trim() || 'there';
   const at   = storeName ? ` at ${storeName}` : '';
+  if (leads) {
+    switch (status) {
+      case 'confirmed':
+        return `Hi ${name}, thank you for your inquiry${at}! 🙏 I'd love to understand your requirements better — when is a good time to talk?`;
+      case 'delivered':
+        return `Hi ${name}, wonderful — we're all set to go ahead${at}! Thank you for choosing us 🙏`;
+      default:
+        return `Hi ${name}, thank you for your inquiry${at}! 🙏`;
+    }
+  }
   switch (status) {
     case 'confirmed':
       return `Hi ${name}, your order${at} is confirmed ✅ We're preparing it now and will let you know when it's on the way. Thank you! 🙏`;
@@ -38,7 +59,12 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '' }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders' }) {
+  const leads   = mode === 'leads';
+  const STATUS  = leads ? STATUS_LEADS : STATUS_ORDERS;
+  const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
+  const noun    = leads ? 'lead' : 'order';
+
   const [orders,  setOrders]  = useState(null);   // null = loading
   const [filter,  setFilter]  = useState('all');
   const [busy,    setBusy]    = useState(false);
@@ -81,10 +107,13 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            <ShoppingBag size={18} style={{ color: themeColor }} /> Orders
+            {leads
+              ? <MessageCircle size={18} style={{ color: themeColor }} />
+              : <ShoppingBag size={18} style={{ color: themeColor }} />}
+            {leads ? 'Leads' : 'Orders'}
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {orders.length === 0 ? 'No orders yet' : `${orders.length} total · ${counts.new || 0} new`}
+            {orders.length === 0 ? `No ${noun}s yet` : `${orders.length} total · ${counts.new || 0} new`}
           </p>
         </div>
         <button onClick={load}
@@ -97,12 +126,14 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
       {/* Empty state */}
       {orders.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
-          <div className="text-4xl mb-3">🧾</div>
-          <p className="font-bold text-gray-800">No orders yet</p>
+          <div className="text-4xl mb-3">{leads ? '💼' : '🧾'}</div>
+          <p className="font-bold text-gray-800">No {noun}s yet</p>
           <p className="text-sm text-gray-400 mt-1 max-w-xs mx-auto">
-            When a customer places an order from your page, it'll show up here — with their details and items.
+            {leads
+              ? 'When a customer requests a quote from your page, it\'ll show up here — with their details, budget and requirements.'
+              : 'When a customer places an order from your page, it\'ll show up here — with their details and items.'}
           </p>
-          <p className="text-xs text-gray-400 mt-3">Tip: share your page link on WhatsApp & Instagram to get your first order.</p>
+          <p className="text-xs text-gray-400 mt-3">Tip: share your page link on WhatsApp & Instagram to get your first {noun}.</p>
         </div>
       ) : (
         <>
@@ -130,14 +161,14 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             Each status button opens WhatsApp so you can send the customer a ready-made update.
           </p>
 
-          {/* Order cards */}
+          {/* Order / lead cards */}
           <div className="space-y-3">
             {filtered.map((o) => (
               <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor}
-                         storeName={storeName} onStatus={changeStatus} />
+                         storeName={storeName} onStatus={changeStatus} leads={leads} />
             ))}
             {filtered.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} orders.</p>
+              <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} {noun}s.</p>
             )}
           </div>
         </>
@@ -146,14 +177,15 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
-function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
+function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false }) {
+  const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
   const waMsg = encodeURIComponent(
-    `Hi ${o.customer_name || 'there'}, thank you for your order${storeName ? ` at ${storeName}` : ''}! 🙏`
+    `Hi ${o.customer_name || 'there'}, thank you for your ${leads ? 'inquiry' : 'order'}${storeName ? ` at ${storeName}` : ''}! 🙏`
   );
   // wa.me link prefilled with the status-update message for `status`.
-  const waUpdate = (status) => `https://wa.me/91${phone}?text=${encodeURIComponent(updateMsg(status, o, storeName))}`;
+  const waUpdate = (status) => `https://wa.me/91${phone}?text=${encodeURIComponent(updateMsg(status, o, storeName, leads))}`;
 
   // Advance the order to `to` and, when we have the customer's number, open
   // WhatsApp prefilled with that status's update so the owner can send it in one
@@ -193,17 +225,27 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
         </div>
       </div>
 
-      {/* Items */}
+      {/* Items (orders) / requested services (leads — a quote isn't a sale, so no ₹ totals) */}
       <div className="px-4 mt-3 rounded-xl bg-gray-50 mx-4 py-2.5 sm:mx-0 sm:rounded-none sm:bg-transparent sm:px-4">
         {(o.items || []).map((it, i) => (
           <div key={i} className="flex items-center justify-between text-xs text-gray-600 py-0.5">
-            <span className="truncate pr-2">{it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''} × {it.qty}</span>
-            <span className="tabular-nums flex-shrink-0">{formatINR((it.price || 0) * (it.qty || 0))}</span>
+            <span className="truncate pr-2">
+              {leads ? '💼 ' : ''}{it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''}{leads ? '' : ` × ${it.qty}`}
+            </span>
+            {!leads && <span className="tabular-nums flex-shrink-0">{formatINR((it.price || 0) * (it.qty || 0))}</span>}
           </div>
         ))}
         <div className="flex items-center justify-between pt-2 mt-1 border-t border-dashed border-gray-200">
-          <span className="text-xs font-semibold text-gray-500">{o.item_count} item{o.item_count === 1 ? '' : 's'} · Total</span>
-          <span className="font-extrabold tabular-nums" style={{ color: themeColor }}>{formatINR(o.total || 0)}</span>
+          {leads ? (
+            <span className="text-xs font-semibold text-gray-500">
+              {o.item_count} service{o.item_count === 1 ? '' : 's'} requested
+            </span>
+          ) : (
+            <>
+              <span className="text-xs font-semibold text-gray-500">{o.item_count} item{o.item_count === 1 ? '' : 's'} · Total</span>
+              <span className="font-extrabold tabular-nums" style={{ color: themeColor }}>{formatINR(o.total || 0)}</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -213,20 +255,33 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
 
       {/* Actions — primary next step on top (full width), contact + cancel below */}
       <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-2">
-        {o.status === 'new' && (
-          <Advance to="confirmed" label="Confirm & notify" full style={{ backgroundColor: themeColor }} />
-        )}
-        {o.status === 'confirmed' && (
-          <Advance to="dispatched" label="Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
-        )}
-        {o.status === 'dispatched' && (
-          <Advance to="delivered" label="Mark Delivered" full className="bg-blue-600 hover:bg-blue-700" />
-        )}
-        {o.status === 'delivered' && phone && (
-          <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
-             className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95">
-            <MessageCircle size={13} /> Re-send delivered update
-          </a>
+        {leads ? (
+          <>
+            {o.status === 'new' && (
+              <Advance to="confirmed" label="Reply & mark contacted" full style={{ backgroundColor: themeColor }} />
+            )}
+            {(o.status === 'confirmed' || o.status === 'dispatched') && (
+              <Advance to="delivered" label="Mark won 🎉" full className="bg-blue-600 hover:bg-blue-700" />
+            )}
+          </>
+        ) : (
+          <>
+            {o.status === 'new' && (
+              <Advance to="confirmed" label="Confirm & notify" full style={{ backgroundColor: themeColor }} />
+            )}
+            {o.status === 'confirmed' && (
+              <Advance to="dispatched" label="Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
+            )}
+            {o.status === 'dispatched' && (
+              <Advance to="delivered" label="Mark Delivered" full className="bg-blue-600 hover:bg-blue-700" />
+            )}
+            {o.status === 'delivered' && phone && (
+              <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
+                 className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95">
+                <MessageCircle size={13} /> Re-send delivered update
+              </a>
+            )}
+          </>
         )}
 
         {/* Contact the customer + cancel/reopen */}
@@ -247,13 +302,13 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus }) {
           {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
               className="flex-shrink-0 text-xs font-semibold text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50">
-              Cancel
+              {leads ? 'Mark lost' : 'Cancel'}
             </button>
           )}
           {o.status === 'cancelled' && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'new')}
               className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50">
-              Reopen order
+              Reopen {leads ? 'lead' : 'order'}
             </button>
           )}
         </div>

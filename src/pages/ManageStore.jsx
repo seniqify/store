@@ -47,7 +47,16 @@ const UNIT_OPTIONS = [
   'pack of 2','pack of 3','pack of 6','pack of 12',
   'per box','per set','per dozen','Other…',
 ];
-const STANDARD_UNITS = UNIT_OPTIONS.filter(u => u !== 'Other…');
+// Service stores price by RATE, not pack size. 'per piece' stays the stored
+// default (legacy services already carry it) and renders as a plain
+// "Starting from ₹X" on the storefront; real units render "₹X / sq ft" etc.
+const SERVICE_UNIT_OPTIONS = [
+  'per piece',
+  'per sq ft','per hour','per day','per month',
+  'per visit','per person','per plate','per session','per event',
+  'Other…',
+];
+const STANDARD_UNITS = [...new Set([...UNIT_OPTIONS, ...SERVICE_UNIT_OPTIONS])].filter(u => u !== 'Other…');
 const THEME_OPTIONS  = [
   { hex: '#0d9488', label: 'Teal'   },
   { hex: '#2563eb', label: 'Blue'   },
@@ -871,11 +880,15 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={FIELD_LABEL}>Sold by</label>
+                  <label className={FIELD_LABEL}>{config.businessType === 'service' ? 'Rate type' : 'Sold by'}</label>
                   <select value={form.unit}
                           onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
                           className={iCls(false)}>
-                    {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                    {(config.businessType === 'service' ? SERVICE_UNIT_OPTIONS : UNIT_OPTIONS).map(u => (
+                      <option key={u} value={u}>
+                        {config.businessType === 'service' && u === 'per piece' ? 'Starting price (no unit)' : u}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -2100,9 +2113,12 @@ export default function ManageStore() {
   const analyticsEnabled  = !!getPlanLimits(effectivePlan(config)).analytics;
   const analyticsAdvanced = getPlanLimits(effectivePlan(config)).analytics === 'full';
   const aiInsightsEnabled = !!getPlanLimits(effectivePlan(config)).aiEmployee;
+  // Service stores collect quote inquiries, not cart orders — same tab, same
+  // data, lead-flavored vocabulary (see OrdersTab mode="leads").
+  const isService = config.businessType === 'service';
   const TABS = [
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
-    { key: 'orders',     label: 'Orders',      icon: ShoppingBag },
+    { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
@@ -2287,7 +2303,8 @@ export default function ManageStore() {
           </div>
         ) : tab === 'orders' ? (
           <div className="animate-pl-fade-up">
-            <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName} />
+            <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
+                       mode={isService ? 'leads' : 'orders'} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">
