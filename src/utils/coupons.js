@@ -9,7 +9,9 @@
  * To add/disable codes, just edit this map.
  */
 export const COUPONS = {
-  SCGT: { plan: 'business', days: 30, label: '1 month of Business — free' },
+  // Combo activation: customers buying the Seniqify WhatsApp-API bundle get
+  // PocketLink Growth included — founder applies this at onboarding/renewal.
+  SENIQIFY: { plan: 'business', days: 30, label: '1 month of Growth — Seniqify combo' },
 };
 
 /** Returns the coupon definition for a code, or null if invalid. Case-insensitive. */
