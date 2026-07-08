@@ -21,6 +21,7 @@ const Checkout   = lazy(() => import('./pages/Checkout'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const ManageStore = lazy(() => import('./pages/ManageStore'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
+const SalesHub   = lazy(() => import('./pages/SalesHub'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
@@ -218,6 +219,7 @@ export default function App() {
             <Route path="/onboarding"            element={<Onboarding />} />
             <Route path="/terms"                 element={<Terms />} />
             <Route path="/privacy"               element={<Privacy />} />
+            <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />
             <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
             <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />

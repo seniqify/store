@@ -12,6 +12,7 @@
     { "source": "/onboarding", "destination": "/index.html" },
     { "source": "/terms", "destination": "/index.html" },
     { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/hub", "destination": "/index.html" },
     { "source": "/checkout/:p*", "destination": "/index.html" },
     { "source": "/demo/:p*", "destination": "/index.html" },
     { "source": "/:slug/manage", "destination": "/index.html" },
