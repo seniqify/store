@@ -207,17 +207,26 @@ export default function Checkout() {
 
   // Coupon path: grant the plan free with an expiry, skip payment.
   // Existing store → upgrade it (renewal); new signup → carry into onboarding.
+  // NOTE: the store is matched by the VERIFIED phone — a claim from a number
+  // that isn't the store's WhatsApp number starts a new signup instead.
   async function handleClaim() {
-    const expires = new Date(Date.now() + applied.days * 86400000).toISOString();
-    const existing = await findStoreByPhone(phone);
-    if (existing) {
-      await upgradePlan(existing, applied.plan, expires);
-      navigate(`/${existing}/manage`);
-    } else {
-      await savePendingSignup(phone, applied.plan, expires, null);
-      sessionStorage.setItem('pocketlink_plan', applied.plan);
-      sessionStorage.setItem('pocketlink_plan_expires', expires);
-      navigate('/onboarding');
+    setPaying(true);
+    setPayError('');
+    try {
+      const expires = new Date(Date.now() + applied.days * 86400000).toISOString();
+      const existing = await findStoreByPhone(phone);
+      if (existing) {
+        await retry(() => upgradePlan(existing, applied.plan, expires));
+        navigate(`/${existing}/manage`);
+      } else {
+        await savePendingSignup(phone, applied.plan, expires, null);
+        sessionStorage.setItem('pocketlink_plan', applied.plan);
+        sessionStorage.setItem('pocketlink_plan_expires', expires);
+        navigate('/onboarding');
+      }
+    } catch (err) {
+      setPayError(err.message ?? 'Could not apply the coupon. Please try again or message us on WhatsApp.');
+      setPaying(false);
     }
   }
 
@@ -315,12 +324,18 @@ export default function Checkout() {
 
           {/* Claim (free) or Pay */}
           {applied ? (
-            <button type="button" onClick={handleClaim}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-white
-                         transition-all hover:opacity-90 active:scale-[0.98] shadow-lg"
-              style={{ backgroundColor: '#16a34a', boxShadow: '0 10px 30px rgba(22,163,74,0.35)' }}>
-              🎁 Claim your free month →
-            </button>
+            <>
+              <button type="button" onClick={handleClaim} disabled={paying}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-white
+                           transition-all hover:opacity-90 active:scale-[0.98] shadow-lg
+                           disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: '#16a34a', boxShadow: '0 10px 30px rgba(22,163,74,0.35)' }}>
+                {paying ? 'Applying…' : '🎁 Claim your free month →'}
+              </button>
+              <p className="text-center text-[11px] text-gray-400 mt-3">
+                Applies to the store registered with +91 {phone.replace(/\D/g, '').slice(-10)}
+              </p>
+            </>
           ) : (
             <button onClick={handlePay} disabled={paying}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl

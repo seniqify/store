@@ -97,7 +97,10 @@ function FormSection({ title, action, children }) {
 // ── ImageUploader ─────────────────────────────────────────────────────────────
 // `compact` renders a small square tile (used per variant option, e.g. a photo
 // for each colour); the default is the full uploader used for product/logo/cover.
-function ImageUploader({ value, onChange, compact = false }) {
+// `maxDim` caps the longest side. 800 (default) suits product/logo shots; the
+// full-width cover banner needs 1600 or it renders blurry on desktop screens.
+// Files land in Supabase Storage (not config JSONB), so bigger is safe here.
+function ImageUploader({ value, onChange, compact = false, maxDim = 800 }) {
   const [dragOver, setDragOver] = useState(false);
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -112,7 +115,7 @@ function ImageUploader({ value, onChange, compact = false }) {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 400;
+        const MAX = maxDim;
         let { width, height } = img;
         if (width > MAX || height > MAX) {
           const ratio = Math.min(MAX / width, MAX / height);
@@ -984,7 +987,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                           <div className="flex gap-2.5">
                             {/* Optional per-option photo — e.g. each colour. Swaps the
                                 product image when the customer picks this option. */}
-                            <ImageUploader compact value={o.image} onChange={v => setOpt({ image: v })} />
+                            <ImageUploader compact maxDim={400} value={o.image} onChange={v => setOpt({ image: v })} />
                             <div className="flex-1 min-w-0 space-y-2">
                               <div className="flex gap-2 items-center">
                                 <input type="text" placeholder={`Option — e.g. ${['Black','White','Red','Blue'][i] || 'name'}`}
@@ -1723,7 +1726,8 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           </div>
           <div>
             <label className={lCls()}>Cover Photo</label>
-            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} />
+            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} maxDim={1600} />
+            <p className="text-[11px] text-gray-400 mt-1.5">Wide photos work best — it stretches across the top of your page.</p>
           </div>
         </div>
       </div>

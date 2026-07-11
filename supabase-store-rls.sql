@@ -65,13 +65,15 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  -- Plan lives ONLY inside config JSONB — stores has no plan column. (A stray
+  -- `plan = p_plan` here made every call fail with 42703, silently breaking
+  -- coupon claims and instant renewals on EXISTING stores until 2026-07-11.)
   UPDATE public.stores s
      SET config = s.config || jsonb_build_object(
                     'plan', to_jsonb(p_plan),
                     'planExpiresAt',          CASE WHEN p_expires IS NULL THEN s.config->'planExpiresAt' ELSE to_jsonb(p_expires) END,
                     'razorpaySubscriptionId', CASE WHEN p_sub_id  IS NULL THEN s.config->'razorpaySubscriptionId' ELSE to_jsonb(p_sub_id) END
                   ),
-         plan = p_plan,
          updated_at = now()
    WHERE s.slug = p_slug;
 END;

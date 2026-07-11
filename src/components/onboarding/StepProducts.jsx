@@ -74,7 +74,9 @@ function ImageUploader({ value, onChange }) {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 400;
+        // 800px longest side — 400 was visibly soft on retina phone screens.
+        // Files end up in Supabase Storage (not config JSONB), so this is safe.
+        const MAX = 800;
         let { width, height } = img;
         if (width > MAX || height > MAX) {
           const ratio = Math.min(MAX / width, MAX / height);
