@@ -114,11 +114,11 @@ export default function ProductGrid({
   return (
     <section className="w-full min-w-0 overflow-hidden">
 
-      {/* Sticky filter bar — category rail + sort stay reachable while
-          scrolling a long catalogue (sticks below the store header at top-14). */}
-      <div className="sticky top-14 z-30 pt-2 pb-2.5 mb-3 bg-[#f8fafc] space-y-3">
-        {/* Search — hidden when the page's hero search bar already covers it. */}
-        {showSearch && (
+      {/* Search stays sticky (thin bar, useful mid-scroll). The rest of the
+          filter block must NOT be sticky: as one tall opaque strip it sat on
+          top of the grid and visually beheaded the first product row. */}
+      {showSearch && (
+        <div className="sticky top-14 z-30 pt-2 pb-2 bg-[#f8fafc]">
           <div className="relative w-full">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
@@ -137,7 +137,10 @@ export default function ProductGrid({
               </button>
             )}
           </div>
-        )}
+        </div>
+      )}
+
+      <div className="pt-2 pb-2.5 mb-3 space-y-3">
 
         {/* Results count + on-sale filter + Sort */}
         <div className="flex items-center gap-2 min-w-0">

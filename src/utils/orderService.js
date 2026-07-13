@@ -68,13 +68,39 @@ export async function saveLead(form = {}, config = {}) {
   }
 }
 
-/** Owner-only: list this store's orders (PIN-checked server-side). */
-export async function fetchOrders(slug, pin) {
+/** Best-effort: record an abandoned checkout — the customer typed their full
+ *  phone number but never sent the order. Shows up ONLY in the Abandoned tab
+ *  (fetchOrders hides these rows everywhere else). Never throws. */
+export async function saveAbandonedCheckout(customerDetails = {}, cart = [], config = {}) {
+  if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return;
+  try {
+    const { subtotal, tax, shipping, total } = calcCartTotals(cart, config.cart);
+    await supabase.from('orders').insert({
+      store_slug:     config.slug,
+      customer_name:  customerDetails.partyName || '',
+      customer_phone: String(customerDetails.mobile || '').replace(/\D/g, '').slice(-10),
+      destination:    customerDetails.destination || '',
+      payment_method: '',
+      notes:          '🛒 abandoned checkout',
+      items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
+      item_count:     cart.reduce((s, i) => s + i.qty, 0),
+      subtotal, tax, shipping, total,
+      status:         'abandoned',
+    });
+  } catch {
+    /* best-effort — must never disturb the customer's checkout */
+  }
+}
+
+/** Owner-only: list this store's orders (PIN-checked server-side).
+ *  Abandoned-checkout rows are excluded by default so Orders, Stats and
+ *  Customers never count them — only the Abandoned tab opts in. */
+export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) {
   try {
     const hashed = await hashPin(pin);
     const { data, error } = await supabase.rpc('get_store_orders', { p_slug: slug, p_hashed_pin: hashed });
     if (error) return [];
-    return data || [];
+    return (data || []).filter((o) => includeAbandoned || o.status !== 'abandoned');
   } catch {
     return [];
   }

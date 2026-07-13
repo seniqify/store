@@ -77,8 +77,10 @@ export default function ProductCard({
               loading="lazy"
               onLoad={() => setImgLoaded(true)}
               className={[
-                'w-full h-full object-cover transition-all duration-700',
-                'group-hover:scale-110',
+                // contain, never cover: product shots must show the WHOLE
+                // product — cover was slicing the tops off tall photos.
+                'w-full h-full object-contain transition-all duration-700',
+                'group-hover:scale-105',
                 imgLoaded ? 'opacity-100' : 'opacity-0',
               ].join(' ')}
             />

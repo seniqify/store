@@ -17,7 +17,7 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
-  Truck,
+  Truck, ShoppingCart,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -32,6 +32,8 @@ import { suggestProductDetails }                     from '../utils/productAi';
 import LocationPicker                                 from '../components/LocationPicker';
 import IconPicker                                     from '../components/IconPicker';
 import OrdersTab                                       from '../components/manage/OrdersTab';
+import AbandonedTab                                    from '../components/manage/AbandonedTab';
+import ProductCard                                     from '../components/product/ProductCard';
 import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
 import ReachCard                                       from '../components/manage/ReachCard';
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
@@ -533,6 +535,26 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const visible = products.filter(p =>
     (catFilter === 'all' || p.category === catFilter) &&
     (!q || String(p.name || '').toLowerCase().includes(q)));
+
+  // Live preview: the form mapped to the exact card customers see on the page.
+  const previewProduct = {
+    name:  form.name.trim() || 'Product name',
+    price: Number(form.price) || 0,
+    mrp:   form.mrp !== '' && Number(form.mrp) > (Number(form.price) || 0) ? Number(form.mrp) : null,
+    image: form.image || '',
+    unit:  form.unit === 'Other…' ? (form.unitCustom || null) : (form.unit || null),
+    variants: (form.variantOptions || []).filter(o => o.name?.trim()).length
+      ? {
+          label: form.variantLabel || 'Options',
+          options: form.variantOptions.filter(o => o.name?.trim()).map(o => ({
+            name:  o.name,
+            price: o.price !== '' && o.price != null ? Number(o.price) : null,
+            mrp:   o.mrp !== '' && o.mrp != null ? Number(o.mrp) : null,
+            image: o.image || null,
+          })),
+        }
+      : null,
+  };
 
   function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setDrawerOpen(false); }
 
@@ -1101,6 +1123,21 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 })}
               </FormSection>
             )}
+
+            {/* Live preview — the exact storefront card, driven by the form.
+                CSS brand vars are scoped here so it renders in the store's
+                theme colour even though Manage doesn't apply the theme. */}
+            <div className="pt-2 pb-1"
+                 style={{ '--color-brand': themeColor, '--color-brand-dark': themeColor }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px flex-1 bg-gray-100" />
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">How customers see it</span>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+              <div className="max-w-[230px] mx-auto pointer-events-none select-none">
+                <ProductCard product={previewProduct} />
+              </div>
+            </div>
           </div>
 
           {/* Footer actions */}
@@ -2259,6 +2296,7 @@ export default function ManageStore() {
   const TABS = [
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
+    ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned', icon: ShoppingCart }]),
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
@@ -2445,6 +2483,12 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                        mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []} />
+          </div>
+        ) : tab === 'abandoned' ? (
+          <div className="animate-pl-fade-up">
+            <AbandonedTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
+                          allowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)}
+                          waPhone={config.whatsappNumber} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">

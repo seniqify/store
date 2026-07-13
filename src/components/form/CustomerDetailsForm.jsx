@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, Eye, EyeOff, Truck } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
@@ -7,6 +7,7 @@ import {
   sendOrderOnWhatsApp,
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
+import { saveAbandonedCheckout } from '../../utils/orderService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink } from '../../utils/upiLink';
@@ -84,6 +85,21 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     : formData;
 
   const { subtotal, tax, shipping, total } = calcCartTotals(cart, effConfig.cart);
+
+  // Abandoned-checkout capture: the moment the customer types their full phone
+  // number they become recoverable. Recorded once per store+phone+day; if they
+  // finish the order, the Abandoned tab hides this entry automatically.
+  useEffect(() => {
+    const ph = String(formData.mobile || '').replace(/\D/g, '');
+    if (ph.length !== 10 || cart.length === 0 || submitted || !config?.slug) return;
+    const key = `pl_ab_${config.slug}_${ph}_${new Date().toISOString().slice(0, 10)}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, '1');
+    } catch { /* storage blocked — capture anyway, DB side stays best-effort */ }
+    saveAbandonedCheckout(formData, cart, config);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.mobile]);
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;

@@ -62,6 +62,7 @@ export const PLANS = {
     variants:         true,
     prioritySupport:  true,
     aiEmployee:       true,     // Growth now includes the AI product assistant
+    abandonedCarts:   true,     // see + recover abandoned checkouts
     offersEngine:     false,
     autoOrderUpdates: false,   // Growth sends order updates one tap at a time
     festivalMode:     false,
@@ -85,6 +86,7 @@ export const PLANS = {
     variants:          true,
     prioritySupport:   true,
     aiEmployee:        true,
+    abandonedCarts:    true,
     offersEngine:      true,
     autoOrderUpdates:  true,
     aiInsights:        true,    // AI customer/search/sales dashboards

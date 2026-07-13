@@ -98,6 +98,7 @@ export async function fetchRecentOrders(sinceIso) {
     const { data, error } = await supabase
       .from('orders')
       .select('id, store_slug, created_at, total, item_count, status, customer_name')
+      .neq('status', 'abandoned')
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(300);

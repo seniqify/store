@@ -10,8 +10,10 @@
 -- constraint validates cleanly.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- 'abandoned' = checkout started (phone typed) but the order was never sent —
+-- powers the Abandoned tab in Manage. Hidden from Orders/Stats/Sales Hub.
 alter table public.orders drop constraint if exists orders_status_check;
 
 alter table public.orders
   add constraint orders_status_check
-  check (status in ('new', 'confirmed', 'dispatched', 'delivered', 'cancelled'));
+  check (status in ('new', 'confirmed', 'dispatched', 'delivered', 'cancelled', 'abandoned'));
