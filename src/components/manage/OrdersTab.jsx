@@ -59,7 +59,7 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders' }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = [] }) {
   const leads   = mode === 'leads';
   const STATUS  = leads ? STATUS_LEADS : STATUS_ORDERS;
   const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
@@ -165,7 +165,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           <div className="space-y-3">
             {filtered.map((o) => (
               <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor}
-                         storeName={storeName} onStatus={changeStatus} leads={leads} />
+                         storeName={storeName} onStatus={changeStatus} leads={leads} riders={riders} />
             ))}
             {filtered.length === 0 && (
               <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} {noun}s.</p>
@@ -177,10 +177,28 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
-function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false }) {
+function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, riders = [] }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
+
+  // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
+  // Settings). Without a saved number it opens WhatsApp's chat picker instead.
+  const riderMsg = [
+    `🛵 *Delivery* — ${storeName || 'Store'}`,
+    `👤 ${o.customer_name || 'Customer'}${phone ? ` · +91 ${phone}` : ''}`,
+    `📍 ${o.destination || 'Address on order'}`,
+    Array.isArray(o.items) && o.items.length
+      ? `🛍️ ${o.items.map((it) => `${it.qty}× ${it.name}`).join(', ')}`
+      : `🛍️ ${o.item_count} item${o.item_count === 1 ? '' : 's'}`,
+    o.payment_method === 'cod'
+      ? `💰 COLLECT ₹${Number(o.total).toLocaleString('en-IN')} (cash on delivery)`
+      : `💰 ₹${Number(o.total).toLocaleString('en-IN')} — ${(o.payment_method || 'paid').toUpperCase()}`,
+  ].join('\n');
+  const riderWa = (p) => p
+    ? `https://wa.me/91${p}?text=${encodeURIComponent(riderMsg)}`
+    : `https://wa.me/?text=${encodeURIComponent(riderMsg)}`;
+  const dispatchRiders = riders.filter((r) => r?.phone);
   const waMsg = encodeURIComponent(
     `Hi ${o.customer_name || 'there'}, thank you for your ${leads ? 'inquiry' : 'order'}${storeName ? ` at ${storeName}` : ''}! 🙏`
   );
@@ -224,6 +242,33 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false }) 
           {o.payment_method && <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{o.payment_method.toUpperCase()}</span>}
         </div>
       </div>
+
+      {/* Dispatch to the store's own delivery boys (orders only). One rider =
+          one-tap button; several = a button each; none saved = WhatsApp picker. */}
+      {!leads && (
+        <div className="px-4 mt-2.5">
+          {dispatchRiders.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-gray-400">🛵 Send to:</span>
+              {dispatchRiders.map((r) => (
+                <a key={r.phone} href={riderWa(r.phone)} target="_blank" rel="noopener noreferrer"
+                   className="text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-1.5
+                              rounded-xl hover:bg-gray-50 active:scale-95"
+                   title="Opens WhatsApp with the delivery details prefilled">
+                  {r.name?.trim() || `…${r.phone.slice(-4)}`}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <a href={riderWa(dispatchRiders[0]?.phone)} target="_blank" rel="noopener noreferrer"
+               className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold
+                          text-gray-600 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 active:scale-95"
+               title={dispatchRiders.length ? 'Opens WhatsApp to your delivery boy with the address prefilled' : 'Opens WhatsApp — pick your delivery boy’s chat (save his number in the Delivery tab for one tap)'}>
+              🛵 Send to delivery boy
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Items (orders) / requested services (leads — a quote isn't a sale, so no ₹ totals) */}
       <div className="px-4 mt-3 rounded-xl bg-gray-50 mx-4 py-2.5 sm:mx-0 sm:rounded-none sm:bg-transparent sm:px-4">

@@ -246,7 +246,10 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
                     <Chip>🛍️ {products.length} products</Chip>
                     <Chip>💬 Order on WhatsApp</Chip>
-                    {freeAbove > 0 && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                    {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                    {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
+                    {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
+                    {config.delivery?.eta && config.delivery?.mode !== 'pickup' && <Chip>⏱️ Delivers in {config.delivery.eta}</Chip>}
                     {config.city && <Chip>📍 {config.city}</Chip>}
                   </div>
                 </div>

@@ -17,6 +17,7 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
+  Truck,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
@@ -524,6 +525,14 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const [dirty,         setDirty]         = useState(false);
   const [aiLoading,     setAiLoading]     = useState(false);
   const [aiNote,        setAiNote]        = useState('');
+  const [query,         setQuery]         = useState('');
+  const [catFilter,     setCatFilter]     = useState('all');
+
+  // Long catalogues need find-ability: filter by name and/or category.
+  const q = query.trim().toLowerCase();
+  const visible = products.filter(p =>
+    (catFilter === 'all' || p.category === catFilter) &&
+    (!q || String(p.name || '').toLowerCase().includes(q)));
 
   function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setDrawerOpen(false); }
 
@@ -731,6 +740,22 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         )}
       </div>
 
+      {/* Find a product fast — only shown once the list is long enough to need it */}
+      {products.length > 8 && (
+        <div className="flex gap-2">
+          <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+                 placeholder={`Search ${products.length} products…`}
+                 className={iCls(false)} />
+          {userCats.length > 0 && (
+            <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+                    className={`${iCls(false)} !w-auto flex-shrink-0`}>
+              <option value="all">All categories</option>
+              {userCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
       {/* Empty state */}
       {products.length === 0 && (
         <div className="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50">
@@ -742,8 +767,14 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         </div>
       )}
 
+      {products.length > 0 && visible.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-6">
+          No products match — try a different search or category.
+        </p>
+      )}
+
       <div className="space-y-2">
-        {products.map(p => {
+        {visible.map(p => {
           const cat = userCats.find(c => c.id === p.category);
           const isEditing = editingId === p.id;
           return (
@@ -1386,6 +1417,127 @@ function HoursEditor({ value, onChange, themeColor }) {
 }
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
+// ── Delivery tab — fulfilment, charges, areas, and the dispatch rider ─────────
+function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
+  const themeColor = config.theme?.primary || '#0d9488';
+  const [dirty, setDirty] = useState(false);
+
+  function update(partial) {
+    onChange(partial);
+    setDirty(true);
+  }
+  function handleSave() {
+    setDirty(false);
+    onSave();
+  }
+  const lCls = () => 'block text-xs font-semibold text-gray-700 mb-1.5';
+  const dlv  = config.delivery || {};
+
+  return (
+    <div className="space-y-5">
+
+      {/* How orders reach customers */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900">🛵 How orders reach customers</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Shown on your page and at checkout — customers stop asking “do you deliver here?”</p>
+        </div>
+        <div>
+          <label className={lCls()}>Order Fulfilment</label>
+          <select value={dlv.mode || 'delivery'}
+                  onChange={e => update({ delivery: { ...dlv, mode: e.target.value } })}
+                  className={iCls(false)}>
+            <option value="delivery">Home delivery only</option>
+            <option value="pickup">Pickup from shop only</option>
+            <option value="both">Delivery + Pickup — customer chooses</option>
+          </select>
+        </div>
+        {(dlv.mode || 'delivery') !== 'pickup' && (
+          <>
+            <div>
+              <label className={lCls()}>Delivery Time <span className="text-gray-400 font-normal">(shown as a badge on your page)</span></label>
+              <input type="text" placeholder="e.g. 60–90 min · same day · 2–3 days"
+                     value={dlv.eta || ''}
+                     onChange={e => update({ delivery: { ...dlv, eta: e.target.value } })}
+                     className={iCls(false)} />
+            </div>
+            <div>
+              <label className={lCls()}>Areas You Deliver To <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="text" placeholder="e.g. Solapur city, Hotgi Road, Vijapur Road"
+                     value={dlv.areas || ''}
+                     onChange={e => update({ delivery: { ...dlv, areas: e.target.value } })}
+                     className={iCls(false)} />
+              <p className="text-[11px] text-gray-400 mt-1">Appears under the address field when customers order.</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Charges */}
+      {(dlv.mode || 'delivery') !== 'pickup' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-extrabold text-gray-900">₹ Delivery charges</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Added to the order total automatically. Pickup orders are never charged.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lCls()}>Delivery Charge (₹)</label>
+              <input type="number" inputMode="numeric" min={0} placeholder="49"
+                     value={config.cart?.shippingCharge ?? 49}
+                     onChange={e => update({ cart: { ...config.cart, shippingCharge: Number(e.target.value) || 0 } })}
+                     className={iCls(false)} />
+            </div>
+            <div>
+              <label className={lCls()}>Free Delivery Above (₹)</label>
+              <input type="number" inputMode="numeric" min={0} placeholder="999"
+                     value={config.cart?.freeShippingAbove ?? 999}
+                     onChange={e => update({ cart: { ...config.cart, freeShippingAbove: Number(e.target.value) || 0 } })}
+                     className={iCls(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery boys */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900">👤 Your delivery boys</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Every order card gets a <b>🛵 Send to delivery boy</b> button — one tap sends the
+            address, items and amount to collect on WhatsApp. Add as many as you have.
+          </p>
+        </div>
+        {(dlv.riders || []).map((r, i) => (
+          <div key={i} className="flex gap-2">
+            <input type="text" placeholder="Name (e.g. Ramesh)" value={r.name || ''}
+                   onChange={e => update({ delivery: { ...dlv, riders: dlv.riders.map((x, j) => j === i ? { ...x, name: e.target.value } : x) } })}
+                   className={iCls(false)} />
+            <input type="tel" inputMode="numeric" maxLength={10} placeholder="10-digit WhatsApp" value={r.phone || ''}
+                   onChange={e => update({ delivery: { ...dlv, riders: dlv.riders.map((x, j) => j === i ? { ...x, phone: e.target.value.replace(/\D/g, '').slice(0, 10) } : x) } })}
+                   className={iCls(false)} />
+            <button type="button" aria-label="Remove delivery boy"
+                    onClick={() => update({ delivery: { ...dlv, riders: dlv.riders.filter((_, j) => j !== i) } })}
+                    className="px-3 rounded-xl border border-gray-200 text-gray-400 hover:text-red-500 hover:bg-gray-50 flex-shrink-0 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        {(dlv.riders || []).length < 5 && (
+          <button type="button"
+                  onClick={() => update({ delivery: { ...dlv, riders: [...(dlv.riders || []), { name: '', phone: '' }] } })}
+                  className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold
+                             text-gray-500 hover:border-gray-300 hover:bg-gray-50 transition-colors">
+            + Add delivery boy
+          </button>
+        )}
+      </div>
+
+      <SaveBar status={saveStatus} error={saveError} onSave={handleSave} dirty={dirty} themeColor={themeColor} />
+    </div>
+  );
+}
+
 function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const [dirty, setDirty] = useState(false);
@@ -1799,7 +1951,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
       <div>
         <div className="flex items-center gap-2 mb-3">
           <div className="h-px flex-1 bg-gray-100" />
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Pricing &amp; Delivery</span>
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Pricing &amp; Tax</span>
           <div className="h-px flex-1 bg-gray-100" />
         </div>
 
@@ -1854,22 +2006,6 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
                    className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-300" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lCls()}>Delivery Charge (₹)</label>
-              <input type="number" inputMode="numeric" min={0} placeholder="49"
-                     value={config.cart?.shippingCharge ?? 49}
-                     onChange={e => update({ cart: { ...config.cart, shippingCharge: Number(e.target.value) || 0 } })}
-                     className={iCls(false)} />
-            </div>
-            <div>
-              <label className={lCls()}>Free Delivery Above (₹)</label>
-              <input type="number" inputMode="numeric" min={0} placeholder="999"
-                     value={config.cart?.freeShippingAbove ?? 999}
-                     onChange={e => update({ cart: { ...config.cart, freeShippingAbove: Number(e.target.value) || 0 } })}
-                     className={iCls(false)} />
-            </div>
-          </div>
         </div>
       </div>
 
@@ -2128,8 +2264,8 @@ export default function ManageStore() {
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
     { key: 'reviews',    label: 'Reviews',     icon: Star      },
     { key: 'products',   label: 'Products',    icon: Package  },
-    { key: 'categories', label: 'Categories',  icon: Tag      },
     { key: 'offers',     label: 'Offers',      icon: Percent  },
+    ...(isService ? [] : [{ key: 'delivery', label: 'Delivery', icon: Truck }]),
     { key: 'settings',   label: 'Settings',    icon: Settings2 },
   ];
 
@@ -2308,7 +2444,7 @@ export default function ManageStore() {
         ) : tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
-                       mode={isService ? 'leads' : 'orders'} />
+                       mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">
@@ -2330,25 +2466,42 @@ export default function ManageStore() {
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
           {tab === 'products' && (
-            <ManageProducts
-              config={config}
-              onChange={handleChange}
-              onSave={handleSave}
-              saveStatus={saveStatus}
-              saveError={saveError}
-            />
-          )}
-          {tab === 'categories' && (
-            <ManageCategories
-              config={config}
-              onChange={handleChange}
-              onSave={handleSave}
-              saveStatus={saveStatus}
-              saveError={saveError}
-            />
+            <div className="space-y-6">
+              {/* Categories live with products — they only exist to organise
+                  them. The short section goes FIRST so it never hides below a
+                  100-product list. */}
+              <ManageCategories
+                config={config}
+                onChange={handleChange}
+                onSave={handleSave}
+                saveStatus={saveStatus}
+                saveError={saveError}
+              />
+              <div className="flex items-center gap-2 pt-1">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Products</span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+              <ManageProducts
+                config={config}
+                onChange={handleChange}
+                onSave={handleSave}
+                saveStatus={saveStatus}
+                saveError={saveError}
+              />
+            </div>
           )}
           {tab === 'offers' && (
             <OffersTab
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+            />
+          )}
+          {tab === 'delivery' && (
+            <ManageDelivery
               config={config}
               onChange={handleChange}
               onSave={handleSave}

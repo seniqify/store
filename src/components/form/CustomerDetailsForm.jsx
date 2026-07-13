@@ -35,6 +35,7 @@ export const INITIAL_CUSTOMER_DETAILS = {
   destination:   '',
   paymentMethod: '',
   notes:         '',
+  fulfillment:   'delivery',   // 'delivery' | 'pickup' (offered per store settings)
 };
 
 const PAYMENT_OPTIONS = [
@@ -70,7 +71,19 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const [couponError,   setCouponError]   = useState('');
 
   const config = useBusinessConfig();
-  const { subtotal, tax, shipping, total } = calcCartTotals(cart, config.cart);
+
+  // Fulfilment: store settings decide what's offered; pickup skips the
+  // delivery charge. Default (no settings) = delivery-only, as before.
+  const dlv      = config.delivery || {};
+  const dlvMode  = dlv.mode || 'delivery';
+  const isPickup = dlvMode === 'pickup' || (dlvMode === 'both' && formData.fulfillment === 'pickup');
+  const effConfig = isPickup ? { ...config, cart: { ...config.cart, shippingCharge: 0 } } : config;
+  // What actually gets validated/sent: pickup needs no address.
+  const sendData = isPickup
+    ? { ...formData, destination: '🏪 Self pickup from shop' }
+    : formData;
+
+  const { subtotal, tax, shipping, total } = calcCartTotals(cart, effConfig.cart);
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;
@@ -98,7 +111,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     !cartEmpty &&
     formData.partyName.trim() &&
     formData.mobile.trim() &&
-    formData.destination.trim();
+    (isPickup || formData.destination.trim());
 
   // ── Field change handler ──────────────────────────────────────────────────
   function handleChange(field, value) {
@@ -108,7 +121,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   function handleSubmit() {
-    const { isValid, errors: newErrors } = validateCustomerDetails(formData);
+    const { isValid, errors: newErrors } = validateCustomerDetails(sendData);
     if (!isValid) {
       setErrors(newErrors);
       document.getElementById(`cdf-${Object.keys(newErrors)[0]}`)?.focus();
@@ -116,7 +129,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     }
     if (cartEmpty) return;
 
-    sendOrderOnWhatsApp(formData, cart, config, appliedCoupon);
+    sendOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon);
     setSubmitted(true);
   }
 
@@ -197,7 +210,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             </p>
             <pre className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono
                             bg-white border border-gray-200 rounded-xl px-4 py-3 overflow-x-auto">
-              {generateWhatsAppMessage(formData, cart, config, appliedCoupon)}
+              {generateWhatsAppMessage(sendData, cart, effConfig, appliedCoupon)}
             </pre>
           </div>
         </div>
@@ -248,14 +261,37 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
           </FormField>
         </div>
 
+        {/* Fulfilment choice — only when the store offers both */}
+        {dlvMode === 'both' && (
+          <div className="flex gap-2">
+            {[['delivery', '🛵 Home delivery'], ['pickup', '🏪 Pickup from shop']].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => handleChange('fulfillment', v)}
+                className={[
+                  'flex-1 py-2.5 rounded-xl border text-sm font-semibold transition',
+                  (formData.fulfillment || 'delivery') === v
+                    ? 'border-brand bg-brand/5 text-brand-dark'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                ].join(' ')}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Row 2 — Destination + Payment Method */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
+          {isPickup ? (
+            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 self-end">
+              <span>🏪</span>
+              Pickup from the shop — timing will be confirmed on WhatsApp.
+            </div>
+          ) : (
           <FormField
             label="Destination"
             required
             error={errors.destination}
-            hint="Delivery city / location"
+            hint={dlv.areas ? `We deliver in: ${dlv.areas}` : 'Delivery city / location'}
           >
             <input
               id="cdf-destination"
@@ -266,6 +302,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
               className={inputCls('destination')}
             />
           </FormField>
+          )}
 
           <FormField
             label="Payment Method"
