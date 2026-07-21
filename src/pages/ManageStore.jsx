@@ -2482,7 +2482,8 @@ export default function ManageStore() {
         ) : tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
-                       mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []} />
+                       mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []}
+                       payInfo={{ upi: config.upi || '', bank: config.bank || null }} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

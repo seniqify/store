@@ -59,7 +59,7 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = [] }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = [], payInfo = {} }) {
   const leads   = mode === 'leads';
   const STATUS  = leads ? STATUS_LEADS : STATUS_ORDERS;
   const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
@@ -165,7 +165,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           <div className="space-y-3">
             {filtered.map((o) => (
               <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor}
-                         storeName={storeName} onStatus={changeStatus} leads={leads} riders={riders} />
+                         storeName={storeName} onStatus={changeStatus} leads={leads} riders={riders} payInfo={payInfo} />
             ))}
             {filtered.length === 0 && (
               <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} {noun}s.</p>
@@ -177,7 +177,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
-function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, riders = [] }) {
+function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, riders = [], payInfo = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
@@ -199,6 +199,38 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, ri
     ? `https://wa.me/91${p}?text=${encodeURIComponent(riderMsg)}`
     : `https://wa.me/?text=${encodeURIComponent(riderMsg)}`;
   const dispatchRiders = riders.filter((r) => r?.phone);
+
+  // "Request payment" — prefilled with the details matching the payment mode
+  // the customer chose at checkout. Deliberately plain text: no emoji (they
+  // mangle to � on some WhatsApp clients) and no upi:// link (WhatsApp doesn't
+  // linkify that scheme, so it renders as scammy-looking URL garbage).
+  // COD orders don't get the button; cash changes hands at the door.
+  const totalStr = `₹${Number(o.total).toLocaleString('en-IN')}`;
+  const payMsg = (() => {
+    if (leads || o.payment_method === 'cod' || !(Number(o.total) > 0)) return null;
+    const head = `Hi ${o.customer_name || 'there'}, this is *${storeName || 'our store'}*.\n` +
+                 `Your order of *${totalStr}* is confirmed.\n\n`;
+    const tail = `\n\nOnce paid, kindly send the screenshot here and we will process your order right away. Thank you!`;
+    const wantsUpi  = o.payment_method === 'upi';
+    const bank      = payInfo.bank;
+    const hasBank   = Boolean(bank?.accountNumber);
+    if ((wantsUpi || !hasBank) && payInfo.upi) {
+      return head +
+        `Please pay using UPI (GPay / PhonePe / Paytm):\n` +
+        `UPI ID: *${payInfo.upi}*` +
+        tail;
+    }
+    if (hasBank) {
+      return head +
+        `Please pay by bank transfer:\n` +
+        (bank.accountName ? `Account Name: ${bank.accountName}\n` : '') +
+        `Account No: ${bank.accountNumber}\n` +
+        (bank.ifsc ? `IFSC: ${bank.ifsc}\n` : '') +
+        (bank.bankName ? `Bank: ${bank.bankName}` : '').trim() +
+        tail;
+    }
+    return null;   // no payment details saved in Settings yet
+  })();
   const waMsg = encodeURIComponent(
     `Hi ${o.customer_name || 'there'}, thank you for your ${leads ? 'inquiry' : 'order'}${storeName ? ` at ${storeName}` : ''}! 🙏`
   );
@@ -242,6 +274,19 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, ri
           {o.payment_method && <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{o.payment_method.toUpperCase()}</span>}
         </div>
       </div>
+
+      {/* Request payment — matches the mode the customer picked at checkout */}
+      {payMsg && phone && o.status !== 'cancelled' && (
+        <div className="px-4 mt-2.5">
+          <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`}
+             target="_blank" rel="noopener noreferrer"
+             className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-xl active:scale-95"
+             style={{ backgroundColor: '#25D366' }}
+             title="Opens WhatsApp with your payment details and the amount prefilled">
+            💰 Request payment · {totalStr}
+          </a>
+        </div>
+      )}
 
       {/* Dispatch to the store's own delivery boys (orders only). One rider =
           one-tap button; several = a button each; none saved = WhatsApp picker. */}
