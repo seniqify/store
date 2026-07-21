@@ -81,7 +81,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const effConfig = isPickup ? { ...config, cart: { ...config.cart, shippingCharge: 0 } } : config;
   // What actually gets validated/sent: pickup needs no address.
   const sendData = isPickup
-    ? { ...formData, destination: '🏪 Self pickup from shop' }
+    ? { ...formData, destination: '🏪 Pickup' }
     : formData;
 
   const { subtotal, tax, shipping, total } = calcCartTotals(cart, effConfig.cart);

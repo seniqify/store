@@ -33,75 +33,85 @@ import { saveOrder } from './orderService';
  */
 
 const PAYMENT_LABELS = {
-  cod:    'Cash / COD',
-  upi:    'UPI / QR Code',
-  bank:   'Bank Transfer (NEFT/RTGS)',
+  cod:    'COD',
+  upi:    'UPI',
+  bank:   'Bank Transfer',
   cheque: 'Cheque',
 };
 
-export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}, coupon = null) {
-  const cartConfig = businessConfig.cart ?? { taxRate: 0, freeShippingAbove: 999, shippingCharge: 49 };
-  const { subtotal, tax, shipping, total, taxInclusive, taxUniformPct } = calcCartTotals(cart, cartConfig);
-  const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
-  const finalTotal = Math.max(0, total - couponDiscount);
+const MAX_WORDS = 50;
+const wordCount = (s) => s.trim().split(/\s+/).filter(Boolean).length;
 
-  const lines = [];
+/**
+ * Builds the order message for a given set of visible items + an optional
+ * trailer line (used to say "+N more items" once the list is trimmed).
+ * Cost breakdown (subtotal/GST/delivery) is dropped first when trimming —
+ * the buyer already saw it on-screen before sending; the seller mainly needs
+ * WHAT to prepare and the final amount to collect.
+ */
+function build(customerDetails, items, finalTotal, opts) {
+  const { trailer, showBreakdown, breakdown, coupon } = opts;
+  const lines = ['🛍️ *New Order*', ''];
 
-  // ── Header ─────────────────────────────────────────────────────────────────
-  const bizName = businessConfig.businessName ?? businessConfig.name ?? '';
-  lines.push(bizName ? `*NEW ORDER — ${bizName}*` : '*NEW ORDER*');
+  lines.push(`${customerDetails.partyName}, +91${customerDetails.mobile}`);
+  if (customerDetails.destination) lines.push(customerDetails.destination);
   lines.push('');
 
-  // ── Customer details ────────────────────────────────────────────────────────
-  lines.push(`Party: ${customerDetails.partyName}`);
-  lines.push(`Mobile: +91 ${customerDetails.mobile}`);
-  lines.push(`Destination: ${customerDetails.destination}`);
-  if (customerDetails.paymentMethod) {
-    const label = PAYMENT_LABELS[customerDetails.paymentMethod] ?? customerDetails.paymentMethod;
-    lines.push(`Payment: ${label}`);
-
-    // ── Append payment-method-specific details ───────────────────────────────
-    if (customerDetails.paymentMethod === 'upi' && businessConfig.upi) {
-      lines.push(`UPI ID: ${businessConfig.upi}`);
-    }
-
-    if (customerDetails.paymentMethod === 'bank') {
-      const b = businessConfig.bank;
-      if (b?.accountNumber) {
-        lines.push('');
-        lines.push('*Bank Transfer Details:*');
-        if (b.accountName)   lines.push(`Name: ${b.accountName}`);
-        lines.push(`A/C No: ${b.accountNumber}`);
-        if (b.ifsc)          lines.push(`IFSC: ${b.ifsc}`);
-        if (b.bankName)      lines.push(`Bank: ${b.bankName}`);
-      }
-    }
-  }
-  lines.push('');
-
-  // ── Product list ────────────────────────────────────────────────────────────
-  lines.push('Products:');
-  cart.forEach((item, index) => {
-    const lineTotal = formatINR(item.price * item.qty);
+  items.forEach((item) => {
     const v = item.variant ? ` (${item.variant})` : '';
-    lines.push(`${index + 1}. ${item.name}${v} × ${item.qty} — ${lineTotal}`);
+    lines.push(`${item.name}${v} x${item.qty} ${formatINR(item.price * item.qty)}`);
   });
+  if (trailer) lines.push(trailer);
   lines.push('');
 
-  // ── Cost breakdown ──────────────────────────────────────────────────────────
-  lines.push(`Subtotal: ${formatINR(subtotal)}`);
-  if (tax > 0) lines.push(`GST${taxUniformPct != null ? ` (${taxUniformPct}%)` : ''}${taxInclusive ? ' incl.' : ''}: ${formatINR(tax)}`);
-  lines.push(`Delivery: ${shipping === 0 ? 'FREE' : formatINR(shipping)}`);
-  if (couponDiscount > 0) lines.push(`Coupon (${coupon.code}): -${formatINR(couponDiscount)}`);
+  if (showBreakdown) {
+    lines.push(`Subtotal ${formatINR(breakdown.subtotal)}`);
+    if (breakdown.tax > 0) lines.push(`GST ${formatINR(breakdown.tax)}`);
+    lines.push(`Delivery ${breakdown.shipping === 0 ? 'FREE' : formatINR(breakdown.shipping)}`);
+    if (breakdown.couponDiscount > 0) lines.push(`Coupon -${formatINR(breakdown.couponDiscount)}`);
+  }
+
+  const payLabel = PAYMENT_LABELS[customerDetails.paymentMethod] ?? customerDetails.paymentMethod;
+  if (payLabel) lines.push(`Payment: ${payLabel}`);
   lines.push(`*Total: ${formatINR(finalTotal)}*`);
 
-  // ── Optional notes ──────────────────────────────────────────────────────────
-  if (customerDetails.notes?.trim()) {
-    lines.push('');
-    lines.push(`Notes: ${customerDetails.notes.trim()}`);
-  }
+  // Collapse the blank-line gap left when destination/breakdown are skipped.
+  return lines.filter((l, i) => l !== '' || lines[i - 1] !== '').join('\n').trim();
+}
 
-  return lines.join('\n');
+/**
+ * generateWhatsAppMessage
+ * Kept under 50 words on purpose — the store's WhatsApp automation only
+ * triggers on incoming messages at or under that length. The full order
+ * (every item, notes, cost breakdown) is always saved via saveOrder() first,
+ * so trimming this text never loses data — it's just what's typed into chat.
+ */
+export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}, coupon = null) {
+  const cartConfig = businessConfig.cart ?? { taxRate: 0, freeShippingAbove: 999, shippingCharge: 49 };
+  const { subtotal, tax, shipping, total } = calcCartTotals(cart, cartConfig);
+  const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
+  const finalTotal = Math.max(0, total - couponDiscount);
+  const breakdown = { subtotal, tax, shipping, couponDiscount };
+
+  // 1. Try the full message (all items + cost breakdown).
+  let msg = build(customerDetails, cart, finalTotal, { showBreakdown: true, breakdown, coupon });
+  if (wordCount(msg) <= MAX_WORDS) return msg;
+
+  // 2. Drop the cost breakdown — buyer already saw it on-screen.
+  msg = build(customerDetails, cart, finalTotal, { showBreakdown: false, breakdown, coupon });
+  if (wordCount(msg) <= MAX_WORDS || cart.length <= 1) return msg;
+
+  // 3. Trim the item list; the full cart is already in Manage → Orders.
+  for (let keep = cart.length - 1; keep >= 1; keep--) {
+    const more = cart.length - keep;
+    const candidate = build(customerDetails, cart.slice(0, keep), finalTotal, {
+      showBreakdown: false, breakdown, coupon,
+      trailer: `+${more} more item${more > 1 ? 's' : ''} (full list in Orders)`,
+    });
+    msg = candidate;
+    if (wordCount(candidate) <= MAX_WORDS) break;
+  }
+  return msg;
 }
 
 /**

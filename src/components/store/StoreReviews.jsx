@@ -62,6 +62,21 @@ export default function StoreReviews() {
     return () => { alive = false; };
   }, [slug]);
 
+  // Deep link (?review=1, shared by the owner via Manage → Reviews) — jump
+  // straight to the write-review form instead of landing on the store top.
+  useEffect(() => {
+    if (!slug) return;
+    if (typeof window === 'undefined') return;
+    const wantsReview = new URLSearchParams(window.location.search).get('review') === '1';
+    if (!wantsReview) return;
+    setShowForm(true);
+    // Wait a tick for layout (hero/reviews section) to settle before scrolling.
+    const t = setTimeout(() => {
+      document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [slug]);
+
   if (!slug) return null;            // demo stores never show reviews
 
   const list = reviews || [];

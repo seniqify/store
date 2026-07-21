@@ -18,20 +18,34 @@ export { generateWhatsAppMessage as buildProductMessage } from './generateWhatsA
 export { sendOrderOnWhatsApp as openProductOrder } from './generateWhatsAppMessage';
 
 // ── Service inquiry ───────────────────────────────────────────────────────────
+// Kept under 50 words on purpose — the store's WhatsApp automation only
+// triggers on incoming messages at or under that length. saveLead() (called
+// right before this) already persists the full form, so trimming here never
+// loses data — the owner sees everything in Manage → Leads regardless.
+const MAX_WORDS = 50;
+const wordCount = (s) => s.trim().split(/\s+/).filter(Boolean).length;
+
 export function buildServiceMessage(form, config) {
-  const lines = [];
-
-  lines.push(`*🔧 QUOTATION REQUEST — ${config.businessName}*`);
-  lines.push('');
-  lines.push(`Name: ${form.name}`);
-  lines.push(`Phone: +91 ${form.phone}`);
-  if (form.services?.length) {
-    lines.push(`Service(s): ${form.services.join(', ')}`);
+  function build({ services, requirements }) {
+    const lines = ['🔧 *Quote Request*', ''];
+    lines.push(`${form.name}, +91${form.phone}`);
+    if (services?.length) lines.push(`Interested in: ${services.join(', ')}`);
+    if (form.budget) lines.push(`Budget: ₹${form.budget}`);
+    if (requirements) lines.push(requirements);
+    return lines.join('\n').trim();
   }
-  if (form.budget) lines.push(`Budget: ₹${form.budget}`);
-  if (form.notes?.trim()) lines.push(`Requirements: ${form.notes.trim()}`);
 
-  return lines.join('\n');
+  const requirements = form.notes?.trim() ? `Requirements: ${form.notes.trim()}` : '';
+  let msg = build({ services: form.services, requirements });
+  if (wordCount(msg) <= MAX_WORDS) return msg;
+
+  // Trim requirements text first — full text is already saved as a lead.
+  msg = build({ services: form.services, requirements: requirements && 'See requirements in Leads' });
+  if (wordCount(msg) <= MAX_WORDS) return msg;
+
+  // Still over (many services selected) — collapse the service list too.
+  const n = form.services?.length || 0;
+  return build({ services: n ? [`${n} services (see Leads)`] : [], requirements: '' });
 }
 
 export function openServiceInquiry(form, config) {
