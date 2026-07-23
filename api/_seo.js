@@ -143,7 +143,7 @@ export function storeSeo(config, slug, origin, rating = null) {
   const breadcrumb = {
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/` },
+      { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` },
       { '@type': 'ListItem', position: 2, name, item: url },
     ],
   };
@@ -167,7 +167,7 @@ export function storeBody(config, slug, origin, seo) {
   ${config.address ? `<p>${esc(config.address)}</p>` : ''}
   <p><a href="${esc(wa)}">Order on WhatsApp</a></p>
   ${items ? `<h2>Products</h2><ul>${items}</ul>` : ''}
-  <p><a href="${origin}/">Discover more local businesses on PocketLink</a></p>
+  <p><a href="${origin}/marketplace">Discover more local businesses on PocketLink</a></p>
 </main>`;
 }
 
@@ -176,8 +176,7 @@ export function marketplaceSeo(stores, origin, storeOrigin = origin) {
   const n = stores.length;
   const title = 'Discover Local Businesses Near You | PocketLink Marketplace';
   const description = `Browse ${n ? `${n}+ ` : ''}local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.`;
-  // The marketplace is now the root of the site.
-  const url = `${origin}/`;
+  const url = `${origin}/marketplace`;
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -215,6 +214,6 @@ export function marketplaceBody(stores, origin) {
   ${cities.length ? `<h2>Shops by city</h2><p>${cities.map(esc).join(' · ')}</p>` : ''}
   <h2>Businesses on PocketLink</h2>
   ${items ? `<ul>${items}</ul>` : '<p>No businesses listed yet. Be the first to list yours.</p>'}
-  <p><a href="${origin}/sell">List your business free on PocketLink</a></p>
+  <p><a href="${origin}/">List your business free on PocketLink</a></p>
 </main>`;
 }

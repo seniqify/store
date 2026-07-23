@@ -209,8 +209,7 @@ export default function App() {
             </Routes>
           ) : (
           <Routes>
-            <Route path="/"                      element={<Marketplace />} />
-            <Route path="/sell"                  element={<Landing />} />
+            <Route path="/"                      element={<Landing />} />
             <Route path="/marketplace"           element={<Marketplace />} />
             <Route path="/explore"               element={<Marketplace />} />
             <Route path="/start"                 element={<Start />} />

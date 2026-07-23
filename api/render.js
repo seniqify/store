@@ -88,9 +88,9 @@ export default async function handler(req, res) {
     const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY;
     const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
 
-    // ── Marketplace — now the root of the main domain (plus /marketplace and
-    //    /explore aliases; the retired market.* subdomain 301s here). ──
-    if (path === '/' || path === '/marketplace' || path === '/explore') {
+    // ── Marketplace — lives at /marketplace (and the /explore alias). The
+    //    root is the static merchant landing page, served unmodified below. ──
+    if (path === '/marketplace' || path === '/explore') {
       // Store pages always live on the main domain, whichever host serves the
       // marketplace — links must not point at market.*/slug.
       const storeOrigin = 'https://www.pocketlink.store';

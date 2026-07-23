@@ -1,7 +1,7 @@
 // Dynamic sitemap — static pages + demo pages + every live store.
-// '/' is now the consumer marketplace home; '/sell' is the merchant landing.
+// '/' is the merchant landing (home); '/marketplace' is the consumer marketplace.
 const ORIGIN  = 'https://www.pocketlink.store';
-const STATIC  = ['/', '/sell', '/plans', '/start', '/terms', '/privacy'];
+const STATIC  = ['/', '/marketplace', '/plans', '/start', '/terms', '/privacy'];
 const DEMOS   = ['aanyaboutique', 'glowup'];
 
 export default async function handler(req, res) {
@@ -18,10 +18,10 @@ export default async function handler(req, res) {
     }
   } catch { /* still emit static + demos */ }
 
-  // priority/changefreq: the marketplace root is the most important page, the
-  // merchant landing next, then individual stores, then the rest.
-  const prio = (p) => (p === '/' ? '1.0' : p === '/sell' ? '0.9' : '0.6');
-  const freq = (p) => (p === '/' ? 'daily' : 'weekly');
+  // priority/changefreq: the home page is the most important, the marketplace
+  // (fresh listings as stores join) next, then individual stores, then the rest.
+  const prio = (p) => (p === '/' ? '1.0' : p === '/marketplace' ? '0.8' : '0.6');
+  const freq = (p) => (p === '/' || p === '/marketplace' ? 'daily' : 'weekly');
 
   const urls = [
     ...STATIC.map((p) => ({ loc: ORIGIN + p, priority: prio(p), changefreq: freq(p) })),

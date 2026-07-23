@@ -1,14 +1,10 @@
-import { rewrite } from '@vercel/edge';
-
-// Runs only for "/" (matcher below). Two jobs, both of which vercel.json can't
-// reliably do for the root path:
-//   1. Retired market.pocketlink.store → 301 to the main domain. (vercel.json's
-//      "/:p*" host-redirect matches every path EXCEPT the bare root, so the root
-//      must be handled here. Non-root market paths are still 308'd by vercel.json.)
-//   2. Main-domain root → the SSR-rendered marketplace. A vercel.json rewrite
-//      can't do this: Vercel serves the static index.html for "/" before rewrites
-//      are consulted, so crawlers would get the SPA shell. Middleware runs BEFORE
-//      the filesystem.
+// Runs only for "/" (matcher below), handling what vercel.json's "/:p*"
+// host-redirect can't: it matches every path EXCEPT the bare root, so the
+// retired market.pocketlink.store subdomain needs its root 308'd here.
+// Non-root market.* paths are still handled by vercel.json.
+//
+// The root itself is the static merchant landing page (no per-request data,
+// so no SSR needed here) — falls through to the filesystem untouched.
 export const config = { matcher: '/' };
 
 export default function middleware(req) {
@@ -16,5 +12,4 @@ export default function middleware(req) {
   if (hostname.startsWith('market.')) {
     return Response.redirect('https://www.pocketlink.store/', 308);
   }
-  return rewrite(new URL('/api/render?path=/', req.url));
 }
