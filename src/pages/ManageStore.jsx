@@ -103,14 +103,23 @@ function FormSection({ title, action, children }) {
 // `maxDim` caps the longest side. 800 (default) suits product/logo shots; the
 // full-width cover banner needs 1600 or it renders blurry on desktop screens.
 // Files land in Supabase Storage (not config JSONB), so bigger is safe here.
-function ImageUploader({ value, onChange, compact = false, maxDim = 800 }) {
+// `lowResWarnBelow` (px): when set, the uploader flags a cover/photo whose actual
+// width is under this — either a freshly-uploaded small source or an existing
+// low-res image already stored. Wide banners upscale small covers and look
+// blurry on desktop, so the cover uploader passes 1200 here.
+function ImageUploader({ value, onChange, compact = false, maxDim = 800, lowResWarnBelow = 0 }) {
   const [dragOver, setDragOver] = useState(false);
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [lowRes,   setLowRes]   = useState(false);
   const fileRef = useRef(null);
 
   const isBase64 = value?.startsWith('data:');
   const hasImage = Boolean(value);
+
+  // Measure the actual pixel width once the image paints; flag if it's too small
+  // to fill the banner crisply. Runs for both stored and just-uploaded covers.
+  const checkRes = (e) => setLowRes(lowResWarnBelow > 0 && e.target.naturalWidth > 0 && e.target.naturalWidth < lowResWarnBelow);
 
   function compressAndSet(file) {
     if (!file || !file.type.startsWith('image/')) return;
@@ -165,29 +174,37 @@ function ImageUploader({ value, onChange, compact = false, maxDim = 800 }) {
 
   if (hasImage) {
     return (
-      <div className="flex items-start gap-3">
-        <div className="relative w-20 h-20 flex-shrink-0 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-          <img src={value} alt="" className="w-full h-full object-cover" onError={() => onChange('')} />
-        </div>
-        <div className="flex flex-col gap-1.5 pt-0.5">
-          <p className="text-xs font-semibold text-gray-700">{isBase64 ? '✅ Image uploaded' : '🔗 Image URL set'}</p>
-          <p className="text-[11px] text-gray-400 leading-snug max-w-[180px] truncate">
-            {isBase64 ? 'Compressed & ready' : value}
-          </p>
-          <div className="flex gap-2 mt-0.5">
-            <button type="button" onClick={() => fileRef.current?.click()}
-                    className="text-xs font-medium text-teal-600 hover:text-teal-800 underline underline-offset-2">
-              Change
-            </button>
-            <span className="text-gray-300">·</span>
-            <button type="button" onClick={() => onChange('')}
-                    className="text-xs font-medium text-red-400 hover:text-red-600 underline underline-offset-2">
-              Remove
-            </button>
+      <div className="space-y-2">
+        <div className="flex items-start gap-3">
+          <div className="relative w-20 h-20 flex-shrink-0 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+            <img src={value} alt="" className="w-full h-full object-cover" onError={() => onChange('')} onLoad={checkRes} />
           </div>
+          <div className="flex flex-col gap-1.5 pt-0.5">
+            <p className="text-xs font-semibold text-gray-700">{isBase64 ? '✅ Image uploaded' : '🔗 Image URL set'}</p>
+            <p className="text-[11px] text-gray-400 leading-snug max-w-[180px] truncate">
+              {isBase64 ? 'Compressed & ready' : value}
+            </p>
+            <div className="flex gap-2 mt-0.5">
+              <button type="button" onClick={() => fileRef.current?.click()}
+                      className="text-xs font-medium text-teal-600 hover:text-teal-800 underline underline-offset-2">
+                Change
+              </button>
+              <span className="text-gray-300">·</span>
+              <button type="button" onClick={() => onChange('')}
+                      className="text-xs font-medium text-red-400 hover:text-red-600 underline underline-offset-2">
+                Remove
+              </button>
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                 onChange={(e) => compressAndSet(e.target.files?.[0])} />
         </div>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden"
-               onChange={(e) => compressAndSet(e.target.files?.[0])} />
+        {lowRes && (
+          <p className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            <span className="flex-shrink-0">⚠️</span>
+            <span>This image is low-resolution and will look blurry across the wide banner. Upload one at least {lowResWarnBelow}px wide for a crisp cover.</span>
+          </p>
+        )}
       </div>
     );
   }
@@ -1915,8 +1932,8 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           </div>
           <div>
             <label className={lCls()}>Cover Photo</label>
-            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} maxDim={1600} />
-            <p className="text-[11px] text-gray-400 mt-1.5">Wide photos work best — it stretches across the top of your page.</p>
+            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} maxDim={1600} lowResWarnBelow={1200} />
+            <p className="text-[11px] text-gray-400 mt-1.5">Use a wide, high-resolution photo (1600px+) — it stretches across the top of your page.</p>
           </div>
         </div>
       </div>

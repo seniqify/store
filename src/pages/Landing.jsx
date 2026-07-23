@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, MessageCircle, Check, Star, Zap,
-  Sparkles, ShoppingBag, ChevronRight,
+  Sparkles, MapPin, ChevronRight,
   Pencil, Share2, QrCode, Copy, Globe, Plus,
   Wallet, Palette, Receipt, Smartphone, Gift,
 } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
+import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
+import { getStoreStatus } from '../utils/storeHours';
 
 /**
  * Landing — platform homepage at /
@@ -24,7 +26,7 @@ const VALUE_PROPS = [
   { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'One flat price from ₹500/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
+  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'From ₹199/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
 ];
 
 const USE_CASES = [
@@ -45,20 +47,22 @@ const STATS = [
   { value: '∞',     label: 'orders, no limits' },
 ];
 
-// Pricing plans — 2 tiers (yearly = 10× monthly, billed on /plans + /checkout)
+// Pricing plans — 2 tiers, mirrors the real prices on /plans (see PRICING/PLANS
+// in Plans.jsx — the source of truth). Free was retired: every store now pays
+// upfront starting at Growth. Yearly = 10× monthly, billed on /plans + /checkout.
 const PRICING_PLANS = [
   {
-    name: 'Standard', icon: '🛍️', tagline: 'Everything you need to sell', accent: '#34d399',
-    price: 500, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: true, to: '/start?plan=business', cta: 'Get Standard',
-    features: ['50 products · 10 categories', 'Verified badge — no PocketLink branding', 'Variants, coupons & order updates', 'Order history + basic analytics'],
+    name: 'Growth', icon: '🛍️', tagline: 'Everything you need to sell', accent: '#34d399',
+    price: 199, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: true, to: '/start?plan=business', cta: 'Get Growth',
+    features: ['WhatsApp orders + QR code', '50 products · 10 categories', 'Verified badge — no PocketLink branding', 'Variants, coupons & online payments', 'Customer insights & sales analytics'],
     caveat: null,
   },
   {
-    name: 'Premium', icon: '👑', tagline: 'Unlimited + your AI assistant', accent: '#a78bfa',
-    price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: false, to: '/start?plan=premium', cta: 'Get Premium',
-    features: ['Unlimited products & categories', 'AI assistant answers customers 24/7', 'Advanced analytics + auto WhatsApp updates', 'Offers engine + priority support'],
+    name: 'Pro', icon: '👑', tagline: 'Unlimited + your AI assistant', accent: '#a78bfa',
+    price: 599, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: false, to: '/start?plan=premium', cta: 'Go Pro',
+    features: ['Unlimited products & categories', 'Unlimited AI assistant + business insights', 'Advanced analytics + offers engine', 'Auto WhatsApp order updates'],
     caveat: null,
   },
 ];
@@ -641,8 +645,37 @@ function LivePageBuilder() {
 }
 
 export default function Landing() {
-  // One demo per business type (static configs only for the landing page)
-  const demoStores = listBusinesses().slice(0, 4);
+  // Static fallback (one demo per business type) — shown until real shops load,
+  // or if the fetch fails. Normalized to the same shape as real stores below so
+  // one card renderer handles both.
+  const demoStores = listBusinesses().map((c) => normalizeBusiness(c, { demo: true }));
+  const [liveStores, setLiveStores] = useState([]);
+
+  // Real, live shops — fetched client-side only, after mount, via a dynamic
+  // import so the Supabase client (~120 KB) never lands in this page's chunk
+  // (see BusinessLoader.js). A DB hiccup or offline load just keeps the demos.
+  useEffect(() => {
+    let cancelled = false;
+    import('../utils/storeService')
+      .then(({ listStores }) => listStores())
+      .then((stores) => {
+        if (cancelled) return;
+        const real = stores
+          // A logo-less/cover-less shop looks unfinished on the homepage —
+          // only feature ones that already look polished.
+          .filter((c) => isMarketplaceVisible(c) && c.logo && c.coverImage)
+          .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+          .slice(0, 10)
+          .map((c) => normalizeBusiness(c));
+        if (real.length) setLiveStores(real);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const showcaseStores = liveStores.length ? liveStores : demoStores;
+  // Duplicated once so the CSS marquee (translateX 0 → -50%) loops seamlessly.
+  const marqueeStores = [...showcaseStores, ...showcaseStores];
 
   return (
     <div className="min-h-screen bg-white antialiased">
@@ -675,7 +708,7 @@ export default function Landing() {
               <a href="#features" className="hover:text-white transition-colors">Features</a>
               <a href="#demos"    className="hover:text-white transition-colors">Demos</a>
               <a href="#pricing"  className="hover:text-white transition-colors">Pricing</a>
-              <a href="/" className="hover:text-white transition-colors">Explore</a>
+              <a href="/marketplace" className="hover:text-white transition-colors">Explore</a>
             </div>
 
             <Link
@@ -1038,60 +1071,90 @@ export default function Landing() {
           <Reveal className="text-center mb-12">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-300
                           bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
-                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">See it in action</p>
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400 before:animate-pulse">
+              {liveStores.length ? `${liveStores.length}+ shops live right now` : 'See it in action'}
+            </p>
             <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
               Browse{' '}
               <span className="pl-shimmer-text bg-clip-text text-transparent"
                     style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
-                live examples
+                real shops
               </span>
             </h2>
             <p className="text-sm sm:text-base text-white/55">
-              Tap any page to explore a real, live example — exactly what your customers see.
+              Tap any shop to see a real, live PocketLink page — exactly what their customers see.
             </p>
           </Reveal>
+        </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {demoStores.map((biz) => (
-              <Link
-                key={biz.slug}
-                to={`/demo/${biz.slug}`}
-                className="group bg-white/[0.04] border border-white/10 backdrop-blur-sm hover:border-emerald-400/30
-                           hover:bg-white/[0.07] hover:-translate-y-1 rounded-2xl overflow-hidden
-                           transition-all duration-300 block"
-              >
-                {/* Mini cover */}
-                <div
-                  className="h-20 relative"
-                  style={{ background: `linear-gradient(135deg, ${biz.theme.primary}, ${biz.theme.primary}cc)` }}
+        {/* Auto-scrolling strip of real, live shops (falls back to two static
+            demos while the DB fetch is in flight, or if it fails). Paused on
+            hover so a moving row doesn't dodge the tap/click. */}
+        <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_6%,#000_94%,transparent)]">
+          <div className="flex gap-5 w-max animate-pl-marquee-slow hover:[animation-play-state:paused]">
+            {marqueeStores.map((biz, i) => {
+              const status = getStoreStatus(biz.hours);
+              return (
+                <Link
+                  key={`${biz.slug}-${i}`}
+                  to={biz.href}
+                  className="group flex-shrink-0 w-64 bg-white/[0.04] border border-white/10 backdrop-blur-sm hover:border-emerald-400/30
+                             hover:bg-white/[0.07] hover:-translate-y-1 rounded-2xl overflow-hidden
+                             transition-all duration-300 block"
                 >
-                  <div className="absolute inset-0 opacity-20"
-                       style={{ backgroundImage: 'radial-gradient(circle, #ffffff66 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
-                  <span className="absolute top-3 right-3 text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-sm">
-                    Live demo
-                  </span>
-                </div>
+                  {/* Mini cover */}
+                  <div className="h-20 relative overflow-hidden">
+                    {biz.coverImage ? (
+                      <img src={biz.coverImage} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${biz.primary}, ${biz.primaryDark})` }}>
+                        <div className="absolute inset-0 opacity-20"
+                             style={{ backgroundImage: 'radial-gradient(circle, #ffffff66 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
+                      </div>
+                    )}
 
-                <div className="p-5 -mt-8 relative">
-                  <div className="w-12 h-12 rounded-2xl bg-[#0c1512] shadow-lg flex items-center justify-center text-2xl mb-3 ring-1 ring-white/10">
-                    {biz.logoEmoji}
+                    {/* Real open/closed (only when the owner set hours), else a DEMO tag
+                        on the static fallback cards. Never a fake badge either way. */}
+                    {biz.demo ? (
+                      <span className="absolute top-3 right-3 text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-sm">
+                        Demo
+                      </span>
+                    ) : status ? (
+                      <span className="absolute top-3 right-3 inline-flex items-center gap-1.5 text-[10px] font-bold text-white
+                                       bg-black/35 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                        {status.open ? (
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
+                        )}
+                        {status.open ? 'Open now' : 'Closed'}
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="font-bold text-white text-sm leading-tight truncate">{biz.businessName}</p>
-                  <p className="text-xs text-white/45 mt-0.5 truncate leading-tight">{biz.tagline}</p>
 
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
-                      <ShoppingBag size={13} style={{ color: biz.theme.primary }} />
-                      {biz.products.length}{' '}
-                      {{ service: 'services' }[biz.businessType] ?? 'products'}
-                    </span>
-                    <span className="inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all text-emerald-300">
-                      View <ChevronRight size={13} />
-                    </span>
+                  <div className="p-5 -mt-8 relative">
+                    <div className="w-12 h-12 rounded-2xl bg-[#0c1512] shadow-lg flex items-center justify-center text-2xl mb-3 ring-1 ring-white/10 overflow-hidden">
+                      {biz.logo ? <img src={biz.logo} alt="" className="w-full h-full object-cover" /> : biz.logoEmoji}
+                    </div>
+                    <p className="font-bold text-white text-sm leading-tight truncate">{biz.name}</p>
+                    <p className="text-xs text-white/45 mt-0.5 truncate leading-tight">{biz.tagline}</p>
+
+                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-white/45 min-w-0">
+                        <MapPin size={13} className="flex-shrink-0" style={{ color: biz.primary }} />
+                        <span className="truncate">{[biz.category, biz.city].filter(Boolean).join(' · ')}</span>
+                      </span>
+                      <span className="flex-shrink-0 inline-flex items-center text-xs font-bold group-hover:gap-1 gap-0.5 transition-all text-emerald-300">
+                        View <ChevronRight size={13} />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -1156,14 +1219,14 @@ export default function Landing() {
                           bg-white/5 border border-white/15 rounded-full px-3 py-1 mb-5
                           before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-400">Pricing</p>
             <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 tracking-tight">
-              Two simple plans.<br className="hidden sm:block" />
+              Simple pricing.<br className="hidden sm:block" />
               <span className="pl-shimmer-text bg-clip-text text-transparent"
                     style={{ backgroundImage: 'linear-gradient(90deg, #34d399, #5eead4, #25D366, #34d399)' }}>
                 No commission, ever.
               </span>
             </h2>
             <p className="text-sm sm:text-base text-white/55 max-w-md mx-auto">
-              No setup fee. No commission. No per-order cuts — just one fair monthly price.
+              No setup fee. No per-order cuts — just one fair monthly price, live in minutes.
             </p>
           </Reveal>
 
@@ -1214,10 +1277,8 @@ export default function Landing() {
 
                     {/* Price */}
                     <div className="flex items-end gap-2 mb-1">
-                      <span className="text-4xl font-extrabold tracking-tight text-white">
-                        {plan.price === 0 ? 'Free' : `₹${plan.price}`}
-                      </span>
-                      {plan.price > 0 && <span className="text-sm text-white/40 mb-1.5">/month</span>}
+                      <span className="text-4xl font-extrabold tracking-tight text-white">₹{plan.price}</span>
+                      <span className="text-sm text-white/40 mb-1.5">/month</span>
                       {plan.originalPrice && (
                         <span className="text-sm text-white/30 line-through mb-1.5">₹{plan.originalPrice}</span>
                       )}
@@ -1295,11 +1356,11 @@ export default function Landing() {
           </Reveal>
           <div className="space-y-3">
             {[
-              { q: 'How much does PocketLink cost?', a: 'Two plans: Standard at ₹500/month (a complete store, up to 50 products) and Premium at ₹1000/month (unlimited products plus the AI assistant, advanced analytics and the offers engine). No setup fee, cancel anytime.' },
+              { q: 'How much does PocketLink cost?', a: 'Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
-              { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — both paid plans are free of the PocketLink badge, so your page is 100% your own brand.' },
+              { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — every plan removes the PocketLink badge, so your page is 100% your own brand.' },
               { q: 'How do paid plans get activated?', a: 'Instantly. Pay securely by UPI, card or net banking and your plan goes live the moment payment succeeds — no waiting, no manual confirmation.' },
               { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
               { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
@@ -1353,7 +1414,7 @@ export default function Landing() {
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
                 Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
-                from ₹500/mo, no commission and no setup fee. Cancel anytime.
+                from ₹199/mo, no commission and no setup fee. Cancel anytime.
               </p>
               <Link
                 to="/start"

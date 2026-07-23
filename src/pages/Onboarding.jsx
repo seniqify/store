@@ -262,10 +262,11 @@ export default function Onboarding() {
   const [launched,      setLaunched]      = useState(false);
   const [launchedSlug,  setLaunchedSlug]  = useState('');
   const [ownerPhone,    setOwnerPhone]    = useState('');
-  // Default to FREE limits — a signup only gets paid-tier limits when a paid
-  // plan is explicitly in the session (set by /checkout) or recovered from a
-  // pending paid signup. Defaulting to a paid tier showed Free signups the
-  // wrong product/category limits.
+  // 'free' here is just a "no paid plan loaded yet" sentinel — Free was
+  // retired as a purchasable tier (see handlePublish, which now refuses to
+  // launch without a paid plan + expiry). Still used to read legacy
+  // grandfathered free stores elsewhere (planLimits.js), just never assigned
+  // to a NEW store anymore.
   const [plan,          setPlan]          = useState('free');
   const [planExpiresAt, setPlanExpiresAt] = useState(null);
 
@@ -282,13 +283,12 @@ export default function Onboarding() {
       setPlan(ssPlan);
       setPlanExpiresAt(ssExp);
     } else {
-      // Free signup (or nothing in the session) — still check for a pending
-      // PAID signup below so a customer who paid on another device/session
-      // never loses their plan.
       // No plan in this browser — but they may have paid and lost their session
       // (e.g. the post-payment step hiccuped, or they switched devices). The
       // razorpay-webhook records the paid plan by phone, so recover it here so a
-      // paying customer never has to pay again.
+      // paying customer never has to pay again. If there's truly no paid plan
+      // to recover, send them to pick one now — before they fill out the whole
+      // form — rather than only catching it at the final Launch step.
       getPendingSignup(phone).then((p) => {
         if (p?.plan && p?.planExpiresAt) {
           setPlan(p.plan);
@@ -296,8 +296,10 @@ export default function Onboarding() {
           sessionStorage.setItem('pocketlink_plan', p.plan);
           sessionStorage.setItem('pocketlink_plan_expires', p.planExpiresAt);
           if (p.subscriptionId) sessionStorage.setItem('pocketlink_subscription_id', p.subscriptionId);
+        } else {
+          navigate('/plans', { replace: true });
         }
-      }).catch(() => {});
+      }).catch(() => {}); // lookup hiccup — let them proceed; handlePublish is the final gate
     }
   }, [navigate]);
 
@@ -313,11 +315,11 @@ export default function Onboarding() {
     setSaving(true);
     setSaveError('');
     try {
-      // Paid plans pay upfront at /checkout, which writes the plan + expiry into
-      // sessionStorage before routing here — a paid plan arriving WITHOUT a term
-      // goes back to pick & pay. Free launches carry no expiry and publish
-      // directly (Free is a real offered tier on /plans).
-      if (plan !== 'free' && !planExpiresAt) {
+      // Every launch now requires a paid plan (Free was retired — no more
+      // dead, never-touched stores from a zero-commitment signup). Paid plans
+      // pay upfront at /checkout, which writes plan + expiry into sessionStorage
+      // before routing here; arriving without an expiry sends them back to pay.
+      if (!planExpiresAt) {
         navigate('/plans', { replace: true });
         return;
       }

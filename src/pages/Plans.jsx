@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ShieldCheck, Sparkles, Star, ArrowRight, Zap } from 'lucide-react';
-import { findStoreByPhone } from '../utils/storeService';
 
 // ── Billing periods ───────────────────────────────────────────────────────────
 const PERIODS = [
@@ -25,43 +24,29 @@ const FEATURED_PRICE = 299;
 const SUPPORT_WA = '918482840808';
 
 // ── Plans ──────────────────────────────────────────────────────────────────────
+// Free was retired (2026-07-23): zero-commitment signups mostly went dead —
+// never touched again — rather than converting, so every store now requires
+// a paid plan upfront. Existing free stores from before this change are
+// grandfathered and keep working; see planLimits.js for their limits.
 const PLANS = [
-  {
-    key: 'free',
-    name: 'Free',
-    best: 'For businesses getting started',
-    accent: '#e2e8f0',
-    cta: 'Start Free',
-    features: [
-      '10 products · 3 categories',
-      'AI product search',
-      'AI shopping assistant (limited)',
-      'WhatsApp orders + QR code',
-      'Marketplace listing',
-      'Basic store analytics',
-      'Mobile-ready store + basic SEO',
-      'Cart & order management',
-    ],
-    footnote: 'PocketLink branding shown',
-  },
   {
     key: 'business',
     name: 'Growth',
     best: 'For growing businesses',
     popular: true,
     accent: '#10b981',
-    cta: 'Upgrade to Growth',
-    inherits: 'Free',
+    cta: 'Get Growth',
+    // Self-contained — this is the entry tier now, so it lists everything a
+    // store gets, not just a delta on top of a Free plan that no longer exists.
     features: [
+      'WhatsApp orders + QR code',
+      'Mobile-ready store + basic SEO',
       '50 products · 10 categories',
-      'Remove PocketLink branding',
-      'Verified business badge',
-      'Unlimited AI product search',
-      'AI product assistant',
-      'Product variants',
-      'Coupons & discounts',
+      'No PocketLink branding — verified business badge',
+      'Unlimited AI product search + AI product assistant',
+      'Product variants, coupons & discounts',
       'Online payments',
-      'Order history',
+      'Cart & order management + history',
       'Customer insights & sales analytics',
       'Store theme customization',
       'Business hours & delivery settings',
@@ -107,11 +92,11 @@ const GUARANTEES = [
 
 const UNIVERSAL = [
   ['🔗', 'Shareable link'], ['💬', 'WhatsApp orders'], ['📱', 'Mobile-first'], ['⚡', 'Live in 2 min'],
-  ['🆓', 'No app for buyers'], ['🛍️', 'Marketplace listing'], ['🏦', 'UPI + Bank + COD'], ['🔒', 'Secure & private'],
+  ['🆓', 'No app for buyers'], ['🏷️', 'QR code for your shop'], ['🏦', 'UPI + Bank + COD'], ['🔒', 'Secure & private'],
 ];
 
 const FAQS = [
-  { q: 'How much does PocketLink cost?', a: 'Free is ₹0 forever. Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
+  { q: 'How much does PocketLink cost?', a: 'Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
   { q: 'What’s the difference between Growth and Pro?', a: 'Growth removes PocketLink branding and gives you a verified store with variants, coupons, online payments, customer insights and the AI product assistant — up to 50 products. Pro removes every limit and adds unlimited AI assistant usage, AI business insights, advanced analytics (returning customers, conversion, peak hours), the offers engine, automatic WhatsApp order updates and priority support.' },
   { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission on every plan.' },
   { q: 'Is paying yearly cheaper?', a: 'Yes. Growth is ₹1,999/year (save ₹389 vs monthly) and Pro is ₹5,999/year (save ₹1,189) — roughly two months free. It auto-renews yearly so your store never lapses.' },
@@ -127,25 +112,7 @@ export default function Plans() {
   const [period, setPeriod] = useState('monthly');
   const [faq,    setFaq]    = useState(null);
 
-  async function choosePlan(planKey) {
-    if (planKey === 'free') {
-      // Phone already verified this session → never ask for it again:
-      // an owner with a page goes to Manage; a verified new user goes
-      // straight into onboarding (Start would just bounce them back here).
-      if (phone) {
-        const existing = await findStoreByPhone(phone).catch(() => null);
-        if (existing) { navigate(`/${existing}/manage`); return; }
-        // Hand onboarding the FREE plan explicitly (it must not fall back to a
-        // paid tier's limits), and clear any stale paid-plan session keys.
-        sessionStorage.setItem('pocketlink_plan', 'free');
-        sessionStorage.removeItem('pocketlink_plan_expires');
-        sessionStorage.removeItem('pocketlink_subscription_id');
-        navigate('/onboarding');
-        return;
-      }
-      navigate('/start');
-      return;
-    }
+  function choosePlan(planKey) {
     if (phone) {
       navigate(`/checkout/${planKey}?period=${period}`);
     } else {
@@ -208,7 +175,7 @@ export default function Plans() {
             <span className="bg-gradient-to-r from-emerald-300 to-teal-300 bg-clip-text text-transparent">grows with you</span>
           </h1>
           <p className="text-white/55 text-sm sm:text-base max-w-lg mx-auto">
-            Start free. Upgrade when you’re ready. No contracts, no per-order fees — an AI storefront and local marketplace, all on WhatsApp.
+            Pick a plan and go live in minutes. No contracts, no per-order fees — an AI storefront and local marketplace, all on WhatsApp.
           </p>
         </div>
 
@@ -233,12 +200,12 @@ export default function Plans() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start max-w-2xl mx-auto">
           {PLANS.map((plan) => {
-            const price    = plan.key === 'free' ? null : PRICING[plan.key];
-            const effMonth = price ? (period === 'yearly' ? Math.round(price.yearly / 12) : price.monthly) : null;
-            const perDay   = effMonth ? Math.max(1, Math.round(effMonth / 30)) : null;
-            const save     = price ? price.monthly * 12 - price.yearly : 0;
+            const price    = PRICING[plan.key];
+            const effMonth = period === 'yearly' ? Math.round(price.yearly / 12) : price.monthly;
+            const perDay   = Math.max(1, Math.round(effMonth / 30));
+            const save     = price.monthly * 12 - price.yearly;
             const popular  = plan.popular;
 
             return (
@@ -261,55 +228,41 @@ export default function Plans() {
                   </div>
                 )}
 
-                <h2 className="font-extrabold text-lg"
-                    style={{ color: plan.key === 'free' ? '#ffffff' : plan.accent }}>{plan.name}</h2>
+                <h2 className="font-extrabold text-lg" style={{ color: plan.accent }}>{plan.name}</h2>
                 <p className="text-xs text-white/45 mt-0.5 mb-5">{plan.best}</p>
 
                 {/* Price */}
                 <div className="pb-5 mb-5 border-b border-white/10">
-                  {plan.key === 'free' ? (
-                    <>
-                      <p className="text-4xl font-extrabold text-white">₹0<span className="text-base font-normal text-white/45">/mo</span></p>
-                      <p className="text-xs text-white/45 mt-1.5">forever · no card needed</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-4xl font-extrabold text-white">
-                          ₹{effMonth}<span className="text-base font-normal text-white/45">/mo</span>
-                        </p>
-                        {period === 'yearly' && (
-                          <span className="text-lg font-semibold text-white/35 line-through">₹{price.monthly}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                              style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
-                          ≈ ₹{perDay}/day
-                        </span>
-                        {period === 'yearly' && (
-                          <span className="text-[11px] font-bold text-emerald-300">save ₹{save.toLocaleString('en-IN')}/yr</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-white/40 mt-2">
-                        {period === 'monthly'
-                          ? 'billed monthly · cancel anytime'
-                          : `₹${price.yearly.toLocaleString('en-IN')} billed yearly`}
-                      </p>
-                    </>
-                  )}
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-4xl font-extrabold text-white">
+                      ₹{effMonth}<span className="text-base font-normal text-white/45">/mo</span>
+                    </p>
+                    {period === 'yearly' && (
+                      <span className="text-lg font-semibold text-white/35 line-through">₹{price.monthly}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: `${plan.accent}22`, color: plan.accent }}>
+                      ≈ ₹{perDay}/day
+                    </span>
+                    {period === 'yearly' && (
+                      <span className="text-[11px] font-bold text-emerald-300">save ₹{save.toLocaleString('en-IN')}/yr</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/40 mt-2">
+                    {period === 'monthly'
+                      ? 'billed monthly · cancel anytime'
+                      : `₹${price.yearly.toLocaleString('en-IN')} billed yearly`}
+                  </p>
                 </div>
 
                 {/* CTA */}
                 <button onClick={() => choosePlan(plan.key)}
-                  className={[
-                    'w-full py-3.5 rounded-xl text-sm font-bold transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1.5',
-                    plan.key === 'free'
-                      ? 'bg-white/10 text-white hover:bg-white/15 border border-white/10'
-                      : 'text-white shadow-lg',
-                  ].join(' ')}
-                  style={plan.key !== 'free' ? { backgroundColor: plan.accent, boxShadow: `0 10px 30px ${plan.accent}40` } : {}}>
-                  {plan.cta} {plan.key !== 'free' && <ArrowRight size={15} />}
+                  className="w-full py-3.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all
+                             active:scale-[0.98] inline-flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: plan.accent, boxShadow: `0 10px 30px ${plan.accent}40` }}>
+                  {plan.cta} <ArrowRight size={15} />
                 </button>
 
                 {/* Features */}
@@ -330,9 +283,6 @@ export default function Plans() {
                       </li>
                     ))}
                   </ul>
-                  {plan.footnote && (
-                    <p className="mt-4 text-[11px] text-white/35">{plan.footnote}</p>
-                  )}
                 </div>
               </div>
             );
@@ -440,7 +390,7 @@ export default function Plans() {
         <div className="mt-12 text-center">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-white/80">
             <ShieldCheck size={16} className="text-emerald-400" />
-            Start free — upgrade to Growth only when it’s paying for itself.
+            No contracts, no lock-in — cancel anytime and your page stays live.
           </p>
         </div>
       </div>
