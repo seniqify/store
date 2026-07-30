@@ -7,7 +7,8 @@ import {
   sendOrderOnWhatsApp,
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
-import { saveAbandonedCheckout } from '../../utils/orderService';
+import { saveOrder, saveAbandonedCheckout } from '../../utils/orderService';
+import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink, hasUpi } from '../../utils/upiLink';
@@ -79,6 +80,8 @@ function WhatsAppIcon({ size = 20 }) {
 export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const [errors,      setErrors]      = useState({});
   const [submitted,   setSubmitted]   = useState(false);
+  const [placing,     setPlacing]     = useState(false);   // submit in flight
+  const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
   const [showPreview, setShowPreview] = useState(false);
 
   // Coupon entered at checkout (validated against the store's live coupons).
@@ -170,7 +173,8 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (placing) return;
     const { isValid, errors: newErrors } = validateCustomerDetails(sendData, { requireDeliveryAddress: !isPickup });
     if (!isValid) {
       setErrors(newErrors);
@@ -179,7 +183,30 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     }
     if (cartEmpty) return;
 
-    sendOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon);
+    setPlacing(true);
+    // Prefer PocketLink-sent WhatsApp notifications to BOTH sides (seller gets a
+    // new-order alert, customer a thank-you) — no manual send, no drop-off. If
+    // the order templates aren't live yet, fall back to the classic wa.me
+    // hand-off so the order still reaches the seller.
+    let notified = false;
+    try {
+      notified = await sendOrderNotifications({
+        sellerPhone:   config.whatsappNumber,
+        customerPhone: sendData.mobile,
+        customerName:  sendData.partyName,
+        storeName:     config.businessName,
+        itemsSummary:  cart.map((i) => `${i.qty}× ${i.name}`).join(', '),
+        orderTotal:    formatINR(finalTotal),
+      });
+    } catch { /* fall back below */ }
+
+    if (notified) {
+      saveOrder(sendData, cart, effConfig, appliedCoupon);          // record the order
+    } else {
+      sendOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon); // saves + opens wa.me
+    }
+    setAutoNotified(notified);
+    setPlacing(false);
     setSubmitted(true);
   }
 
@@ -204,14 +231,26 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <CheckCircle2 size={32} className="text-green-500" />
         </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">Order sent to WhatsApp!</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">
+          {autoNotified ? 'Order placed! 🎉' : 'Order sent to WhatsApp!'}
+        </h3>
         <p className="text-sm text-gray-500 max-w-xs mx-auto mb-6">
-          Complete your order on WhatsApp with{' '}
-          <strong className="text-gray-700">{config.businessName}</strong>.
-          We'll confirm and dispatch soon.
+          {autoNotified ? (
+            <>
+              We've notified{' '}
+              <strong className="text-gray-700">{config.businessName}</strong>{' '}
+              on WhatsApp — they'll confirm shortly. You'll get a confirmation message too.
+            </>
+          ) : (
+            <>
+              Complete your order on WhatsApp with{' '}
+              <strong className="text-gray-700">{config.businessName}</strong>.
+              We'll confirm and dispatch soon.
+            </>
+          )}
         </p>
         <button
-          onClick={() => setSubmitted(false)}
+          onClick={() => { setSubmitted(false); setAutoNotified(false); }}
           className="text-sm font-semibold text-brand hover:text-brand-dark
                      underline underline-offset-2 transition-colors"
         >
@@ -630,16 +669,26 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             <button
               type="button"
               onClick={handleSubmit}
+              disabled={placing}
               className="w-full flex items-center justify-center gap-2.5
                          bg-[#25D366] hover:bg-[#1ebe5d] active:bg-[#17a550]
                          text-white font-bold text-base
                          px-7 py-3.5 rounded-2xl
                          shadow-lg hover:shadow-xl
                          transition-all duration-200 active:scale-[0.98]
-                         min-h-[52px]"
+                         min-h-[52px] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <WhatsAppIcon size={21} />
-              Send Order on WhatsApp
+              {placing ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Placing order…
+                </>
+              ) : (
+                <>
+                  <WhatsAppIcon size={21} />
+                  Send Order on WhatsApp
+                </>
+              )}
             </button>
           </div>
         )}

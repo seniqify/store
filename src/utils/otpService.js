@@ -39,3 +39,18 @@ export async function verifyOtp(phone, code) {
 export async function sendWelcome(phone, businessName, slug) {
   return call({ action: 'welcome', phone, businessName, slug });
 }
+
+/**
+ * Ask PocketLink to WhatsApp both parties about a new order — the seller gets
+ * "you got a new order", the customer gets "thanks for ordering". Returns true
+ * ONLY when the server actually sent them (templates configured); false → the
+ * caller must fall back to the wa.me hand-off so no order goes un-notified.
+ */
+export async function sendOrderNotifications(payload) {
+  try {
+    const res = await call({ action: 'order-notify', ...payload });
+    return res?.notified === true;
+  } catch {
+    return false;
+  }
+}

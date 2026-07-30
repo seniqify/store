@@ -24,8 +24,13 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { action, phone, code, businessName, slug } = await req.json();
-    if (!phone) return json({ error: 'phone is required' }, 400);
+    const {
+      action, phone, code, businessName, slug,
+      // order-notify fields:
+      sellerPhone, customerPhone, customerName, storeName, itemsSummary, orderTotal,
+    } = await req.json();
+    // order-notify carries its own seller/customer numbers, not `phone`.
+    if (action !== 'order-notify' && !phone) return json({ error: 'phone is required' }, 400);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -134,6 +139,60 @@ serve(async (req: Request) => {
       if (!waRes.ok) throw new Error(`Seniqify welcome ${waRes.status}: ${waBody}`);
 
       return json({ success: true });
+    }
+
+    // ── ORDER NOTIFY — WhatsApp both sides when a customer places an order ────
+    // Seller: "you got a new order"; Customer: "thanks for ordering". Both go
+    // out from PocketLink's WhatsApp number via the Seniqify templates. Returns
+    // { notified:false } when the templates aren't configured yet, so the client
+    // falls back to the classic wa.me hand-off — no order ever goes un-notified.
+    if (action === 'order-notify') {
+      const apiKey      = Deno.env.get('SENIQIFY_API_KEY');
+      const sellerUrl   = Deno.env.get('SENIQIFY_ORDER_SELLER_TEMPLATE_URL');
+      const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');
+
+      // Not set up yet → tell the client to fall back to wa.me.
+      if (!apiKey || !sellerUrl) return json({ notified: false, reason: 'not_configured' });
+
+      const clean   = (p: unknown) => String(p ?? '').replace(/\D/g, '');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+
+      const dispatch = async () => {
+        // Seller — "🛍️ New order! {{1}} ordered {{2}} — {{3}}. Contact: {{4}}"
+        try {
+          const seller = clean(sellerPhone);
+          if (seller) {
+            const r = await fetch(sellerUrl, { method: 'POST', headers, body: JSON.stringify({
+              receiver: seller,
+              values: {
+                '1': String(customerName || 'A customer'),
+                '2': String(itemsSummary || 'your items'),
+                '3': String(orderTotal || ''),
+                '4': clean(customerPhone),   // for the template's "Message customer" button / text
+              },
+            }) });
+            if (!r.ok) console.error(`order-notify seller ${r.status}: ${await r.text()}`);
+          }
+        } catch (e) { console.error('order-notify seller error:', (e as Error)?.message); }
+
+        // Customer — "Thank you for your order at {{1}}! Total {{2}} …" (optional)
+        try {
+          const cust = clean(customerPhone);
+          if (customerUrl && cust) {
+            const r = await fetch(customerUrl, { method: 'POST', headers, body: JSON.stringify({
+              receiver: cust,
+              values: { '1': String(storeName || 'the store'), '2': String(orderTotal || '') },
+            }) });
+            if (!r.ok) console.error(`order-notify customer ${r.status}: ${await r.text()}`);
+          }
+        } catch (e) { console.error('order-notify customer error:', (e as Error)?.message); }
+      };
+
+      const ER = (globalThis as any).EdgeRuntime;
+      if (ER && typeof ER.waitUntil === 'function') ER.waitUntil(dispatch());
+      else await dispatch();
+
+      return json({ notified: true });
     }
 
     return json({ error: 'Unknown action' }, 400);
