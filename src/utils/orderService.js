@@ -115,3 +115,13 @@ export async function setOrderStatus(slug, pin, orderId, status) {
     /* ignore */
   }
 }
+
+/** Owner-only: mark an order paid / unpaid (PIN-checked server-side). */
+export async function setOrderPaid(slug, pin, orderId, paid) {
+  try {
+    const hashed = await hashPin(pin);
+    await supabase.rpc('set_order_paid', { p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId, p_paid: paid });
+  } catch {
+    /* ignore */
+  }
+}

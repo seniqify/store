@@ -126,6 +126,22 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const couponDiscount = appliedCoupon ? couponDiscountFor(appliedCoupon, subtotal) : 0;
   const finalTotal     = Math.max(0, total - couponDiscount);
 
+  // UPI pay link + a "Scan to pay" QR of the same payload. A scanned QR is a
+  // trusted flow that works to personal VPAs, unlike a browser→app upi:// intent
+  // with a pre-filled amount (which GPay/NPCI block) — so the QR is the reliable
+  // way to pay, and works on desktop too (scan with the phone).
+  const upiPayLink = hasUpi(config) && finalTotal > 0
+    ? buildUpiLink({
+        upi:       config.upi,
+        payeeName: config.businessName || config.name,
+        amount:    finalTotal,
+        note:      `Order ${config.businessName || config.name || ''}`.trim(),
+      })
+    : null;
+  const upiQrSrc = upiPayLink
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&color=1e3a8a&data=${encodeURIComponent(upiPayLink)}`
+    : null;
+
   function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
     if (!code) return;
@@ -405,23 +421,31 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
                   </p>
                 </div>
               </div>
-              {/* Pay-online link — opens the customer's UPI app with the amount pre-filled */}
-              {!cartEmpty && (
+
+              {/* Scan-to-pay QR — the reliable method (works to personal VPAs and
+                  on desktop). The tap link below is the shortcut on mobile. */}
+              {upiQrSrc && (
+                <div className="mt-3 flex flex-col items-center bg-white rounded-xl border border-blue-100 py-3">
+                  <img src={upiQrSrc} alt={`Scan to pay ${formatINR(finalTotal)}`}
+                       width={150} height={150} loading="lazy"
+                       className="w-[150px] h-[150px]" />
+                  <p className="text-sm font-bold text-blue-800 mt-2">Scan to pay {formatINR(finalTotal)}</p>
+                  <p className="text-[11px] text-blue-400">with any UPI app — GPay · PhonePe · Paytm · BHIM</p>
+                </div>
+              )}
+
+              {/* Tap-to-pay — opens the UPI app on the customer's phone */}
+              {upiPayLink && (
                 <a
-                  href={buildUpiLink({
-                    upi:       config.upi,
-                    payeeName: config.businessName || config.name,
-                    amount:    finalTotal,
-                    note:      `Order — ${config.businessName || config.name || 'Store'}`,
-                  })}
-                  className="mt-3 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700
+                  href={upiPayLink}
+                  className="mt-2.5 w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700
                              text-white text-sm font-bold py-2.5 rounded-xl transition-colors active:scale-[0.98]"
                 >
-                  📲 Pay {formatINR(finalTotal)} now via UPI
+                  📲 On your phone? Tap to pay {formatINR(finalTotal)}
                 </a>
               )}
               <p className="text-[10px] text-blue-400 text-center mt-1.5">
-                Opens GPay / PhonePe / Paytm with the amount filled in.
+                After paying, send the screenshot on WhatsApp so we can confirm.
               </p>
             </div>
           ) : (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer } from 'lucide-react';
-import { fetchOrders, setOrderStatus } from '../../utils/orderService';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check } from 'lucide-react';
+import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 
@@ -66,9 +66,10 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
   const noun    = leads ? 'lead' : 'order';
 
-  const [orders,  setOrders]  = useState(null);   // null = loading
-  const [filter,  setFilter]  = useState('all');
-  const [busy,    setBusy]    = useState(false);
+  const [orders,     setOrders]     = useState(null);   // null = loading
+  const [filter,     setFilter]     = useState('all');
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  const [busy,       setBusy]       = useState(false);
 
   const load = useCallback(async () => {
     setOrders(null);
@@ -84,8 +85,19 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     setBusy(false);
   }
 
-  const counts = (orders || []).reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {});
-  const filtered = filter === 'all' ? (orders || []) : (orders || []).filter((o) => o.status === filter);
+  async function markPaid(id, paid) {
+    setBusy(true);
+    setOrders((os) => os.map((o) => (o.id === id ? { ...o, paid } : o)));
+    await setOrderPaid(slug, pin, id, paid);
+    setBusy(false);
+  }
+
+  const counts   = (orders || []).reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {});
+  // Unpaid = an order not yet marked paid. Leads carry no payment, so never counted.
+  const unpaidCount = leads ? 0 : (orders || []).filter((o) => !o.paid).length;
+  const filtered = (orders || [])
+    .filter((o) => (filter === 'all' ? true : o.status === filter))
+    .filter((o) => (unpaidOnly ? !o.paid : true));
 
   // ── Loading ──
   if (orders === null) {
@@ -154,6 +166,16 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
                 </button>
               );
             })}
+            {/* Payment filter (orders only) — jump to what's still owed. */}
+            {!leads && unpaidCount > 0 && (
+              <button onClick={() => setUnpaidOnly((v) => !v)}
+                className={[
+                  'flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition',
+                  unpaidOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50',
+                ].join(' ')}>
+                💰 Unpaid <span className={unpaidOnly ? 'opacity-80' : 'text-amber-400'}>({unpaidCount})</span>
+              </button>
+            )}
           </div>
 
           {/* How updates work */}
@@ -166,7 +188,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           <div className="space-y-3">
             {filtered.map((o) => (
               <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor}
-                         storeName={storeName} onStatus={changeStatus} leads={leads} riders={riders} payInfo={payInfo} store={store} />
+                         storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads={leads} riders={riders} payInfo={payInfo} store={store} />
             ))}
             {filtered.length === 0 && (
               <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} {noun}s.</p>
@@ -178,7 +200,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
-function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, riders = [], payInfo = {}, store = {} }) {
+function OrderCard({ o, busy, themeColor, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
@@ -258,12 +280,27 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, leads = false, ri
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      {/* Top: time + status */}
-      <div className="flex items-center justify-between px-4 pt-3.5">
-        <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+      {/* Top: time + payment status + fulfilment status */}
+      <div className="flex items-center justify-between gap-2 px-4 pt-3.5">
+        <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 flex-shrink-0">
           <Clock size={11} /> {timeAgo(o.created_at)}
         </span>
-        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.emoji} {st.label}</span>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {/* Paid / Unpaid — one tap for the owner to record payment received
+              (cash collected for COD, or UPI/bank credit for prepaid). */}
+          {!leads && (
+            <button type="button" onClick={() => onPaid(o.id, !o.paid)} disabled={busy}
+              className={[
+                'inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full active:scale-95 disabled:opacity-50 transition',
+                o.paid ? 'bg-emerald-100 text-emerald-700'
+                       : 'bg-white text-amber-600 border border-amber-300 hover:bg-amber-50',
+              ].join(' ')}
+              title={o.paid ? 'Paid — tap to mark unpaid' : 'Tap once you’ve received payment'}>
+              {o.paid ? <><Check size={11} strokeWidth={3} /> Paid</> : '💰 Mark paid'}
+            </button>
+          )}
+          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.emoji} {st.label}</span>
+        </div>
       </div>
 
       {/* Customer */}
