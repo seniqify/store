@@ -2500,7 +2500,10 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                        mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []}
-                       payInfo={{ upi: config.upi || '', bank: config.bank || null }} />
+                       payInfo={{ upi: config.upi || '', bank: config.bank || null }}
+                       store={{ slug: businessSlug, businessName: config.businessName, logo: config.logo,
+                                logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
+                                whatsappNumber: config.whatsappNumber, theme: config.theme }} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

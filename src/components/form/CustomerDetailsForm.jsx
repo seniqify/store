@@ -20,12 +20,18 @@ import { buildUpiLink } from '../../utils/upiLink';
  * Fields:
  *   partyName      string   required — customer / firm name
  *   mobile         string   required — 10-digit Indian mobile (digits only)
- *   destination    string   required — delivery city / location
+ *   addressLine    string   delivery — house / flat / street / area
+ *   destination    string   required — city / town (pickup: overridden)
+ *   pincode        string   delivery — 6-digit PIN
  *   paymentMethod  string   required — cod | upi | bank | cheque
  *   notes          string   optional — packing / special instructions
  *
+ * On send, delivery orders compose addressLine + city + pincode into a single
+ * `destination` string (the field the DB, WhatsApp message and delivery slip
+ * all read) so a full doorstep address flows through with no schema change.
+ *
  * Props:
- *   formData   { partyName, mobile, destination, paymentMethod, notes }
+ *   formData   { partyName, mobile, addressLine, destination, pincode, paymentMethod, notes }
  *   onChange   (newFormData) => void  — parent state setter
  *   cart       CartItem[]            — needed for message generation + totals
  */
@@ -33,11 +39,20 @@ import { buildUpiLink } from '../../utils/upiLink';
 export const INITIAL_CUSTOMER_DETAILS = {
   partyName:     '',
   mobile:        '',
+  addressLine:   '',
   destination:   '',
+  pincode:       '',
   paymentMethod: '',
   notes:         '',
   fulfillment:   'delivery',   // 'delivery' | 'pickup' (offered per store settings)
 };
+
+// Combine the structured delivery fields into one readable address line —
+// this is what gets stored, messaged and printed. "12 MG Road, Andheri, Mumbai - 400058"
+function composeDeliveryAddress({ addressLine, destination, pincode }) {
+  const cityPin = [destination?.trim(), pincode?.trim()].filter(Boolean).join(' - ');
+  return [addressLine?.trim(), cityPin].filter(Boolean).join(', ');
+}
 
 const PAYMENT_OPTIONS = [
   { value: 'cod',    label: 'Cash / COD' },
@@ -79,10 +94,13 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
   const dlvMode  = dlv.mode || 'delivery';
   const isPickup = dlvMode === 'pickup' || (dlvMode === 'both' && formData.fulfillment === 'pickup');
   const effConfig = isPickup ? { ...config, cart: { ...config.cart, shippingCharge: 0 } } : config;
-  // What actually gets validated/sent: pickup needs no address.
+  // What actually gets sent/stored/printed: pickup needs no address; delivery
+  // composes the structured fields into one full `destination` address line.
+  // The raw fields (addressLine, pincode) are kept in the spread so the
+  // validator can flag them individually.
   const sendData = isPickup
     ? { ...formData, destination: '🏪 Pickup' }
-    : formData;
+    : { ...formData, destination: composeDeliveryAddress(formData) };
 
   const { subtotal, tax, shipping, total } = calcCartTotals(cart, effConfig.cart);
 
@@ -127,7 +145,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     !cartEmpty &&
     formData.partyName.trim() &&
     formData.mobile.trim() &&
-    (isPickup || formData.destination.trim());
+    (isPickup || (formData.addressLine.trim() && formData.destination.trim() && formData.pincode.trim()));
 
   // ── Field change handler ──────────────────────────────────────────────────
   function handleChange(field, value) {
@@ -137,7 +155,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   function handleSubmit() {
-    const { isValid, errors: newErrors } = validateCustomerDetails(sendData);
+    const { isValid, errors: newErrors } = validateCustomerDetails(sendData, { requireDeliveryAddress: !isPickup });
     if (!isValid) {
       setErrors(newErrors);
       document.getElementById(`cdf-${Object.keys(newErrors)[0]}`)?.focus();
@@ -294,52 +312,79 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
           </div>
         )}
 
-        {/* Row 2 — Destination + Payment Method */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-          {isPickup ? (
-            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 self-end">
-              <span>🏪</span>
-              Pickup from the shop — timing will be confirmed on WhatsApp.
-            </div>
-          ) : (
-          <FormField
-            label="Destination"
-            required
-            error={errors.destination}
-            hint={dlv.areas ? `We deliver in: ${dlv.areas}` : 'Delivery city / location'}
-          >
-            <input
-              id="cdf-destination"
-              type="text"
-              placeholder="e.g. Tirupur, Mumbai, Delhi"
-              value={formData.destination}
-              onChange={(e) => handleChange('destination', e.target.value)}
-              className={inputCls('destination')}
-            />
-          </FormField>
-          )}
-
-          <FormField
-            label="Payment Method"
-            required
-            error={errors.paymentMethod}
-          >
-            <select
-              id="cdf-paymentMethod"
-              value={formData.paymentMethod}
-              onChange={(e) => handleChange('paymentMethod', e.target.value)}
-              className={inputCls('paymentMethod')}
+        {/* Delivery address — full address for a real delivery slip.
+            Hidden entirely for pickup (nothing to ship). */}
+        {isPickup ? (
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+            <span>🏪</span>
+            Pickup from the shop — timing will be confirmed on WhatsApp.
+          </div>
+        ) : (
+          <>
+            <FormField
+              label="Delivery Address"
+              required
+              error={errors.addressLine}
+              hint={dlv.areas ? `We deliver in: ${dlv.areas}` : 'House / flat no., building, street, area'}
             >
-              <option value="">Select payment method…</option>
-              {PAYMENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </FormField>
-        </div>
+              <textarea
+                id="cdf-addressLine"
+                rows={2}
+                placeholder="House / flat no., building, street, area, landmark"
+                value={formData.addressLine}
+                onChange={(e) => handleChange('addressLine', e.target.value)}
+                className={[inputCls('addressLine'), 'resize-none'].join(' ')}
+              />
+            </FormField>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="City / Town" required error={errors.destination}>
+                <input
+                  id="cdf-destination"
+                  type="text"
+                  placeholder="e.g. Mumbai, Solapur"
+                  value={formData.destination}
+                  onChange={(e) => handleChange('destination', e.target.value)}
+                  className={inputCls('destination')}
+                />
+              </FormField>
+
+              <FormField label="PIN Code" required error={errors.pincode}>
+                <input
+                  id="cdf-pincode"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="e.g. 413001"
+                  value={formData.pincode}
+                  onChange={(e) => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className={inputCls('pincode')}
+                />
+              </FormField>
+            </div>
+          </>
+        )}
+
+        {/* Payment Method */}
+        <FormField
+          label="Payment Method"
+          required
+          error={errors.paymentMethod}
+        >
+          <select
+            id="cdf-paymentMethod"
+            value={formData.paymentMethod}
+            onChange={(e) => handleChange('paymentMethod', e.target.value)}
+            className={inputCls('paymentMethod')}
+          >
+            <option value="">Select payment method…</option>
+            {PAYMENT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </FormField>
 
         {/* ── Payment details hint ─────────────────────────────────────────
             UPI selected   → show UPI ID (or "seller will share" fallback)

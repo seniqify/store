@@ -66,12 +66,15 @@ export function validateCustomerForm(form) {
 
 /**
  * Validate the CustomerDetailsForm (B2B order form).
- * Required: partyName, mobile, destination, paymentMethod.
+ * Required: partyName, mobile, destination (city), paymentMethod.
+ * For home delivery (requireDeliveryAddress), also require the full street
+ * address + a valid 6-digit PIN so the order can produce a real delivery slip.
+ * Pickup orders skip the address fields.
  * Optional: notes.
  *
  * Returns { isValid: boolean, errors: { fieldName: string } }
  */
-export function validateCustomerDetails(form) {
+export function validateCustomerDetails(form, { requireDeliveryAddress = false } = {}) {
   const errors = {};
 
   if (!form.partyName || form.partyName.trim().length < 2) {
@@ -82,8 +85,17 @@ export function validateCustomerDetails(form) {
     errors.mobile = 'Enter a valid 10-digit mobile number';
   }
 
+  if (requireDeliveryAddress) {
+    if (!form.addressLine || form.addressLine.trim().length < 5) {
+      errors.addressLine = 'Enter the full delivery address (house / street / area)';
+    }
+    if (!form.pincode || !isValidPinCode(form.pincode)) {
+      errors.pincode = 'Enter a valid 6-digit PIN code';
+    }
+  }
+
   if (!form.destination || form.destination.trim().length < 2) {
-    errors.destination = 'Enter the delivery destination';
+    errors.destination = requireDeliveryAddress ? 'Enter the city / town' : 'Enter the delivery destination';
   }
 
   if (!form.paymentMethod) {
