@@ -197,6 +197,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
         storeName:     config.businessName,
         itemsSummary:  cart.map((i) => `${i.qty}× ${i.name}`).join(', '),
         orderTotal:    formatINR(finalTotal),
+        slug:          config.slug,   // → "View order" button in the seller alert
       });
     } catch { /* fall back below */ }
 

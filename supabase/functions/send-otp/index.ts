@@ -168,7 +168,10 @@ serve(async (req: Request) => {
                 '1': String(customerName || 'A customer'),
                 '2': String(itemsSummary || 'your items'),
                 '3': String(orderTotal || ''),
-                '4': clean(customerPhone),   // for the template's "Message customer" button / text
+                '4': clean(customerPhone),        // body — customer phone
+                // "View order" URL button suffix → https://www.pocketlink.store/{{1}}
+                // (button variable continues the numbering after the 4 body vars).
+                '5': `${String(slug || '')}/manage`,
               },
             }) });
             if (!r.ok) console.error(`order-notify seller ${r.status}: ${await r.text()}`);
