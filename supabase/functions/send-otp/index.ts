@@ -151,11 +151,15 @@ serve(async (req: Request) => {
       const sellerUrl   = Deno.env.get('SENIQIFY_ORDER_SELLER_TEMPLATE_URL');
       const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');
 
-      // Not set up yet → tell the client to fall back to wa.me.
-      if (!apiKey || !sellerUrl) return json({ notified: false, reason: 'not_configured' });
+      // Not set up yet → tell the client to fall back to wa.me. The seller alert
+      // is the critical one (they must not miss an order), so gate on it.
+      if (!sellerUrl) return json({ notified: false, reason: 'not_configured' });
 
       const clean   = (p: unknown) => String(p ?? '').replace(/\D/g, '');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+      // The Seniqify /process URL is the credential; an API key is optional and
+      // only added when present (same as the OTP/welcome sends).
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
       const dispatch = async () => {
         // Seller — "🛍️ New order! {{1}} ordered {{2}} — {{3}}. Contact: {{4}}"
