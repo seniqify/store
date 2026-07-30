@@ -10,10 +10,16 @@ export default function Header({ cartCount = 0, onCartOpen }) {
   const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType } = useBusinessConfig();
   const waLink = whatsappLink(whatsappNumber, businessName);
 
-  // Top-strip message adapts to the business type (default: product store).
-  const infoStrip = {
-    service: '💬 Free consultation on WhatsApp',
-  }[businessType] ?? `🚚 Free delivery above ₹${cart.freeShippingAbove}`;
+  // Top-strip message adapts to the business type + real delivery settings.
+  // Only claim "free delivery above ₹X" when there's an actual offer (positive
+  // threshold + a fee to waive) — otherwise it'd read "above ₹0" and mislead.
+  const cartCfg = cart || {};
+  const hasFreeOffer = Number(cartCfg.freeShippingAbove) > 0 && Number(cartCfg.shippingCharge) > 0;
+  const infoStrip =
+    businessType === 'service'            ? '💬 Free consultation on WhatsApp'
+    : hasFreeOffer                        ? `🚚 Free delivery above ₹${cartCfg.freeShippingAbove}`
+    : Number(cartCfg.shippingCharge) > 0  ? `🚚 Delivery ₹${cartCfg.shippingCharge}`
+    : '🚚 Free delivery on all orders';
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50 w-full overflow-hidden">

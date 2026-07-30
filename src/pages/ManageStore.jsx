@@ -1550,6 +1550,10 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
                      className={iCls(false)} />
             </div>
           </div>
+          <p className="text-xs text-gray-400">
+            Set <b>Free Delivery Above</b> to <b>0</b> for no free-delivery offer — every order is
+            charged the delivery fee. To make delivery free for everyone, set the <b>Delivery Charge</b> to 0.
+          </p>
         </div>
       )}
 

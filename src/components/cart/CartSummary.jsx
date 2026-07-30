@@ -31,6 +31,11 @@ export default function CartSummary({
   const itemCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const isEmpty   = cart.length === 0;
 
+  // A free-delivery offer only exists when there's a positive threshold AND a
+  // delivery fee to waive. Threshold 0 = no offer (always charge), so we must
+  // not show "free delivery above ₹0" / "you qualify for free delivery".
+  const hasFreeOffer = Number(cartConfig?.freeShippingAbove) > 0 && Number(cartConfig?.shippingCharge) > 0;
+
   if (isEmpty) return null;   // nothing to summarize
 
   const defaultCta = compact ? 'View Cart →' : 'Proceed to Checkout →';
@@ -119,8 +124,8 @@ export default function CartSummary({
         </div>
       </div>
 
-      {/* ── Free-shipping progress (full only) ─────────────────────────── */}
-      {!compact && subtotal < cartConfig.freeShippingAbove && (
+      {/* ── Free-shipping progress (full only, only when an offer exists) ── */}
+      {!compact && hasFreeOffer && subtotal < cartConfig.freeShippingAbove && (
         <div className="bg-brand/8 rounded-xl px-3 py-2.5">
           <div className="flex items-center justify-between mb-1.5">
             <span className="flex items-center gap-1 text-xs text-brand-dark font-medium">
@@ -142,7 +147,7 @@ export default function CartSummary({
         </div>
       )}
 
-      {!compact && subtotal >= cartConfig.freeShippingAbove && (
+      {!compact && hasFreeOffer && subtotal >= cartConfig.freeShippingAbove && (
         <div className="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 text-xs text-green-700 font-medium">
           <Truck size={13} className="text-green-500 flex-shrink-0" />
           🎉 You qualify for FREE delivery!

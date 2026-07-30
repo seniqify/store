@@ -78,10 +78,19 @@ export default function Footer() {
     service: 'Message on WhatsApp',
   }[businessType] ?? 'Order on WhatsApp';
 
+  // Only advertise a "free delivery above ₹X" perk when one actually exists
+  // (positive threshold + a fee to waive); a 0 threshold means always-charge.
+  const cartCfg = cart || {};
+  const deliveryPerk =
+    Number(cartCfg.freeShippingAbove) > 0 && Number(cartCfg.shippingCharge) > 0
+      ? `🚚 Free delivery above ₹${cartCfg.freeShippingAbove}`
+      : Number(cartCfg.shippingCharge) > 0
+        ? `🚚 Delivery ₹${cartCfg.shippingCharge}`
+        : '🚚 Free delivery on all orders';
   const quickInfo = {
     service:    ['💬 Free consultation on WhatsApp', '✅ Trusted local professional', '🗓️ Flexible scheduling'],
   }[businessType] ?? [
-    `🚚 Free delivery above ₹${cart.freeShippingAbove}`,
+    deliveryPerk,
     '✅ 100% genuine products',
     '🔄 Easy 7-day returns',
   ];

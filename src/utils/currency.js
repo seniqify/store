@@ -57,9 +57,16 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     return sum + (item.mrp - item.price) * item.qty;
   }, 0);
 
+  // "Free delivery above ₹X" only applies when X is a real positive threshold.
+  // A 0 / blank value means "no free-delivery offer" → always charge the fee.
+  // (A store that wants delivery free for everyone sets the Delivery Charge to 0.)
+  // Without this guard, freeShippingAbove = 0 made `subtotal >= 0` always true,
+  // so every order shipped free and the delivery fee was never applied.
+  const freeAbove = Number(freeShippingAbove);
+  const hasFreeThreshold = Number.isFinite(freeAbove) && freeAbove > 0;
   const shipping =
-    items.length === 0            ? 0
-    : subtotal >= freeShippingAbove ? 0
+    items.length === 0                          ? 0
+    : hasFreeThreshold && subtotal >= freeAbove ? 0
     : shippingCharge;
 
   // GST summed per line so a cart can mix rates (5% dry fruit + 18% oil) and even
