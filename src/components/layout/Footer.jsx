@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MessageCircle, Copy, Check, Phone, MapPin, Receipt, Settings } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
+import { isValidUpiVpa } from '../../utils/upiLink';
 import { showBrandBadge, effectivePlan } from '../../utils/planLimits';
 
 /**
@@ -95,7 +96,7 @@ export default function Footer() {
     '🔄 Easy 7-day returns',
   ];
 
-  const hasUpi            = Boolean(upi);
+  const hasUpi            = isValidUpiVpa(upi);   // hide an invalid/email "UPI ID"
   const hasBank           = Boolean(bank?.accountNumber);
   const hasPaymentDetails = hasUpi || hasBank;
   const hasBusinessInfo   = Boolean(phone || address || gst);

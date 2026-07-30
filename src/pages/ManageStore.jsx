@@ -20,6 +20,7 @@ import {
   Truck, ShoppingCart,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
+import { isValidUpiVpa } from '../utils/upiLink';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
 import { loadBusiness }                               from '../utils/BusinessLoader';
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
@@ -2078,10 +2079,19 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         <div className="space-y-3">
           <div>
             <label className={lCls()}>UPI ID <span className="text-gray-400 font-normal">(optional)</span></label>
-            <input type="text" placeholder="yourname@upi"
+            <input type="text" placeholder="yourname@oksbi" inputMode="email" autoCapitalize="none" spellCheck={false}
                    value={config.upi || ''}
                    onChange={e => update({ upi: e.target.value.trim() })}
-                   className={iCls(false)} />
+                   className={iCls(Boolean(config.upi) && !isValidUpiVpa(config.upi))} />
+            {Boolean(config.upi) && !isValidUpiVpa(config.upi) ? (
+              <p className="mt-1 text-xs text-red-500 leading-snug">
+                That doesn’t look like a UPI ID. It must end in a bank handle like
+                <b> @oksbi</b>, <b>@ybl</b> or <b>@paytm</b> — not an email like <b>@gmail.com</b>.
+                An invalid UPI ID makes every payment fail.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-400">Customers can pay you directly — the amount is pre-filled in their UPI app.</p>
+            )}
           </div>
 
           <div>

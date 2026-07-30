@@ -10,7 +10,7 @@ import { calcCartTotals, formatINR } from '../../utils/currency';
 import { saveAbandonedCheckout } from '../../utils/orderService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
-import { buildUpiLink } from '../../utils/upiLink';
+import { buildUpiLink, hasUpi } from '../../utils/upiLink';
 
 /**
  * CustomerDetailsForm
@@ -391,7 +391,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
             Bank selected  → show bank details table (or "seller will share")
         ─────────────────────────────────────────────────────────────────── */}
         {formData.paymentMethod === 'upi' && (
-          config.upi ? (
+          hasUpi(config) ? (
             <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
               <div className="flex items-start gap-3">
                 <span className="text-lg leading-none mt-0.5 flex-shrink-0">📱</span>
