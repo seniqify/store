@@ -90,6 +90,10 @@ export function openDeliverySlip(order = {}, store = {}) {
     .btn{border:0;cursor:pointer;font-weight:700;font-size:14px;padding:10px 18px;border-radius:12px}
     .print{background:${brand};color:#fff}
     .close{background:#fff;color:#475569;border:1px solid #e2e8f0}
+    .tip{width:384px;max-width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:11px;color:#475569;line-height:1.55}
+    .tip b{color:#0f172a}
+    .tip .k{display:inline-block;background:#f1f5f9;border-radius:4px;padding:0 5px;font-weight:600;color:#334155;margin:1px}
+    .tip .sub{color:#94a3b8;display:block;margin-top:3px}
     /* On screen the card mirrors a 4×6 label (100×150mm ≈ 3:4.5); content can
        grow taller for long orders, exactly as a label would spill over. */
     .slip{width:384px;max-width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,.12)}
@@ -128,7 +132,7 @@ export function openDeliverySlip(order = {}, store = {}) {
     .pb{font-size:8px;color:#cbd5e1;white-space:nowrap}
     @media print{
       html,body{background:#fff;padding:0;margin:0}
-      .bar{display:none}
+      .bar,.tip{display:none}
       .slip{box-shadow:none;border-radius:0;width:100%}
       /* 4×6 inch shipping label; tiny margin so it also prints on plain paper. */
       @page{size:100mm 150mm;margin:3mm}
@@ -146,6 +150,11 @@ export function openDeliverySlip(order = {}, store = {}) {
     <div class="bar">
       <button class="btn print" onclick="window.print()">🖨️ Print / Save PDF</button>
       <button class="btn close" onclick="window.close()">Close</button>
+    </div>
+    <div class="tip">
+      🖨️ <b>Thermal 4×6 label printer?</b> In the print box, choose <b>your label printer</b> as the destination, then set
+      <span class="k">Margins: None</span><span class="k">Scale: 100%</span> and turn <span class="k">Headers &amp; footers</span> off.
+      <span class="sub">Tip: “Save as PDF” always uses A4 — print to the label printer directly to get a true 4×6 label.</span>
     </div>
     <div class="slip">
       <div class="head">
