@@ -156,6 +156,16 @@ serve(async (req: Request) => {
       if (!sellerUrl) return json({ notified: false, reason: 'not_configured' });
 
       const clean   = (p: unknown) => String(p ?? '').replace(/\D/g, '');
+      // WhatsApp receiver MUST carry the country code. Checkout captures the
+      // customer's mobile as a bare 10-digit number, while the seller number is
+      // already stored as 91XXXXXXXXXX — normalize both so either delivers.
+      const toWa = (p: unknown) => {
+        const d = clean(p);
+        if (!d) return '';
+        if (d.length === 10) return '91' + d;                    // bare Indian mobile
+        if (d.length === 11 && d.startsWith('0')) return '91' + d.slice(1);
+        return d;                                                // already has a country code
+      };
       // The Seniqify /process URL is the credential; an API key is optional and
       // only added when present (same as the OTP/welcome sends).
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -164,7 +174,7 @@ serve(async (req: Request) => {
       const dispatch = async () => {
         // Seller — "🛍️ New order! {{1}} ordered {{2}} — {{3}}. Contact: {{4}}"
         try {
-          const seller = clean(sellerPhone);
+          const seller = toWa(sellerPhone);
           if (seller) {
             const r = await fetch(sellerUrl, { method: 'POST', headers, body: JSON.stringify({
               receiver: seller,
@@ -184,7 +194,7 @@ serve(async (req: Request) => {
 
         // Customer — "Thank you for your order at {{1}}! Total {{2}} …" (optional)
         try {
-          const cust = clean(customerPhone);
+          const cust = toWa(customerPhone);
           if (customerUrl && cust) {
             const r = await fetch(customerUrl, { method: 'POST', headers, body: JSON.stringify({
               receiver: cust,
