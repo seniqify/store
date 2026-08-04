@@ -1803,6 +1803,27 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             <p className="mt-1 text-xs text-gray-400">Orders will be sent to this number.</p>
           </div>
 
+          {/* Custom "Chat on WhatsApp" message — lets owners set a short trigger
+              phrase that their WhatsApp bot/automation can fire on. */}
+          <div>
+            <label className={lCls()}>WhatsApp chat message</label>
+            <textarea rows={2} maxLength={400}
+                      value={config.waMessage || ''}
+                      onChange={e => update({ waMessage: e.target.value })}
+                      placeholder={`Hello! I'd like to place an order from ${config.businessName || 'your store'}.`}
+                      className={[iCls(false), 'resize-none'].join(' ')} />
+            {(() => {
+              const words = (config.waMessage || '').trim().split(/\s+/).filter(Boolean).length;
+              const over  = words > 50;
+              return (
+                <p className={['mt-1 text-xs', over ? 'text-amber-600' : 'text-gray-400'].join(' ')}>
+                  The message a customer sends when they tap “Chat on WhatsApp”. Keep it short so your WhatsApp bot can trigger on it
+                  {over ? ` — ${words} words may be too long to trigger` : (words ? ` — ${words} words` : '')}. Leave blank to use the default.
+                </p>
+              );
+            })()}
+          </div>
+
           {/* Store icon (logoEmoji) */}
           <div>
             <label className={lCls()}>Business Icon</label>

@@ -72,7 +72,7 @@ export default function Footer() {
     whatsappNumber, phone, address, upi, bank, gst, cart, slug, businessType,
   } = config;
 
-  const waLink = whatsappLink(whatsappNumber, businessName);
+  const waLink = whatsappLink(whatsappNumber, businessName, config.waMessage);
 
   // Footer copy adapts to the kind of business (default keeps the product-store wording).
   const waCtaLabel = {

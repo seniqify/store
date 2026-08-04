@@ -66,7 +66,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const promoHeading = promoParts[0] ?? '';
   const promoSubtext = promoParts[1] ?? null;
 
-  const waLink      = whatsappLink(whatsappNumber, businessName);
+  const waLink      = whatsappLink(whatsappNumber, businessName, config.waMessage);
   const { total }   = calcCartTotals(cart, config.cart);
 
   // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──

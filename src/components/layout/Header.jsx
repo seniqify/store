@@ -7,8 +7,8 @@ import { whatsappLink } from '../../utils/theme';
  * No props needed for business data; only cart state comes from outside.
  */
 export default function Header({ cartCount = 0, onCartOpen }) {
-  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType } = useBusinessConfig();
-  const waLink = whatsappLink(whatsappNumber, businessName);
+  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType, waMessage } = useBusinessConfig();
+  const waLink = whatsappLink(whatsappNumber, businessName, waMessage);
 
   // Top-strip message adapts to the business type + real delivery settings.
   // Only claim "free delivery above ₹X" when there's an actual offer (positive

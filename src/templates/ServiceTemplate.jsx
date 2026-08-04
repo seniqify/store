@@ -31,7 +31,7 @@ export default function ServiceTemplate({ onCartCountChange }) {
   const { products: services = [], features = [], businessName, tagline, logo, logoEmoji, coverImage, whatsappNumber, theme } = config;
   const primary     = theme?.primary ?? '#6366f1';
   const primaryDark = theme?.primaryDark ?? primary;
-  const waLink      = whatsappLink(whatsappNumber, businessName);
+  const waLink      = whatsappLink(whatsappNumber, businessName, config.waMessage);
 
   // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──
   const [heroRating, setHeroRating] = useState(null);

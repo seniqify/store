@@ -24,11 +24,23 @@ export function applyTheme(theme) {
 }
 
 /**
- * Returns a WhatsApp deep-link URL with an optional pre-filled message.
+ * Default pre-filled text for a store's "Chat on WhatsApp" button. Kept short
+ * and keyword-like on purpose: many owners run a WhatsApp bot/automation that
+ * only triggers on a brief message, so a long sentence won't fire it. Owners
+ * can override this per store from Manage → Settings (config.waMessage).
  */
-export function whatsappLink(number, businessName) {
-  const msg = encodeURIComponent(
-    `Hello! I'd like to place an order from ${businessName}.`
-  );
-  return `https://wa.me/${number}?text=${msg}`;
+export function defaultWaMessage(businessName) {
+  return `Hello! I'd like to place an order from ${businessName}.`;
+}
+
+/**
+ * Returns a WhatsApp deep-link URL with a pre-filled message. Pass the store's
+ * own `waMessage` to override the default (e.g. a short keyword that triggers
+ * the owner's WhatsApp automation); falls back to the default when empty.
+ */
+export function whatsappLink(number, businessName, customMessage) {
+  const text = (customMessage && String(customMessage).trim())
+    ? String(customMessage).trim()
+    : defaultWaMessage(businessName);
+  return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }
