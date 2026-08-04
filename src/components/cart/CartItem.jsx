@@ -75,7 +75,16 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSet
           {/* Meta chips: variant + size + gsm */}
           {(item.variant || item.size || item.gsm) && (
             <div className="flex flex-wrap items-center gap-1 mt-1">
-              {item.variant && (
+              {/* One chip per chosen option type (Size: L, Colour: Blue…); falls
+                  back to a single combined chip for older cart items. */}
+              {Array.isArray(item.variantSelections) && item.variantSelections.length ? (
+                item.variantSelections.map((s, i) => (
+                  <span key={i} className="inline-flex items-center gap-0.5 text-[11px] bg-brand/10 text-brand-dark
+                                   font-medium px-1.5 py-0.5 rounded-full leading-none">
+                    {s.label}: {s.name}
+                  </span>
+                ))
+              ) : item.variant && (
                 <span className="inline-flex items-center gap-0.5 text-[11px] bg-brand/10 text-brand-dark
                                  font-medium px-1.5 py-0.5 rounded-full leading-none">
                   {item.variantLabel ? `${item.variantLabel}: ` : ''}{item.variant}

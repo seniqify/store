@@ -70,7 +70,23 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+
+// Clean the form's extra option-types into the stored shape:
+// [{ label, options: [{ name, addPrice }] }] — drops blank groups/options.
+function buildVariantExtras(formExtras) {
+  return (formExtras || [])
+    .map((g) => ({
+      label: String(g.label || '').trim(),
+      options: (g.options || [])
+        .map((o) => ({
+          name: String(o.name || '').trim(),
+          addPrice: (o.addPrice === '' || o.addPrice == null) ? 0 : Number(o.addPrice),
+        }))
+        .filter((o) => o.name),
+    }))
+    .filter((g) => g.label && g.options.length);
+}
 const EMPTY_CAT   = { emoji:'📦', label:'' };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -572,6 +588,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           })),
         }
       : null,
+    variantExtras: buildVariantExtras(form.variantExtras),
   };
 
   function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setDrawerOpen(false); }
@@ -636,6 +653,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
       variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', image: o.image || '' })) : [],
+      variantExtras:  Array.isArray(product.variantExtras) ? product.variantExtras.map(g => ({ label: g.label || '', options: (g.options || []).map(o => ({ name: o.name || '', addPrice: o.addPrice ?? '' })) })) : [],
       attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
     });
     setEditingId(product.id);
@@ -663,6 +681,20 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       else if (opts.some(o => o.price === '' || o.price == null || !(Number(o.price) > 0)))
         e.variants = 'Set a price for every option — otherwise they all show the main price.';
     }
+
+    // Extra option types (Colour, Pack…): once a group is started it needs a name
+    // + at least one named option; the +₹ add-on is optional but must be ≥ 0.
+    (form.variantExtras || []).forEach((g) => {
+      if (e.variantExtras) return;
+      const started = String(g.label || '').trim() || (g.options || []).some(o => String(o.name || '').trim());
+      if (!started) return;
+      if (!String(g.label || '').trim())
+        e.variantExtras = 'Name each option type (e.g. Colour).';
+      else if (!(g.options || []).some(o => String(o.name || '').trim()))
+        e.variantExtras = 'Add at least one option to each type, or remove it.';
+      else if ((g.options || []).some(o => String(o.name || '').trim() && o.addPrice !== '' && o.addPrice != null && !(Number(o.addPrice) >= 0)))
+        e.variantExtras = 'Extra price must be 0 or more.';
+    });
     return e;
   }
 
@@ -682,6 +714,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       .filter(o => o.name);
     const variants   = (form.variantLabel.trim() && cleanOpts.length)
       ? { label: form.variantLabel.trim(), options: cleanOpts } : null;
+    // Extra choice types (Colour, Pack…) — additional to the priced variant above.
+    const cleanExtras    = buildVariantExtras(form.variantExtras);
+    const variantExtras  = cleanExtras.length ? cleanExtras : undefined;
     // Descriptive attributes (AI-suggested or manual) — only keep ones with a value.
     const attributes = (form.attributes || [])
       .filter(a => a.value != null && String(a.value).trim())
@@ -702,7 +737,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants, attributes }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
     } else {
@@ -719,6 +754,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         gstRate,
         taxInclusive,
         variants,
+        variantExtras,
         attributes,
         badge:       null,
         badgeColor:  null,
@@ -1109,6 +1145,74 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                     <p className="text-xs text-red-500 font-medium">{errors.variants}</p>
                   )}
                   <p className="text-[11px] text-gray-400 leading-relaxed">Set a price for each option (e.g. 250 g → ₹30, 500 g → ₹55). MRP is optional. Add a <strong>photo</strong> to an option (e.g. each colour) and the product picture changes when customers pick it — leave it empty for sizes/weights.</p>
+                </div>
+              )}
+            </FormSection>
+
+            {/* More option types (Colour, Pack…) — extra choices on top of the
+                priced variant above, each with an optional +₹ add-on. */}
+            <FormSection
+              title="More option types"
+              action={(form.variantExtras?.length || 0) < 3 && (
+                <button type="button"
+                  onClick={() => setForm(p => ({ ...p, variantExtras: [...(p.variantExtras || []), { label: '', options: [{ name: '', addPrice: '' }] }] }))}
+                  className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors">
+                  <Plus size={12} /> Add
+                </button>
+              )}>
+              {!(form.variantExtras?.length) ? (
+                <p className="text-xs text-gray-400 -mt-1">
+                  Add extra choices like <strong>Colour</strong> or <strong>Pack</strong> on top of the priced type above. Customers pick one of each; give an option a <strong>+₹</strong> if it costs more.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {form.variantExtras.map((g, gi) => {
+                    const setGroup = (patch) => { setForm(p => ({ ...p, variantExtras: p.variantExtras.map((x, idx) => idx === gi ? { ...x, ...patch } : x) })); setErrors(p => ({ ...p, variantExtras: '' })); };
+                    const setOpt   = (oi, patch) => setGroup({ options: g.options.map((o, idx) => idx === oi ? { ...o, ...patch } : o) });
+                    return (
+                      <div key={gi} className="rounded-xl border border-gray-200 p-3.5 space-y-2.5 bg-white">
+                        <div className="flex gap-2 items-center">
+                          <input type="text" placeholder="Type — e.g. Colour, Pack"
+                            value={g.label}
+                            onChange={e => setGroup({ label: e.target.value })}
+                            className={iCls(false)} />
+                          <button type="button" aria-label="Remove type"
+                            onClick={() => setForm(p => ({ ...p, variantExtras: p.variantExtras.filter((_, idx) => idx !== gi) }))}
+                            className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                        </div>
+                        <div className="space-y-2">
+                          {g.options.map((o, oi) => (
+                            <div key={oi} className="flex gap-2 items-center">
+                              <input type="text" placeholder={`Option — e.g. ${['Red','Blue','Black','Green'][oi] || 'name'}`}
+                                value={o.name}
+                                onChange={e => setOpt(oi, { name: e.target.value })}
+                                className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                              <div className="relative w-24 flex-shrink-0">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">+₹</span>
+                                <input type="number" inputMode="numeric" min={0} placeholder="0"
+                                  value={o.addPrice}
+                                  onChange={e => setOpt(oi, { addPrice: e.target.value })}
+                                  className="w-full pl-7 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                              </div>
+                              <button type="button" aria-label="Remove option"
+                                onClick={() => setGroup({ options: g.options.filter((_, idx) => idx !== oi) })}
+                                className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button"
+                          onClick={() => setGroup({ options: [...g.options, { name: '', addPrice: '' }] })}
+                          className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
+                          style={{ color: themeColor }}>
+                          <Plus size={13} /> Add option
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {errors.variantExtras && (
+                    <p className="text-xs text-red-500 font-medium">{errors.variantExtras}</p>
+                  )}
+                  <p className="text-[11px] text-gray-400 leading-relaxed">The priced type above sets the base price; these add choices on top. E.g. <strong>Colour</strong> = Red / Blue (free), <strong>Pack</strong> = Single / Combo of 3 (+₹900).</p>
                 </div>
               )}
             </FormSection>

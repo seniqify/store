@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Minus, Check } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
+import { variantExtrasOf, resolveSelection } from '../../utils/variants';
 import QtyField from '../cart/QtyField';
 
 export default function ProductCard({
@@ -19,33 +20,33 @@ export default function ProductCard({
 
   const variants    = product.variants;
   const hasVariants = !!(variants && variants.options && variants.options.length);
+  const extras      = variantExtrasOf(product);          // additional choice types (Colour, Pack…)
+  const hasOptions  = hasVariants || extras.length > 0;
+
   const [selVariant, setSelVariant] = useState(hasVariants ? variants.options[0].name : null);
-  const selOpt       = hasVariants ? (variants.options.find((o) => o.name === selVariant) || variants.options[0]) : null;
+  // One selected option name per extra group, in order.
+  const [selExtras, setSelExtras]   = useState(extras.map((g) => g.options.find((o) => o.name)?.name));
 
-  // Image follows the selected variant when that option has its own photo (e.g.
-  // a Black / White tee shows the matching colour); otherwise the base image.
-  const displayImage = (selOpt && selOpt.image) ? selOpt.image : product.image;
-
-  // Price AND MRP/discount follow the selected variant — never the base values,
-  // which would otherwise show a discount that doesn't match the shown price.
-  // A variant's MRP is its own; if it has none, no strike-through is shown.
-  const displayPrice = selOpt ? (selOpt.price != null ? selOpt.price : product.price) : product.price;
-  const displayMrp   = selOpt ? (selOpt.mrp   != null ? selOpt.mrp   : null)          : product.mrp;
-  const discount     = discountPercent(displayPrice, displayMrp);
-  const saving       = displayMrp && displayMrp > displayPrice ? displayMrp - displayPrice : 0;
+  // Price, MRP/discount AND image all follow the full selection (the price-driving
+  // variant sets the base + photo; each extra adds its optional +₹). Resolved in
+  // one place so the shown price never disagrees with what lands in the cart.
+  const { price: displayPrice, mrp: displayMrp, image: displayImage, picks } =
+    resolveSelection(product, selVariant, selExtras);
+  const discount = discountPercent(displayPrice, displayMrp);
+  const saving   = displayMrp && displayMrp > displayPrice ? displayMrp - displayPrice : 0;
 
   function handleAdd() {
     if (outOfStock) return;
-    if (hasVariants) {
-      const opt = selOpt;
+    if (hasOptions) {
       onAddToCart({
         ...product,
-        id:           `${product.id}::${opt.name}`,
-        variant:      opt.name,
-        variantLabel: variants.label,
-        image:        opt.image || product.image,   // cart line shows the chosen variant's photo
-        price:        opt.price != null ? opt.price : product.price,
-        mrp:          opt.mrp   != null ? opt.mrp   : undefined,
+        id:            `${product.id}::${picks.map((p) => p.name).join('::')}`,
+        variant:       picks.map((p) => p.name).join(', '),   // readable → WhatsApp / slip / order
+        variantLabel:  picks.length === 1 ? picks[0].label : undefined,
+        variantSelections: picks,                             // [{label,name}] → cart chips
+        image:         displayImage,                          // cart line shows the chosen photo
+        price:         displayPrice,
+        mrp:           displayMrp != null ? displayMrp : undefined,
       }, 1);
     } else {
       onAddToCart(product, 1);
@@ -176,21 +177,49 @@ export default function ProductCard({
                        text-[11px] font-semibold text-gray-400 cursor-not-allowed">
             Unavailable
           </button>
-        ) : hasVariants ? (
+        ) : hasOptions ? (
           <div className="mt-2">
-            <p className="text-[10px] font-semibold text-gray-400 mb-1">{variants.label}</p>
-            <div className="flex flex-wrap gap-1 mb-2">
-              {variants.options.map((o) => (
-                <button key={o.name} type="button" onClick={() => setSelVariant(o.name)}
-                  className={[
-                    'px-2 py-1 rounded-lg text-[11px] font-semibold border transition active:scale-95',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                    selVariant === o.name ? 'bg-brand text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
-                  ].join(' ')}>
-                  {o.name}
-                </button>
-              ))}
-            </div>
+            {/* Price-driving type (Size/Weight) — its pick sets the base price + photo */}
+            {hasVariants && (
+              <div className="mb-2">
+                <p className="text-[10px] font-semibold text-gray-400 mb-1">{variants.label}</p>
+                <div className="flex flex-wrap gap-1">
+                  {variants.options.map((o) => (
+                    <button key={o.name} type="button" onClick={() => setSelVariant(o.name)}
+                      className={[
+                        'px-2 py-1 rounded-lg text-[11px] font-semibold border transition active:scale-95',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                        selVariant === o.name ? 'bg-brand text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                      ].join(' ')}>
+                      {o.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Extra choice types (Colour, Pack…) — each option an optional +₹ */}
+            {extras.map((g, gi) => {
+              const opts = g.options.filter((o) => o.name);
+              const cur  = selExtras[gi] ?? opts[0]?.name;
+              return (
+                <div key={`${g.label}-${gi}`} className="mb-2">
+                  <p className="text-[10px] font-semibold text-gray-400 mb-1">{g.label}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {opts.map((o) => (
+                      <button key={o.name} type="button"
+                        onClick={() => setSelExtras((prev) => prev.map((x, idx) => idx === gi ? o.name : x))}
+                        className={[
+                          'px-2 py-1 rounded-lg text-[11px] font-semibold border transition active:scale-95',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                          cur === o.name ? 'bg-brand text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                        ].join(' ')}>
+                        {o.name}{Number(o.addPrice) ? ` +${formatINR(Number(o.addPrice))}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
             <button onClick={handleAdd}
               className={[
                 'w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl transition-all duration-150 active:scale-95',
