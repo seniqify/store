@@ -151,6 +151,13 @@ export default function ProductCard({
           </p>
         )}
 
+        {/* Description — short blurb the owner typed (was captured but never shown) */}
+        {product.description && (
+          <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
+            {product.description}
+          </p>
+        )}
+
         {/* Price — MRP strike-through reflects the selected variant's own MRP */}
         <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1">
           <span className="text-[17px] font-extrabold text-gray-900 tabular-nums tracking-tight">

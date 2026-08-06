@@ -15,7 +15,7 @@ import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysL
 import {
   Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  AlertCircle, ChevronDown, Copy, Check, Trash2, QrCode, Star,
+  AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart,
 } from 'lucide-react';
@@ -771,6 +771,20 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     if (editingId === id) resetForm();
   }
 
+  // Reorder: swap a product with its neighbour in the FULL list. The storefront
+  // shows products in this array order, so this controls what customers see first.
+  // Only offered on the unfiltered list (see canReorder), so "up"/"down" always
+  // match what's on screen.
+  function moveProduct(id, dir) {
+    const idx  = products.findIndex(p => p.id === id);
+    const swap = idx + (dir === 'up' ? -1 : 1);
+    if (idx < 0 || swap < 0 || swap >= products.length) return;
+    const next = [...products];
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    onChange({ products: next });
+    setDirty(true);
+  }
+
   function toggleStock(id) {
     onChange({
       products: products.map(p =>
@@ -784,6 +798,10 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     setDirty(false);
     onSave();
   }
+
+  // Reorder arrows only make sense on the full, unfiltered list — otherwise
+  // "up"/"down" wouldn't match the on-screen order.
+  const canReorder = !query && catFilter === 'all';
 
   return (
     <div className="space-y-4">
@@ -853,11 +871,27 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         {visible.map(p => {
           const cat = userCats.find(c => c.id === p.category);
           const isEditing = editingId === p.id;
+          const fullIdx = products.findIndex(x => x.id === p.id);
           return (
             <div key={p.id}
                  className={['flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors border',
                    isEditing ? '' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}
                  style={isEditing ? { backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}55` } : undefined}>
+              {/* Reorder — controls what customers see first (unfiltered list only) */}
+              {canReorder && products.length > 1 && (
+                <div className="flex flex-col flex-shrink-0 -my-1">
+                  <button type="button" onClick={() => moveProduct(p.id, 'up')}
+                          disabled={fullIdx === 0} aria-label="Move up"
+                          className="p-0.5 rounded text-gray-300 enabled:hover:text-gray-700 enabled:hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    <ChevronUp size={15} />
+                  </button>
+                  <button type="button" onClick={() => moveProduct(p.id, 'down')}
+                          disabled={fullIdx === products.length - 1} aria-label="Move down"
+                          className="p-0.5 rounded text-gray-300 enabled:hover:text-gray-700 enabled:hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    <ChevronDown size={15} />
+                  </button>
+                </div>
+              )}
               {p.image ? (
                 <img src={p.image} alt={p.name}
                      className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
