@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ShoppingCart, MessageCircle, Check, Star, Share2 } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
+import ProductDetail from '../components/product/ProductDetail';
 import CartSidebar from '../components/cart/CartSidebar';
 import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
@@ -45,6 +47,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const config = useBusinessConfig();
   const { products, categories, features, businessName, tagline, whatsappNumber, promoText, theme, logo, logoEmoji, coverImage } = config;
 
+  // Product page: /{slug}/p/{id} keeps this same store page mounted (so the cart
+  // survives) and opens the product as a full-screen view over the grid.
+  const { productId } = useParams();
+  const navigate = useNavigate();
+
   const primary     = theme?.primary ?? '#0d9488';
   const primaryDark = theme?.primaryDark ?? '#0f766e';
   const freeAbove   = config.cart?.freeShippingAbove ?? 0;
@@ -54,6 +61,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const offers       = config.offers || [];
   const liveOffers   = offers.filter((o) => isOfferLive(o));
   const saleProducts = applyOffersToProducts(products, offers);
+
+  // The product to show full-screen (sale price applied), or null for the grid.
+  const detailProduct = productId ? saleProducts.find((p) => String(p.id) === String(productId)) : null;
 
   // Parse promo text for the offer ribbon
   const promoEmoji = promoText
@@ -367,6 +377,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onIncrease={increaseQty}
               onDecrease={decreaseQty}
               onSetQty={setQty}
+              onOpenDetail={(id) => navigate(`/${config.slug}/p/${id}`)}
               showSearch={false}   /* the hero StoreSearchBar above already searches */
             />
 
@@ -443,6 +454,19 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           </aside>
         </div>
       </div>
+
+      {/* ── Product page (full-screen, shares this store's cart) ─────────────
+          Driven by /{slug}/p/{id}; renders over the grid so the cart persists. */}
+      {detailProduct && (
+        <ProductDetail
+          product={detailProduct}
+          rating={heroRating}
+          itemCount={itemCount}
+          onClose={() => navigate(`/${config.slug}`)}
+          onAddToCart={addToCart}
+          onViewCart={() => { navigate(`/${config.slug}`); setCartOpen(true); }}
+        />
+      )}
 
       {/* ── Cart Sidebar ─────────────────────────────────────────────────── */}
       <CartSidebar

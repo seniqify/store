@@ -46,6 +46,7 @@ const SORTS = [
  */
 export default function ProductGrid({
   products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease, onSetQty,
+  onOpenDetail,
   nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…', showSearch = true,
 }) {
@@ -222,6 +223,7 @@ export default function ProductGrid({
                   onIncrease={onIncrease}
                   onDecrease={onDecrease}
                   onSetQty={onSetQty}
+                  onOpen={onOpenDetail}
                 />
               ))}
             </div>

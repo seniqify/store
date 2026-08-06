@@ -65,3 +65,25 @@ export function resolveSelection(product, selVariantName, selExtraNames = []) {
 
   return { price, mrp, image, picks };
 }
+
+/**
+ * Build the cart line for a product + its chosen options — the single shape both
+ * the product card and the product page add to the cart. Encodes every pick into
+ * the id (so each combo is its own line) and carries a readable `variant` string
+ * (for WhatsApp / slip / order) plus structured `variantSelections` (for chips).
+ * With no options selected, returns the plain product.
+ */
+export function buildCartItem(product, selVariantName, selExtraNames = []) {
+  const { price, mrp, image, picks } = resolveSelection(product, selVariantName, selExtraNames);
+  if (!picks.length) return { ...product };
+  return {
+    ...product,
+    id:               `${product.id}::${picks.map((p) => p.name).join('::')}`,
+    variant:          picks.map((p) => p.name).join(', '),
+    variantLabel:     picks.length === 1 ? picks[0].label : undefined,
+    variantSelections: picks,
+    image,
+    price,
+    mrp: mrp != null ? mrp : undefined,
+  };
+}

@@ -221,6 +221,9 @@ export default function App() {
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />
             <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
+            {/* Product page — same BusinessShell element so the store + cart stay
+                mounted (the detail opens as a view inside it, driven by :productId). */}
+            <Route path="/:businessSlug/p/:productId" element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="*"                      element={<NotFound />} />
           </Routes>

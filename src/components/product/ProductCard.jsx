@@ -11,8 +11,10 @@ export default function ProductCard({
   onIncrease,
   onDecrease,
   onSetQty,
+  onOpen,          // (id) => void — opens the product page; absent = card not tappable
 }) {
   const [justAdded, setJustAdded] = useState(false);
+  const openDetail = onOpen ? () => onOpen(product.id) : undefined;
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const outOfStock = product.inStock === false || product.stock === 0;
@@ -65,7 +67,10 @@ export default function ProductCard({
     ].join(' ')}>
 
       {/* ── Image ─────────────────────────────────────────────────── */}
-      <div className="relative w-full aspect-square bg-gray-50 overflow-hidden flex-shrink-0">
+      <div onClick={openDetail}
+           role={openDetail ? 'button' : undefined}
+           aria-label={openDetail ? `View ${product.name}` : undefined}
+           className={['relative w-full aspect-square bg-gray-50 overflow-hidden flex-shrink-0', openDetail ? 'cursor-pointer' : ''].join(' ')}>
 
         {displayImage ? (
           <>
@@ -133,7 +138,8 @@ export default function ProductCard({
       <div className="p-3 flex flex-col flex-1 gap-1">
 
         {/* Name — fixed 2-line height keeps grid aligned */}
-        <p className="text-[13px] font-semibold text-gray-800 line-clamp-2 leading-snug"
+        <p onClick={openDetail}
+           className={['text-[13px] font-semibold text-gray-800 line-clamp-2 leading-snug', openDetail ? 'cursor-pointer hover:text-brand-dark transition-colors' : ''].join(' ')}
            style={{ minHeight: '2.5em' }}>
           {product.name}
         </p>

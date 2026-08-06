@@ -1,0 +1,229 @@
+import { useState } from 'react';
+import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown } from 'lucide-react';
+import { formatINR, discountPercent } from '../../utils/currency';
+import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
+
+/**
+ * ProductDetail — full-screen product page (opened from a card at /{slug}/p/{id}).
+ * Reuses the exact pricing/selection logic + cart-line shape as the card, so a
+ * product added here is identical to one added from the grid. Shows the roomier
+ * view: big image, full description, highlight tiles (from attributes), the
+ * pack/variant pickers, the store rating, a share action, and a sticky buy bar.
+ */
+export default function ProductDetail({ product, onClose, onAddToCart, onViewCart, rating, itemCount = 0 }) {
+  const variants    = product.variants;
+  const hasVariants = !!(variants && variants.options && variants.options.length);
+  const extras      = variantExtrasOf(product);
+  const hasOptions  = hasVariants || extras.length > 0;
+
+  const [selVariant, setSelVariant] = useState(hasVariants ? variants.options[0].name : null);
+  const [selExtras,  setSelExtras]  = useState(extras.map((g) => g.options.find((o) => o.name)?.name));
+  const [added,  setAdded]  = useState(false);
+  const [shared, setShared] = useState(false);
+
+  const { price, mrp, image } = resolveSelection(product, selVariant, selExtras);
+  const off        = discountPercent(price, mrp);
+  const saving     = mrp && mrp > price ? mrp - price : 0;
+  const outOfStock = product.inStock === false || product.stock === 0;
+  const attrs      = Array.isArray(product.attributes) ? product.attributes.filter((a) => a && a.value) : [];
+  const descOpen   = useDisclosure(true);
+
+  function handleAdd() {
+    if (outOfStock) return;
+    onAddToCart(hasOptions ? buildCartItem(product, selVariant, selExtras) : product, 1);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  }
+
+  async function handleShare() {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    try {
+      if (navigator.share) { await navigator.share({ title: product.name, url }); return; }
+    } catch { /* user cancelled — fall through to copy */ }
+    try { await navigator.clipboard.writeText(url); setShared(true); setTimeout(() => setShared(false), 1800); } catch { /* ignore */ }
+  }
+
+  const chipBtn = (active) => [
+    'px-3 py-2 rounded-xl text-[13px] font-bold border transition active:scale-95 text-left leading-tight',
+    'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+    active ? 'bg-brand text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+  ].join(' ');
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-white flex flex-col" role="dialog" aria-label={product.name}>
+
+      {/* Top bar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white">
+        <button type="button" onClick={onClose} aria-label="Back"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
+          <ArrowLeft size={20} />
+        </button>
+        <p className="text-sm font-semibold text-gray-800 truncate px-2">{product.name}</p>
+        <button type="button" onClick={handleShare} aria-label="Share product"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors relative">
+          {shared ? <Check size={18} className="text-green-500" /> : <Share2 size={17} />}
+        </button>
+      </div>
+
+      {/* Scroll body */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="max-w-lg mx-auto w-full">
+
+          {/* Image */}
+          <div className="relative w-full aspect-square bg-gray-50 flex items-center justify-center">
+            {image ? (
+              <img src={image} alt={product.name} className="w-full h-full object-contain" />
+            ) : (
+              <div className="text-gray-300 text-5xl">🛍️</div>
+            )}
+            {off > 0 && (
+              <span className="absolute top-3 left-3 text-[11px] font-extrabold text-white bg-rose-500 px-2.5 py-1 rounded-full shadow">
+                {off}% OFF
+              </span>
+            )}
+            {outOfStock && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+                <span className="bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">Out of Stock</span>
+              </div>
+            )}
+          </div>
+
+          <div className="px-4 py-4 flex flex-col gap-4 pb-8">
+
+            {/* Meta row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {product.badge && (
+                <span className="text-[11px] font-bold px-2 py-1 rounded-lg bg-brand/10 text-brand-dark">{product.badge}</span>
+              )}
+              {rating?.count > 0 && (
+                <span className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-gray-700">
+                  <Star size={13} className="text-amber-400 fill-amber-400" />
+                  {rating.avg} <span className="text-gray-400 font-semibold">({rating.count})</span>
+                </span>
+              )}
+            </div>
+
+            <div>
+              <h1 className="text-xl font-extrabold text-gray-900 leading-tight">{product.name}</h1>
+              {product.unit && !hasVariants && <p className="text-xs text-gray-400 mt-0.5">{product.unit}</p>}
+            </div>
+
+            {/* Price */}
+            <div className="flex items-baseline gap-2.5 flex-wrap">
+              <span className="text-[26px] font-extrabold text-gray-900 tabular-nums tracking-tight">{formatINR(price)}</span>
+              {mrp && mrp > price && <span className="text-sm text-gray-400 line-through tabular-nums">{formatINR(mrp)}</span>}
+              {saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
+            </div>
+
+            {/* Priced variant type */}
+            {hasVariants && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{variants.label}</p>
+                <div className="flex flex-wrap gap-2">
+                  {variants.options.map((o) => (
+                    <button key={o.name} type="button" onClick={() => setSelVariant(o.name)} className={chipBtn(selVariant === o.name)}>
+                      {o.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Extra option types */}
+            {extras.map((g, gi) => {
+              const opts = g.options.filter((o) => o.name);
+              const cur  = selExtras[gi] ?? opts[0]?.name;
+              return (
+                <div key={`${g.label}-${gi}`} className="flex flex-col gap-1.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{g.label}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {opts.map((o) => (
+                      <button key={o.name} type="button"
+                              onClick={() => setSelExtras((prev) => prev.map((x, idx) => (idx === gi ? o.name : x)))}
+                              className={chipBtn(cur === o.name)}>
+                        {o.name}{Number(o.addPrice) ? ` +${formatINR(Number(o.addPrice))}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Description */}
+            {product.description && (
+              <div className="border border-gray-100 rounded-2xl overflow-hidden">
+                <button type="button" onClick={descOpen.toggle} aria-expanded={descOpen.open}
+                        className="w-full flex items-center justify-between px-4 py-3 text-[13.5px] font-bold text-gray-800">
+                  About this product
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform ${descOpen.open ? 'rotate-180' : ''}`} />
+                </button>
+                {descOpen.open && (
+                  <p className="px-4 pb-4 -mt-1 text-sm text-gray-500 leading-relaxed">{product.description}</p>
+                )}
+              </div>
+            )}
+
+            {/* Highlights (from attributes) */}
+            {attrs.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Highlights</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {attrs.map((a, i) => (
+                    <div key={`${a.key || a.label}-${i}`} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                      <p className="text-[10.5px] font-bold uppercase tracking-wide text-gray-400">{a.label || a.key}</p>
+                      <p className="text-sm font-bold text-gray-800 mt-0.5">{a.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Store rating */}
+            {rating?.count > 0 && (
+              <div className="flex items-center gap-3 border border-gray-100 rounded-2xl px-4 py-3">
+                <div className="text-2xl font-extrabold text-gray-900 tabular-nums leading-none">{rating.avg}</div>
+                <div>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star key={n} size={13} className={n <= Math.round(rating.avg) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Store rating · {rating.count} review{rating.count === 1 ? '' : 's'}</p>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky buy bar */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-t border-gray-100 bg-white/95 backdrop-blur">
+        <div className="flex flex-col leading-none">
+          <span className="text-lg font-extrabold text-gray-900 tabular-nums">{formatINR(price)}</span>
+          <span className="text-[10px] text-gray-400 font-semibold mt-0.5">Incl. all taxes</span>
+        </div>
+        {itemCount > 0 && (
+          <button type="button" onClick={onViewCart}
+                  className="ml-auto px-3 py-3 rounded-xl border border-gray-200 text-sm font-bold text-brand-dark hover:bg-gray-50 transition-colors">
+            Cart · {itemCount}
+          </button>
+        )}
+        <button type="button" onClick={handleAdd} disabled={outOfStock}
+                className={[
+                  itemCount > 0 ? 'flex-1 max-w-[220px]' : 'ml-auto flex-1 max-w-[280px]',
+                  'flex items-center justify-center gap-2 py-3 rounded-xl font-extrabold text-sm text-white transition-all active:scale-95',
+                  outOfStock ? 'bg-gray-300 cursor-not-allowed' : added ? 'bg-green-500' : 'bg-brand hover:bg-brand-dark shadow-md shadow-brand/25',
+                ].join(' ')}>
+          {outOfStock ? 'Unavailable' : added ? <><Check size={17} strokeWidth={3} /> Added</> : <><Plus size={17} strokeWidth={2.5} /> Add to cart</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Tiny local disclosure helper (avoids repeating open/toggle state).
+function useDisclosure(initial) {
+  const [open, setOpen] = useState(initial);
+  return { open, toggle: () => setOpen((v) => !v) };
+}
