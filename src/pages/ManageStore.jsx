@@ -70,7 +70,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
 
 // Clean the form's extra option-types into the stored shape:
 // [{ label, options: [{ name, addPrice }] }] — drops blank groups/options.
@@ -649,6 +649,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
       image:       product.image       || '',
+      images:      Array.isArray(product.images) ? product.images.filter(Boolean) : [],
       gstRate:     product.gstRate != null ? product.gstRate : '',
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
@@ -704,6 +705,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
 
     const finalUnit  = form.unit === 'Other…' ? (form.unitCustom.trim() || 'per piece') : form.unit;
     const finalImage = form.image?.trim() || '';
+    const cleanImages = (form.images || []).filter(Boolean);   // extra gallery photos
     const cleanOpts  = (form.variantOptions || [])
       .map(o => ({
         name:  String(o.name || '').trim(),
@@ -737,7 +739,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
-              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, gstRate, taxInclusive, variants, variantExtras, attributes }
+              unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
     } else {
@@ -748,6 +750,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         category:    form.category,
         description: form.description.trim(),
         image:       finalImage || '',
+        images:      cleanImages,
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         unit:        finalUnit,
@@ -1094,6 +1097,20 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               <div>
                 <label className={FIELD_LABEL}>Product Image <span className="text-gray-400 font-normal">· optional</span></label>
                 <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+              </div>
+              <div>
+                <label className={FIELD_LABEL}>More photos <span className="text-gray-400 font-normal">· optional</span></label>
+                <div className="flex flex-wrap gap-2">
+                  {(form.images || []).map((img, i) => (
+                    <ImageUploader key={i} compact maxDim={800} value={img}
+                      onChange={(v) => setForm(p => ({ ...p, images: v ? p.images.map((x, idx) => (idx === i ? v : x)) : p.images.filter((_, idx) => idx !== i) }))} />
+                  ))}
+                  {(form.images || []).length < 5 && (
+                    <ImageUploader compact maxDim={800} value=""
+                      onChange={(v) => { if (v) setForm(p => ({ ...p, images: [...(p.images || []), v] })); }} />
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Shown as a swipeable gallery on the product page — add the back-of-pack, close-ups, or the product in use.</p>
               </div>
             </FormSection>
 

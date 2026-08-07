@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
@@ -22,6 +22,17 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
   const [shared, setShared] = useState(false);
 
   const { price, mrp, image } = resolveSelection(product, selVariant, selExtras);
+
+  // Gallery = the selected image (follows a variant photo) + the main image + any
+  // extra photos, de-duped. Swipeable; the active dot tracks the scroll position.
+  const gallery = [...new Set([image, product.image, ...(Array.isArray(product.images) ? product.images : [])].filter(Boolean))];
+  const [imgIdx, setImgIdx] = useState(0);
+  const galleryRef = useRef(null);
+  const onGalleryScroll = () => {
+    const el = galleryRef.current;
+    if (el && el.clientWidth) setImgIdx(Math.round(el.scrollLeft / el.clientWidth));
+  };
+
   const off        = discountPercent(price, mrp);
   const saving     = mrp && mrp > price ? mrp - price : 0;
   const outOfStock = product.inStock === false || product.stock === 0;
@@ -69,13 +80,33 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="max-w-lg mx-auto w-full">
 
-          {/* Image */}
-          <div className="relative w-full aspect-square bg-gray-50 flex items-center justify-center">
-            {image ? (
-              <img src={image} alt={product.name} className="w-full h-full object-contain" />
+          {/* Image gallery — swipeable when there's more than one photo */}
+          <div className="relative w-full aspect-square bg-gray-50">
+            {gallery.length > 0 ? (
+              <div ref={galleryRef} onScroll={onGalleryScroll}
+                   className="flex w-full h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide">
+                {gallery.map((src, i) => (
+                  <img key={i} src={src} alt={`${product.name} — photo ${i + 1}`}
+                       className="w-full h-full flex-shrink-0 object-contain snap-center" />
+                ))}
+              </div>
             ) : (
-              <div className="text-gray-300 text-5xl">🛍️</div>
+              <div className="w-full h-full flex items-center justify-center text-gray-300 text-5xl">🛍️</div>
             )}
+
+            {gallery.length > 1 && (
+              <>
+                <div className="absolute top-3 right-3 text-[11px] font-semibold text-white bg-black/45 px-2 py-0.5 rounded-full pointer-events-none">
+                  {imgIdx + 1} / {gallery.length}
+                </div>
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+                  {gallery.map((_, i) => (
+                    <span key={i} className={['h-1.5 rounded-full transition-all', i === imgIdx ? 'w-4 bg-gray-800' : 'w-1.5 bg-gray-300'].join(' ')} />
+                  ))}
+                </div>
+              </>
+            )}
+
             {off > 0 && (
               <span className="absolute top-3 left-3 text-[11px] font-extrabold text-white bg-rose-500 px-2.5 py-1 rounded-full shadow">
                 {off}% OFF

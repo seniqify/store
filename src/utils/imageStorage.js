@@ -99,6 +99,22 @@ export async function uploadConfigImages(products, slug) {
         next = { ...next, variants: { ...product.variants, options: uploaded } };
       }
 
+      // Extra gallery photos (product.images[]) — upload any fresh base64 ones.
+      if (Array.isArray(product.images) && product.images.some(isBase64Image)) {
+        const uploaded = await Promise.all(
+          product.images.map(async (img) => {
+            if (!isBase64Image(img)) return img;
+            try {
+              return await uploadProductImage(img, slug);
+            } catch (err) {
+              console.warn(`Gallery image upload skipped for "${product.name}":`, err.message);
+              return img; // fallback: keep base64
+            }
+          })
+        );
+        next = { ...next, images: uploaded };
+      }
+
       return next;
     })
   );
