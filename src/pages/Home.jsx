@@ -266,16 +266,35 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                     </p>
                   )}
 
-                  {/* Trust chips */}
-                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                    <Chip>🛍️ {products.length} products</Chip>
-                    <Chip>💬 Chat on WhatsApp</Chip>
-                    {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
-                    {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
-                    {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
-                    {config.delivery?.eta && config.delivery?.mode !== 'pickup' && <Chip>⏱️ Delivers in {config.delivery.eta}</Chip>}
-                    {config.city && <Chip>📍 {config.city}</Chip>}
-                  </div>
+                  {/* Under the name: the store's own trust badges (Fast Delivery,
+                      Genuine Products…) — richer than plain chips. Falls back to a
+                      couple of info chips only when the owner hasn't set any. */}
+                  {features?.length > 0 ? (
+                    <div className="flex items-stretch gap-2 mt-3 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
+                      {features.map((f) => (
+                        <div key={f.title}
+                          className="flex items-center gap-2 flex-shrink-0 bg-gray-50 border border-gray-100 rounded-xl pl-2 pr-3 py-1.5">
+                          <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                                style={{ background: `${primary}14` }}>
+                            {f.emoji}
+                          </span>
+                          <div className="leading-tight text-left">
+                            <p className="text-[11px] font-bold text-gray-800 whitespace-nowrap">{f.title}</p>
+                            {f.desc && <p className="text-[9.5px] text-gray-400 whitespace-nowrap">{f.desc}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+                      <Chip>🛍️ {products.length} products</Chip>
+                      {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
+                      {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
+                      {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
+                      {config.delivery?.eta && config.delivery?.mode !== 'pickup' && <Chip>⏱️ Delivers in {config.delivery.eta}</Chip>}
+                      {config.city && <Chip>📍 {config.city}</Chip>}
+                    </div>
+                  )}
                 </div>
 
                 {/* Primary CTA: browse the catalog · share · quiet WhatsApp (desktop) */}
@@ -371,27 +390,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       ) : null}
 
-      {/* ── Feature chips ─────────────────────────────────────────────────── */}
-      {features?.length > 0 && (
-        <div className="w-full px-3 sm:px-4 mt-4">
-          <div className="max-w-7xl mx-auto flex items-stretch gap-2.5 overflow-x-auto scrollbar-hide pb-1">
-            {features.map((f) => (
-              <div key={f.title}
-                className="flex items-center gap-2.5 flex-shrink-0 bg-white border border-gray-100
-                           rounded-2xl pl-2.5 pr-4 py-2 shadow-sm">
-                <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
-                      style={{ background: `${primary}14` }}>
-                  {f.emoji}
-                </span>
-                <div className="leading-tight">
-                  <p className="text-xs font-bold text-gray-800 whitespace-nowrap">{f.title}</p>
-                  {f.desc && <p className="text-[10px] text-gray-400 whitespace-nowrap">{f.desc}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Feature badges now live under the store name in the hero (see above). */}
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div id="products" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8 overflow-hidden">
