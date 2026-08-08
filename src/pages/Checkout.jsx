@@ -22,6 +22,12 @@ const PLAN_INFO = {
     color: '#8b5cf6',
     features: ['Unlimited products', 'Unlimited AI + insights', 'Advanced analytics', 'Auto updates + offers engine'],
   },
+  // ₹1,000 online tier — same Pro features, self-serve. Recorded as 'premium'.
+  premium_plus: {
+    name:  'Pro',
+    color: '#8b5cf6',
+    features: ['Unlimited products', 'Unlimited AI + insights', 'Advanced analytics', 'Auto updates + offers engine'],
+  },
 };
 
 const PERIOD_LABEL = {
@@ -32,9 +38,10 @@ const PERIOD_LABEL = {
 // Display only — the amount actually debited comes from the Razorpay plan_id on
 // the backend (create-razorpay-subscription). These MUST match those plan_ids.
 const CHARGES = {
-  pro:      { monthly: 249, yearly: 2490 },   // legacy, grandfathered
-  business: { monthly: 199, yearly: 1999 },   // Growth
-  premium:  { monthly: 599, yearly: 5999 },   // Pro
+  pro:          { monthly: 249,  yearly: 2490 },   // legacy, grandfathered
+  business:     { monthly: 199,  yearly: 1999 },   // Growth — grandfathered renewals only
+  premium:      { monthly: 599,  yearly: 5999 },   // Pro — team-sold (manual), not self-serve
+  premium_plus: { monthly: 1000, yearly: 10000 },  // Pro (online, self-serve)
 };
 
 function loadRazorpayScript() {
@@ -80,6 +87,9 @@ export default function Checkout() {
 
   const phone  = sessionStorage.getItem('pocketlink_verified_phone');
   const amount = CHARGES[planKey]?.[period];
+  // The ₹1,000 online tier bills via the premium_plus plan_id but grants Pro —
+  // so the store is provisioned as 'premium'. planKey stays for the Razorpay call.
+  const storePlan = planKey === 'premium_plus' ? 'premium' : planKey;
 
   if (!plan || !amount) { navigate('/plans'); return null; }
   if (!phone)           { navigate('/start'); return null; }
@@ -186,12 +196,12 @@ export default function Checkout() {
     const expires  = termExpiry(period);
     const existing = await retry(() => findStoreByPhone(phone));
     if (existing) {
-      await retry(() => upgradePlan(existing, planKey, expires, subId));
+      await retry(() => upgradePlan(existing, storePlan, expires, subId));
       navigate(`/${existing}/manage`);
     } else {
       // Best-effort persist; the webhook also records this by phone.
-      await retry(() => savePendingSignup(phone, planKey, expires, subId)).catch(() => {});
-      sessionStorage.setItem('pocketlink_plan', planKey);
+      await retry(() => savePendingSignup(phone, storePlan, expires, subId)).catch(() => {});
+      sessionStorage.setItem('pocketlink_plan', storePlan);
       sessionStorage.setItem('pocketlink_plan_expires', expires);
       sessionStorage.setItem('pocketlink_subscription_id', subId);
       navigate('/onboarding');

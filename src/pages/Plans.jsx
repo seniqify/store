@@ -14,8 +14,8 @@ const PERIODS = [
 // one price and gets charged another. Internal keys are unchanged for
 // grandfathering: 'business' = Growth, 'premium' = Pro.
 const PRICING = {
-  business: { monthly: 199, yearly: 1999 },   // Growth
-  premium:  { monthly: 599, yearly: 5999 },   // Pro
+  premium:      { monthly: 599,  yearly: 5999 },   // Pro — set up with our team (manual)
+  premium_plus: { monthly: 1000, yearly: 10000 },  // Pro — subscribe online (self-serve)
 };
 
 // Optional marketplace add-on (not self-serve yet — activation goes through
@@ -28,49 +28,42 @@ const SUPPORT_WA = '918482840808';
 // never touched again — rather than converting, so every store now requires
 // a paid plan upfront. Existing free stores from before this change are
 // grandfathered and keep working; see planLimits.js for their limits.
+// One plan — Pro (unlimited everything) — offered two ways: the best price when
+// our team sets you up, or subscribe online instantly for a bit more. Same
+// features either way, so both cards list the full set. (Growth ₹199 was retired
+// 2026-08; existing Growth stores are grandfathered — see planLimits.js.)
+const PRO_FEATURES = [
+  'Unlimited products & categories',
+  'WhatsApp orders + QR code · mobile-ready store',
+  'No PocketLink branding — verified business badge',
+  'Product variants, coupons & discounts',
+  'Online payments + cart & order management',
+  'Unlimited AI product search + AI assistant',
+  'AI business insights + advanced analytics',
+  'Offers engine — flash, weekend & festival sales',
+  'Auto WhatsApp order updates',
+  'Store theme, business hours & delivery settings',
+  'Priority support + early access to new features',
+];
+
 const PLANS = [
-  {
-    key: 'business',
-    name: 'Growth',
-    best: 'For growing businesses',
-    popular: true,
-    accent: '#10b981',
-    cta: 'Get Growth',
-    // Self-contained — this is the entry tier now, so it lists everything a
-    // store gets, not just a delta on top of a Free plan that no longer exists.
-    features: [
-      'WhatsApp orders + QR code',
-      'Mobile-ready store + basic SEO',
-      '50 products · 10 categories',
-      'No PocketLink branding — verified business badge',
-      'Unlimited AI product search + AI product assistant',
-      'Product variants, coupons & discounts',
-      'Online payments',
-      'Cart & order management + history',
-      'Customer insights & sales analytics',
-      'Store theme customization',
-      'Business hours & delivery settings',
-      'AI auto-fill · smart categories',
-      'Priority support',
-    ],
-  },
   {
     key: 'premium',
     name: 'Pro',
-    best: 'For businesses that want to scale',
+    best: 'Best price — our team sets you up',
+    popular: true,
+    manual: true,          // no online checkout; team activates it (like a cash sale)
     accent: '#8b5cf6',
-    cta: 'Go Pro',
-    inherits: 'Growth',
-    features: [
-      'Unlimited products & categories',
-      'Unlimited AI assistant usage',
-      'AI business insights',
-      'Advanced analytics — returning customers, conversion & peak hours',
-      'Offers engine — flash, weekend & festival sales',
-      'Auto WhatsApp order updates',
-      'Priority support',
-      'Early access to new features',
-    ],
+    cta: 'Chat to get started',
+    features: PRO_FEATURES,
+  },
+  {
+    key: 'premium_plus',
+    name: 'Pro',
+    best: 'Instant — subscribe & go live now',
+    accent: '#10b981',
+    cta: 'Subscribe online',
+    features: PRO_FEATURES,
   },
 ];
 
@@ -96,10 +89,10 @@ const UNIVERSAL = [
 ];
 
 const FAQS = [
-  { q: 'How much does PocketLink cost?', a: 'Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
+  { q: 'How much does PocketLink cost?', a: 'The Pro plan is ₹599/month when our team sets it up for you, or ₹1,000/month if you subscribe online instantly — same unlimited store, full AI suite and scaling tools either way. No setup fee, cancel anytime.' },
   { q: 'What’s the difference between Growth and Pro?', a: 'Growth removes PocketLink branding and gives you a verified store with variants, coupons, online payments, customer insights and the AI product assistant — up to 50 products. Pro removes every limit and adds unlimited AI assistant usage, AI business insights, advanced analytics (returning customers, conversion, peak hours), the offers engine, automatic WhatsApp order updates and priority support.' },
   { q: 'Do you charge per order or per message?', a: 'Never. Orders arrive on WhatsApp, which is always free, and we never take a cut of your sales — 0% commission on every plan.' },
-  { q: 'Is paying yearly cheaper?', a: 'Yes. Growth is ₹1,999/year (save ₹389 vs monthly) and Pro is ₹5,999/year (save ₹1,189) — roughly two months free. It auto-renews yearly so your store never lapses.' },
+  { q: 'Is paying yearly cheaper?', a: 'Yes — roughly two months free. Pro (with our team) is ₹5,999/year, and Pro online is ₹10,000/year. Yearly auto-renews so your store never lapses.' },
   { q: 'What is the Featured Store add-on?', a: 'An optional ₹299/month boost that lifts your shop’s ranking inside the PocketLink Marketplace — a featured badge, priority listing and festival promotions for more customer visibility. Add it on top of any plan.' },
   { q: 'Can I cancel or switch plans anytime?', a: 'Anytime — no contracts, no lock-in. Your store keeps working; you simply lose the paid features, it never goes offline.' },
   { q: 'How do I pay and how soon does it activate?', a: 'Securely via UPI, debit/credit card or net banking through Razorpay, with a GST invoice for every payment. Your plan activates the instant payment succeeds — no waiting.' },
@@ -128,6 +121,16 @@ export default function Plans() {
     } else {
       navigate('/start');
     }
+  }
+
+  // A manual plan (₹599 Pro) isn't self-serve — the team sets it up. Open WhatsApp
+  // pre-filled so they can close it and activate the store manually.
+  function contactTeam(plan) {
+    const p   = PRICING[plan.key]?.[period];
+    const per = period === 'yearly' ? 'year' : 'month';
+    const msg = encodeURIComponent(`Hi PocketLink — I'd like the ${plan.name} plan (₹${p}/${per}). Please help me set up my store.`);
+    if (SUPPORT_WA) window.open(`https://wa.me/${SUPPORT_WA}?text=${msg}`, '_blank', 'noopener');
+    else navigate('/start');
   }
 
   const maxSave = Math.max(
@@ -257,13 +260,16 @@ export default function Plans() {
                   </p>
                 </div>
 
-                {/* CTA */}
-                <button onClick={() => choosePlan(plan.key)}
+                {/* CTA — manual plan opens WhatsApp (team activates it); online plan → checkout */}
+                <button onClick={() => (plan.manual ? contactTeam(plan) : choosePlan(plan.key))}
                   className="w-full py-3.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all
                              active:scale-[0.98] inline-flex items-center justify-center gap-1.5"
                   style={{ backgroundColor: plan.accent, boxShadow: `0 10px 30px ${plan.accent}40` }}>
                   {plan.cta} <ArrowRight size={15} />
                 </button>
+                {plan.manual && (
+                  <p className="text-[11px] text-white/40 text-center mt-2">Our team activates it for you — no online payment needed.</p>
+                )}
 
                 {/* Features */}
                 <div className="mt-6">

@@ -15,8 +15,11 @@ const CORS = {
 const PLAN_IDS: Record<string, Record<string, string>> = {
   starter:  { monthly: 'plan_T534Tj7pKAPhOP', yearly: 'plan_T534TvGMXAl18M' },
   pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },   // legacy ₹249 — grandfathered renewals only
-  business: { monthly: 'plan_T8tUVJDyKVHUqA', yearly: 'plan_T8tUVTmHtEauYl' },   // Growth ₹199 / ₹1,999
-  premium:  { monthly: 'plan_T8tUVd3OJkD8m8', yearly: 'plan_T8tUVnFLUkTGYl' },   // Pro ₹599 / ₹5,999
+  business: { monthly: 'plan_T8tUVJDyKVHUqA', yearly: 'plan_T8tUVTmHtEauYl' },   // Growth ₹199 — retired from signup, grandfathered renewals only
+  premium:  { monthly: 'plan_T8tUVd3OJkD8m8', yearly: 'plan_T8tUVnFLUkTGYl' },   // Pro ₹599 / ₹5,999 — team-sold (manual activation), not offered self-serve
+  // Pro (online) ₹1,000/mo · ₹10,000/yr — the self-serve tier. Reuses the old
+  // premium ₹1,000 plan_ids; same features as Pro, recorded on the store as 'premium'.
+  premium_plus: { monthly: 'plan_SzqmnPq8JoWcSc', yearly: 'plan_SzqmnZ9M5keufj' },
 };
 
 // How many billing cycles the mandate runs for before it ends (≈10 years each).
@@ -30,6 +33,11 @@ serve(async (req) => {
 
     const planId = PLAN_IDS[plan]?.[period];
     if (!planId) throw new Error('Invalid plan or billing period');
+
+    // The ₹1,000 online tier (premium_plus) grants the same features as Pro, so
+    // the store is recorded as 'premium' — only the debited amount differs. The
+    // webhook + client read this from notes/echo when provisioning the store.
+    const storePlan = plan === 'premium_plus' ? 'premium' : plan;
 
     const keyId     = Deno.env.get('RAZORPAY_KEY_ID');
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
@@ -48,7 +56,7 @@ serve(async (req) => {
         total_count:     TOTAL_COUNT[period] ?? 120,
         quantity:        1,
         customer_notify: 1,
-        notes:           { plan, period, phone: String(phone) },
+        notes:           { plan: storePlan, period, phone: String(phone) },
       }),
     });
 
@@ -59,7 +67,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ subscription_id: data.id, key_id: keyId, plan, period }),
+      JSON.stringify({ subscription_id: data.id, key_id: keyId, plan: storePlan, period }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
     );
   } catch (err) {

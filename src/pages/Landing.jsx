@@ -26,7 +26,7 @@ const VALUE_PROPS = [
   { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'From ₹199/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
+  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'From ₹599/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
 ];
 
 const USE_CASES = [
@@ -52,17 +52,17 @@ const STATS = [
 // upfront starting at Growth. Yearly = 10× monthly, billed on /plans + /checkout.
 const PRICING_PLANS = [
   {
-    name: 'Growth', icon: '🛍️', tagline: 'Everything you need to sell', accent: '#34d399',
-    price: 199, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: true, to: '/start?plan=business', cta: 'Get Growth',
-    features: ['WhatsApp orders + QR code', '50 products · 10 categories', 'Verified badge — no PocketLink branding', 'Variants, coupons & online payments', 'Customer insights & sales analytics'],
-    caveat: null,
+    name: 'Pro', icon: '👑', tagline: 'Best price — our team sets you up', accent: '#a78bfa',
+    price: 599, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: true, to: '/plans', cta: 'Get started',
+    features: ['Unlimited products & categories', 'Verified badge — no PocketLink branding', 'Unlimited AI assistant + business insights', 'Advanced analytics + offers engine', 'Variants, coupons & online payments'],
+    caveat: 'Set up with our team — no online payment needed',
   },
   {
-    name: 'Pro', icon: '👑', tagline: 'Unlimited + your AI assistant', accent: '#a78bfa',
-    price: 599, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: false, to: '/start?plan=premium', cta: 'Go Pro',
-    features: ['Unlimited products & categories', 'Unlimited AI assistant + business insights', 'Advanced analytics + offers engine', 'Auto WhatsApp order updates'],
+    name: 'Pro', icon: '⚡', tagline: 'Instant — subscribe & go live now', accent: '#34d399',
+    price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    popular: false, to: '/start?plan=premium_plus', cta: 'Subscribe online',
+    features: ['Everything in Pro — unlimited', 'Go live online in 2 minutes', 'Self-serve — pay & activate instantly', 'Auto WhatsApp order updates', 'Full AI suite + analytics'],
     caveat: null,
   },
 ];
