@@ -80,6 +80,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const waLink      = whatsappLink(whatsappNumber, businessName, config.waMessage);
   const { total }   = calcCartTotals(cart, config.cart);
 
+  // Primary hero action: send shoppers into the catalog (browse → cart → checkout,
+  // a recorded order) instead of straight to a WhatsApp chat that leaves no order.
+  const scrollToProducts = () =>
+    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──
   const [heroRating, setHeroRating] = useState(null);
   useEffect(() => {
@@ -256,7 +261,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                   {/* Trust chips */}
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
                     <Chip>🛍️ {products.length} products</Chip>
-                    <Chip>💬 Order on WhatsApp</Chip>
+                    <Chip>💬 Chat on WhatsApp</Chip>
                     {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
                     {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
                     {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
@@ -265,8 +270,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                   </div>
                 </div>
 
-                {/* WhatsApp CTA + share (desktop) */}
-                <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0">
+                {/* Primary CTA: browse the catalog · share · quiet WhatsApp (desktop) */}
+                <div className="hidden sm:flex flex-col items-end gap-2 flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={shareStore} aria-label="Share this store"
                       className="w-10 h-10 rounded-xl bg-white/80 border border-gray-200 text-gray-500
@@ -274,28 +279,31 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                                  shadow-sm transition-all active:scale-95">
                       {shareCopied ? <Check size={15} className="text-emerald-600" /> : <Share2 size={15} />}
                     </button>
-                    <a href={waLink} target="_blank" rel="noopener noreferrer"
-                       className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d]
-                                  text-white text-sm font-bold px-5 py-3 rounded-xl shadow-lg shadow-emerald-500/25
-                                  transition-all active:scale-95">
-                      <MessageCircle size={16} /> Order on WhatsApp
-                    </a>
+                    <button type="button" onClick={scrollToProducts}
+                       className="inline-flex items-center gap-2 text-white text-sm font-bold px-5 py-3 rounded-xl
+                                  shadow-lg transition-all active:scale-95"
+                       style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})`, boxShadow: `0 10px 25px ${primary}40` }}>
+                      <ShoppingCart size={16} /> Browse products
+                    </button>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 pr-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Usually replies within minutes
-                  </span>
+                  <a href={waLink} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-gray-500 hover:text-emerald-600 transition-colors pr-1">
+                    <MessageCircle size={13} /> Questions? Chat on WhatsApp
+                  </a>
                 </div>
               </div>
 
-              {/* WhatsApp CTA (mobile) */}
+              {/* Primary CTA (mobile): browse the catalog, WhatsApp demoted below */}
+              <button type="button" onClick={scrollToProducts}
+                 className="sm:hidden mt-4 w-full flex items-center justify-center gap-2 text-white text-sm font-bold
+                            py-3 rounded-xl shadow-lg active:scale-[0.99]"
+                 style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
+                <ShoppingCart size={16} /> Browse products
+              </button>
               <a href={waLink} target="_blank" rel="noopener noreferrer"
-                 className="sm:hidden mt-4 flex items-center justify-center gap-2 bg-[#25D366]
-                            text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99]">
-                <MessageCircle size={16} /> Order on WhatsApp
+                 className="sm:hidden mt-2.5 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500">
+                <MessageCircle size={13} /> Questions? Chat on WhatsApp
               </a>
-              <p className="sm:hidden mt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Usually replies within minutes
-              </p>
             </div>
           </div>
         </div>
