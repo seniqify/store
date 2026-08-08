@@ -13,7 +13,7 @@ import { formatINR } from '../../utils/currency';
  *   onCartClick      — open the cart (sidebar)
  *   categoriesTarget — id of the section to scroll to for "Categories" (default 'products')
  */
-export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick, onAskClick, askLabel = 'Ask', categoriesTarget = 'products' }) {
+export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick, onAskClick, askLabel = 'Ask', onCategoriesClick, categoriesTarget = 'products' }) {
   const [active, setActive] = useState('home');
 
   const goHome = () => {
@@ -22,7 +22,9 @@ export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick,
   };
   const goCategories = () => {
     setActive('categories');
-    document.getElementById(categoriesTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Open the category picker if the store has one; else just scroll to products.
+    if (onCategoriesClick) onCategoriesClick();
+    else document.getElementById(categoriesTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (

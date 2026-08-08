@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown, ArrowLeft } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown, ArrowLeft, X } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import ProductDetail from '../components/product/ProductDetail';
+import CategoryCircles from '../components/product/CategoryCircles';
 import { useScrollLock } from '../hooks/useScrollLock';
 import CartSidebar from '../components/cart/CartSidebar';
 import CheckoutSheet from '../components/cart/CheckoutSheet';
@@ -33,8 +34,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const [cartOpen,        setCartOpen]        = useState(false);
   const [checkoutOpen,    setCheckoutOpen]    = useState(false);
   const [askOpen,         setAskOpen]         = useState(false);   // mobile search/AI overlay
+  const [catsOpen,        setCatsOpen]        = useState(false);   // mobile category picker
+  const [activeCategory,  setActiveCategory]  = useState('all');   // lifted so the Categories tab can drive it
   const [customerDetails, setCustomerDetails] = useState(INITIAL_CUSTOMER_DETAILS);
   useScrollLock(askOpen);
+  useScrollLock(catsOpen);
 
   const {
     cart,
@@ -92,6 +96,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   // a recorded order) instead of straight to a WhatsApp chat that leaves no order.
   const scrollToProducts = () =>
     document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Pick a category from the mobile Categories sheet → filter, close, jump to grid.
+  const selectCategory = (id) => { setActiveCategory(id); setCatsOpen(false); scrollToProducts(); };
 
   // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──
   const [heroRating, setHeroRating] = useState(null);
@@ -408,6 +415,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onDecrease={decreaseQty}
               onSetQty={setQty}
               onOpenDetail={(id) => navigate(`/${config.slug}/p/${id}`)}
+              activeCategory={activeCategory}
+              onCategoryChange={setActiveCategory}
+              categoryRailClassName="hidden lg:block"   /* mobile uses the Categories tab */
               showSearch={false}   /* the hero StoreSearchBar above already searches */
             />
 
@@ -512,6 +522,25 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       )}
 
+      {/* ── Mobile Categories sheet — opened from the bottom-nav Categories tab ── */}
+      {catsOpen && categories.length > 1 && (
+        <div className="lg:hidden fixed inset-0 z-[70] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCatsOpen(false)} />
+          <div className="relative bg-white rounded-t-3xl max-h-[80vh] overflow-y-auto shadow-2xl pb-8 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <p className="text-base font-extrabold text-gray-900">Shop by category</p>
+              <button type="button" onClick={() => setCatsOpen(false)} aria-label="Close"
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="px-4 pt-2">
+              <CategoryCircles categories={categories} products={saleProducts} selected={activeCategory} onChange={selectCategory} wrap />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Product page (full-screen, shares this store's cart) ─────────────
           Driven by /{slug}/p/{id}; renders over the grid so the cart persists. */}
       {detailProduct && (
@@ -553,6 +582,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onCartClick={() => setCartOpen(true)}
         onAskClick={searchable ? () => setAskOpen(true) : undefined}
         askLabel={aiAskEnabled ? 'Ask' : 'Search'}
+        onCategoriesClick={categories.length > 1 ? () => setCatsOpen(true) : undefined}
         categoriesTarget="products"
       />
     </div>

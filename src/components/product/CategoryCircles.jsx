@@ -14,7 +14,7 @@ import { useEffect, useRef, useMemo } from 'react';
  *   selected    string                           — active category id
  *   onChange    (id: string) => void
  */
-export default function CategoryCircles({ categories = [], products = [], selected, onChange }) {
+export default function CategoryCircles({ categories = [], products = [], selected, onChange, wrap = false }) {
   const railRef = useRef(null);
   const btnRefs = useRef({});
 
@@ -24,18 +24,23 @@ export default function CategoryCircles({ categories = [], products = [], select
     return map;
   }, [products]);
 
-  // Keep the active circle scrolled into view.
+  // Keep the active circle scrolled into view (rail layout only).
   useEffect(() => {
+    if (wrap) return;
     const btn = btnRefs.current[selected];
     const rail = railRef.current;
     if (!btn || !rail) return;
     rail.scrollTo({ left: btn.offsetLeft - rail.offsetWidth / 2 + btn.offsetWidth / 2, behavior: 'smooth' });
-  }, [selected]);
+  }, [selected, wrap]);
 
   // pt-2/px-1.5 give the active ring (ring-offset) room — an overflow-x scroll
   // container clips vertically too, so without padding the ring's top gets cut.
+  // `wrap` lays the tiles out in a wrapping grid (used inside the Categories sheet).
   return (
-    <div ref={railRef} className="flex gap-3 overflow-x-auto scrollbar-hide -mx-1.5 px-1.5 pt-2 pb-1"
+    <div ref={railRef}
+         className={wrap
+           ? 'flex flex-wrap gap-4 justify-center pt-2 pb-1'
+           : 'flex gap-3 overflow-x-auto scrollbar-hide -mx-1.5 px-1.5 pt-2 pb-1'}
          role="tablist" aria-label="Product categories">
       {categories.map((cat) => {
         const isActive = selected === cat.id;

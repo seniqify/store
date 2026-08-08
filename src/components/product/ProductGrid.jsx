@@ -47,10 +47,16 @@ const SORTS = [
 export default function ProductGrid({
   products = [], categories = [], cart = [], onAddToCart, onIncrease, onDecrease, onSetQty,
   onOpenDetail,
+  activeCategory: activeCategoryProp, onCategoryChange, categoryRailClassName = '',
   nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…', showSearch = true,
 }) {
-  const [activeCategory, setActiveCategory] = useState('all');
+  // Category can be controlled by the parent (Home lifts it so the bottom-nav
+  // "Categories" tab can drive the filter); otherwise it's local.
+  const [activeCategoryState, setActiveCategoryState] = useState('all');
+  const isCatControlled = activeCategoryProp !== undefined;
+  const activeCategory  = isCatControlled ? activeCategoryProp : activeCategoryState;
+  const applyCategory   = (id) => (isCatControlled ? onCategoryChange?.(id) : setActiveCategoryState(id));
   const [fading, setFading]                 = useState(false);
   const [query, setQuery]                   = useState('');
   const [saleOnly, setSaleOnly]             = useState(false);
@@ -70,7 +76,7 @@ export default function ProductGrid({
 
     // After the fade-out (150 ms), swap the category and fade back in
     setTimeout(() => {
-      setActiveCategory(pendingCategory.current);
+      applyCategory(pendingCategory.current);
       setFading(false);
     }, 150);
   }
@@ -143,58 +149,65 @@ export default function ProductGrid({
 
       <div className="pt-2 pb-2.5 mb-3 space-y-3">
 
-        {/* Results count + on-sale filter + Sort */}
-        <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm text-gray-500 min-w-0 truncate">
-            <span
-              key={`${activeCategory}-${q}-${sortBy}`}   // re-mount to animate
-              className="inline-block animate-in fade-in duration-300"
-            >
-              <span className="font-bold text-brand-dark tabular-nums">{sorted.length}</span>
-              {' '}{sorted.length === 1 ? nounSingular : nounPlural}
-              {q
-                ? <> matching “{query.trim()}”</>
-                : <> in <span className="font-medium text-gray-700">{activeCatLabel}</span></>}
-            </span>
-          </p>
+        {/* Search-result count · on-sale filter · Sort (large catalogs only).
+            The plain "N products in Category" was redundant with the category
+            rail's own counts, so the count now shows ONLY while searching, and
+            Sort only when the catalog is big enough for it to matter. */}
+        {(q || anyOnSale || products.length > 16) && (
+          <div className="flex items-center gap-2 min-w-0">
+            {q && (
+              <p className="text-sm text-gray-500 min-w-0 truncate">
+                <span key={`${q}-${sortBy}`} className="inline-block animate-in fade-in duration-300">
+                  <span className="font-bold text-brand-dark tabular-nums">{sorted.length}</span>
+                  {' '}{sorted.length === 1 ? nounSingular : nounPlural} matching “{query.trim()}”
+                </span>
+              </p>
+            )}
 
-          {/* On-sale filter — only when a live sale covers some products */}
-          {anyOnSale && (
-            <button type="button" onClick={() => setSaleOnly((v) => !v)}
-              className={[
-                'flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full border transition-all active:scale-95',
-                saleOnly
-                  ? 'bg-rose-500 text-white border-transparent shadow-sm'
-                  : 'bg-white text-rose-600 border-rose-200 hover:border-rose-300',
-              ].join(' ')}>
-              🔥 Sale {saleOnly ? '✓' : `· ${saleCount}`}
-            </button>
-          )}
+            {/* On-sale filter — only when a live sale covers some products */}
+            {anyOnSale && (
+              <button type="button" onClick={() => setSaleOnly((v) => !v)}
+                className={[
+                  'flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full border transition-all active:scale-95',
+                  saleOnly
+                    ? 'bg-rose-500 text-white border-transparent shadow-sm'
+                    : 'bg-white text-rose-600 border-rose-200 hover:border-rose-300',
+                ].join(' ')}>
+                🔥 Sale {saleOnly ? '✓' : `· ${saleCount}`}
+              </button>
+            )}
 
-          {/* Sort dropdown (native for reliable mobile pickers) */}
-          <div className="relative flex-shrink-0 ml-auto">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              aria-label="Sort products"
-              className="appearance-none pl-3 pr-7 py-1.5 rounded-full border border-gray-200 bg-white
-                         text-xs font-bold text-gray-700 focus:outline-none focus:border-brand cursor-pointer">
-              {SORTS.map((s) => (
-                <option key={s.id} value={s.id}>{s.id === 'popular' ? 'Sort: Popular' : s.label}</option>
-              ))}
-            </select>
-            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            {/* Sort — only worth showing on a large catalog */}
+            {products.length > 16 && (
+              <div className="relative flex-shrink-0 ml-auto">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  aria-label="Sort products"
+                  className="appearance-none pl-3 pr-7 py-1.5 rounded-full border border-gray-200 bg-white
+                             text-xs font-bold text-gray-700 focus:outline-none focus:border-brand cursor-pointer">
+                  {SORTS.map((s) => (
+                    <option key={s.id} value={s.id}>{s.id === 'popular' ? 'Sort: Popular' : s.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
-        {/* Category rail — round tiles are the primary way to browse. */}
+        {/* Category rail — round tiles are the primary way to browse. Hidden on
+            mobile when the parent moves it into the "Categories" tab (via
+            categoryRailClassName="hidden lg:block"). */}
         {categories.length > 1 && (
-          <CategoryCircles
-            categories={categories}
-            products={products}
-            selected={activeCategory}
-            onChange={handleCategoryChange}
-          />
+          <div className={categoryRailClassName}>
+            <CategoryCircles
+              categories={categories}
+              products={products}
+              selected={activeCategory}
+              onChange={handleCategoryChange}
+            />
+          </div>
         )}
       </div>
 
