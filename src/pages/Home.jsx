@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingCart, MessageCircle, Check, Star, Share2 } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import ProductDetail from '../components/product/ProductDetail';
 import CartSidebar from '../components/cart/CartSidebar';
@@ -308,6 +308,17 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           </div>
         </div>
       </header>
+
+      {/* Scroll hint — a gently bouncing cue that the catalog is just below */}
+      {products.length > 0 && (
+        <div className="flex justify-center mt-1">
+          <button type="button" onClick={scrollToProducts} aria-label="Scroll down to products"
+            className="flex flex-col items-center gap-0.5 text-gray-400 hover:text-gray-600 transition-colors">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider">Scroll to shop</span>
+            <ChevronDown size={18} className="motion-safe:animate-bounce" style={{ color: primary }} />
+          </button>
+        </div>
+      )}
 
       {/* ── Hero search / ask bar (product search for all; AI answers on Premium) ── */}
       {(products.length > 0 || hasFeature(effectivePlan(config), 'aiEmployee')) && (
