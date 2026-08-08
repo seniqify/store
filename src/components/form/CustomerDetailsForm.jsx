@@ -77,7 +77,7 @@ function WhatsAppIcon({ size = 20 }) {
   );
 }
 
-export default function CustomerDetailsForm({ formData, onChange, cart }) {
+export default function CustomerDetailsForm({ formData, onChange, cart, onOrderPlaced }) {
   const [errors,      setErrors]      = useState({});
   const [submitted,   setSubmitted]   = useState(false);
   const [placing,     setPlacing]     = useState(false);   // submit in flight
@@ -209,6 +209,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart }) {
     setAutoNotified(notified);
     setPlacing(false);
     setSubmitted(true);
+    onOrderPlaced?.();   // empty the cart now that the order is placed
   }
 
   // ── Shared input class ─────────────────────────────────────────────────────

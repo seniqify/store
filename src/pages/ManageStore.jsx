@@ -877,7 +877,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           const fullIdx = products.findIndex(x => x.id === p.id);
           return (
             <div key={p.id}
-                 className={['flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors border',
+                 className={['flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors border',
                    isEditing ? '' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}
                  style={isEditing ? { backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}55` } : undefined}>
               {/* Reorder — controls what customers see first (unfiltered list only) */}
@@ -905,28 +905,31 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
-                <p className="text-xs text-gray-400">
-                  {cat ? `${cat.emoji} ${cat.label}` : '—'} · ₹{p.price} · {p.unit}
+                <p className="text-xs text-gray-400 truncate">
+                  <span className="font-semibold text-gray-500">₹{p.price}</span>
+                  {cat ? ` · ${cat.emoji} ${cat.label}` : ''}{p.unit ? ` · ${p.unit}` : ''}
                 </p>
               </div>
-              {/* In-stock toggle */}
+              {/* In-stock toggle — compact dot on mobile, full label on wider screens */}
               <button type="button" onClick={() => toggleStock(p.id)}
                       title={p.inStock === false ? 'Mark as in stock' : 'Mark as out of stock'}
+                      aria-label={p.inStock === false ? 'Out of stock — tap to mark in stock' : 'In stock — tap to mark out of stock'}
                       className={[
-                        'text-[10px] font-bold px-2 py-1 rounded-lg transition-colors flex-shrink-0',
+                        'flex items-center gap-1 text-[10px] font-bold px-1.5 sm:px-2 py-1 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap',
                         p.inStock === false
                           ? 'bg-red-50 text-red-500 hover:bg-red-100'
                           : 'bg-green-50 text-green-600 hover:bg-green-100',
                       ].join(' ')}>
-                {p.inStock === false ? 'Out of stock' : 'In stock'}
+                <span className={['w-2 h-2 rounded-full flex-shrink-0', p.inStock === false ? 'bg-red-500' : 'bg-green-500'].join(' ')} />
+                <span className="hidden sm:inline">{p.inStock === false ? 'Out of stock' : 'In stock'}</span>
               </button>
               <button type="button" onClick={() => openEdit(p)}
-                      className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
+                      className="p-1 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
                       style={isEditing ? { color: themeColor, backgroundColor: `${themeColor}1a` } : undefined}>
                 <Pencil size={13} />
               </button>
               <button type="button" onClick={() => removeProduct(p.id)}
-                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                      className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
                 <X size={14} />
               </button>
             </div>

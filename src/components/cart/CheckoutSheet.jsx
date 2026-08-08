@@ -1,4 +1,5 @@
 import { X, ArrowLeft } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
  * CheckoutSheet
@@ -18,6 +19,7 @@ import { X, ArrowLeft } from 'lucide-react';
  *   children  the form to render in the scrollable body
  */
 export default function CheckoutSheet({ open, onClose, onBack, title = 'Complete your order', children }) {
+  useScrollLock(open);
   return (
     <>
       {/* Backdrop */}

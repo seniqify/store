@@ -1,6 +1,7 @@
 import { X, ShoppingBag, PackageOpen } from 'lucide-react';
 import CartItem from './CartItem';
 import CartSummary from './CartSummary';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
  * CartSidebar
@@ -38,6 +39,7 @@ export default function CartSidebar({
   onSetQty,
   onCheckout,
 }) {
+  useScrollLock(isOpen);
   const itemCount = cart.reduce((s, i) => s + i.qty, 0);
 
   return (

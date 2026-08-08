@@ -71,12 +71,36 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Initial load shows the skeleton; refresh() updates in place (no flash) so it
+  // can run silently on a timer / focus without disrupting the list.
   const load = useCallback(async () => {
     setOrders(null);
     setOrders(await fetchOrders(slug, pin));
   }, [slug, pin]);
 
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try { setOrders(await fetchOrders(slug, pin)); } finally { setRefreshing(false); }
+  }, [slug, pin]);
+
   useEffect(() => { load(); }, [load]);
+
+  // Live updates: a new order placed while this tab is open used to require a
+  // manual refresh (it wouldn't just appear). Now we refetch when the tab regains
+  // focus and gently poll (~20s) while it's visible.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    const id = setInterval(onVisible, 20000);
+    return () => {
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(id);
+    };
+  }, [refresh]);
 
   async function changeStatus(id, status) {
     setBusy(true);
@@ -129,10 +153,10 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             {orders.length === 0 ? `No ${noun}s yet` : `${orders.length} total · ${counts.new || 0} new`}
           </p>
         </div>
-        <button onClick={load}
+        <button onClick={refresh} disabled={refreshing}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
-                     rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition">
-          <RefreshCw size={13} /> Refresh
+                     rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition disabled:opacity-60">
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
 

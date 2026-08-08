@@ -35,8 +35,10 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
       subtotal, tax, shipping, total: netTotal,
       status:         'new',
     });
-  } catch {
-    /* best-effort — a failed log must never break the customer's order */
+  } catch (err) {
+    // Best-effort — a failed save must never break the customer's order — but log
+    // it (was fully silent) so a lost order leaves a trace to diagnose.
+    console.error('saveOrder failed:', err?.message || err);
   }
 }
 

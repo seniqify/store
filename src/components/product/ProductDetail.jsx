@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
  * ProductDetail — full-screen product page (opened from a card at /{slug}/p/{id}).
@@ -11,6 +12,7 @@ import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/va
  * pack/variant pickers, the store rating, a share action, and a sticky buy bar.
  */
 export default function ProductDetail({ product, onClose, onAddToCart, onViewCart, rating, itemCount = 0 }) {
+  useScrollLock(true);   // freeze the store page behind the full-screen product view
   const variants    = product.variants;
   const hasVariants = !!(variants && variants.options && variants.options.length);
   const extras      = variantExtrasOf(product);

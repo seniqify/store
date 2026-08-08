@@ -41,6 +41,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     decreaseQty,
     setQty,
     removeItem,
+    clearCart,
   } = useCart();
 
   // Business config from context — changes when the route changes
@@ -486,7 +487,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onClose={() => setCheckoutOpen(false)}
         onBack={() => { setCheckoutOpen(false); setCartOpen(true); }}
       >
-        <CustomerDetailsForm formData={customerDetails} onChange={setCustomerDetails} cart={cart} />
+        <CustomerDetailsForm formData={customerDetails} onChange={setCustomerDetails} cart={cart} onOrderPlaced={clearCart} />
       </CheckoutSheet>
 
       {/* ── Mobile bottom bar ───────────────────────────────────────────── */}
