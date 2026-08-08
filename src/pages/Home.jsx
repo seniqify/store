@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown, ArrowLeft } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import ProductDetail from '../components/product/ProductDetail';
+import { useScrollLock } from '../hooks/useScrollLock';
 import CartSidebar from '../components/cart/CartSidebar';
 import CheckoutSheet from '../components/cart/CheckoutSheet';
 import CartSummary from '../components/cart/CartSummary';
@@ -31,7 +32,9 @@ import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 export default function Home({ externalCartOpen, onExternalCartClose, onCartCountChange }) {
   const [cartOpen,        setCartOpen]        = useState(false);
   const [checkoutOpen,    setCheckoutOpen]    = useState(false);
+  const [askOpen,         setAskOpen]         = useState(false);   // mobile search/AI overlay
   const [customerDetails, setCustomerDetails] = useState(INITIAL_CUSTOMER_DETAILS);
+  useScrollLock(askOpen);
 
   const {
     cart,
@@ -65,6 +68,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // The product to show full-screen (sale price applied), or null for the grid.
   const detailProduct = productId ? saleProducts.find((p) => String(p.id) === String(productId)) : null;
+
+  // AI "Ask" / product search — kept inline on desktop, but on mobile it opens
+  // from the bottom-nav "Ask" tab so the hero space goes back to the products.
+  const aiAskEnabled = Boolean(config.slug) && hasFeature(effectivePlan(config), 'aiEmployee');
+  const searchable   = products.length > 0 || aiAskEnabled;
 
   // Parse promo text for the offer ribbon
   const promoEmoji = promoText
@@ -320,18 +328,21 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       )}
 
-      {/* ── Hero search / ask bar (product search for all; AI answers on Premium) ── */}
-      {(products.length > 0 || hasFeature(effectivePlan(config), 'aiEmployee')) && (
-        <StoreSearchBar
-          products={saleProducts}
-          primary={primary}
-          onAddToCart={addToCart}
-          slug={config.slug}
-          businessName={businessName}
-          waLink={waLink}
-          aiEnabled={Boolean(config.slug) && hasFeature(effectivePlan(config), 'aiEmployee')}
-          referrals={config.localReferrals !== false}
-        />
+      {/* Search / AI ask — inline on desktop; on mobile it opens from the Ask tab
+          (below), so the hero space goes back to the products. */}
+      {searchable && (
+        <div className="hidden lg:block">
+          <StoreSearchBar
+            products={saleProducts}
+            primary={primary}
+            onAddToCart={addToCart}
+            slug={config.slug}
+            businessName={businessName}
+            waLink={waLink}
+            aiEnabled={aiAskEnabled}
+            referrals={config.localReferrals !== false}
+          />
+        </div>
       )}
 
       {/* ── Sale banner (live scheduled sale) → else static promo ribbon ───── */}
@@ -475,6 +486,33 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       </div>
 
+      {/* ── Mobile Ask / search overlay — opened from the bottom-nav Ask tab ── */}
+      {searchable && askOpen && (
+        <div className="lg:hidden fixed inset-0 z-[70] bg-[#f8fafc] flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-3 bg-white border-b border-gray-100 flex-shrink-0">
+            <button type="button" onClick={() => setAskOpen(false)} aria-label="Close"
+              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+              <ArrowLeft size={20} />
+            </button>
+            <span className="text-sm font-bold text-gray-800">
+              {aiAskEnabled ? 'Ask anything' : 'Search products'}
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto pb-10">
+            <StoreSearchBar
+              products={saleProducts}
+              primary={primary}
+              onAddToCart={addToCart}
+              slug={config.slug}
+              businessName={businessName}
+              waLink={waLink}
+              aiEnabled={aiAskEnabled}
+              referrals={config.localReferrals !== false}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Product page (full-screen, shares this store's cart) ─────────────
           Driven by /{slug}/p/{id}; renders over the grid so the cart persists. */}
       {detailProduct && (
@@ -514,6 +552,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         itemCount={itemCount}
         cartTotal={total}
         onCartClick={() => setCartOpen(true)}
+        onAskClick={searchable ? () => setAskOpen(true) : undefined}
+        askLabel={aiAskEnabled ? 'Ask' : 'Search'}
         categoriesTarget="products"
       />
     </div>

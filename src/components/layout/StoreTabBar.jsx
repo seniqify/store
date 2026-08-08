@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home as HomeIcon, LayoutGrid, ShoppingCart, ChevronRight } from 'lucide-react';
+import { Home as HomeIcon, LayoutGrid, ShoppingCart, ChevronRight, Sparkles } from 'lucide-react';
 import { formatINR } from '../../utils/currency';
 
 /**
@@ -13,7 +13,7 @@ import { formatINR } from '../../utils/currency';
  *   onCartClick      — open the cart (sidebar)
  *   categoriesTarget — id of the section to scroll to for "Categories" (default 'products')
  */
-export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick, categoriesTarget = 'products' }) {
+export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick, onAskClick, askLabel = 'Ask', categoriesTarget = 'products' }) {
   const [active, setActive] = useState('home');
 
   const goHome = () => {
@@ -55,9 +55,13 @@ export default function StoreTabBar({ itemCount = 0, cartTotal = 0, onCartClick,
       )}
 
       {/* Tab bar */}
-      <nav className="grid grid-cols-3">
+      <nav className={['grid', onAskClick ? 'grid-cols-4' : 'grid-cols-3'].join(' ')}>
         <Tab icon={HomeIcon}     label="Home"       active={active === 'home'}       onClick={goHome} />
         <Tab icon={LayoutGrid}   label="Categories" active={active === 'categories'} onClick={goCategories} />
+        {onAskClick && (
+          <Tab icon={Sparkles}   label={askLabel}   active={active === 'ask'}
+               onClick={() => { setActive('ask'); onAskClick(); }} />
+        )}
         <Tab icon={ShoppingCart} label="Cart"       badge={itemCount}                onClick={onCartClick} />
       </nav>
     </div>
