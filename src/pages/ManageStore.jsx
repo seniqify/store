@@ -1716,6 +1716,35 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
         </div>
       )}
 
+      {/* Packaging + COD charges — packaging applies to every order (incl. pickup);
+          COD fee only on delivery stores, added when the customer picks COD. */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900">₹ Order charges</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Extra fees on top of delivery. Leave 0 for none.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={lCls()}>Packaging charge (₹)</label>
+            <input type="number" inputMode="numeric" min={0} placeholder="0"
+                   value={config.cart?.packagingCharge ?? ''}
+                   onChange={e => update({ cart: { ...config.cart, packagingCharge: Number(e.target.value) || 0 } })}
+                   className={iCls(false)} />
+            <p className="mt-1 text-[11px] text-gray-400">Added to every order, incl. pickup.</p>
+          </div>
+          {(dlv.mode || 'delivery') !== 'pickup' && (
+            <div>
+              <label className={lCls()}>COD fee (₹)</label>
+              <input type="number" inputMode="numeric" min={0} placeholder="0"
+                     value={config.cart?.codCharge ?? ''}
+                     onChange={e => update({ cart: { ...config.cart, codCharge: Number(e.target.value) || 0 } })}
+                     className={iCls(false)} />
+              <p className="mt-1 text-[11px] text-gray-400">Only on Cash on Delivery — waived if they pay online.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Delivery boys */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
         <div>

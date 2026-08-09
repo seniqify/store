@@ -1,4 +1,4 @@
-import { Truck, Tag, ChevronRight, ShoppingBag, Sparkles } from 'lucide-react';
+import { Truck, Tag, ChevronRight, ShoppingBag, Sparkles, Package } from 'lucide-react';
 import { formatINR, calcCartTotals } from '../../utils/currency';
 import { isValidUpiVpa } from '../../utils/upiLink';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
@@ -26,7 +26,7 @@ export default function CartSummary({
   ctaLabel,
 }) {
   const config = useBusinessConfig();
-  const { subtotal, savings, tax, shipping, total, taxInclusive, taxUniformPct } = calcCartTotals(cart, config.cart);
+  const { subtotal, savings, tax, shipping, packaging, total, taxInclusive, taxUniformPct } = calcCartTotals(cart, config.cart);
   const { cart: cartConfig, upi } = config;
 
   const itemCount = cart.reduce((sum, i) => sum + i.qty, 0);
@@ -81,6 +81,18 @@ export default function CartSummary({
             <span className="font-medium text-gray-700 tabular-nums">
               {formatINR(tax)}
             </span>
+          </div>
+        )}
+
+        {/* Packaging — flat charge on every order (COD fee is added later, at
+            checkout, once the customer picks a payment method) */}
+        {!compact && packaging > 0 && (
+          <div className="flex items-center justify-between text-gray-500">
+            <span className="flex items-center gap-1">
+              <Package size={13} />
+              Packaging
+            </span>
+            <span className="font-semibold tabular-nums text-gray-700">{formatINR(packaging)}</span>
           </div>
         )}
 

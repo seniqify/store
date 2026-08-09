@@ -19,7 +19,8 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
   // Skip demo stores (slug stripped) and empty carts.
   if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return;
   try {
-    const { subtotal, tax, shipping, total } = calcCartTotals(cart, config.cart);
+    const { subtotal, tax, shipping, packaging, codFee, total } =
+      calcCartTotals(cart, config.cart, customerDetails.paymentMethod);
     const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
     const netTotal = Math.max(0, total - couponDiscount);
     const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
@@ -32,7 +33,7 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
       notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
       items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
       item_count:     cart.reduce((s, i) => s + i.qty, 0),
-      subtotal, tax, shipping, total: netTotal,
+      subtotal, tax, shipping, packaging, cod_fee: codFee, total: netTotal,
       status:         'new',
     });
   } catch (err) {

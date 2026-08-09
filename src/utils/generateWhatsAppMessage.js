@@ -67,7 +67,9 @@ function build(customerDetails, items, finalTotal, opts) {
   if (showBreakdown) {
     lines.push(`Subtotal ${formatINR(breakdown.subtotal)}`);
     if (breakdown.tax > 0) lines.push(`GST ${formatINR(breakdown.tax)}`);
+    if (breakdown.packaging > 0) lines.push(`Packaging ${formatINR(breakdown.packaging)}`);
     lines.push(`Delivery ${breakdown.shipping === 0 ? 'FREE' : formatINR(breakdown.shipping)}`);
+    if (breakdown.codFee > 0) lines.push(`COD fee ${formatINR(breakdown.codFee)}`);
     if (breakdown.couponDiscount > 0) lines.push(`Coupon -${formatINR(breakdown.couponDiscount)}`);
   }
 
@@ -88,10 +90,10 @@ function build(customerDetails, items, finalTotal, opts) {
  */
 export function generateWhatsAppMessage(customerDetails, cart, businessConfig = {}, coupon = null) {
   const cartConfig = businessConfig.cart ?? { taxRate: 0, freeShippingAbove: 999, shippingCharge: 49 };
-  const { subtotal, tax, shipping, total } = calcCartTotals(cart, cartConfig);
+  const { subtotal, tax, shipping, packaging, codFee, total } = calcCartTotals(cart, cartConfig, customerDetails.paymentMethod);
   const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
   const finalTotal = Math.max(0, total - couponDiscount);
-  const breakdown = { subtotal, tax, shipping, couponDiscount };
+  const breakdown = { subtotal, tax, shipping, packaging, codFee, couponDiscount };
 
   // 1. Try the full message (all items + cost breakdown).
   let msg = build(customerDetails, cart, finalTotal, { showBreakdown: true, breakdown, coupon });

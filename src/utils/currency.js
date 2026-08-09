@@ -37,8 +37,11 @@ export function discountPercent(price, mrp) {
  *   shipping  — flat fee or 0 when subtotal passes freeShippingAbove
  *   total     — the final amount the customer pays
  */
-export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
-  const { taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive: storeInclusive = false } = cartConfig;
+export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart, paymentMethod) {
+  const {
+    taxRate = 0, freeShippingAbove, shippingCharge, taxInclusive: storeInclusive = false,
+    packagingCharge, codCharge,
+  } = cartConfig;
 
   // Per item: GST rate and whether it's inclusive/exclusive. Each can be set on
   // the product to override the store-wide defaults (mixed-rate / mixed-mode
@@ -68,6 +71,16 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     items.length === 0                          ? 0
     : hasFreeThreshold && subtotal >= freeAbove ? 0
     : shippingCharge;
+
+  // Extra charges — flat amounts the owner sets. Same 0/blank = "none" guard as
+  // delivery, so a blank field never sneaks a charge onto the order.
+  //   • Packaging: a real cost on every order (delivery AND pickup).
+  //   • COD fee: only when the customer chose Cash on Delivery — waived on prepaid,
+  //     which nudges shoppers to pay online.
+  const packRaw = Number(packagingCharge);
+  const packaging = items.length > 0 && Number.isFinite(packRaw) && packRaw > 0 ? packRaw : 0;
+  const codRaw = Number(codCharge);
+  const codFee = items.length > 0 && paymentMethod === 'cod' && Number.isFinite(codRaw) && codRaw > 0 ? codRaw : 0;
 
   // GST summed per line so a cart can mix rates (5% dry fruit + 18% oil) and even
   // mix modes. `taxRaw` is the total GST shown; `addedTax` is only the part added
@@ -100,8 +113,10 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart) {
     savings,
     tax,
     shipping,
+    packaging,
+    codFee,
     taxInclusive,
     taxUniformPct,
-    total: subtotal + Math.round(addedTax) + shipping,
+    total: subtotal + Math.round(addedTax) + shipping + packaging + codFee,
   };
 }

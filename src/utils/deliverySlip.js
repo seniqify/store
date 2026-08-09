@@ -63,13 +63,17 @@ export function openDeliverySlip(order = {}, store = {}) {
     </tr>`;
   }).join('');
 
-  const subtotal = Number(order.subtotal);
-  const tax      = Number(order.tax);
-  const shipping = Number(order.shipping);
+  const subtotal  = Number(order.subtotal);
+  const tax       = Number(order.tax);
+  const shipping  = Number(order.shipping);
+  const packaging = Number(order.packaging);
+  const codFee    = Number(order.cod_fee);
   const totalsRows = [
-    Number.isFinite(subtotal) && subtotal > 0 ? `<div class="tr"><span>Subtotal</span><span>${esc(formatINR(subtotal))}</span></div>` : '',
-    Number.isFinite(tax) && tax > 0           ? `<div class="tr"><span>GST</span><span>${esc(formatINR(tax))}</span></div>` : '',
-    Number.isFinite(shipping) && shipping > 0 ? `<div class="tr"><span>Delivery</span><span>${esc(formatINR(shipping))}</span></div>` : '',
+    Number.isFinite(subtotal)  && subtotal  > 0 ? `<div class="tr"><span>Subtotal</span><span>${esc(formatINR(subtotal))}</span></div>` : '',
+    Number.isFinite(tax)       && tax       > 0 ? `<div class="tr"><span>GST</span><span>${esc(formatINR(tax))}</span></div>` : '',
+    Number.isFinite(packaging) && packaging > 0 ? `<div class="tr"><span>Packaging</span><span>${esc(formatINR(packaging))}</span></div>` : '',
+    Number.isFinite(shipping)  && shipping  > 0 ? `<div class="tr"><span>Delivery</span><span>${esc(formatINR(shipping))}</span></div>` : '',
+    Number.isFinite(codFee)    && codFee    > 0 ? `<div class="tr"><span>COD fee</span><span>${esc(formatINR(codFee))}</span></div>` : '',
   ].filter(Boolean).join('');
 
   const payBadge = isCOD

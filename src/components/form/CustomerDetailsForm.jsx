@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Eye, EyeOff, Truck } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Truck, Package, Wallet } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
 import {
@@ -105,7 +105,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     ? { ...formData, destination: '🏪 Pickup' }
     : { ...formData, destination: composeDeliveryAddress(formData) };
 
-  const { subtotal, tax, shipping, total } = calcCartTotals(cart, effConfig.cart);
+  const { subtotal, tax, shipping, packaging, codFee, total } = calcCartTotals(cart, effConfig.cart, formData.paymentMethod);
 
   // Abandoned-checkout capture: the moment the customer types their full phone
   // number they become recoverable. Recorded once per store+phone+day; if they
@@ -601,18 +601,34 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                 </div>
               )}
 
-              <div className="flex justify-between text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Truck size={12} />
-                  Delivery
-                </span>
-                <span className={[
-                  'font-medium tabular-nums',
-                  shipping === 0 ? 'text-green-600 font-semibold' : 'text-gray-700',
-                ].join(' ')}>
-                  {shipping === 0 ? 'FREE' : formatINR(shipping)}
-                </span>
-              </div>
+              {packaging > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span className="flex items-center gap-1"><Package size={12} /> Packaging</span>
+                  <span className="font-medium text-gray-700 tabular-nums">{formatINR(packaging)}</span>
+                </div>
+              )}
+
+              {!isPickup && (
+                <div className="flex justify-between text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Truck size={12} />
+                    Delivery
+                  </span>
+                  <span className={[
+                    'font-medium tabular-nums',
+                    shipping === 0 ? 'text-green-600 font-semibold' : 'text-gray-700',
+                  ].join(' ')}>
+                    {shipping === 0 ? 'FREE' : formatINR(shipping)}
+                  </span>
+                </div>
+              )}
+
+              {codFee > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span className="flex items-center gap-1"><Wallet size={12} /> COD fee</span>
+                  <span className="font-medium text-gray-700 tabular-nums">{formatINR(codFee)}</span>
+                </div>
+              )}
 
               {couponDiscount > 0 && (
                 <div className="flex justify-between text-green-700">
