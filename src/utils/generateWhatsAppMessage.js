@@ -129,13 +129,24 @@ export function generateWhatsAppURL(customerDetails, cart, businessConfig = {}, 
 }
 
 /**
+ * openOrderOnWhatsApp
+ * Opens WhatsApp with the pre-filled order message — WITHOUT recording the order.
+ * Use when the order has already been saved separately (so it is never saved twice
+ * and the save can't be lost if this hand-off is blocked/slow).
+ * Mobile: opens the WhatsApp app directly via the wa.me deep link.
+ */
+export function openOrderOnWhatsApp(customerDetails, cart, businessConfig = {}, coupon = null) {
+  const url = generateWhatsAppURL(customerDetails, cart, businessConfig, coupon);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
  * sendOrderOnWhatsApp
- * Opens WhatsApp in a new tab with the pre-filled order message.
+ * Records the order, then opens WhatsApp in a new tab with the pre-filled message.
  * Mobile: opens the WhatsApp app directly via the wa.me deep link.
  */
 export function sendOrderOnWhatsApp(customerDetails, cart, businessConfig = {}, coupon = null) {
   // Record the order first (best-effort, fire-and-forget — never blocks WhatsApp).
   saveOrder(customerDetails, cart, businessConfig, coupon);
-  const url = generateWhatsAppURL(customerDetails, cart, businessConfig, coupon);
-  window.open(url, '_blank', 'noopener,noreferrer');
+  openOrderOnWhatsApp(customerDetails, cart, businessConfig, coupon);
 }

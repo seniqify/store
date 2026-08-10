@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
 import { useScrollLock } from '../../hooks/useScrollLock';
+import { pixelTrack } from '../../utils/metaPixel';
 
 /**
  * ProductDetail — full-screen product page (opened from a card at /{slug}/p/{id}).
@@ -13,6 +14,18 @@ import { useScrollLock } from '../../hooks/useScrollLock';
  */
 export default function ProductDetail({ product, onClose, onAddToCart, onViewCart, rating, itemCount = 0 }) {
   useScrollLock(true);   // freeze the store page behind the full-screen product view
+
+  // Report the product view to the store's Meta Pixel (no-op without a pixel).
+  useEffect(() => {
+    pixelTrack('ViewContent', {
+      content_name: product?.name,
+      content_ids:  product?.id != null ? [String(product.id)] : undefined,
+      content_type: 'product',
+      value:        Number(product?.price) || 0,
+      currency:     'INR',
+    });
+  }, [product?.id]);
+
   const variants    = product.variants;
   const hasVariants = !!(variants && variants.options && variants.options.length);
   const extras      = variantExtrasOf(product);

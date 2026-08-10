@@ -63,6 +63,7 @@ export const PLANS = {
     prioritySupport:  true,
     aiEmployee:       true,     // Growth now includes the AI product assistant
     abandonedCarts:   true,     // see + recover abandoned checkouts
+    metaPixel:        true,     // Meta/Facebook Pixel for ad conversion tracking
     offersEngine:     false,
     autoOrderUpdates: false,   // Growth sends order updates one tap at a time
     festivalMode:     false,
@@ -90,6 +91,7 @@ export const PLANS = {
     offersEngine:      true,
     autoOrderUpdates:  true,
     aiInsights:        true,    // AI customer/search/sales dashboards
+    metaPixel:         true,    // Meta/Facebook Pixel for ad conversion tracking
     customDomain:      true,    // roadmap — flip on gate when custom domains ship
     marketplacePriority: true,  // roadmap — higher marketplace ranking
     teamMembers:       true,    // roadmap — multiple logins

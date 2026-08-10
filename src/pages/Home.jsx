@@ -20,6 +20,7 @@ import { calcCartTotals, formatINR } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
 import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
+import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
 
 /**
  * Home — the main storefront page.
@@ -166,8 +167,29 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     }
   }, [externalCartOpen, onExternalCartClose]);
 
+  // Load the store's Meta Pixel (paid plans) so their Facebook/Instagram ads can
+  // track conversions. No-op when the owner hasn't set one.
+  useEffect(() => {
+    if (config?.metaPixelId && hasFeature(effectivePlan(config), 'metaPixel')) {
+      initMetaPixel(config.metaPixelId);
+    }
+  }, [config?.metaPixelId, config?.plan]);
+
+  // Add to cart + report it to the store's Meta Pixel (no-op without a pixel).
+  function handleAddToCart(item, qty = 1) {
+    addToCart(item, qty);
+    pixelTrack('AddToCart', {
+      content_name: item?.name,
+      content_ids:  item?.id != null ? [String(item.id)] : undefined,
+      content_type: 'product',
+      value:        (Number(item?.price) || 0) * (qty || 1),
+      currency:     'INR',
+    });
+  }
+
   // ── "Place Order" → close cart, open the checkout sheet ──────────────────
   function handleCheckout() {
+    pixelTrack('InitiateCheckout', { value: total, currency: 'INR', num_items: itemCount });
     setCartOpen(false);
     setCheckoutOpen(true);
   }
@@ -361,7 +383,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           <StoreSearchBar
             products={saleProducts}
             primary={primary}
-            onAddToCart={addToCart}
+            onAddToCart={handleAddToCart}
             slug={config.slug}
             businessName={businessName}
             waLink={waLink}
@@ -410,7 +432,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               products={saleProducts}
               categories={categories}
               cart={cart}
-              onAddToCart={addToCart}
+              onAddToCart={handleAddToCart}
               onIncrease={increaseQty}
               onDecrease={decreaseQty}
               onSetQty={setQty}
@@ -511,7 +533,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
             <StoreSearchBar
               products={saleProducts}
               primary={primary}
-              onAddToCart={addToCart}
+              onAddToCart={handleAddToCart}
               slug={config.slug}
               businessName={businessName}
               waLink={waLink}
@@ -549,7 +571,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           rating={heroRating}
           itemCount={itemCount}
           onClose={() => navigate(`/${config.slug}`)}
-          onAddToCart={addToCart}
+          onAddToCart={handleAddToCart}
           onViewCart={() => { navigate(`/${config.slug}`); setCartOpen(true); }}
         />
       )}

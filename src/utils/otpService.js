@@ -6,19 +6,29 @@
 const EDGE_URL  = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-otp`;
 const ANON_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-async function call(body) {
-  const res = await fetch(EDGE_URL, {
-    method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${ANON_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+async function call(body, { timeoutMs = 12000 } = {}) {
+  // Hard timeout — a hung edge function must never freeze the caller (e.g. the
+  // checkout "Order placed" screen). On timeout the fetch aborts and throws, so
+  // best-effort callers fall back cleanly instead of waiting forever.
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(EDGE_URL, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${ANON_KEY}`,
+      },
+      body:   JSON.stringify(body),
+      signal: ctrl.signal,
+    });
 
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || 'OTP service error');
-  return json;
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || 'OTP service error');
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Send a 6-digit OTP to the given WhatsApp number via MSG91. */

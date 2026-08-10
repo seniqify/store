@@ -4,9 +4,10 @@ import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
 import {
   generateWhatsAppMessage,
-  sendOrderOnWhatsApp,
+  openOrderOnWhatsApp,
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
+import { pixelTrack } from '../../utils/metaPixel';
 import { saveOrder, saveAbandonedCheckout } from '../../utils/orderService';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
@@ -184,10 +185,20 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     if (cartEmpty) return;
 
     setPlacing(true);
-    // Prefer PocketLink-sent WhatsApp notifications to BOTH sides (seller gets a
-    // new-order alert, customer a thank-you) — no manual send, no drop-off. If
-    // the order templates aren't live yet, fall back to the classic wa.me
-    // hand-off so the order still reaches the seller.
+
+    // ── Record the order FIRST ────────────────────────────────────────────────
+    // The DB row is the source of truth. Persist it before the (awaited) WhatsApp
+    // notification below, so a slow edge function, a flaky mobile network, or the
+    // customer closing the tab can NEVER lose a placed order. Awaited so the row is
+    // written before we show "Order placed". (Best-effort — saveOrder never throws.)
+    await saveOrder(sendData, cart, effConfig, appliedCoupon);
+
+    // ── Then notify both sides (best-effort) ──────────────────────────────────
+    // PocketLink sends WhatsApp alerts to BOTH sides (seller gets a new-order
+    // alert, customer a thank-you) — no manual send, no drop-off. If the order
+    // templates aren't live / the send fails, fall back to the classic wa.me
+    // hand-off so the order still reaches the seller. The order is already saved,
+    // so this hand-off only opens WhatsApp — it never re-saves or risks the order.
     let notified = false;
     try {
       notified = await sendOrderNotifications({
@@ -201,14 +212,15 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       });
     } catch { /* fall back below */ }
 
-    if (notified) {
-      saveOrder(sendData, cart, effConfig, appliedCoupon);          // record the order
-    } else {
-      sendOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon); // saves + opens wa.me
+    if (!notified) {
+      openOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon); // order already saved
     }
     setAutoNotified(notified);
     setPlacing(false);
     setSubmitted(true);
+    // Report the sale to the store's Meta Pixel — checkout finishes in WhatsApp,
+    // so order-placed is the conversion. No-op without a pixel.
+    pixelTrack('Purchase', { value: finalTotal, currency: 'INR', num_items: itemCount });
     onOrderPlaced?.();   // empty the cart now that the order is placed
   }
 

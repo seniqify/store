@@ -2011,6 +2011,30 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             })()}
           </div>
 
+          {/* Meta Pixel — conversion tracking for stores running Facebook/Instagram ads */}
+          <div>
+            <label className={lCls()}>Meta Pixel ID <span className="text-gray-400 font-normal">· for Facebook/Instagram ads</span></label>
+            {getPlanLimits(effectivePlan(config)).metaPixel ? (
+              <>
+                <input type="text" inputMode="numeric" maxLength={20} placeholder="e.g. 123456789012345"
+                       value={config.metaPixelId || ''}
+                       onChange={e => update({ metaPixelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 20) })}
+                       className={iCls(false)} />
+                <p className="mt-1 text-xs text-gray-400">
+                  Running Meta ads? Paste your Pixel ID (Meta Events Manager → Data sources) — we'll track product views, add-to-carts &amp; orders so your ads can optimise for buyers &amp; retarget. Leave blank to turn off.
+                </p>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 px-3 py-2.5">
+                <p className="text-xs text-gray-500">
+                  Track your Meta ad sales on <b>Pro</b> —{' '}
+                  <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))}
+                     className="font-semibold underline text-brand-dark">upgrade →</a>
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Store icon (logoEmoji) */}
           <div>
             <label className={lCls()}>Business Icon</label>
