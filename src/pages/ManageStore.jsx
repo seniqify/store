@@ -43,6 +43,7 @@ import AiInsightsTab                                    from '../components/mana
 import CustomersTab                                      from '../components/manage/CustomersTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
+import ShippingConnect                                     from '../components/manage/ShippingConnect';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2039,6 +2040,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           {/* Online payments — connect the store's own Razorpay */}
           <PaymentsConnect config={config} pin={pin} themeColor={themeColor} />
 
+          {/* Shipping — connect the store's own Delhivery */}
+          <ShippingConnect config={config} pin={pin} themeColor={themeColor} />
+
           {/* Store icon (logoEmoji) */}
           <div>
             <label className={lCls()}>Business Icon</label>
@@ -2753,7 +2757,8 @@ export default function ManageStore() {
                        payInfo={{ upi: config.upi || '', bank: config.bank || null }}
                        store={{ slug: businessSlug, businessName: config.businessName, logo: config.logo,
                                 logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
-                                whatsappNumber: config.whatsappNumber, theme: config.theme }} />
+                                whatsappNumber: config.whatsappNumber, theme: config.theme,
+                                shipping: config.shipping }} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

@@ -14,6 +14,7 @@ import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { fetchReviews, reviewStats } from '../../utils/reviewService';
 import { isVerified, effectivePlan } from '../../utils/planLimits';
 import { payOnline } from '../../utils/onlinePayment';
+import { getShippingRate } from '../../utils/shippingConnect';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink, hasUpi } from '../../utils/upiLink';
 
@@ -93,6 +94,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [couponInput,   setCouponInput]   = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError,   setCouponError]   = useState('');
+  const [courier,       setCourier]       = useState(null);   // live Delhivery rate for outstation
 
   const config = useBusinessConfig();
 
@@ -101,7 +103,22 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const dlv      = config.delivery || {};
   const dlvMode  = dlv.mode || 'delivery';
   const isPickup = dlvMode === 'pickup' || (dlvMode === 'both' && formData.fulfillment === 'pickup');
-  const effConfig = isPickup ? { ...config, cart: { ...config.cart, shippingCharge: 0 } } : config;
+
+  // Outstation (courier) routing: when the store has Delhivery connected and the
+  // customer's pincode is NOT local (doesn't share the pickup's first-3 prefix), we
+  // fetch a live Delhivery rate and use it as the shipping charge. Local pincodes
+  // keep the flat delivery charge + rider dispatch.
+  const custPin       = String(formData.pincode || '').replace(/\D/g, '');
+  const localPrefix   = config.shipping?.localPrefix;
+  const isOutstation  = !isPickup && Boolean(config.shipping?.delhivery) &&
+                        custPin.length === 6 && Boolean(localPrefix) && !custPin.startsWith(localPrefix);
+  const courierActive = isOutstation && courier?.serviceable && courier?.amount != null;
+
+  const effConfig = isPickup
+    ? { ...config, cart: { ...config.cart, shippingCharge: 0 } }
+    : courierActive
+      ? { ...config, cart: { ...config.cart, shippingCharge: courier.amount, freeShippingAbove: 0 } }
+      : config;
   // What actually gets sent/stored/printed: pickup needs no address; delivery
   // composes the structured fields into one full `destination` address line.
   // The raw fields (addressLine, pincode) are kept in the spread so the
@@ -126,6 +143,23 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     saveAbandonedCheckout(formData, cart, config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.mobile]);
+
+  // Live Delhivery rate for outstation pincodes (debounced on pincode / payment).
+  // Local or non-connected → no call; courier stays null and the flat charge applies.
+  useEffect(() => {
+    if (!isOutstation) { setCourier(null); return; }
+    let alive = true;
+    setCourier({ loading: true });
+    const weightG = cart.reduce((s, i) => s + (Number(i.weight) || 500) * i.qty, 0);
+    const mode = formData.paymentMethod === 'cod' ? 'COD' : 'Pre-paid';
+    const t = setTimeout(() => {
+      getShippingRate(config.slug, custPin, weightG, mode)
+        .then((r) => { if (alive) setCourier(r || null); })
+        .catch(() => { if (alive) setCourier({ error: true }); });
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [custPin, isOutstation, formData.paymentMethod]);
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;
@@ -762,18 +796,34 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
               )}
 
               {!isPickup && (
-                <div className="flex justify-between text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <Truck size={12} />
-                    Delivery
-                  </span>
-                  <span className={[
-                    'font-medium tabular-nums',
-                    shipping === 0 ? 'text-green-600 font-semibold' : 'text-gray-700',
-                  ].join(' ')}>
-                    {shipping === 0 ? 'FREE' : formatINR(shipping)}
-                  </span>
-                </div>
+                courierActive ? (
+                  <div className="flex justify-between text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Truck size={12} /> Delhivery{courier.district ? ` · ${courier.district}` : ''}
+                    </span>
+                    <span className="font-medium tabular-nums text-gray-700">{formatINR(shipping)}</span>
+                  </div>
+                ) : isOutstation && courier?.loading ? (
+                  <div className="flex justify-between text-gray-400">
+                    <span className="flex items-center gap-1"><Truck size={12} /> Delivery</span>
+                    <span className="text-xs">Checking rate…</span>
+                  </div>
+                ) : isOutstation && courier && courier.serviceable === false ? (
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                    <span className="flex-shrink-0">⚠️</span>
+                    <span>{courier.reason || 'Delhivery may not deliver to this pincode — the shop will confirm on WhatsApp.'}</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-gray-500">
+                    <span className="flex items-center gap-1"><Truck size={12} /> Delivery</span>
+                    <span className={[
+                      'font-medium tabular-nums',
+                      shipping === 0 ? 'text-green-600 font-semibold' : 'text-gray-700',
+                    ].join(' ')}>
+                      {shipping === 0 ? 'FREE' : formatINR(shipping)}
+                    </span>
+                  </div>
+                )
               )}
 
               {codFee > 0 && (

@@ -65,6 +65,7 @@ export const PLANS = {
     abandonedCarts:   true,     // see + recover abandoned checkouts
     metaPixel:        true,     // Meta/Facebook Pixel for ad conversion tracking
     onlinePayments:   true,     // accept online payments via the store's own Razorpay
+    shipping:         true,     // ship pan-India via the store's own Delhivery
     offersEngine:     false,
     autoOrderUpdates: false,   // Growth sends order updates one tap at a time
     festivalMode:     false,
@@ -94,6 +95,7 @@ export const PLANS = {
     aiInsights:        true,    // AI customer/search/sales dashboards
     metaPixel:         true,    // Meta/Facebook Pixel for ad conversion tracking
     onlinePayments:    true,    // accept online payments via the store's own Razorpay
+    shipping:          true,    // ship pan-India via the store's own Delhivery
     customDomain:      true,    // roadmap — flip on gate when custom domains ship
     marketplacePriority: true,  // roadmap — higher marketplace ranking
     teamMembers:       true,    // roadmap — multiple logins

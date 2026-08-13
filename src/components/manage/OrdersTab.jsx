@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check } from 'lucide-react';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
+import { bookShipment, shipmentOp } from '../../utils/shippingConnect';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 
@@ -211,7 +212,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           {/* Order / lead cards */}
           <div className="space-y-3">
             {filtered.map((o) => (
-              <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor}
+              <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
                          storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads={leads} riders={riders} payInfo={payInfo} store={store} />
             ))}
             {filtered.length === 0 && (
@@ -224,7 +225,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
-function OrderCard({ o, busy, themeColor, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
+function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
@@ -448,6 +449,11 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, onPaid, leads = f
           </>
         )}
 
+        {/* Delhivery shipping — for delivery orders when the store is connected */}
+        {!leads && store.shipping?.delhivery && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
+          <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} />
+        )}
+
         {/* Contact the customer + cancel/reopen */}
         <div className="flex items-center gap-2">
           {phone && (
@@ -477,6 +483,62 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, onPaid, leads = f
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Delhivery shipping controls for one order: Book → AWB, then Label / Track / Cancel.
+function ShipBlock({ o, slug, pin, themeColor }) {
+  const [awb, setAwb]       = useState(o.awb || null);
+  const [status, setStatus] = useState(o.shipment_status || '');
+  const [busy, setBusy]     = useState('');
+  const [err, setErr]       = useState('');
+
+  async function run(kind, fn) {
+    setErr(''); setBusy(kind);
+    try { return await fn(); }
+    catch (e) { setErr(e.message || 'Something went wrong.'); }
+    finally { setBusy(''); }
+  }
+  const book   = () => run('book',  async () => { const r = await bookShipment(slug, pin, o.id); setAwb(r.awb); setStatus(r.status || 'Manifested'); });
+  const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
+  const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setStatus(r.status || status); });
+  const cancel = () => { if (!window.confirm('Cancel this Delhivery shipment?')) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) { setAwb(null); setStatus('Cancelled'); } else setErr('Delhivery could not cancel it.'); }); };
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
+      {!awb ? (
+        <button disabled={busy === 'book'} onClick={book}
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95 disabled:opacity-50"
+          style={{ backgroundColor: themeColor }}>
+          <Truck size={13} /> {busy === 'book' ? 'Booking…' : 'Book Delhivery'}
+        </button>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+              <Truck size={13} style={{ color: themeColor }} /> Delhivery
+            </span>
+            <span className="text-[11px] font-mono text-gray-500">AWB {awb}</span>
+          </div>
+          {status && <p className="text-[11px] text-gray-500">Status: <b className="text-gray-700">{status}</b></p>}
+          <div className="flex items-center gap-1.5">
+            <button disabled={!!busy} onClick={label}
+              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+              <Printer size={12} /> {busy === 'label' ? '…' : 'Label'}
+            </button>
+            <button disabled={!!busy} onClick={track}
+              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+              {busy === 'track' ? '…' : 'Track'}
+            </button>
+            <button disabled={!!busy} onClick={cancel}
+              className="text-[11px] font-semibold text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50">
+              {busy === 'cancel' ? '…' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+      {err && <p className="text-[11px] text-red-500 mt-1.5">{err}</p>}
     </div>
   );
 }

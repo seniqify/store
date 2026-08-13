@@ -34,6 +34,7 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
       customer_name:  customerDetails.partyName || customerDetails.name || '',
       customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),
       destination:    customerDetails.destination || customerDetails.city || '',
+      pincode:        String(customerDetails.pincode || '').replace(/\D/g, '').slice(0, 6),
       payment_method: customerDetails.paymentMethod || '',
       notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
       items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
