@@ -2038,10 +2038,10 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           </div>
 
           {/* Online payments — connect the store's own Razorpay */}
-          <PaymentsConnect config={config} pin={pin} themeColor={themeColor} />
+          <PaymentsConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
           {/* Shipping — connect the store's own Delhivery */}
-          <ShippingConnect config={config} pin={pin} themeColor={themeColor} />
+          <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
           {/* Store icon (logoEmoji) */}
           <div>
@@ -2454,7 +2454,10 @@ export default function ManageStore() {
   // Load store
   useEffect(() => {
     setLoading(true);
-    loadBusiness(businessSlug).then(cfg => {
+    // onFresh: when the background DB refresh returns a newer config than the
+    // cached copy (e.g. Razorpay/Delhivery was just connected server-side), apply
+    // it — otherwise the owner keeps seeing a stale "not connected" Settings card.
+    loadBusiness(businessSlug, { onFresh: (fresh) => { if (fresh) setConfig(fresh); } }).then(cfg => {
       if (cfg) setConfig(cfg);
       else     setNotFound(true);
       setLoading(false);

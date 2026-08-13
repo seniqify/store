@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Truck, Check, ShieldCheck } from 'lucide-react';
 import { getPlanLimits, effectivePlan } from '../../utils/planLimits';
 import { connectDelhivery, disconnectDelhivery } from '../../utils/shippingConnect';
+import { clearCachedStore } from '../../utils/businessStorage';
 
 /**
  * Settings → Shipping. Connect the store's own Delhivery account so outstation
@@ -9,7 +10,7 @@ import { connectDelhivery, disconnectDelhivery } from '../../utils/shippingConne
  * Local orders stay on rider dispatch. Token is stored server-side (RLS-locked),
  * never in the browser.
  */
-export default function ShippingConnect({ config, pin, themeColor = '#0d9488' }) {
+export default function ShippingConnect({ config, pin, themeColor = '#0d9488', onConfig }) {
   const entitled = getPlanLimits(effectivePlan(config)).shipping;
   const [ship, setShip]   = useState(config.shipping || {});
   const [tok, setTok]     = useState('');
@@ -29,7 +30,10 @@ export default function ShippingConnect({ config, pin, themeColor = '#0d9488' })
         pickupAddress: address.trim(), pickupPhone: phone.trim(),
         pickupName: config.businessName,
       });
-      setShip({ delhivery: true, pickupPincode: r.pickupPincode, district: r.district, localPrefix: (r.pickupPincode || '').slice(0, 3) });
+      const next = { delhivery: true, pickupPincode: r.pickupPincode, district: r.district, localPrefix: (r.pickupPincode || '').slice(0, 3) };
+      setShip(next);
+      onConfig?.({ shipping: next });            // keep the Settings config in sync (no reload needed)
+      clearCachedStore(config.slug);             // so a future reload reads the fresh flag from the DB
       setTok(''); setPincode(''); setAddr(''); setPhone('');
     } catch (e) { setErr(e.message || 'Could not connect. Try again.'); }
     finally { setBusy(false); }
@@ -37,7 +41,12 @@ export default function ShippingConnect({ config, pin, themeColor = '#0d9488' })
 
   async function disconnect() {
     setErr(''); setBusy(true);
-    try { await disconnectDelhivery(config.slug, pin); setShip({ delhivery: false }); }
+    try {
+      await disconnectDelhivery(config.slug, pin);
+      setShip({ delhivery: false });
+      onConfig?.({ shipping: { delhivery: false } });
+      clearCachedStore(config.slug);
+    }
     catch (e) { setErr(e.message || 'Could not disconnect.'); }
     finally { setBusy(false); }
   }

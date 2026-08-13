@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CreditCard, Check, ShieldCheck } from 'lucide-react';
 import { getPlanLimits, effectivePlan } from '../../utils/planLimits';
 import { connectRazorpay, disconnectRazorpay } from '../../utils/paymentsConnect';
+import { clearCachedStore } from '../../utils/businessStorage';
 
 /**
  * Settings → Online Payments. Lets the owner connect their own Razorpay so
@@ -11,7 +12,7 @@ import { connectRazorpay, disconnectRazorpay } from '../../utils/paymentsConnect
  * browser after this; the one-tap "Connect with Razorpay" (OAuth) drops into the
  * same slot once the Partner approval lands.
  */
-export default function PaymentsConnect({ config, pin, themeColor = '#0d9488' }) {
+export default function PaymentsConnect({ config, pin, themeColor = '#0d9488', onConfig }) {
   const entitled  = getPlanLimits(effectivePlan(config)).onlinePayments;
   const [pay, setPay]           = useState(config.payments || {});
   const [keyId, setKeyId]       = useState('');
@@ -25,7 +26,10 @@ export default function PaymentsConnect({ config, pin, themeColor = '#0d9488' })
     setErr(''); setBusy(true);
     try {
       const r = await connectRazorpay(config.slug, pin, { keyId: keyId.trim(), keySecret: keySecret.trim() });
-      setPay({ razorpay: true, mode: r.mode, keyIdMasked: r.keyIdMasked });
+      const next = { razorpay: true, mode: r.mode, keyIdMasked: r.keyIdMasked };
+      setPay(next);
+      onConfig?.({ payments: next });          // keep the Settings config in sync (no reload needed)
+      clearCachedStore(config.slug);           // so a future reload reads the fresh flag from the DB
       setKeyId(''); setSecret('');
     } catch (e) {
       setErr(e.message || 'Could not connect. Please try again.');
@@ -37,6 +41,8 @@ export default function PaymentsConnect({ config, pin, themeColor = '#0d9488' })
     try {
       await disconnectRazorpay(config.slug, pin);
       setPay({ razorpay: false });
+      onConfig?.({ payments: { razorpay: false } });
+      clearCachedStore(config.slug);
     } catch (e) {
       setErr(e.message || 'Could not disconnect. Please try again.');
     } finally { setBusy(false); }
