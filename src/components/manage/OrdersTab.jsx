@@ -258,7 +258,7 @@ function OrderCard({ o, busy, themeColor, storeName, onStatus, onPaid, leads = f
     const head = `Hi ${o.customer_name || 'there'}, this is *${storeName || 'our store'}*.\n` +
                  `Your order of *${totalStr}* is confirmed.\n\n`;
     const tail = `\n\nOnce paid, kindly send the screenshot here and we will process your order right away. Thank you!`;
-    const wantsUpi  = o.payment_method === 'upi';
+    const wantsUpi  = o.payment_method === 'upi' || o.payment_method === 'qr';
     const bank      = payInfo.bank;
     const hasBank   = Boolean(bank?.accountNumber);
     if ((wantsUpi || !hasBank) && payInfo.upi) {

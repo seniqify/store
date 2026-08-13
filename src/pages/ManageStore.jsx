@@ -42,6 +42,7 @@ import OffersTab                                        from '../components/mana
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 import CustomersTab                                      from '../components/manage/CustomersTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
+import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1784,7 +1785,7 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
   );
 }
 
-function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete }) {
+function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete, pin }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const [dirty, setDirty] = useState(false);
 
@@ -2034,6 +2035,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
               </div>
             )}
           </div>
+
+          {/* Online payments — connect the store's own Razorpay */}
+          <PaymentsConnect config={config} pin={pin} themeColor={themeColor} />
 
           {/* Store icon (logoEmoji) */}
           <div>
@@ -2828,6 +2832,7 @@ export default function ManageStore() {
               saveStatus={saveStatus}
               saveError={saveError}
               onDelete={handleStoreDeleted}
+              pin={storePin}
             />
           )}
         </div>

@@ -33,10 +33,12 @@ import { saveOrder } from './orderService';
  */
 
 const PAYMENT_LABELS = {
+  online: 'Paid online ✅',
   cod:    'COD',
   upi:    'UPI',
+  qr:     'UPI QR',
   bank:   'Bank Transfer',
-  cheque: 'Cheque',
+  cheque: 'Cheque',   // retired from checkout; kept so older orders still label correctly
 };
 
 const MAX_WORDS = 50;

@@ -14,17 +14,22 @@ import { hashPin } from './pinHash';
  * readable by the owner via the PIN-checked RPCs.
  */
 
-/** Best-effort: record an order. Never throws — must not block the WhatsApp handoff. */
+/** Best-effort: record an order. Never throws — must not block the WhatsApp handoff.
+ *  Returns the order's id (minted client-side, since RLS lets customers INSERT but
+ *  not SELECT their row) so an online-payment flow can mark that exact order paid.
+ *  Returns null if nothing was saved. */
 export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null) {
   // Skip demo stores (slug stripped) and empty carts.
-  if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return;
+  if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return null;
   try {
     const { subtotal, tax, shipping, packaging, codFee, total } =
       calcCartTotals(cart, config.cart, customerDetails.paymentMethod);
     const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
     const netTotal = Math.max(0, total - couponDiscount);
     const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
     await supabase.from('orders').insert({
+      ...(id ? { id } : {}),
       store_slug:     config.slug,
       customer_name:  customerDetails.partyName || customerDetails.name || '',
       customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),
@@ -36,10 +41,12 @@ export async function saveOrder(customerDetails = {}, cart = [], config = {}, co
       subtotal, tax, shipping, packaging, cod_fee: codFee, total: netTotal,
       status:         'new',
     });
+    return id || null;
   } catch (err) {
     // Best-effort — a failed save must never break the customer's order — but log
     // it (was fully silent) so a lost order leaves a trace to diagnose.
     console.error('saveOrder failed:', err?.message || err);
+    return null;
   }
 }
 

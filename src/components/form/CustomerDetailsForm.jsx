@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Eye, EyeOff, Truck, Package, Wallet } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Truck, Package, Wallet, Check, Star } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
 import {
@@ -11,6 +11,9 @@ import { pixelTrack } from '../../utils/metaPixel';
 import { saveOrder, saveAbandonedCheckout } from '../../utils/orderService';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
+import { fetchReviews, reviewStats } from '../../utils/reviewService';
+import { isVerified, effectivePlan } from '../../utils/planLimits';
+import { payOnline } from '../../utils/onlinePayment';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink, hasUpi } from '../../utils/upiLink';
 
@@ -25,7 +28,7 @@ import { buildUpiLink, hasUpi } from '../../utils/upiLink';
  *   addressLine    string   delivery — house / flat / street / area
  *   destination    string   required — city / town (pickup: overridden)
  *   pincode        string   delivery — 6-digit PIN
- *   paymentMethod  string   required — cod | upi | bank | cheque
+ *   paymentMethod  string   required — cod | upi | qr | bank
  *   notes          string   optional — packing / special instructions
  *
  * On send, delivery orders compose addressLine + city + pincode into a single
@@ -57,10 +60,10 @@ function composeDeliveryAddress({ addressLine, destination, pincode }) {
 }
 
 const PAYMENT_OPTIONS = [
-  { value: 'cod',    label: 'Cash / COD' },
-  { value: 'upi',    label: 'UPI / QR Code' },
-  { value: 'bank',   label: 'Bank Transfer (NEFT/RTGS)' },
-  { value: 'cheque', label: 'Cheque' },
+  { value: 'cod',  label: '💵 Cash on Delivery (COD)' },
+  { value: 'upi',  label: '📱 UPI (GPay / PhonePe / Paytm)' },
+  { value: 'qr',   label: '🔳 QR Code — scan & pay' },
+  { value: 'bank', label: '🏦 Bank Transfer (NEFT / RTGS)' },
 ];
 
 // ── Official WhatsApp icon (SVG, fill="currentColor") ─────────────────────────
@@ -82,6 +85,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [errors,      setErrors]      = useState({});
   const [submitted,   setSubmitted]   = useState(false);
   const [placing,     setPlacing]     = useState(false);   // submit in flight
+  const [payError,    setPayError]    = useState('');      // online-payment error, if any
   const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
   const [showPreview, setShowPreview] = useState(false);
 
@@ -125,6 +129,27 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;
+
+  // Seller-identity trust signals — the same name, Verified badge & star rating
+  // the customer saw on the storefront, echoed at checkout so it feels like the
+  // same trusted shop (continuity = less "is this a scam?" hesitation).
+  const primary  = config.theme?.primary || '#0d9488';
+  const verified = isVerified(effectivePlan(config));
+
+  // Online payment (Razorpay) is offered only when the store has connected it.
+  // When available it's the first, most-prominent option.
+  const onlineAvailable = Boolean(config.payments?.razorpay);
+  const paymentOptions  = [
+    ...(onlineAvailable ? [{ value: 'online', label: '💳 Pay Online now — UPI / Card' }] : []),
+    ...PAYMENT_OPTIONS,
+  ];
+  const [rating, setRating] = useState(null);
+  useEffect(() => {
+    if (!config?.slug) return;
+    let alive = true;
+    fetchReviews(config.slug).then((r) => { if (alive) setRating(reviewStats(r)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [config?.slug]);
 
   const coupons        = config.coupons || [];
   const couponDiscount = appliedCoupon ? couponDiscountFor(appliedCoupon, subtotal) : 0;
@@ -185,13 +210,40 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     if (cartEmpty) return;
 
     setPlacing(true);
+    setPayError('');
 
     // ── Record the order FIRST ────────────────────────────────────────────────
     // The DB row is the source of truth. Persist it before the (awaited) WhatsApp
     // notification below, so a slow edge function, a flaky mobile network, or the
     // customer closing the tab can NEVER lose a placed order. Awaited so the row is
     // written before we show "Order placed". (Best-effort — saveOrder never throws.)
-    await saveOrder(sendData, cart, effConfig, appliedCoupon);
+    // Returns the order id so an online payment can mark this exact order paid.
+    const orderRowId = await saveOrder(sendData, cart, effConfig, appliedCoupon);
+
+    // ── Online payment ────────────────────────────────────────────────────────
+    // Collect payment before confirming. The order is already saved (unpaid), so a
+    // cancelled payment just leaves it as a normal pending order the owner can chase.
+    if (formData.paymentMethod === 'online') {
+      try {
+        const result = await payOnline({
+          slug:       config.slug,
+          amount:     finalTotal,
+          orderRowId,
+          customer:   { name: sendData.partyName, phone: sendData.mobile },
+          storeName:  config.businessName,
+          themeColor: primary,
+        });
+        if (!result?.paid) {
+          setPlacing(false);
+          setPayError('Payment wasn’t completed. Your order is saved — tap Pay again, or pick another method.');
+          return;
+        }
+      } catch (e) {
+        setPlacing(false);
+        setPayError(e?.message || 'Couldn’t start the payment. Try again, or choose another method.');
+        return;
+      }
+    }
 
     // ── Then notify both sides (best-effort) ──────────────────────────────────
     // PocketLink sends WhatsApp alerts to BOTH sides (seller gets a new-order
@@ -281,10 +333,35 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">📋 Order Details</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Fill in your details — we'll send the order summary to WhatsApp
+          <div className="min-w-0">
+            {/* Seller identity — mirrors the storefront hero so checkout reads as
+                the same real, verified shop the customer was just browsing. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {(config.logo || config.logoEmoji) && (
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0
+                                 overflow-hidden bg-gray-50 border border-gray-100"
+                      style={config.logo ? undefined : { background: `${primary}14` }}>
+                  {config.logo
+                    ? <img src={config.logo} alt="" className="w-full h-full object-cover" />
+                    : config.logoEmoji}
+                </span>
+              )}
+              <h2 className="text-base font-bold text-gray-900 truncate max-w-[12rem]">{config.businessName}</h2>
+              {verified && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
+                                 px-2 py-0.5 rounded-full flex-shrink-0">
+                  <Check size={10} strokeWidth={3} /> Verified
+                </span>
+              )}
+              {rating?.count > 0 && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10
+                                 px-2 py-0.5 rounded-full flex-shrink-0">
+                  <Star size={10} fill="currentColor" /> {rating.avg} ({rating.count})
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              Almost done — add your details &amp; we'll confirm your order on WhatsApp.
             </p>
           </div>
 
@@ -303,6 +380,57 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
           )}
         </div>
       </div>
+
+      {/* ── Trust reassurance chips — same chip look as the storefront; directly
+             answers the three hesitations: my data, my money, will I hear back. */}
+      <div className="px-6 pt-4 flex flex-wrap gap-2">
+        {[
+          ['🔒', 'Your details are private'],
+          ['🤝', 'You pay the shop directly'],
+          ['💬', 'Confirmed on WhatsApp'],
+        ].map(([emoji, text]) => (
+          <span key={text}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600
+                       bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5">
+            <span className="text-xs leading-none">{emoji}</span> {text}
+          </span>
+        ))}
+      </div>
+
+      {/* ── Order summary — show WHAT they're buying, with photos, so the order
+             feels real and matches the shop they were just browsing. */}
+      {!cartEmpty && (
+        <div className="px-6 pt-4">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+            Your order · {itemCount} {itemCount === 1 ? 'item' : 'items'}
+          </p>
+          <div className="rounded-xl border border-gray-100 bg-gray-50/60 divide-y divide-gray-100">
+            {cart.map((it) => {
+              const img = it.image || (Array.isArray(it.images) ? it.images[0] : null);
+              return (
+                <div key={it.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-white border border-gray-200
+                                  flex-shrink-0 flex items-center justify-center">
+                    {img
+                      ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      : <span className="text-base">🛍️</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{it.name}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {it.qty} × {formatINR(it.price)}
+                      {it.variant ? ` · ${it.variant}` : ''}{it.size ? ` · ${it.size}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums flex-shrink-0">
+                    {formatINR((Number(it.price) || 0) * it.qty)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Message preview panel ─────────────────────────────────────── */}
       {showPreview && canPreview && (
@@ -447,7 +575,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             className={inputCls('paymentMethod')}
           >
             <option value="">Select payment method…</option>
-            {PAYMENT_OPTIONS.map((opt) => (
+            {paymentOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -456,8 +584,10 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
         </FormField>
 
         {/* ── Payment details hint ─────────────────────────────────────────
-            UPI selected   → show UPI ID (or "seller will share" fallback)
-            Bank selected  → show bank details table (or "seller will share")
+            UPI     → show the UPI ID + tap-to-pay shortcut
+            QR Code → show the scan-to-pay QR
+            Bank    → show bank details table
+            (each falls back to "seller will share" when not configured)
         ─────────────────────────────────────────────────────────────────── */}
         {formData.paymentMethod === 'upi' && (
           hasUpi(config) ? (
@@ -474,18 +604,6 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                   </p>
                 </div>
               </div>
-
-              {/* Scan-to-pay QR — the reliable method (works to personal VPAs and
-                  on desktop). The tap link below is the shortcut on mobile. */}
-              {upiQrSrc && (
-                <div className="mt-3 flex flex-col items-center bg-white rounded-xl border border-blue-100 py-3">
-                  <img src={upiQrSrc} alt={`Scan to pay ${formatINR(finalTotal)}`}
-                       width={150} height={150} loading="lazy"
-                       className="w-[150px] h-[150px]" />
-                  <p className="text-sm font-bold text-blue-800 mt-2">Scan to pay {formatINR(finalTotal)}</p>
-                  <p className="text-[11px] text-blue-400">with any UPI app — GPay · PhonePe · Paytm · BHIM</p>
-                </div>
-              )}
 
               {/* Tap-to-pay — opens the UPI app on the customer's phone */}
               {upiPayLink && (
@@ -505,7 +623,30 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             <div className="flex items-center gap-2 text-xs text-gray-400
                             bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
               <span>📱</span>
-              The seller will share UPI payment details when confirming your order.
+              The seller will share their UPI ID when confirming your order.
+            </div>
+          )
+        )}
+
+        {formData.paymentMethod === 'qr' && (
+          upiQrSrc ? (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+              <div className="flex flex-col items-center bg-white rounded-xl border border-blue-100 py-3">
+                <img src={upiQrSrc} alt={`Scan to pay ${formatINR(finalTotal)}`}
+                     width={170} height={170} loading="lazy"
+                     className="w-[170px] h-[170px]" />
+                <p className="text-sm font-bold text-blue-800 mt-2">Scan to pay {formatINR(finalTotal)}</p>
+                <p className="text-[11px] text-blue-400">with any UPI app — GPay · PhonePe · Paytm · BHIM</p>
+              </div>
+              <p className="text-[10px] text-blue-400 text-center mt-2">
+                After paying, send the screenshot on WhatsApp so we can confirm.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-gray-400
+                            bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+              <span>🔳</span>
+              The seller will share a payment QR when confirming your order.
             </div>
           )
         )}
@@ -695,7 +836,30 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
               )
             )}
 
-            {/* Send Order on WhatsApp */}
+            {/* Reassurance at the moment of commit — answers the last-second
+                "is this safe?" doubt right where the customer decides. */}
+            <p className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-snug">
+              <span className="flex-shrink-0 mt-px">🔒</span>
+              {formData.paymentMethod === 'online' ? (
+                <span>
+                  Secure payment via <span className="font-semibold text-gray-500">Razorpay</span> —
+                  pay by UPI or card. Money goes straight to{' '}
+                  <span className="font-semibold text-gray-500">{config.businessName}</span>; your order confirms instantly.
+                </span>
+              ) : (
+                <span>
+                  No card details taken here — your order goes straight to{' '}
+                  <span className="font-semibold text-gray-500">{config.businessName}</span>{' '}
+                  on WhatsApp. Pay by cash or UPI.
+                </span>
+              )}
+            </p>
+
+            {payError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{payError}</p>
+            )}
+
+            {/* Place order — pays first when the online method is chosen */}
             <button
               type="button"
               onClick={handleSubmit}
@@ -711,8 +875,10 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
               {placing ? (
                 <>
                   <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Placing order…
+                  {formData.paymentMethod === 'online' ? 'Processing…' : 'Placing order…'}
                 </>
+              ) : formData.paymentMethod === 'online' ? (
+                <>🔒 Pay {formatINR(finalTotal)} securely</>
               ) : (
                 <>
                   <WhatsAppIcon size={21} />
