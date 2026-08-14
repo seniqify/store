@@ -14,10 +14,11 @@ function esc(s = '') {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// The full order id — the exact, traceable identifier for this order (not a
-// truncated hash). Shown as the slip number.
+// Short, clean order number — the last 6 chars of the order id (matches the
+// compact style on Delhivery's own label, e.g. #F4F3F3).
 function orderNo(id) {
-  return String(id ?? '');
+  const s = String(id ?? '').replace(/-/g, '');
+  return (s.slice(-6) || s).toUpperCase();
 }
 
 function fmtDate(iso) {
@@ -109,7 +110,7 @@ export function openDeliverySlip(order = {}, store = {}) {
     .fmeta{font-size:8px;color:#64748b;margin-top:2px;line-height:1.35}
     .doc{text-align:right;flex-shrink:0}
     .doctitle{font-size:8.5px;font-weight:800;letter-spacing:.07em;color:${brand}}
-    .ono{font-size:9px;font-weight:700;margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;max-width:150px;margin-left:auto;line-height:1.25;color:#0f172a}
+    .ono{font-size:14px;font-weight:800;margin-top:1px}
     .odate{font-size:8px;color:#64748b;margin-top:1px}
     .to{padding:7px 11px;background:#f8fafc;border-bottom:1px dashed #cbd5e1}
     .label{font-size:7.5px;font-weight:800;letter-spacing:.1em;color:#94a3b8;text-transform:uppercase;margin-bottom:2px}
