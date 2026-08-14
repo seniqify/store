@@ -10,6 +10,39 @@ function json(body: unknown) {
 }
 const BASE = 'https://track.delhivery.com';
 
+// Delhivery rejects non-Latin (Devanagari) consignee data as "suspicious" and
+// partial-saves it (name/phone/address dropped). Its labels can't render
+// Devanagari either. So transliterate any Devanagari to readable Latin before
+// sending. Approximate (schwa-deleted at word end) but legible for a courier.
+function toLatin(input: string): string {
+  const s = String(input || '');
+  if (!/[ऀ-ॿ]/.test(s)) return s;   // nothing Devanagari → leave as-is
+  const V: Record<string, string> = { 'अ':'a','आ':'aa','इ':'i','ई':'ee','उ':'u','ऊ':'oo','ऋ':'ri','ए':'e','ऐ':'ai','ओ':'o','औ':'au','ऑ':'o','ऍ':'e','ॲ':'a' };
+  const M: Record<string, string> = { 'ा':'aa','ि':'i','ी':'ee','ु':'u','ू':'oo','ृ':'ri','े':'e','ै':'ai','ो':'o','ौ':'au','ॉ':'o','ॅ':'e' };
+  const C: Record<string, string> = {
+    'क':'k','ख':'kh','ग':'g','घ':'gh','ङ':'ng','च':'ch','छ':'chh','ज':'j','झ':'jh','ञ':'ny',
+    'ट':'t','ठ':'th','ड':'d','ढ':'dh','ण':'n','त':'t','थ':'th','द':'d','ध':'dh','न':'n',
+    'प':'p','फ':'ph','ब':'b','भ':'bh','म':'m','य':'y','र':'r','ल':'l','व':'v','श':'sh','ष':'sh','स':'s','ह':'h','ळ':'l',
+    'क़':'q','ख़':'kh','ग़':'g','ज़':'z','ड़':'r','ढ़':'rh','फ़':'f','य़':'y',
+  };
+  const D: Record<string, string> = { '०':'0','१':'1','२':'2','३':'3','४':'4','५':'5','६':'6','७':'7','८':'8','९':'9' };
+  let out = '', pend = false;
+  const flush = (end: boolean) => { if (pend) { if (!end) out += 'a'; pend = false; } };
+  for (const ch of s) {
+    if (C[ch] !== undefined)      { flush(false); out += C[ch]; pend = true; }
+    else if (M[ch] !== undefined) { out += M[ch]; pend = false; }
+    else if (ch === '्')          { pend = false; }
+    else if (ch === 'ं' || ch === 'ँ') { flush(false); out += 'n'; }
+    else if (ch === 'ः')          { flush(false); out += 'h'; }
+    else if (V[ch] !== undefined) { flush(false); out += V[ch]; }
+    else if (D[ch] !== undefined) { flush(false); out += D[ch]; }
+    else                          { flush(true); out += ch; }   // space / latin / punctuation
+  }
+  flush(true);
+  return out.replace(/\s+/g, ' ').trim();
+}
+const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
+
 // Owner-only (PIN-checked): create a Delhivery shipment for an order and store the
 // AWB. Does NOT schedule a pickup (that's a separate explicit step) — booking just
 // manifests the shipment and gets the tracking number + label.
@@ -46,10 +79,24 @@ serve(async (req) => {
     const items = Array.isArray(order.items) ? order.items : [];
     const desc  = items.map((i: any) => `${i.qty}x ${i.name}`).join(', ').slice(0, 250) || 'Order';
 
+    // Destination pincode: prefer the stored column; fall back to the last 6-digit
+    // run in the address (older orders predate the pincode column).
+    let destPin = String(order.pincode || '').replace(/\D/g, '');
+    if (destPin.length !== 6) {
+      const sixes = String(order.destination || '').match(/\d{6}/g);
+      if (sixes && sixes.length) destPin = sixes[sixes.length - 1];
+    }
+    if (destPin.length !== 6) {
+      return json({ error: 'No valid 6-digit pincode on this order — add the pincode to the address and retry.' });
+    }
+
+    const custName = (titleCase(toLatin(order.customer_name || '')).slice(0, 60) || 'Customer');
+    const custAdd  = (toLatin(order.destination || '').slice(0, 250) || 'Address on order');
+
     const shipment = {
-      name:         order.customer_name || 'Customer',
-      add:          order.destination || '',
-      pin:          String(order.pincode || '').replace(/\D/g, ''),
+      name:         custName,
+      add:          custAdd,
+      pin:          destPin,
       phone:        String(order.customer_phone || '').replace(/\D/g, '').slice(-10),
       order:        String(order.id).slice(0, 20),
       payment_mode: isCOD ? 'COD' : 'Prepaid',
@@ -57,8 +104,8 @@ serve(async (req) => {
       total_amount: Number(order.total) || 0,
       weight:       Number(acct.default_weight_g) || 500,
       quantity:     Number(order.item_count) || 1,
-      products_desc: desc,
-      seller_name:  store.config?.businessName || slug,
+      products_desc: toLatin(desc).slice(0, 250) || 'Order',
+      seller_name:  toLatin(store.config?.businessName || slug),
       country:      'India',
     };
 
