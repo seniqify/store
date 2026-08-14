@@ -105,7 +105,12 @@ serve(async (req) => {
       add:          toLatin(String(rawAdd || '')).slice(0, 250) || 'Address on order',
       pin:          destPin,
       phone:        String(pick(details.phone, order.customer_phone) || '').replace(/\D/g, '').slice(-10),
-      order:        String(order.id).slice(0, 20),
+      // Short but UNIQUE order reference. A long UUID makes the label's order
+      // barcode so wide it overlaps/garbles the return address; but Delhivery
+      // rejects duplicate refs ("Duplicate order id"), and a plain last-6 collides
+      // and breaks re-booking after a cancel. So: 4 chars of the order id + a
+      // per-booking base36 token → ~8 chars, unique every time, still a tidy label.
+      order:        (String(order.id ?? '').replace(/-/g, '').slice(-4) + Date.now().toString(36).slice(-4)).toUpperCase(),
       payment_mode: isCOD ? 'COD' : 'Prepaid',
       cod_amount:   isCOD ? Number(pick(details.cod_amount, order.total)) || 0 : 0,
       total_amount: Number(pick(details.total_amount, order.total)) || 0,
