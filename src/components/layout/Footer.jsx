@@ -74,10 +74,14 @@ export default function Footer() {
 
   const waLink = whatsappLink(whatsappNumber, businessName, config.waMessage);
 
-  // Footer copy adapts to the kind of business (default keeps the product-store wording).
+  // Product stores take orders through the cart → checkout (so every order is
+  // recorded, payable and shippable). This footer WhatsApp button is for
+  // QUESTIONS, not ordering — labelling it "Order on WhatsApp" made customers
+  // place orders in chat, which leaves no order record. Services are quote-based,
+  // so chat stays their intended path.
   const waCtaLabel = {
     service: 'Message on WhatsApp',
-  }[businessType] ?? 'Order on WhatsApp';
+  }[businessType] ?? 'Questions? Chat on WhatsApp';
 
   // Only advertise a "free delivery above ₹X" perk when one actually exists
   // (positive threshold + a fee to waive); a 0 threshold means always-charge.
