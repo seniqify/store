@@ -33,9 +33,17 @@ async function checkAndMaybeReload() {
   const latest = await fetchLatest();
   if (!latest || latest === RUNNING) return;   // current, unknown, or failed → leave alone
 
-  // A newer build is live. Reload — but never yank the page out from under
-  // someone who's mid-typing (e.g. filling checkout). We'll catch it on the next
-  // focus/poll once they're idle.
+  // Loop-breaker: version.json is edge-cached and can momentarily disagree with
+  // the served bundle. NEVER reload more than once toward a given target version,
+  // and cap total reloads per session — so a stale cache can never cause a
+  // reload loop / black screen.
+  try {
+    const st = JSON.parse(sessionStorage.getItem('pl_vg') || '{}');
+    if (st.to === latest || (st.n || 0) >= 2) return;
+    sessionStorage.setItem('pl_vg', JSON.stringify({ to: latest, n: (st.n || 0) + 1 }));
+  } catch { /* storage blocked — the module-level `reloading` flag still applies */ }
+
+  // Never yank the page out from under someone who's mid-typing (e.g. checkout).
   const el = document.activeElement;
   const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
   if (typing) return;
