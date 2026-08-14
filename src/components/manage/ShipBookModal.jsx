@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Truck, ArrowLeft, Package } from 'lucide-react';
 import { bookShipment } from '../../utils/shippingConnect';
 
@@ -57,7 +58,11 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
     }
   }
 
-  return (
+  // Rendered through a portal to <body> so the fixed overlay escapes any
+  // transformed ancestor (the manage tab's fade-up animation keeps a
+  // `transform`, which would otherwise trap `position: fixed` inside the card —
+  // making the modal render clipped/hidden, i.e. "clicking Book does nothing").
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
          onClick={onClose}>
       <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto"
@@ -156,6 +161,7 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
