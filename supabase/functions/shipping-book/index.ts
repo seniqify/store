@@ -50,7 +50,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { slug, hashedPin, orderId } = await req.json();
+    const { slug, hashedPin, orderId, details = {} } = await req.json();
     if (!slug || !hashedPin || !orderId) return json({ error: 'Missing store, PIN, or order' });
 
     const supabase = createClient(
@@ -75,38 +75,46 @@ serve(async (req) => {
     if (!order) return json({ error: 'Order not found' });
     if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: `https://www.delhivery.com/track/package/${order.awb}` });
 
-    const isCOD = order.payment_method === 'cod';
     const items = Array.isArray(order.items) ? order.items : [];
     const desc  = items.map((i: any) => `${i.qty}x ${i.name}`).join(', ').slice(0, 250) || 'Order';
 
-    // Destination pincode: prefer the stored column; fall back to the last 6-digit
-    // run in the address (older orders predate the pincode column).
-    let destPin = String(order.pincode || '').replace(/\D/g, '');
+    // The merchant's edited "details" (from the booking modal) take priority; the
+    // order's own data is the fallback.
+    const pick = (a: unknown, b: unknown) => (a !== undefined && a !== null && a !== '' ? a : b);
+    const isCOD   = details.payment_mode ? details.payment_mode === 'COD' : order.payment_method === 'cod';
+    const rawName = pick(details.name, order.customer_name);
+    const rawAdd  = pick(details.add,  order.destination);
+
+    // Destination pincode: edited value → stored column → last 6-digit run in address.
+    let destPin = String(pick(details.pin, order.pincode) || '').replace(/\D/g, '');
     if (destPin.length !== 6) {
-      const sixes = String(order.destination || '').match(/\d{6}/g);
+      const sixes = String(rawAdd || '').match(/\d{6}/g);
       if (sixes && sixes.length) destPin = sixes[sixes.length - 1];
     }
     if (destPin.length !== 6) {
-      return json({ error: 'No valid 6-digit pincode on this order — add the pincode to the address and retry.' });
+      return json({ error: 'No valid 6-digit pincode — add the pincode and retry.' });
     }
 
-    const custName = (titleCase(toLatin(order.customer_name || '')).slice(0, 60) || 'Customer');
-    const custAdd  = (toLatin(order.destination || '').slice(0, 250) || 'Address on order');
+    const weight = Math.max(50, Math.round(Number(details.weight)) || Number(acct.default_weight_g) || 500);
+    const L = Math.round(Number(details.length))  || 0;
+    const B = Math.round(Number(details.breadth)) || 0;
+    const Hh = Math.round(Number(details.height))  || 0;
 
-    const shipment = {
-      name:         custName,
-      add:          custAdd,
+    const shipment: Record<string, unknown> = {
+      name:         titleCase(toLatin(String(rawName || ''))).slice(0, 60) || 'Customer',
+      add:          toLatin(String(rawAdd || '')).slice(0, 250) || 'Address on order',
       pin:          destPin,
-      phone:        String(order.customer_phone || '').replace(/\D/g, '').slice(-10),
+      phone:        String(pick(details.phone, order.customer_phone) || '').replace(/\D/g, '').slice(-10),
       order:        String(order.id).slice(0, 20),
       payment_mode: isCOD ? 'COD' : 'Prepaid',
-      cod_amount:   isCOD ? Number(order.total) || 0 : 0,
-      total_amount: Number(order.total) || 0,
-      weight:       Number(acct.default_weight_g) || 500,
+      cod_amount:   isCOD ? Number(pick(details.cod_amount, order.total)) || 0 : 0,
+      total_amount: Number(pick(details.total_amount, order.total)) || 0,
+      weight:       weight,
       quantity:     Number(order.item_count) || 1,
       products_desc: toLatin(desc).slice(0, 250) || 'Order',
       seller_name:  toLatin(store.config?.businessName || slug),
       country:      'India',
+      ...(L && B && Hh ? { shipment_length: L, shipment_width: B, shipment_height: Hh } : {}),
     };
 
     const payload = 'format=json&data=' + encodeURIComponent(JSON.stringify({

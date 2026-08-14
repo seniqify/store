@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
-import { bookShipment, shipmentOp } from '../../utils/shippingConnect';
+import { shipmentOp } from '../../utils/shippingConnect';
+import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 
@@ -493,6 +494,7 @@ function ShipBlock({ o, slug, pin, themeColor }) {
   const [status, setStatus] = useState(o.shipment_status || '');
   const [busy, setBusy]     = useState('');
   const [err, setErr]       = useState('');
+  const [modal, setModal]   = useState(false);   // 2-step book modal
 
   async function run(kind, fn) {
     setErr(''); setBusy(kind);
@@ -500,18 +502,22 @@ function ShipBlock({ o, slug, pin, themeColor }) {
     catch (e) { setErr(e.message || 'Something went wrong.'); }
     finally { setBusy(''); }
   }
-  const book   = () => run('book',  async () => { const r = await bookShipment(slug, pin, o.id); setAwb(r.awb); setStatus(r.status || 'Manifested'); });
   const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
   const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setStatus(r.status || status); });
   const cancel = () => { if (!window.confirm('Cancel this Delhivery shipment?')) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) { setAwb(null); setStatus('Cancelled'); } else setErr('Delhivery could not cancel it.'); }); };
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
+      {modal && (
+        <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor}
+          onClose={() => setModal(false)}
+          onBooked={(r) => { setAwb(r.awb); setStatus(r.status || 'Manifested'); setModal(false); }} />
+      )}
       {!awb ? (
-        <button disabled={busy === 'book'} onClick={book}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95 disabled:opacity-50"
+        <button onClick={() => setModal(true)}
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95"
           style={{ backgroundColor: themeColor }}>
-          <Truck size={13} /> {busy === 'book' ? 'Booking…' : 'Book Delhivery'}
+          <Truck size={13} /> Book Delhivery
         </button>
       ) : (
         <div className="space-y-1.5">
