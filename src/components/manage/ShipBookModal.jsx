@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Truck, ArrowLeft, Package } from 'lucide-react';
-import { bookShipment } from '../../utils/shippingConnect';
+import { bookShipment, getShippingRate } from '../../utils/shippingConnect';
 
 /**
  * Two-step "Book Delhivery" modal.
@@ -32,6 +32,21 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
+  const [cost, setCost] = useState(null);   // live Delhivery charge estimate (merchant's cost)
+
+  // What Delhivery will charge the merchant for this shipment (destination pincode
+  // + weight + COD/prepaid). Internal — the customer pays the store's flat fee.
+  useEffect(() => {
+    if (f.pin.length !== 6 || !(Number(f.weight) > 0)) { setCost(null); return; }
+    let alive = true;
+    setCost({ loading: true });
+    const t = setTimeout(() => {
+      getShippingRate(slug, f.pin, Number(f.weight), f.payment === 'COD' ? 'COD' : 'Pre-paid')
+        .then((r) => { if (alive) setCost(r || { error: true }); })
+        .catch(() => { if (alive) setCost({ error: true }); });
+    }, 500);
+    return () => { alive = false; clearTimeout(t); };
+  }, [f.pin, f.weight, f.payment, slug]);
 
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const label = 'block text-xs font-semibold text-gray-600 mb-1';
@@ -146,6 +161,24 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
                 ))}
               </div>
             </div>
+            {/* What Delhivery charges YOU for this shipment (your cost) */}
+            {cost && (
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-xs leading-snug">
+                {cost.loading ? (
+                  <span className="text-gray-400">Checking Delhivery charge…</span>
+                ) : cost.serviceable === false ? (
+                  <span className="text-amber-700">⚠️ {cost.reason || 'Delhivery may not deliver to this pincode.'}</span>
+                ) : cost.amount != null ? (
+                  <span className="text-gray-600">
+                    📦 Delhivery will charge you <b className="text-gray-900">≈ ₹{cost.amount}</b> for this shipment
+                    <span className="text-gray-400"> · your cost (the customer pays your flat delivery fee)</span>
+                  </span>
+                ) : (
+                  <span className="text-gray-400">Couldn't fetch the charge — you can still book.</span>
+                )}
+              </div>
+            )}
+
             {err && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{err}</p>}
             <div className="flex items-center gap-2 pt-1">
               <button type="button" onClick={() => { setErr(''); setStep(1); }} disabled={busy}
