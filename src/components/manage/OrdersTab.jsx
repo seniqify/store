@@ -495,6 +495,7 @@ function ShipBlock({ o, slug, pin, themeColor }) {
   const [busy, setBusy]     = useState('');
   const [err, setErr]       = useState('');
   const [modal, setModal]   = useState(false);   // 2-step book modal
+  const [pickup, setPickup] = useState(null);    // pickup result from booking
 
   async function run(kind, fn) {
     setErr(''); setBusy(kind);
@@ -511,7 +512,7 @@ function ShipBlock({ o, slug, pin, themeColor }) {
       {modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor}
           onClose={() => setModal(false)}
-          onBooked={(r) => { setAwb(r.awb); setStatus(r.status || 'Manifested'); setModal(false); }} />
+          onBooked={(r) => { setAwb(r.awb); setStatus(r.status || 'Manifested'); setPickup(r.pickup || null); setModal(false); }} />
       )}
       {!awb ? (
         <button onClick={() => setModal(true)}
@@ -528,6 +529,11 @@ function ShipBlock({ o, slug, pin, themeColor }) {
             <span className="text-[11px] font-mono text-gray-500">AWB {awb}</span>
           </div>
           {status && <p className="text-[11px] text-gray-500">Status: <b className="text-gray-700">{status}</b></p>}
+          {pickup && (
+            pickup.scheduled
+              ? <p className="text-[11px] text-green-700">🚚 {pickup.covered ? 'Added to today’s pickup' : `Pickup scheduled${pickup.date ? ` · ${pickup.date}` : ''}`} — courier will collect</p>
+              : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in Delhivery for this parcel.</p>
+          )}
           <div className="flex items-center gap-1.5">
             <button disabled={!!busy} onClick={label}
               className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">

@@ -139,7 +139,35 @@ serve(async (req) => {
       .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested' })
       .eq('id', order.id).eq('store_slug', slug);
 
-    return json({ awb, status: pkg?.status || 'Manifested', trackUrl: `https://www.delhivery.com/track/package/${awb}` });
+    // ── Auto-schedule a pickup so a courier actually comes (else it just sits at
+    // "Ready to Ship"). Delhivery allows only ONE open pickup per location per day,
+    // so the first booking of the day schedules it and later ones are "covered".
+    let pickup: Record<string, unknown> = { scheduled: false };
+    try {
+      const nowIST = new Date(Date.now() + 5.5 * 3600 * 1000);
+      const day = new Date(nowIST);
+      let time = '15:00:00';
+      if (nowIST.getUTCHours() >= 13) { day.setUTCDate(day.getUTCDate() + 1); time = '12:00:00'; }
+      const date = day.toISOString().slice(0, 10);
+      const pr = await fetch(`${BASE}/fm/request/new/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup_location: acct.pickup_name, pickup_date: date, pickup_time: time, expected_package_count: 1 }),
+      });
+      const pd = await pr.json().catch(() => ({}));
+      const blob = JSON.stringify(pd).toLowerCase();
+      if (pd?.pickup_id) {
+        pickup = { scheduled: true, id: pd.pickup_id, date };
+      } else if (/exist|already|pending|open pickup|duplicate/.test(blob)) {
+        pickup = { scheduled: true, covered: true, date };   // today's pickup already booked → this parcel is included
+      } else {
+        pickup = { scheduled: false, reason: pd?.error || pd?.pr_exist || blob.slice(0, 140) };
+      }
+    } catch {
+      pickup = { scheduled: false, reason: 'pickup request failed' };
+    }
+
+    return json({ awb, status: pkg?.status || 'Manifested', trackUrl: `https://www.delhivery.com/track/package/${awb}`, pickup });
   } catch (err) {
     return json({ error: (err as Error).message });
   }
