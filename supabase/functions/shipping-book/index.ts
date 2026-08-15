@@ -76,7 +76,12 @@ serve(async (req) => {
     if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: `https://www.delhivery.com/track/package/${order.awb}` });
 
     const items = Array.isArray(order.items) ? order.items : [];
-    const desc  = items.map((i: any) => `${i.qty}x ${i.name}`).join(', ').slice(0, 250) || 'Order';
+    // Include the variant/size (e.g. "(3 x Packet)") like the order card does, so
+    // the label carries the full product detail — not just the base name.
+    const desc  = items.map((i: any) => {
+      const v = i.variant ? ` (${i.variant})` : i.size ? ` (${i.size})` : '';
+      return `${i.qty}x ${i.name}${v}`;
+    }).join(', ').slice(0, 250) || 'Order';
 
     // The merchant's edited "details" (from the booking modal) take priority; the
     // order's own data is the fallback.
