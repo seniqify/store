@@ -114,6 +114,14 @@ export function storeSeo(config, slug, origin, rating = null) {
   // AggregateOffer (low→high). Products with no determinable price are skipped
   // rather than emitted as invalid (price-less Products can't be a rich result).
   const avail = (p) => (p.inStock === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock');
+  // Shipping is a store-level flat charge (free when 0). Attaching it to every
+  // Offer is what lets these pages qualify as Google "merchant listings".
+  const shipCharge = Number(config.cart && config.cart.shippingCharge) || 0;
+  const shippingDetails = {
+    '@type': 'OfferShippingDetails',
+    shippingRate: { '@type': 'MonetaryAmount', value: String(shipCharge), currency: 'INR' },
+    shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'IN' },
+  };
   function productNode(p) {
     if (!p || !p.name) return null;
     const img  = absImage(p.image, origin);
@@ -129,13 +137,26 @@ export function storeSeo(config, slug, origin, rating = null) {
           offerCount: String(prices.length),
           priceCurrency: 'INR',
           availability: avail(p),
+          shippingDetails,
         };
       }
     } else if (p.price != null && Number(p.price) > 0) {
-      offers = { '@type': 'Offer', price: String(p.price), priceCurrency: 'INR', availability: avail(p), url };
+      offers = { '@type': 'Offer', price: String(p.price), priceCurrency: 'INR', availability: avail(p), url, shippingDetails };
     }
     if (!offers) return null;   // no price → not a valid product snippet
-    return { '@type': 'Product', name: p.name, ...(img ? { image: img } : {}), offers };
+    // description + brand round out the snippet. brand doubles as the "global
+    // identifier" Google asks for (small shops have no GTIN/barcode). Fall back
+    // to a store-specific line so the field is never empty.
+    const description = ((p.description && String(p.description).trim())
+      || `${p.name} from ${name}${city ? ` in ${city}` : ''}. Order on WhatsApp — no app needed.`).slice(0, 500);
+    return {
+      '@type': 'Product',
+      name: p.name,
+      ...(img ? { image: img } : {}),
+      description,
+      brand: { '@type': 'Brand', name },
+      offers,
+    };
   }
   const productNodes = products.slice(0, 30).map(productNode).filter(Boolean);
 
