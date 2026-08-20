@@ -507,9 +507,9 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
           </>
         )}
 
-        {/* Delhivery shipping — for delivery orders when the store is connected */}
-        {!leads && store.shipping?.delhivery && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
-          <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} />
+        {/* Courier shipping — for delivery orders when a courier is connected */}
+        {!leads && (store.shipping?.delhivery || store.shipping?.shadowfax) && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
+          <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier} />
         )}
 
         {/* Contact the customer + cancel/reopen */}
@@ -546,8 +546,10 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   );
 }
 
-// Delhivery shipping controls for one order: Book → AWB, then Label / Track / Cancel.
-function ShipBlock({ o, slug, pin, themeColor }) {
+// Courier shipping controls for one order: Book → AWB, then Label / Track / Cancel.
+function ShipBlock({ o, slug, pin, themeColor, courier }) {
+  const isSfx = String(courier || '').toLowerCase() === 'shadowfax';
+  const cName = isSfx ? 'Shadowfax' : 'Delhivery';
   const [awb, setAwb]       = useState(o.awb || null);
   const [status, setStatus] = useState(o.shipment_status || '');
   const [busy, setBusy]     = useState('');
@@ -563,12 +565,12 @@ function ShipBlock({ o, slug, pin, themeColor }) {
   }
   const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
   const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setStatus(r.status || status); });
-  const cancel = () => { if (!window.confirm('Cancel this Delhivery shipment?')) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) { setAwb(null); setStatus('Cancelled'); } else setErr('Delhivery could not cancel it.'); }); };
+  const cancel = () => { if (!window.confirm(`Cancel this ${cName} shipment?`)) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) { setAwb(null); setStatus('Cancelled'); } else setErr(`${cName} could not cancel it.`); }); };
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
       {modal && (
-        <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor}
+        <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={courier}
           onClose={() => setModal(false)}
           onBooked={(r) => { setAwb(r.awb); setStatus(r.status || 'Manifested'); setPickup(r.pickup || null); setModal(false); }} />
       )}
@@ -576,36 +578,46 @@ function ShipBlock({ o, slug, pin, themeColor }) {
         <button onClick={() => setModal(true)}
           className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95"
           style={{ backgroundColor: themeColor }}>
-          <Truck size={13} /> Book Delhivery
+          <Truck size={13} /> Book {cName}
         </button>
       ) : (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-              <Truck size={13} style={{ color: themeColor }} /> Delhivery
+              <Truck size={13} style={{ color: themeColor }} /> {cName}
             </span>
             <span className="text-[11px] font-mono text-gray-500">AWB {awb}</span>
           </div>
           {status && <p className="text-[11px] text-gray-500">Status: <b className="text-gray-700">{status}</b></p>}
           {pickup && (
             pickup.scheduled
-              ? <p className="text-[11px] text-green-700">🚚 {pickup.covered ? 'Added to today’s pickup' : `Pickup scheduled${pickup.date ? ` · ${pickup.date}` : ''}`} — courier will collect</p>
-              : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in Delhivery for this parcel.</p>
+              ? <p className="text-[11px] text-green-700">🚚 {pickup.covered ? (isSfx ? 'Pickup requested' : 'Added to today’s pickup') : `Pickup scheduled${pickup.date ? ` · ${pickup.date}` : ''}`} — {cName} will collect</p>
+              : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in {cName} for this parcel.</p>
           )}
-          <div className="flex items-center gap-1.5">
-            <button disabled={!!busy} onClick={label}
-              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
-              <Printer size={12} /> {busy === 'label' ? '…' : 'Label'}
-            </button>
-            <button disabled={!!busy} onClick={track}
-              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
-              {busy === 'track' ? '…' : 'Track'}
-            </button>
-            <button disabled={!!busy} onClick={cancel}
-              className="text-[11px] font-semibold text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50">
-              {busy === 'cancel' ? '…' : 'Cancel'}
-            </button>
-          </div>
+          {isSfx ? (
+            <div className="flex items-center gap-2">
+              <button disabled={!!busy} onClick={track}
+                className="flex-shrink-0 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+                {busy === 'track' ? '…' : 'Track'}
+              </button>
+              <span className="text-[10px] text-gray-400 leading-tight">Rider carries the label · cancel via Shadowfax support</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button disabled={!!busy} onClick={label}
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+                <Printer size={12} /> {busy === 'label' ? '…' : 'Label'}
+              </button>
+              <button disabled={!!busy} onClick={track}
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+                {busy === 'track' ? '…' : 'Track'}
+              </button>
+              <button disabled={!!busy} onClick={cancel}
+                className="text-[11px] font-semibold text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50">
+                {busy === 'cancel' ? '…' : 'Cancel'}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {err && <p className="text-[11px] text-red-500 mt-1.5">{err}</p>}

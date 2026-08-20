@@ -36,10 +36,34 @@ serve(async (req) => {
     const now = new Date().toISOString();
 
     if (action === 'disconnect') {
-      await supabase.from('store_shipping_accounts').update({ status: 'revoked', updated_at: now }).eq('store_slug', slug);
-      const newConfig = { ...config, shipping: { ...(config.shipping || {}), delhivery: false, shadowfax: false, courier: null } };
-      await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
-      return json({ connected: false });
+      // Disconnect ONE courier (the named one, else the active default). The other
+      // courier's credentials stay put so the owner can switch back with one tap.
+      const prov = String(body.provider || config.shipping?.courier || 'delhivery').toLowerCase();
+      await supabase.from('store_shipping_accounts').update({ status: 'revoked', updated_at: now }).eq('store_slug', slug).eq('provider', prov);
+      const { data: rows } = await supabase.from('store_shipping_accounts').select('provider, status').eq('store_slug', slug);
+      const stillOn = (rows || []).filter((r: any) => r.status === 'connected').map((r: any) => r.provider);
+      const shipping: Record<string, unknown> = { ...(config.shipping || {}), [prov]: false };
+      if (shipping.courier === prov) shipping.courier = stillOn[0] || null;   // hand the default to whatever's left
+      await supabase.from('stores').update({ config: { ...config, shipping }, updated_at: now }).eq('slug', slug);
+      return json({ connected: false, courier: shipping.courier });
+    }
+
+    // Owner picks which connected courier is the store's active default (no token needed).
+    if (action === 'set_active') {
+      const prov = String(body.provider || '').toLowerCase();
+      if (prov !== 'delhivery' && prov !== 'shadowfax') return json({ error: 'Unknown courier' });
+      const { data: row } = await supabase.from('store_shipping_accounts')
+        .select('status, pickup_pincode, pickup_city, local_pincode_prefix')
+        .eq('store_slug', slug).eq('provider', prov).maybeSingle();
+      if (!row || row.status !== 'connected') return json({ error: `${prov[0].toUpperCase()}${prov.slice(1)} is not connected` });
+      const shipping = {
+        ...(config.shipping || {}), courier: prov,
+        pickupPincode: row.pickup_pincode,
+        localPrefix:   row.local_pincode_prefix || String(row.pickup_pincode || '').slice(0, 3),
+        district:      row.pickup_city || '',
+      };
+      await supabase.from('stores').update({ config: { ...config, shipping }, updated_at: now }).eq('slug', slug);
+      return json({ courier: prov, pickupPincode: row.pickup_pincode, district: row.pickup_city });
     }
 
     // ── Shadowfax connect (separate courier; the Delhivery path below is untouched) ──
@@ -84,11 +108,11 @@ serve(async (req) => {
         status:               'connected',
         connected_at:         now,
         updated_at:           now,
-      }, { onConflict: 'store_slug' });
+      }, { onConflict: 'store_slug,provider' });
 
       const newConfig = {
         ...config,
-        shipping: { ...(config.shipping || {}), courier: 'shadowfax', shadowfax: true, delhivery: false, pickupPincode: pincode, localPrefix, district: city },
+        shipping: { ...(config.shipping || {}), courier: 'shadowfax', shadowfax: true, pickupPincode: pincode, localPrefix, district: city },
       };
       await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
       return json({ connected: true, courier: 'shadowfax', pickupPincode: pincode, district: city });
@@ -153,11 +177,11 @@ serve(async (req) => {
       status:               'connected',
       connected_at:         now,
       updated_at:           now,
-    }, { onConflict: 'store_slug' });
+    }, { onConflict: 'store_slug,provider' });
 
     const newConfig = {
       ...config,
-      shipping: { ...(config.shipping || {}), courier: 'delhivery', delhivery: true, shadowfax: false, pickupPincode: pincode, localPrefix, district: pc.district || '' },
+      shipping: { ...(config.shipping || {}), courier: 'delhivery', delhivery: true, pickupPincode: pincode, localPrefix, district: pc.district || '' },
     };
     await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
 

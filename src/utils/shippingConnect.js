@@ -25,11 +25,23 @@ export async function connectShadowfax(slug, pin, fields) {
   return data;
 }
 
-/** Owner-only: disconnect the store's courier — Delhivery or Shadowfax (PIN-checked). */
-export async function disconnectDelhivery(slug, pin) {
+/** Owner-only: disconnect ONE courier — 'delhivery' | 'shadowfax' (PIN-checked).
+ *  The other courier's saved credentials are left intact. */
+export async function disconnectCourier(slug, pin, provider) {
   const hashedPin = await hashPin(pin);
   const { data, error } = await supabase.functions.invoke('shipping-connect', {
-    body: { action: 'disconnect', slug, hashedPin },
+    body: { action: 'disconnect', provider, slug, hashedPin },
+  });
+  if (error) throw new Error('Could not reach the server. Try again.');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/** Owner-only: set the store's active default courier — 'delhivery' | 'shadowfax'. */
+export async function setActiveCourier(slug, pin, provider) {
+  const hashedPin = await hashPin(pin);
+  const { data, error } = await supabase.functions.invoke('shipping-connect', {
+    body: { action: 'set_active', provider, slug, hashedPin },
   });
   if (error) throw new Error('Could not reach the server. Try again.');
   if (data?.error) throw new Error(data.error);

@@ -29,10 +29,11 @@ serve(async (req) => {
     if (!store) return json({ error: 'Store not found' });
     if (store.pin !== hashedPin) return json({ error: 'Incorrect PIN' });
 
-    const { data: acct } = await supabase.from('store_shipping_accounts')
-      .select('provider, api_token').eq('store_slug', slug).maybeSingle();
     const { data: order } = await supabase.from('orders')
       .select('awb, courier, shipment_status').eq('id', orderId).eq('store_slug', slug).maybeSingle();
+    const bookedCourier = String(order?.courier || 'delhivery').toLowerCase();
+    const { data: acct } = await supabase.from('store_shipping_accounts')
+      .select('provider, api_token').eq('store_slug', slug).eq('provider', bookedCourier).maybeSingle();
     const token = acct?.api_token;
     const awb = order?.awb;
     if (!token) return json({ error: 'Shipping not connected' });

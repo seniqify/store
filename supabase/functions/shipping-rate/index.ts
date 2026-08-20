@@ -27,10 +27,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+    const { data: store } = await supabase.from('stores').select('config').eq('slug', slug).maybeSingle();
+    const shipCfg = store?.config?.shipping || {};
+    const activeCourier = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
       .select('provider, mode, api_token, pickup_pincode, default_weight_g, status')
-      .eq('store_slug', slug)
+      .eq('store_slug', slug).eq('provider', activeCourier)
       .maybeSingle();
     if (!acct || acct.status !== 'connected' || !acct.api_token) {
       return json({ error: 'This store has not connected a courier' });

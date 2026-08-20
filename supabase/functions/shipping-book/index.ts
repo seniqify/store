@@ -62,11 +62,15 @@ serve(async (req) => {
     if (!store) return json({ error: 'Store not found' });
     if (store.pin !== hashedPin) return json({ error: 'Incorrect PIN' });
 
+    // The store's active default courier (owner-selected in Settings).
+    const shipCfg = store.config?.shipping || {};
+    const activeCourier = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
+
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
       .select('provider, mode, api_token, pickup_name, pickup_pincode, pickup_phone, pickup_address, pickup_city, pickup_state, default_weight_g, status')
-      .eq('store_slug', slug).maybeSingle();
-    if (!acct || acct.status !== 'connected' || !acct.api_token) return json({ error: 'Delhivery not connected' });
+      .eq('store_slug', slug).eq('provider', activeCourier).maybeSingle();
+    if (!acct || acct.status !== 'connected' || !acct.api_token) return json({ error: 'Courier not connected' });
 
     const { data: order } = await supabase
       .from('orders')

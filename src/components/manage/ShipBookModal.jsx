@@ -10,7 +10,9 @@ import { bookShipment, getShippingRate } from '../../utils/shippingConnect';
  * On submit it books the shipment with the edited details, so the label is
  * always correct and the weight/size are real (not the 500g default).
  */
-export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', onClose, onBooked }) {
+export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', onClose, onBooked, courier }) {
+  const isSfx = String(courier || '').toLowerCase() === 'shadowfax';
+  const cName = isSfx ? 'Shadowfax' : 'Delhivery';
   // pull the destination pincode out of the order (column, else from the address)
   const guessPin = () => {
     const p = String(o.pincode || '').replace(/\D/g, '');
@@ -85,7 +87,7 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
         {/* header */}
         <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100 sticky top-0 bg-white">
           <Truck size={16} style={{ color: themeColor }} />
-          <p className="text-sm font-bold text-gray-900">Book Delhivery</p>
+          <p className="text-sm font-bold text-gray-900">Book {cName}</p>
           <span className="text-[11px] text-gray-400 ml-1">Step {step} of 2</span>
           <button onClick={onClose} className="ml-auto text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
@@ -161,18 +163,20 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
                 ))}
               </div>
             </div>
-            {/* What Delhivery charges YOU for this shipment (your cost) */}
+            {/* What the courier charges YOU for this shipment (your cost) */}
             {cost && (
               <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-xs leading-snug">
                 {cost.loading ? (
-                  <span className="text-gray-400">Checking Delhivery charge…</span>
+                  <span className="text-gray-400">Checking {cName} serviceability…</span>
                 ) : cost.serviceable === false ? (
-                  <span className="text-amber-700">⚠️ {cost.reason || 'Delhivery may not deliver to this pincode.'}</span>
+                  <span className="text-amber-700">⚠️ {cost.reason || `${cName} may not deliver to this pincode.`}</span>
                 ) : cost.amount != null ? (
                   <span className="text-gray-600">
-                    📦 Delhivery will charge you <b className="text-gray-900">≈ ₹{cost.amount}</b> for this shipment
+                    📦 {cName} will charge you <b className="text-gray-900">≈ ₹{cost.amount}</b> for this shipment
                     <span className="text-gray-400"> · your cost (the customer pays your flat delivery fee)</span>
                   </span>
+                ) : isSfx ? (
+                  <span className="text-gray-600">✓ Deliverable via Shadowfax — you’re billed per your Shadowfax rate card (the customer pays your flat delivery fee).</span>
                 ) : (
                   <span className="text-gray-400">Couldn't fetch the charge — you can still book.</span>
                 )}
