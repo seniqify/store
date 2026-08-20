@@ -595,12 +595,18 @@ function ShipBlock({ o, slug, pin, themeColor, courier }) {
               : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in {cName} for this parcel.</p>
           )}
           {isSfx ? (
-            <div className="flex items-center gap-2">
-              <button disabled={!!busy} onClick={track}
-                className="flex-shrink-0 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
-                {busy === 'track' ? '…' : 'Track'}
-              </button>
-              <span className="text-[10px] text-gray-400 leading-tight">Rider carries the label · cancel via Shadowfax support</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <button disabled={!!busy} onClick={track}
+                  className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+                  {busy === 'track' ? '…' : 'Track'}
+                </button>
+                <button disabled={!!busy} onClick={cancel}
+                  className="text-[11px] font-semibold text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50">
+                  {busy === 'cancel' ? '…' : 'Cancel'}
+                </button>
+              </div>
+              <span className="block text-[10px] text-gray-400 leading-tight">🏷️ The pickup rider carries the label.</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5">

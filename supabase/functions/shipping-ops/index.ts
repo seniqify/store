@@ -33,7 +33,7 @@ serve(async (req) => {
       .select('awb, courier, shipment_status').eq('id', orderId).eq('store_slug', slug).maybeSingle();
     const bookedCourier = String(order?.courier || 'delhivery').toLowerCase();
     const { data: acct } = await supabase.from('store_shipping_accounts')
-      .select('provider, api_token').eq('store_slug', slug).eq('provider', bookedCourier).maybeSingle();
+      .select('provider, api_token, mode').eq('store_slug', slug).eq('provider', bookedCourier).maybeSingle();
     const token = acct?.api_token;
     const awb = order?.awb;
     if (!token) return json({ error: 'Shipping not connected' });
@@ -41,9 +41,21 @@ serve(async (req) => {
 
     // ── Shadowfax ops (the Delhivery code below is untouched) ──
     if (order?.courier === 'shadowfax' || acct?.provider === 'shadowfax') {
+      const sBase = acct?.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
       if (action === 'track')  return json({ status: order?.shipment_status || 'Booked', trackUrl: null, note: 'Shadowfax updates the status automatically as the parcel moves.' });
       if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
-      if (action === 'cancel') return json({ error: 'To cancel a Shadowfax pickup, contact Shadowfax support for now.' });
+      if (action === 'cancel') {
+        // Shadowfax cancel: request_id is the AWB. Replies { responseCode, responseMsg }.
+        const cr = await fetch(`${sBase}/v3/clients/orders/cancel/`, {
+          method: 'POST',
+          headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ request_id: awb }),
+        });
+        const cd = await cr.json().catch(() => ({}));
+        const ok = cd?.responseCode === 200 || /cancel/i.test(cd?.responseMsg || '');
+        if (ok) await supabase.from('orders').update({ awb: null, shipment_status: 'Cancelled' }).eq('id', orderId).eq('store_slug', slug);
+        return json({ cancelled: ok, raw: ok ? undefined : (cd?.responseMsg || JSON.stringify(cd).slice(0, 150)) });
+      }
       return json({ error: 'Unknown action' });
     }
 
