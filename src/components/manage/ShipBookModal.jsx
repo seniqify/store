@@ -172,7 +172,8 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
                   <span className="text-amber-700">⚠️ {cost.reason || `${cName} may not deliver to this pincode.`}</span>
                 ) : cost.amount != null ? (
                   <span className="text-gray-600">
-                    📦 {cName} will charge you <b className="text-gray-900">≈ ₹{cost.amount}</b> for this shipment
+                    📦 {cName} will charge you <b className="text-gray-900">≈ ₹{cost.amount}</b>
+                    {isSfx && cost.zone ? ` (${cost.zone}, flat rate + GST)` : ' for this shipment'}
                     <span className="text-gray-400"> · your cost (the customer pays your flat delivery fee)</span>
                   </span>
                 ) : isSfx ? (

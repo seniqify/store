@@ -39,14 +39,27 @@ serve(async (req) => {
       return json({ error: 'This store has not connected a courier' });
     }
 
-    // ── Shadowfax: serviceability only (no public rate API → checkout uses flat charge) ──
+    // ── Shadowfax: no rate API, but a flat rate card by zone (+18% GST). We derive
+    // the zone from the pickup→drop pincodes and show the merchant their cost. ──
     if (acct.provider === 'shadowfax') {
       const sBase = acct.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
       const sRes  = await fetch(`${sBase}/v1/clients/serviceability/?service=customer_delivery&page=1&count=1&pincodes=${dest}`, { headers: { Authorization: `Token ${acct.api_token}` } });
       const sData = await sRes.json().catch(() => []);
       const ok    = Array.isArray(sData) && sData.some((c: any) => String(c.code) === dest && Array.isArray(c.services) && c.services.length);
       if (!ok) return json({ serviceable: false, reason: 'Shadowfax does not deliver to this pincode' });
-      return json({ serviceable: true, cod: true, prepaid: true, amount: null });
+
+      // Flat rate card (₹, ex-GST). Special zones: NE (78/79), J&K & Ladakh (18/19),
+      // Andaman (744). Intracity = same 3-digit sorting district; within-zone = same
+      // 2-digit postal circle; everything else = Metro / Rest-of-India.
+      const o = String(acct.pickup_pincode || '').replace(/\D/g, '');
+      let zone: string, rate: number;
+      if (/^(78|79|18|19)/.test(dest) || dest.startsWith('744')) { zone = 'Special zone'; rate = 69; }
+      else if (o.slice(0, 3) === dest.slice(0, 3)) { zone = 'Intracity';   rate = 39; }
+      else if (o.slice(0, 2) === dest.slice(0, 2)) { zone = 'Within zone'; rate = 49; }
+      else { zone = 'Metro / ROI'; rate = 59; }
+      const amount = Math.ceil(rate * 1.18);   // + 18% GST
+
+      return json({ serviceable: true, cod: true, prepaid: true, amount, zone, flat: true });
     }
 
     const token   = acct.api_token;
