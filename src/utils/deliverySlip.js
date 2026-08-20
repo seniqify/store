@@ -49,6 +49,8 @@ export function openDeliverySlip(order = {}, store = {}) {
   const pay     = String(order.payment_method || '').toLowerCase();
   const isCOD   = pay === 'cod';
   const total   = Number(order.total) || 0;
+  const awb     = order.awb || '';
+  const courierName = order.courier === 'shadowfax' ? 'Shadowfax' : order.courier === 'delhivery' ? 'Delhivery' : 'Courier';
 
   const items = Array.isArray(order.items) ? order.items : [];
   const rows = items.map((it, i) => {
@@ -122,6 +124,9 @@ export function openDeliverySlip(order = {}, store = {}) {
     .pay{margin:7px 11px 0;text-align:center;font-size:11.5px;font-weight:800;border-radius:7px;padding:7px}
     .pay.cod{background:#fef3c7;color:#92400e;border:1.5px solid #fcd34d}
     .pay.paid{background:#dcfce7;color:#166534;border:1.5px solid #86efac}
+    .awb{margin:7px 11px 0;border:2px solid #0f172a;border-radius:8px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .awb .awblabel{font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b;line-height:1.25}
+    .awb .awbno{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;font-weight:800;letter-spacing:.04em;color:#0f172a}
     table{width:100%;border-collapse:collapse;margin-top:7px}
     thead th{font-size:7.5px;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;text-align:left;padding:3px 11px;border-bottom:1px solid #e2e8f0}
     thead th.c{text-align:center}thead th.r{text-align:right}
@@ -144,7 +149,8 @@ export function openDeliverySlip(order = {}, store = {}) {
       /* Direct-thermal 4×6 printers (e.g. Helett/SEZNIK) print BLACK ONLY — light
          colour fills wash out. Force crisp black-on-white so the COD amount, the
          address and totals stay bold and legible on a thermal label. */
-      .doctitle,.fname,.cname,.ono,.cph,.grand,.thanks b{color:#000 !important}
+      .doctitle,.fname,.cname,.ono,.cph,.grand,.thanks b,.awb .awbno{color:#000 !important}
+      .awb{border-color:#000 !important}
       .to{background:#fff !important}
       .logo.emoji{background:#fff !important;border:1px solid #000}
       .pay.cod,.pay.paid{background:#fff !important;color:#000 !important;border:2px solid #000 !important}
@@ -176,6 +182,8 @@ export function openDeliverySlip(order = {}, store = {}) {
           <div class="odate">${esc(fmtDate(order.created_at))}</div>
         </div>
       </div>
+
+      ${awb ? `<div class="awb"><span class="awblabel">${esc(courierName)}<br>Tracking&nbsp;No.</span><span class="awbno">${esc(awb)}</span></div>` : ''}
 
       <div class="to">
         <div class="label">Deliver to</div>
