@@ -42,7 +42,14 @@ serve(async (req) => {
     // ── Shadowfax ops (the Delhivery code below is untouched) ──
     if (order?.courier === 'shadowfax' || acct?.provider === 'shadowfax') {
       const sBase = acct?.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
-      if (action === 'track')  return json({ status: order?.shipment_status || 'Booked', trackUrl: null, note: 'Shadowfax updates the status automatically as the parcel moves.' });
+      if (action === 'track') {
+        // Live status via the v4 tracking API; falls back to the stored status.
+        const tr = await fetch(`${sBase}/v4/clients/orders/${awb}/track/`, { headers: { Authorization: `Token ${token}` } });
+        const td = await tr.json().catch(() => ({}));
+        const st = td?.order_details?.status_display || td?.order_details?.status || order?.shipment_status || 'Booked';
+        if (td?.order_details?.status_display) await supabase.from('orders').update({ shipment_status: st }).eq('id', orderId).eq('store_slug', slug);
+        return json({ status: st, trackUrl: null });
+      }
       if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
       if (action === 'cancel') {
         // Shadowfax cancel: request_id is the AWB. Replies { responseCode, responseMsg }.
