@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
@@ -14,7 +14,7 @@ const STATUS_ORDERS = {
   confirmed:  { label: 'Confirmed',       emoji: '✅', cls: 'bg-emerald-100 text-emerald-700' },
   dispatched: { label: 'Out for delivery', emoji: '🛵', cls: 'bg-indigo-100 text-indigo-700' },
   delivered:  { label: 'Delivered',       emoji: '📦', cls: 'bg-blue-100 text-blue-700' },
-  cancelled:  { label: 'Cancelled',       emoji: '✖️', cls: 'bg-gray-100 text-gray-500' },
+  cancelled:  { label: 'Archived',        emoji: '🗄️', cls: 'bg-gray-100 text-gray-500' },
 };
 const STATUS_LEADS = {
   new:        { label: 'New',       emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
@@ -70,8 +70,10 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
 
   const [orders,     setOrders]     = useState(null);   // null = loading
   const [filter,     setFilter]     = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);
+  const dateRef = useRef(null);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -121,9 +123,27 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const counts   = (orders || []).reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {});
   // Unpaid = an order not yet marked paid. Leads carry no payment, so never counted.
   const unpaidCount = leads ? 0 : (orders || []).filter((o) => !o.paid).length;
+
+  // Date filtering — collapse the endless list to a single day. Keys are the
+  // LOCAL calendar date (merchant's own timezone) so "Today" means their today.
+  const dateKey  = (iso) => { try { return new Date(iso).toLocaleDateString('en-CA'); } catch { return ''; } };
+  const todayKey = new Date().toLocaleDateString('en-CA');
+  const yestKey  = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('en-CA'); })();
+  const dateCounts = (orders || []).reduce((m, o) => { const k = dateKey(o.created_at); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+  const isSpecificDate = dateFilter !== 'all' && dateFilter !== 'today' && dateFilter !== 'yesterday';
+  const matchDate = (o) => {
+    if (dateFilter === 'all') return true;
+    const k = dateKey(o.created_at);
+    if (dateFilter === 'today')     return k === todayKey;
+    if (dateFilter === 'yesterday') return k === yestKey;
+    return k === dateFilter;
+  };
+  const prettyDate = (ymd) => new Date(ymd + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
   const filtered = (orders || [])
     .filter((o) => (filter === 'all' ? true : o.status === filter))
-    .filter((o) => (unpaidOnly ? !o.paid : true));
+    .filter((o) => (unpaidOnly ? !o.paid : true))
+    .filter(matchDate);
 
   // ── Loading ──
   if (orders === null) {
@@ -176,6 +196,40 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
         </div>
       ) : (
         <>
+          {/* Date filter — Today / Yesterday / pick any day, so the list isn't endless */}
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            {[
+              { key: 'all',       label: 'All dates', n: orders.length },
+              { key: 'today',     label: 'Today',     n: dateCounts[todayKey] || 0 },
+              { key: 'yesterday', label: 'Yesterday', n: dateCounts[yestKey] || 0 },
+            ].map(({ key, label, n }) => {
+              const active = dateFilter === key;
+              return (
+                <button key={key} onClick={() => setDateFilter(key)}
+                  className={[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition',
+                    active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                  ].join(' ')}>
+                  {label}{n > 0 && <span className={active ? 'opacity-70' : 'text-gray-400'}> ({n})</span>}
+                </button>
+              );
+            })}
+            {/* Calendar — jump to any specific day */}
+            <label
+              onClick={() => { try { dateRef.current?.showPicker(); } catch { /* older browsers just focus the input */ } }}
+              className={[
+                'flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border cursor-pointer transition',
+                isSpecificDate ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+              ].join(' ')}>
+              <CalendarDays size={13} />
+              {isSpecificDate ? prettyDate(dateFilter) : 'Pick a date'}
+              <input ref={dateRef} type="date" max={todayKey} tabIndex={-1}
+                value={isSpecificDate ? dateFilter : ''}
+                onChange={(e) => setDateFilter(e.target.value || 'all')}
+                className="sr-only" />
+            </label>
+          </div>
+
           {/* Filter chips */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
             {FILTERS.map((f) => {
@@ -217,7 +271,10 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
                          storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads={leads} riders={riders} payInfo={payInfo} store={store} />
             ))}
             {filtered.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-8">No {STATUS[filter]?.label.toLowerCase()} {noun}s.</p>
+              <p className="text-center text-sm text-gray-400 py-8">
+                No {filter === 'all' ? '' : `${STATUS[filter]?.label.toLowerCase()} `}{noun}s
+                {dateFilter === 'all' ? '' : dateFilter === 'today' ? ' today' : dateFilter === 'yesterday' ? ' yesterday' : ` on ${prettyDate(dateFilter)}`}.
+              </p>
             )}
           </div>
         </>
@@ -433,7 +490,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
         ) : (
           <>
             {o.status === 'new' && (
-              <Advance to="confirmed" label="Confirm & notify" full style={{ backgroundColor: themeColor }} />
+              <Advance to="confirmed" label="Accept order" full style={{ backgroundColor: themeColor }} />
             )}
             {o.status === 'confirmed' && (
               <Advance to="dispatched" label="Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
@@ -472,14 +529,15 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
           )}
           {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
-              className="flex-shrink-0 text-xs font-semibold text-red-500 px-3 py-2 rounded-xl hover:bg-red-50 active:scale-95 disabled:opacity-50">
-              {leads ? 'Mark lost' : 'Cancel'}
+              className={`flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 ${leads ? 'text-red-500 hover:bg-red-50' : 'text-gray-500 hover:bg-gray-100'}`}
+              title={leads ? 'Mark this lead as lost' : 'Archive — hides it from your active list (unarchive anytime). No message is sent to the customer.'}>
+              {leads ? 'Mark lost' : '🗄️ Archive'}
             </button>
           )}
           {o.status === 'cancelled' && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'new')}
               className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50">
-              Reopen {leads ? 'lead' : 'order'}
+              {leads ? 'Reopen lead' : 'Unarchive'}
             </button>
           )}
         </div>

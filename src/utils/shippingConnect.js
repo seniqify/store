@@ -13,7 +13,19 @@ export async function connectDelhivery(slug, pin, fields) {
   return data;
 }
 
-/** Owner-only: disconnect Delhivery (PIN-checked server-side). */
+/** Owner-only: connect a store's Shadowfax account (PIN-checked server-side).
+ *  Validates the token + pickup serviceability before saving. */
+export async function connectShadowfax(slug, pin, fields) {
+  const hashedPin = await hashPin(pin);
+  const { data, error } = await supabase.functions.invoke('shipping-connect', {
+    body: { action: 'connect', provider: 'shadowfax', slug, hashedPin, ...fields },
+  });
+  if (error) throw new Error('Could not reach the server. Try again.');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/** Owner-only: disconnect the store's courier — Delhivery or Shadowfax (PIN-checked). */
 export async function disconnectDelhivery(slug, pin) {
   const hashedPin = await hashPin(pin);
   const { data, error } = await supabase.functions.invoke('shipping-connect', {

@@ -29,11 +29,21 @@ serve(async (req) => {
     );
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
-      .select('api_token, pickup_pincode, default_weight_g, status')
+      .select('provider, mode, api_token, pickup_pincode, default_weight_g, status')
       .eq('store_slug', slug)
       .maybeSingle();
     if (!acct || acct.status !== 'connected' || !acct.api_token) {
-      return json({ error: 'This store has not connected Delhivery' });
+      return json({ error: 'This store has not connected a courier' });
+    }
+
+    // ── Shadowfax: serviceability only (no public rate API → checkout uses flat charge) ──
+    if (acct.provider === 'shadowfax') {
+      const sBase = acct.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
+      const sRes  = await fetch(`${sBase}/v1/clients/serviceability/?service=customer_delivery&page=1&count=1&pincodes=${dest}`, { headers: { Authorization: `Token ${acct.api_token}` } });
+      const sData = await sRes.json().catch(() => []);
+      const ok    = Array.isArray(sData) && sData.some((c: any) => String(c.code) === dest && Array.isArray(c.services) && c.services.length);
+      if (!ok) return json({ serviceable: false, reason: 'Shadowfax does not deliver to this pincode' });
+      return json({ serviceable: true, cod: true, prepaid: true, amount: null });
     }
 
     const token   = acct.api_token;

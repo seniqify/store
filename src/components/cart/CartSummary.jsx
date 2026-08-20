@@ -37,6 +37,11 @@ export default function CartSummary({
   // not show "free delivery above ₹0" / "you qualify for free delivery".
   const hasFreeOffer = Number(cartConfig?.freeShippingAbove) > 0 && Number(cartConfig?.shippingCharge) > 0;
 
+  // Always reassure the customer when to expect their order — they can't see the
+  // courier/shipping step. Defaults to the pan-India courier estimate; a store can
+  // override via cart.deliveryEstimate (e.g. "Same day" for local delivery).
+  const deliveryEstimate = String(cartConfig?.deliveryEstimate || '3–5 days').trim();
+
   if (isEmpty) return null;   // nothing to summarize
 
   const defaultCta = compact ? 'View Cart →' : 'Proceed to Checkout →';
@@ -135,6 +140,16 @@ export default function CartSummary({
             </p>
           )}
         </div>
+      </div>
+
+      {/* ── Delivery-time estimate — always shown so the customer knows when
+             the order will arrive (independent of the delivery fee) ──────── */}
+      <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-600">
+        <Truck size={13} className="text-gray-400 flex-shrink-0" />
+        <span>
+          Estimated delivery in{' '}
+          <strong className="font-semibold text-gray-800">{deliveryEstimate}</strong>
+        </span>
       </div>
 
       {/* ── Free-shipping progress (full only, only when an offer exists) ── */}

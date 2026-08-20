@@ -37,12 +37,64 @@ serve(async (req) => {
 
     if (action === 'disconnect') {
       await supabase.from('store_shipping_accounts').update({ status: 'revoked', updated_at: now }).eq('store_slug', slug);
-      const newConfig = { ...config, shipping: { ...(config.shipping || {}), delhivery: false } };
+      const newConfig = { ...config, shipping: { ...(config.shipping || {}), delhivery: false, shadowfax: false, courier: null } };
       await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
       return json({ connected: false });
     }
 
-    // ── connect ──
+    // ── Shadowfax connect (separate courier; the Delhivery path below is untouched) ──
+    if (String(body.provider || '').toLowerCase() === 'shadowfax') {
+      const token   = String(body.apiToken || '').trim();
+      const mode    = String(body.mode || 'production').toLowerCase() === 'staging' ? 'staging' : 'production';
+      const sfxBase = mode === 'staging' ? 'https://dale.staging.shadowfax.in/api' : 'https://dale.shadowfax.in/api';
+      const pincode = String(body.pickupPincode || '').replace(/\D/g, '');
+      const address = String(body.pickupAddress || '').trim();
+      const phone   = String(body.pickupPhone || '').replace(/\D/g, '').slice(-10);
+      const city    = String(body.pickupCity || '').trim();
+      const state   = String(body.pickupState || '').trim();
+      if (!token) return json({ error: 'Enter your Shadowfax API token' });
+      if (pincode.length !== 6) return json({ error: 'Enter a valid 6-digit pickup pincode' });
+      if (!city || !state) return json({ error: 'Enter your pickup city and state' });
+
+      // Validate the token + that seller pickup is serviceable at the pickup pincode.
+      const chk = await fetch(`${sfxBase}/v1/clients/serviceability/?service=seller_pickup&page=1&count=1&pincodes=${pincode}`, {
+        headers: { Authorization: `Token ${token}` },
+      });
+      if (chk.status === 401 || chk.status === 403) return json({ error: 'Shadowfax rejected this token — double-check it.' });
+      const chkData = await chk.json().catch(() => []);
+      const okPin = Array.isArray(chkData) && chkData.some((c: any) => String(c.code) === pincode && Array.isArray(c.services) && c.services.length);
+      if (!okPin) return json({ error: `Shadowfax seller pickup isn't available at ${pincode}.` });
+
+      const localPrefix   = String(body.localPincodePrefix || pincode.slice(0, 3));
+      const defaultWeight = Math.max(50, Number(body.defaultWeightG) || 500);
+
+      await supabase.from('store_shipping_accounts').upsert({
+        store_slug:           slug,
+        provider:             'shadowfax',
+        mode,
+        api_token:            token,
+        pickup_name:          String(body.pickupName || config.businessName || slug).slice(0, 60),
+        pickup_pincode:       pincode,
+        pickup_phone:         phone,
+        pickup_address:       address,
+        pickup_city:          city,
+        pickup_state:         state,
+        local_pincode_prefix: localPrefix,
+        default_weight_g:     defaultWeight,
+        status:               'connected',
+        connected_at:         now,
+        updated_at:           now,
+      }, { onConflict: 'store_slug' });
+
+      const newConfig = {
+        ...config,
+        shipping: { ...(config.shipping || {}), courier: 'shadowfax', shadowfax: true, delhivery: false, pickupPincode: pincode, localPrefix, district: city },
+      };
+      await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
+      return json({ connected: true, courier: 'shadowfax', pickupPincode: pincode, district: city });
+    }
+
+    // ── connect (Delhivery) ──
     const token   = String(body.apiToken || '').trim();
     const pincode = String(body.pickupPincode || '').replace(/\D/g, '');
     const address = String(body.pickupAddress || '').trim();
@@ -105,7 +157,7 @@ serve(async (req) => {
 
     const newConfig = {
       ...config,
-      shipping: { ...(config.shipping || {}), delhivery: true, pickupPincode: pincode, localPrefix, district: pc.district || '' },
+      shipping: { ...(config.shipping || {}), courier: 'delhivery', delhivery: true, shadowfax: false, pickupPincode: pincode, localPrefix, district: pc.district || '' },
     };
     await supabase.from('stores').update({ config: newConfig, updated_at: now }).eq('slug', slug);
 

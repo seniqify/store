@@ -64,7 +64,7 @@ serve(async (req) => {
 
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
-      .select('api_token, pickup_name, default_weight_g, status')
+      .select('provider, mode, api_token, pickup_name, pickup_pincode, pickup_phone, pickup_address, pickup_city, pickup_state, default_weight_g, status')
       .eq('store_slug', slug).maybeSingle();
     if (!acct || acct.status !== 'connected' || !acct.api_token) return json({ error: 'Delhivery not connected' });
 
@@ -73,7 +73,90 @@ serve(async (req) => {
       .select('id, awb, customer_name, customer_phone, destination, pincode, total, payment_method, item_count, items')
       .eq('id', orderId).eq('store_slug', slug).maybeSingle();
     if (!order) return json({ error: 'Order not found' });
-    if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: `https://www.delhivery.com/track/package/${order.awb}` });
+    if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: order.courier === 'shadowfax' ? null : `https://www.delhivery.com/track/package/${order.awb}` });
+
+    // ── Shadowfax booking (isolated; the Delhivery code below is untouched) ──
+    if (acct.provider === 'shadowfax') {
+      const sItems = Array.isArray(order.items) ? order.items : [];
+      const sPick = (a: unknown, b: unknown) => (a !== undefined && a !== null && a !== '' ? a : b);
+      const sCOD  = details.payment_mode ? details.payment_mode === 'COD' : order.payment_method === 'cod';
+
+      let sDestPin = String(sPick(details.pin, order.pincode) || '').replace(/\D/g, '');
+      if (sDestPin.length !== 6) {
+        const sixes = String(sPick(details.add, order.destination) || '').match(/\d{6}/g);
+        if (sixes && sixes.length) sDestPin = sixes[sixes.length - 1];
+      }
+      if (sDestPin.length !== 6) return json({ error: 'No valid 6-digit pincode — add the pincode and retry.' });
+
+      const sWeight = Math.max(50, Math.round(Number(details.weight)) || Number(acct.default_weight_g) || 500);
+      const sTotal  = Number(sPick(details.total_amount, order.total)) || 0;
+      const sValue  = sTotal || sItems.reduce((n: number, i: any) => n + (Number(i.price) || 0) * (Number(i.qty) || 1), 0) || 1;
+      const sCodAmt = sCOD ? (Number(sPick(details.cod_amount, order.total)) || 0) : 0;
+      const sBase   = acct.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
+
+      const pickupObj = {
+        name:           toLatin(String(acct.pickup_name || store.config?.businessName || slug)).slice(0, 100),
+        contact:        String(acct.pickup_phone || '').replace(/\D/g, '').slice(-10),
+        address_line_1: toLatin(String(acct.pickup_address || acct.pickup_name || 'Pickup address')).slice(0, 250),
+        city:           acct.pickup_city || '',
+        state:          acct.pickup_state || '',
+        pincode:        Number(String(acct.pickup_pincode || '').replace(/\D/g, '')),
+      };
+
+      // A per-booking unique client_order_id — Shadowfax rejects duplicate COIDs, so a
+      // cancel→rebook needs a fresh one. The webhook maps back by AWB, not COID.
+      const coid = (String(order.id ?? '').replace(/-/g, '').slice(-12) + Date.now().toString(36)).slice(0, 40);
+
+      const payload = {
+        order_type: 'marketplace',
+        order_details: {
+          client_order_id: coid,
+          actual_weight:   sWeight,
+          product_value:   Math.round(sValue),
+          payment_mode:    sCOD ? 'COD' : 'Prepaid',
+          cod_amount:      String(sCodAmt),
+          total_amount:    Math.round(sTotal),
+          order_service:   'regular',
+        },
+        customer_details: {
+          name:           titleCase(toLatin(String(sPick(details.name, order.customer_name) || ''))).slice(0, 100) || 'Customer',
+          contact:        String(sPick(details.phone, order.customer_phone) || '').replace(/\D/g, '').slice(-10),
+          address_line_1: toLatin(String(sPick(details.add, order.destination) || '')).slice(0, 250) || 'Address on order',
+          city:           '', state: '',
+          pincode:        Number(sDestPin),
+        },
+        pickup_details: pickupObj,
+        rts_details:    { ...pickupObj, email: '' },
+        product_details: (sItems.length ? sItems : [{ name: 'Order', price: Math.round(sValue), qty: order.item_count || 1 }]).map((i: any) => ({
+          sku_name: (toLatin(`${i.name || 'Item'}${i.variant ? ` (${i.variant})` : i.size ? ` (${i.size})` : ''}`).slice(0, 200)) || 'Item',
+          price:    Number(i.price) || 0,
+          category: 'General',
+          additional_details: { quantity: Number(i.qty) || 1 },
+        })),
+      };
+
+      const sRes  = await fetch(`${sBase}/v3/clients/orders/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const sData = await sRes.json().catch(() => ({}));
+      const sAwb  = sData?.data?.awb_number;
+      if (!sAwb || sData?.message !== 'Success') {
+        const reason = typeof sData?.errors === 'string' ? sData.errors
+          : Array.isArray(sData?.errors) ? sData.errors.join('; ')
+          : (sData?.errors ? JSON.stringify(sData.errors) : JSON.stringify(sData).slice(0, 200));
+        return json({ error: `Shadowfax could not book this shipment: ${reason}` });
+      }
+
+      await supabase.from('orders')
+        .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new' })
+        .eq('id', order.id).eq('store_slug', slug);
+
+      // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
+      // a rider automatically, so there's no separate pickup call (unlike Delhivery).
+      return json({ awb: sAwb, status: sData?.data?.status || 'new', trackUrl: null, pickup: { scheduled: true, covered: true } });
+    }
 
     const items = Array.isArray(order.items) ? order.items : [];
     // Include the variant/size (e.g. "(3 x Packet)") like the order card does, so

@@ -30,13 +30,21 @@ serve(async (req) => {
     if (store.pin !== hashedPin) return json({ error: 'Incorrect PIN' });
 
     const { data: acct } = await supabase.from('store_shipping_accounts')
-      .select('api_token').eq('store_slug', slug).maybeSingle();
+      .select('provider, api_token').eq('store_slug', slug).maybeSingle();
     const { data: order } = await supabase.from('orders')
-      .select('awb').eq('id', orderId).eq('store_slug', slug).maybeSingle();
+      .select('awb, courier, shipment_status').eq('id', orderId).eq('store_slug', slug).maybeSingle();
     const token = acct?.api_token;
     const awb = order?.awb;
-    if (!token) return json({ error: 'Delhivery not connected' });
+    if (!token) return json({ error: 'Shipping not connected' });
     if (!awb) return json({ error: 'This order has no shipment yet' });
+
+    // ── Shadowfax ops (the Delhivery code below is untouched) ──
+    if (order?.courier === 'shadowfax' || acct?.provider === 'shadowfax') {
+      if (action === 'track')  return json({ status: order?.shipment_status || 'Booked', trackUrl: null, note: 'Shadowfax updates the status automatically as the parcel moves.' });
+      if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
+      if (action === 'cancel') return json({ error: 'To cancel a Shadowfax pickup, contact Shadowfax support for now.' });
+      return json({ error: 'Unknown action' });
+    }
 
     const headers = { Authorization: `Token ${token}` };
 
