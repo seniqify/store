@@ -17,8 +17,12 @@ export default function ProductCard({
   const openDetail = onOpen ? () => onOpen(product.id) : undefined;
   const [imgLoaded, setImgLoaded] = useState(false);
 
-  const outOfStock = product.inStock === false || product.stock === 0;
-  const inCart     = cartQty > 0;
+  // Stock Sense — a numeric `stock` (≥0) turns on live counts; absent/blank = untracked.
+  const stockNum    = Number(product.stock);
+  const tracksStock = product.stock != null && product.stock !== '' && Number.isFinite(stockNum);
+  const outOfStock  = product.inStock === false || (tracksStock && stockNum <= 0);
+  const lowStock    = tracksStock && stockNum > 0 && stockNum <= 5;
+  const inCart      = cartQty > 0;
 
   const variants    = product.variants;
   const hasVariants = !!(variants && variants.options && variants.options.length);
@@ -180,6 +184,13 @@ export default function ProductCard({
         {saving > 0 && (
           <span className="text-[10px] font-bold text-green-600 leading-none">
             You save {formatINR(saving)}
+          </span>
+        )}
+
+        {/* Low-stock urgency — nudges the customer while it's honestly true */}
+        {lowStock && !outOfStock && (
+          <span className="text-[10px] font-bold text-amber-600 leading-none">
+            🔥 Only {stockNum} left!
           </span>
         )}
 

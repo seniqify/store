@@ -72,7 +72,8 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const LOW_STOCK   = 5;   // ≤ this many units left → "low stock" (still in stock)
 
 // Clean the form's extra option-types into the stored shape:
 // [{ label, options: [{ name, addPrice }] }] — drops blank groups/options.
@@ -648,6 +649,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       price:       product.price       || '',
       mrp:         product.mrp         || '',
       cost:        product.cost        ?? '',
+      stock:       product.stock       ?? '',
       unit:        unitIsStandard ? product.unit : 'Other…',
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
@@ -737,6 +739,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
     // Cost price (what the item costs the seller) — powers the Profit stats.
     // '' → undefined (not set). Private; never sent to the storefront.
     const cost = form.cost === '' || form.cost == null ? undefined : Number(form.cost);
+    // Stock count. '' → undefined = untracked/unlimited (never sold out from count).
+    // A number ≥ 0 turns on Stock Sense: auto "Sold out" at 0, auto-decrement on order.
+    const stock = form.stock === '' || form.stock == null ? undefined : Math.max(0, Math.floor(Number(form.stock)) || 0);
 
     let newProducts;
     if (editingId !== null) {
@@ -746,6 +751,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
               cost,
+              stock,
               unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
@@ -761,6 +767,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         cost,
+        stock,
         unit:        finalUnit,
         gstRate,
         taxInclusive,
@@ -918,6 +925,19 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   {cat ? ` · ${cat.emoji} ${cat.label}` : ''}{p.unit ? ` · ${p.unit}` : ''}
                 </p>
               </div>
+              {/* Stock count chip — only when this product tracks stock (numeric).
+                  Distinct from the manual in-stock toggle beside it. */}
+              {Number.isFinite(Number(p.stock)) && p.stock !== '' && p.stock != null && (
+                <span title={`${p.stock} in stock`}
+                      className={[
+                        'text-[10px] font-bold px-1.5 py-1 rounded-lg flex-shrink-0 whitespace-nowrap tabular-nums',
+                        Number(p.stock) <= 0 ? 'bg-red-50 text-red-500'
+                          : Number(p.stock) <= LOW_STOCK ? 'bg-amber-50 text-amber-600'
+                          : 'bg-gray-100 text-gray-500',
+                      ].join(' ')}>
+                  {Number(p.stock) <= 0 ? 'Sold out' : `${p.stock} left`}
+                </span>
+              )}
               {/* In-stock toggle — compact dot on mobile, full label on wider screens */}
               <button type="button" onClick={() => toggleStock(p.id)}
                       title={p.inStock === false ? 'Mark as in stock' : 'Mark as out of stock'}
@@ -1047,6 +1067,16 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 </div>
                 <p className="mt-1 text-[11px] text-gray-400 leading-snug">💡 Add this to see your real <b className="text-gray-500">profit</b> in Stats. Never shown to customers.</p>
               </div>
+              {config.businessType !== 'service' && (
+                <div>
+                  <label className={FIELD_LABEL}>Stock <span className="text-gray-400 font-normal">· optional</span></label>
+                  <input type="number" inputMode="numeric" min="0" step="1" placeholder="Leave blank = unlimited"
+                         value={form.stock}
+                         onChange={e => setForm(p => ({...p, stock:e.target.value}))}
+                         className={iCls(false)} />
+                  <p className="mt-1 text-[11px] text-gray-400 leading-snug">📦 Units in hand. Counts down as orders come in, and shows <b className="text-gray-500">Sold out</b> at 0 so you never oversell.</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={FIELD_LABEL}>{config.businessType === 'service' ? 'Rate type' : 'Sold by'}</label>

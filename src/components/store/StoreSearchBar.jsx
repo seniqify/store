@@ -332,7 +332,7 @@ function WhatsAppRow({ waLink }) {
 function ProductRow({ product: p, primary, onAdd, onJump }) {
   const img = p.image || (Array.isArray(p.images) && p.images[0]) || null;
   const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
-  const soldOut = p.inStock === false;
+  const soldOut = p.inStock === false || (p.stock != null && p.stock !== '' && Number.isFinite(Number(p.stock)) && Number(p.stock) <= 0);
 
   const price = (() => {
     if (hasVariants) {

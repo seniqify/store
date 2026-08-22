@@ -50,7 +50,10 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
 
   const off        = discountPercent(price, mrp);
   const saving     = mrp && mrp > price ? mrp - price : 0;
-  const outOfStock = product.inStock === false || product.stock === 0;
+  const stockNum    = Number(product.stock);
+  const tracksStock = product.stock != null && product.stock !== '' && Number.isFinite(stockNum);
+  const outOfStock  = product.inStock === false || (tracksStock && stockNum <= 0);
+  const lowStock    = tracksStock && stockNum > 0 && stockNum <= 5;
   const attrs      = Array.isArray(product.attributes) ? product.attributes.filter((a) => a && a.value) : [];
   const descOpen   = useDisclosure(true);
 
@@ -159,6 +162,7 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               <span className="text-[26px] font-extrabold text-gray-900 tabular-nums tracking-tight">{formatINR(price)}</span>
               {mrp && mrp > price && <span className="text-sm text-gray-400 line-through tabular-nums">{formatINR(mrp)}</span>}
               {saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
+              {lowStock && !outOfStock && <span className="w-full text-[13px] font-bold text-amber-600">🔥 Hurry — only {stockNum} left in stock!</span>}
             </div>
 
             {/* Priced variant type */}
