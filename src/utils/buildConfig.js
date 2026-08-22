@@ -53,6 +53,14 @@ export const FEATURE_SUGGESTIONS = {
     { emoji: '↩️', title: 'Easy Returns',      desc: 'Hassle-free'      },
     { emoji: '🏷️', title: 'Best Prices',       desc: 'Great value'      },
   ],
+  restaurant: [
+    { emoji: '🍳', title: 'Freshly Made',      desc: 'Cooked to order'  },
+    { emoji: '🛵', title: 'Home Delivery',     desc: 'Hot & on time'    },
+    { emoji: '🥡', title: 'Takeaway',          desc: 'Pick up & go'     },
+    { emoji: '🌿', title: 'Pure Ingredients',  desc: 'Quality first'    },
+    { emoji: '💬', title: 'WhatsApp Orders',   desc: 'Order on chat'    },
+    { emoji: '⭐', title: 'Loved Locally',     desc: 'Trusted by many'  },
+  ],
   service: [
     { emoji: '✨', title: 'Expert Team',       desc: 'Skilled pros'     },
     { emoji: '🏠', title: 'At-home Service',   desc: 'We come to you'   },
@@ -65,6 +73,7 @@ export const FEATURE_SUGGESTIONS = {
 
 export const DEFAULT_TAGLINES = {
   product: 'Quality products, delivered. Order on WhatsApp.',
+  restaurant: 'Fresh & tasty, made to order. Order on WhatsApp.',
   service: 'Trusted services, just a message away.',
 };
 

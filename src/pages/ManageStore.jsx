@@ -2642,6 +2642,7 @@ export default function ManageStore() {
   // Service stores collect quote inquiries, not cart orders — same tab, same
   // data, lead-flavored vocabulary (see OrdersTab mode="leads").
   const isService = config.businessType === 'service';
+  const isRestaurant = config.businessType === 'restaurant';
   const TABS = [
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
@@ -2650,7 +2651,7 @@ export default function ManageStore() {
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
     { key: 'reviews',    label: 'Reviews',     icon: Star      },
-    { key: 'products',   label: 'Products',    icon: Package  },
+    { key: 'products',   label: isRestaurant ? 'Menu' : 'Products', icon: Package  },
     { key: 'offers',     label: 'Offers',      icon: Percent  },
     ...(isService ? [] : [{ key: 'delivery', label: 'Delivery', icon: Truck }]),
     { key: 'settings',   label: 'Settings',    icon: Settings2 },

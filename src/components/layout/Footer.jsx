@@ -94,6 +94,7 @@ export default function Footer() {
         : '🚚 Free delivery on all orders';
   const quickInfo = {
     service:    ['💬 Free consultation on WhatsApp', '✅ Trusted local professional', '🗓️ Flexible scheduling'],
+    restaurant: [deliveryPerk, '🍳 Freshly cooked to order', '🌿 Quality ingredients'],
   }[businessType] ?? [
     deliveryPerk,
     '✅ 100% genuine products',

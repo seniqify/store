@@ -38,9 +38,12 @@ export default function CartSummary({
   const hasFreeOffer = Number(cartConfig?.freeShippingAbove) > 0 && Number(cartConfig?.shippingCharge) > 0;
 
   // Always reassure the customer when to expect their order — they can't see the
-  // courier/shipping step. Defaults to the pan-India courier estimate; a store can
-  // override via cart.deliveryEstimate (e.g. "Same day" for local delivery).
-  const deliveryEstimate = String(cartConfig?.deliveryEstimate || '3–5 days').trim();
+  // courier/shipping step. Restaurants deliver hot food same-day, so they default
+  // to minutes, not the pan-India courier's 3–5 days. A store can override either
+  // via cart.deliveryEstimate (e.g. "Same day" for local delivery).
+  const isRestaurant     = config.businessType === 'restaurant';
+  const defaultEstimate  = isRestaurant ? '30–45 min' : '3–5 days';
+  const deliveryEstimate = String(cartConfig?.deliveryEstimate || defaultEstimate).trim();
 
   if (isEmpty) return null;   // nothing to summarize
 

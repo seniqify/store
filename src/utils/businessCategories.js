@@ -26,6 +26,18 @@ export const SUBCATEGORIES = {
     ['Wholesale & Manufacturing', '🏭'],
     ['Other Retail', '🏪'],
   ],
+  restaurant: [
+    ['Restaurant', '🍽️'],
+    ['Cafe & Tea', '☕'],
+    ['Bakery & Cakes', '🍰'],
+    ['Sweets & Namkeen', '🧁'],
+    ['Cloud Kitchen', '🍱'],
+    ['Tiffin & Mess', '🍲'],
+    ['Fast Food & Snacks', '🍔'],
+    ['Ice Cream & Desserts', '🍨'],
+    ['Juice & Beverages', '🥤'],
+    ['Other Food', '🍴'],
+  ],
   service: [
     ['Salon & Beauty', '💇'],
     ['Repairs & Maintenance', '🔧'],
@@ -100,6 +112,7 @@ export function subcategoriesForType(type) {
 /** Default category when a store hasn't picked one yet. */
 export const DEFAULT_CATEGORY = {
   product: 'Other Retail',
+  restaurant: 'Restaurant',
   service: 'Other Services',
 };
 
@@ -125,6 +138,17 @@ const CATEGORY_ICONS = {
   'Pet Supplies':            ['🐾', '🐕', '🐈', '🐶', '🐱', '🦴', '🐦', '🐠', '🐹', '🐰', '🦜', '🐢', '🪶', '🐟', '🦮'],
   'Wholesale & Manufacturing': ['🏭', '📦', '🏗️', '🧵', '⚙️', '🚛', '🏬', '🪙', '📊', '🧱', '🛢️', '🔩'],
   'Other Retail':            ['🏪', '🛒', '🛍️', '📦', '🏬', '🧺', '🪙', '🧾'],
+  // restaurant
+  'Restaurant':              ['🍽️', '🍛', '🍲', '🥘', '🍜', '🍚', '🥗', '🍕', '🍔', '🌮', '🥩', '🍢', '🧆', '🫓', '🍴'],
+  'Cafe & Tea':              ['☕', '🍵', '🧋', '🥐', '🍰', '🧁', '🥪', '🍩', '🫖', '🥯', '🍪'],
+  'Bakery & Cakes':          ['🍰', '🎂', '🧁', '🥐', '🍞', '🥖', '🍪', '🥧', '🍩', '🥯', '🫓'],
+  'Sweets & Namkeen':        ['🧁', '🍬', '🍡', '🍮', '🥮', '🍥', '🫖', '🥜', '🍯', '🪔'],
+  'Cloud Kitchen':           ['🍱', '🍛', '🥡', '🍲', '🍜', '🛵', '🍔', '🌯', '🥘', '🍚'],
+  'Tiffin & Mess':           ['🍲', '🍱', '🥘', '🍛', '🫓', '🍚', '🥗', '🧆', '🍴', '🥡'],
+  'Fast Food & Snacks':      ['🍔', '🍟', '🌭', '🍕', '🌮', '🌯', '🥪', '🍢', '🧆', '🥙', '🍿', '🥨'],
+  'Ice Cream & Desserts':    ['🍨', '🍦', '🍧', '🧁', '🍮', '🥤', '🍰', '🍩', '🫗', '🍭'],
+  'Juice & Beverages':       ['🥤', '🧃', '🧋', '🍹', '🥛', '🫗', '🍵', '☕', '🧉', '🍶'],
+  'Other Food':              ['🍴', '🍽️', '🥘', '🍲', '🥡', '🧆', '🍛'],
   // service
   'Salon & Beauty':          ['💇', '💅', '💄', '✂️', '🧖', '💆', '🪒', '💈', '🧴', '🪞', '🌸', '💋', '🧼'],
   'Repairs & Maintenance':   ['🔧', '🛠️', '🔩', '⚙️', '🪛', '🔌', '🪚', '🔨', '🧰', '🪤', '⚡', '🧯', '🔦'],

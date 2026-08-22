@@ -50,7 +50,7 @@ const STEP_ICONS  = ['🧭', '📝', '📦', '🚀'];
 
 // Each business type gets its own accent so stores aren't all the same colour.
 // (Owners can change it later in Manage → Settings.)
-const THEME_BY_TYPE = { product: '#0d9488', service: '#9333ea' };
+const THEME_BY_TYPE = { product: '#0d9488', restaurant: '#ea580c', service: '#9333ea' };
 
 // Premium dark stepper shown across all onboarding steps.
 function Stepper({ labels, icons, current }) {
@@ -89,6 +89,7 @@ function Stepper({ labels, icons, current }) {
 // Labels shown in StepProducts based on business type
 const PRODUCT_MODE = {
   product: 'product',
+  restaurant: 'menuitem',
   service: 'service',
 };
 

@@ -31,6 +31,8 @@ export const STRINGS = {
     'type.sub': 'Tap the one that fits — you can change anything later.',
     'type.product.label': 'Shop / Products',
     'type.product.desc': 'Kirana, clothes, electronics, hardware…',
+    'type.restaurant.label': 'Restaurant / Food',
+    'type.restaurant.desc': 'Café, cloud kitchen, tiffin, sweets…',
     'type.service.label': 'Services',
     'type.service.desc': 'Salon, repairs, tailor, tuition…',
     'type.footer': 'Not sure? Pick the closest — it only sets your page layout.',
@@ -134,6 +136,7 @@ export const STRINGS = {
 
     // Business nouns by type
     'noun.product': 'shop',
+    'noun.restaurant': 'restaurant',
     'noun.service': 'business',
     // Item label sets by mode
     'mode.product.plural': 'Products', 'mode.product.singular': 'Product', 'mode.product.add': 'Add Product', 'mode.product.itemS': 'product', 'mode.product.itemP': 'products',
@@ -157,6 +160,8 @@ export const STRINGS = {
     'type.sub': 'जो सही लगे उसे चुनें — बाद में सब कुछ बदल सकते हैं।',
     'type.product.label': 'दुकान / प्रोडक्ट',
     'type.product.desc': 'किराना, कपड़े, इलेक्ट्रॉनिक्स, हार्डवेयर…',
+    'type.restaurant.label': 'रेस्टॉरंट / खाना',
+    'type.restaurant.desc': 'कैफ़े, क्लाउड किचन, टिफ़िन, मिठाई…',
     'type.service.label': 'सेवाएँ',
     'type.service.desc': 'सैलून, मरम्मत, दर्ज़ी, ट्यूशन…',
     'type.footer': 'पक्का नहीं? सबसे करीबी चुनें — यह सिर्फ़ पेज का लेआउट तय करता है।',
@@ -254,6 +259,7 @@ export const STRINGS = {
     'ok.nudge': '✨ और बेहतर दिखाना है? Manage → Settings में कभी भी लोगो, कवर फ़ोटो और पेमेंट जानकारी जोड़ें।',
 
     'noun.product': 'दुकान',
+    'noun.restaurant': 'रेस्टॉरंट',
     'noun.service': 'व्यवसाय',
     'mode.product.plural': 'प्रोडक्ट', 'mode.product.singular': 'प्रोडक्ट', 'mode.product.add': 'प्रोडक्ट जोड़ें', 'mode.product.itemS': 'प्रोडक्ट', 'mode.product.itemP': 'प्रोडक्ट',
     'mode.menuitem.plural': 'मेन्यू आइटम', 'mode.menuitem.singular': 'मेन्यू आइटम', 'mode.menuitem.add': 'मेन्यू आइटम जोड़ें', 'mode.menuitem.itemS': 'व्यंजन', 'mode.menuitem.itemP': 'व्यंजन',
@@ -276,6 +282,8 @@ export const STRINGS = {
     'type.sub': 'योग्य वाटेल तो निवडा — नंतर काहीही बदलता येईल.',
     'type.product.label': 'दुकान / वस्तू',
     'type.product.desc': 'किराणा, कपडे, इलेक्ट्रॉनिक्स, हार्डवेअर…',
+    'type.restaurant.label': 'रेस्टॉरंट / खाद्य',
+    'type.restaurant.desc': 'कॅफे, क्लाउड किचन, डबा, मिठाई…',
     'type.service.label': 'सेवा',
     'type.service.desc': 'सलून, दुरुस्ती, शिंपी, शिकवणी…',
     'type.footer': 'खात्री नाही? जवळचा निवडा — हे फक्त पेजची मांडणी ठरवतं.',
@@ -373,6 +381,7 @@ export const STRINGS = {
     'ok.nudge': '✨ अधिक छान दिसायचंय? Manage → Settings मध्ये कधीही लोगो, कव्हर फोटो व पेमेंट माहिती जोडा.',
 
     'noun.product': 'दुकान',
+    'noun.restaurant': 'रेस्टॉरंट',
     'noun.service': 'व्यवसाय',
     'mode.product.plural': 'प्रॉडक्ट', 'mode.product.singular': 'प्रॉडक्ट', 'mode.product.add': 'प्रॉडक्ट जोडा', 'mode.product.itemS': 'प्रॉडक्ट', 'mode.product.itemP': 'प्रॉडक्ट',
     'mode.menuitem.plural': 'मेनू आयटम', 'mode.menuitem.singular': 'मेनू आयटम', 'mode.menuitem.add': 'मेनू आयटम जोडा', 'mode.menuitem.itemS': 'पदार्थ', 'mode.menuitem.itemP': 'पदार्थ',

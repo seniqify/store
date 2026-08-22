@@ -65,6 +65,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const primaryDark = theme?.primaryDark ?? '#0f766e';
   const freeAbove   = config.cart?.freeShippingAbove ?? 0;
 
+  // Food stores read better with menu vocabulary ("Browse menu", "7 dishes").
+  const isRestaurant = config.businessType === 'restaurant';
+  const catalogWord  = isRestaurant ? 'menu'   : 'products';
+  const itemsWord    = isRestaurant ? 'dishes' : 'products';
+  const itemsEmoji   = isRestaurant ? '🍽️'    : '🛍️';
+
   // Scheduled sales (Premium): bake live sale prices into the products customers
   // see + add to cart, and surface a live sale banner with countdown.
   const offers       = config.offers || [];
@@ -141,7 +147,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       el.setAttribute('content', content);
     };
 
-    const desc = `Browse ${businessName}'s products and place orders instantly via WhatsApp. ${products.length} products available.`;
+    const desc = `Browse ${businessName}'s ${itemsWord} and place orders instantly via WhatsApp. ${products.length} ${itemsWord} available.`;
     setMeta('description', desc);
     setMeta('og:title',       title,        true);
     setMeta('og:description', desc,         true);
@@ -316,7 +322,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                      <Chip>🛍️ {products.length} products</Chip>
+                      <Chip>{itemsEmoji} {products.length} {itemsWord}</Chip>
                       {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
                       {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
                       {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
@@ -339,7 +345,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                        className="inline-flex items-center gap-2 text-white text-sm font-bold px-5 py-3 rounded-xl
                                   shadow-lg transition-all active:scale-95"
                        style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})`, boxShadow: `0 10px 25px ${primary}40` }}>
-                      <ShoppingCart size={16} /> Browse products
+                      <ShoppingCart size={16} /> Browse {catalogWord}
                     </button>
                   </div>
                   <a href={waLink} target="_blank" rel="noopener noreferrer"
@@ -354,7 +360,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                  className="sm:hidden mt-4 w-full flex items-center justify-center gap-2 text-white text-sm font-bold
                             py-3 rounded-xl shadow-lg active:scale-[0.99]"
                  style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
-                <ShoppingCart size={16} /> Browse products
+                <ShoppingCart size={16} /> Browse {catalogWord}
               </button>
               <a href={waLink} target="_blank" rel="noopener noreferrer"
                  className="sm:hidden mt-2.5 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500">
@@ -526,7 +532,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               <ArrowLeft size={20} />
             </button>
             <span className="text-sm font-bold text-gray-800">
-              {aiAskEnabled ? 'Ask anything' : 'Search products'}
+              {aiAskEnabled ? 'Ask anything' : `Search ${itemsWord}`}
             </span>
           </div>
           <div className="flex-1 overflow-y-auto pb-10">
