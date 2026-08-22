@@ -67,6 +67,9 @@ export default function ShipBookModal({ o, slug, pin, themeColor = '#0d9488', on
         total_amount: Number(o.total) || Number(f.codAmount) || 0,
         weight: Number(f.weight) || 500,
         length: f.length, breadth: f.breadth, height: f.height,
+        // The exact courier charge shown above — stored on the order so Stats →
+        // Profit subtracts the real delivery cost (not a flat estimate).
+        shipping_cost: cost && cost.amount != null ? Number(cost.amount) : undefined,
       });
       onBooked?.(r);
     } catch (e) {

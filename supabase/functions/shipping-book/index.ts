@@ -53,6 +53,13 @@ serve(async (req) => {
     const { slug, hashedPin, orderId, details = {} } = await req.json();
     if (!slug || !hashedPin || !orderId) return json({ error: 'Missing store, PIN, or order' });
 
+    // The courier charge the merchant saw in the booking modal (their real cost for
+    // THIS shipment). Stored on the order so Stats → Profit can subtract the actual
+    // delivery cost. Null when the estimate wasn't available (falls back to the
+    // store's flat "delivery cost / order" in the profit maths).
+    const shipCostNum = Number(details.shipping_cost);
+    const shipCost = Number.isFinite(shipCostNum) && shipCostNum > 0 ? shipCostNum : null;
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -154,7 +161,7 @@ serve(async (req) => {
       }
 
       await supabase.from('orders')
-        .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new' })
+        .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new', shipping_cost: shipCost })
         .eq('id', order.id).eq('store_slug', slug);
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
@@ -233,7 +240,7 @@ serve(async (req) => {
     }
 
     await supabase.from('orders')
-      .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested' })
+      .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested', shipping_cost: shipCost })
       .eq('id', order.id).eq('store_slug', slug);
 
     // ── Auto-schedule a pickup so a courier actually comes (else it just sits at

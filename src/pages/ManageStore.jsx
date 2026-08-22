@@ -72,7 +72,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
 
 // Clean the form's extra option-types into the stored shape:
 // [{ label, options: [{ name, addPrice }] }] — drops blank groups/options.
@@ -647,6 +647,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       category:    product.category    || '',
       price:       product.price       || '',
       mrp:         product.mrp         || '',
+      cost:        product.cost        ?? '',
       unit:        unitIsStandard ? product.unit : 'Other…',
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
@@ -733,6 +734,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       : form.taxMode === 'inclusive' ? true
       : form.taxMode === 'exclusive' ? false
       : undefined;
+    // Cost price (what the item costs the seller) — powers the Profit stats.
+    // '' → undefined (not set). Private; never sent to the storefront.
+    const cost = form.cost === '' || form.cost == null ? undefined : Number(form.cost);
 
     let newProducts;
     if (editingId !== null) {
@@ -741,6 +745,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           ? { ...p, name:form.name.trim(), category:form.category,
               price:Number(form.price),
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
+              cost,
               unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
@@ -755,6 +760,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         images:      cleanImages,
         price:       Number(form.price),
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
+        cost,
         unit:        finalUnit,
         gstRate,
         taxInclusive,
@@ -1029,6 +1035,17 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                            className={[iCls(false), 'pl-7'].join(' ')} />
                   </div>
                 </div>
+              </div>
+              <div>
+                <label className={FIELD_LABEL}>Cost price <span className="text-gray-400 font-normal">· optional, private</span></label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                  <input type="number" inputMode="numeric" min="0" placeholder="What it costs you, e.g. 220"
+                         value={form.cost}
+                         onChange={e => setForm(p => ({...p, cost:e.target.value}))}
+                         className={[iCls(false), 'pl-7'].join(' ')} />
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400 leading-snug">💡 Add this to see your real <b className="text-gray-500">profit</b> in Stats. Never shown to customers.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1744,6 +1761,34 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
               <p className="mt-1 text-[11px] text-gray-400">Only on Cash on Delivery — waived if they pay online.</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Your costs (private) — the merchant's OWN spend per order, never shown to
+          customers. Distinct from "Order charges" above (what the customer pays).
+          Feeds the real-profit maths in Stats → Profit. */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900">🔒 Your costs <span className="text-gray-400 font-semibold">· private</span></h3>
+          <p className="text-xs text-gray-400 mt-0.5">What <b>you</b> spend per order. Never shown to customers — used to show your <b>real profit</b> in Stats.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={lCls()}>Packaging cost / order (₹)</label>
+            <input type="number" inputMode="numeric" min={0} placeholder="0"
+                   value={config.cart?.packagingCost ?? ''}
+                   onChange={e => update({ cart: { ...config.cart, packagingCost: Number(e.target.value) || 0 } })}
+                   className={iCls(false)} />
+            <p className="mt-1 text-[11px] text-gray-400">Box, bag, tape, filler — a rough average is fine.</p>
+          </div>
+          <div>
+            <label className={lCls()}>Delivery cost / order (₹)</label>
+            <input type="number" inputMode="numeric" min={0} placeholder="0"
+                   value={config.cart?.deliveryCost ?? ''}
+                   onChange={e => update({ cart: { ...config.cart, deliveryCost: Number(e.target.value) || 0 } })}
+                   className={iCls(false)} />
+            <p className="mt-1 text-[11px] text-gray-400">Your average courier / rider charge. Orders booked through PocketLink use the <b>exact</b> charge automatically.</p>
+          </div>
         </div>
       </div>
 
@@ -2775,7 +2820,7 @@ export default function ManageStore() {
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
-            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} advanced={analyticsAdvanced} />
+            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} advanced={analyticsAdvanced} products={config.products} packagingCost={config.cart?.packagingCost} deliveryCost={config.cart?.deliveryCost} onGoTab={setTab} />
           </div>
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">

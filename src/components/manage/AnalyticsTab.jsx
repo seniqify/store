@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Lock, Sparkles, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Lock, Sparkles, Clock, Wallet } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
@@ -14,7 +14,7 @@ const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h <
  * (`advanced`) also gets behavioural insights — returning customers, peak hours,
  * best day and the revenue trend. A lapsed/unpaid page sees an upsell.
  */
-export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false, advanced = false }) {
+export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false, advanced = false, products = [], packagingCost = 0, deliveryCost = 0, onGoTab }) {
   const [orders, setOrders] = useState(null);
   const [views,  setViews]  = useState(null);
 
@@ -93,6 +93,74 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const top = Object.entries(pmap).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5);
   const topMax = Math.max(1, ...top.map(([, v]) => v.rev));
 
+  // ── Profit Brain — real profit from per-product cost prices. Profit is computed
+  // only over items whose product has a cost set, so the number is honest (an
+  // unpriced product is excluded, not counted as pure profit). Item-level: profit
+  // on the goods themselves (before delivery/gateway costs), which is what the
+  // seller most needs and what we can compute cleanly. ──
+  const costByName = {};
+  let productsWithCost = 0;
+  for (const p of (products || [])) {
+    if (p && p.name) {
+      const c = Number(p.cost);
+      if (Number.isFinite(c) && c > 0) { costByName[p.name] = c; productsWithCost++; }
+    }
+  }
+  const totalProducts = (products || []).filter((p) => p && p.name).length;
+
+  const profByProd = {};
+  let soldRevenue = 0, cogs = 0, uncoveredUnits = 0;
+  for (const o of valid) for (const it of (o.items || [])) {
+    const qty = Number(it.qty) || 0;
+    const rev = (Number(it.price) || 0) * qty;
+    const unitCost = costByName[it.name];
+    if (unitCost != null) {
+      const c = unitCost * qty;
+      soldRevenue += rev; cogs += c;
+      const k = it.name;
+      profByProd[k] = profByProd[k] || { rev: 0, cost: 0, qty: 0 };
+      profByProd[k].rev += rev; profByProd[k].cost += c; profByProd[k].qty += qty;
+    } else if (qty) { uncoveredUnits += qty; }
+  }
+  const grossProfit = soldRevenue - cogs;
+  const margin = soldRevenue > 0 ? Math.round((grossProfit / soldRevenue) * 100) : 0;
+  const hasCostData = productsWithCost > 0 && soldRevenue > 0;
+  const profRanked = Object.entries(profByProd)
+    .map(([name, v]) => ({ name, profit: v.rev - v.cost, margin: v.rev > 0 ? Math.round(((v.rev - v.cost) / v.rev) * 100) : 0 }))
+    .sort((a, b) => b.profit - a.profit);
+  const bestProfMax = Math.max(1, ...profRanked.map((p) => Math.abs(p.profit)));
+  const thin = profRanked.filter((p) => p.margin < 15);
+
+  // ── Operating costs → real profit. Packaging is a flat spend on every order;
+  // delivery uses the ACTUAL courier charge saved at booking (order.shipping_cost)
+  // and falls back to the store's flat "delivery cost / order" for orders not booked
+  // through PocketLink. deliveryCharged (order.shipping) is what customers paid for
+  // delivery — comparing the two surfaces a hidden delivery loss. ──
+  const pkgPer  = Number(packagingCost) > 0 ? Number(packagingCost) : 0;
+  const dlvFlat = Number(deliveryCost)  > 0 ? Number(deliveryCost)  : 0;
+  let deliverySpend = 0, deliveryKnown = 0, deliveryCharged = 0;
+  for (const o of valid) {
+    const sc = Number(o.shipping_cost);
+    if (Number.isFinite(sc) && sc > 0) { deliverySpend += sc; deliveryKnown++; }
+    else if (dlvFlat > 0)              { deliverySpend += dlvFlat; }
+    deliveryCharged += Number(o.shipping) || 0;
+  }
+  const packagingSpend = pkgPer * count;
+  const operatingCosts = packagingSpend + deliverySpend;
+  const hasOpCosts     = hasCostData && operatingCosts > 0;
+  const netProfit      = grossProfit - operatingCosts;
+  const netMargin      = soldRevenue > 0 ? Math.round((netProfit / soldRevenue) * 100) : 0;
+  // Headline flips to the after-costs number once any operating cost is known.
+  const headProfit = hasOpCosts ? netProfit : grossProfit;
+  const headMargin = hasOpCosts ? netMargin : margin;
+  const deliveryLoss = hasOpCosts && deliverySpend > 0 && (deliverySpend - deliveryCharged) >= 20;
+  const pnl = [
+    { label: 'Sales', v: soldRevenue, neg: false },
+    { label: 'Cost of goods', v: cogs, neg: true },
+    ...(packagingSpend > 0 ? [{ label: 'Packaging', v: packagingSpend, neg: true }] : []),
+    ...(deliverySpend  > 0 ? [{ label: 'Delivery',  v: deliverySpend,  neg: true }] : []),
+  ];
+
   // ── Advanced (Premium) metrics — behaviour from the same orders ──
   // Returning customers: buyers (by phone) with more than one order.
   const byPhone = {};
@@ -156,6 +224,76 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
         <Stat label="Conversion" value={conv === null ? '—' : `${conv}%`} sub={<span className="text-[11px] text-gray-400">visitors → orders (7d)</span>} />
       </div>
 
+      {/* ── Profit Brain ── */}
+      {productsWithCost === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed p-5" style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <Wallet size={18} style={{ color: themeColor }} />
+            <p className="font-extrabold text-gray-900 text-sm">See your real profit</p>
+          </div>
+          <p className="text-xs text-gray-500 max-w-sm">
+            Add a <b>cost price</b> to your products and PocketLink shows exactly what you <b>earn</b> — not just what you sell. Takes a minute.
+          </p>
+          <button onClick={() => onGoTab?.('products')}
+            className="mt-3 inline-flex items-center gap-1.5 text-white font-bold text-xs px-4 py-2 rounded-xl active:scale-95"
+            style={{ backgroundColor: themeColor }}>
+            Add cost prices →
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+              <Wallet size={15} style={{ color: themeColor }} /> Profit
+            </p>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: headProfit >= 0 ? '#15803d' : '#b91c1c', background: headProfit >= 0 ? '#dcfce7' : '#fee2e2' }}>
+              {headMargin}% margin
+            </span>
+          </div>
+          <div>
+            <p className="text-3xl font-extrabold tabular-nums leading-none"
+               style={{ color: headProfit >= 0 ? '#16a34a' : '#dc2626' }}>
+              {formatINR(Math.round(headProfit))}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-1">{hasOpCosts ? 'net profit after costs' : 'net profit on goods sold'}</p>
+          </div>
+
+          {/* Receipt-style breakdown — Sales minus each cost */}
+          <div className="mt-3 border-t border-gray-100 pt-3 space-y-1.5">
+            {pnl.map((r) => (
+              <div key={r.label} className="flex items-center justify-between text-[12px]">
+                <span className="text-gray-500">{r.label}</span>
+                <span className="tabular-nums font-semibold text-gray-700">{r.neg ? '−' : ''}{formatINR(Math.round(r.v))}</span>
+              </div>
+            ))}
+          </div>
+
+          {deliveryLoss && (
+            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+              🚚 <b>Delivery is eating your profit</b> — you collected {formatINR(Math.round(deliveryCharged))} for delivery but paid couriers {formatINR(Math.round(deliverySpend))}. Consider a small delivery fee or a free-delivery minimum.
+            </p>
+          )}
+          {uncoveredUnits > 0 && (
+            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+              ⚠️ {productsWithCost} of {totalProducts} products have a cost price — add the rest for full accuracy.
+              <button onClick={() => onGoTab?.('products')} className="ml-1 font-bold underline" style={{ color: themeColor }}>Fix →</button>
+            </p>
+          )}
+          {!hasOpCosts && (
+            <button onClick={() => onGoTab?.('delivery')}
+              className="mt-3 text-[11px] font-bold active:scale-95" style={{ color: themeColor }}>
+              + Add packaging &amp; delivery costs for true profit →
+            </button>
+          )}
+          <p className="mt-2 text-[10px] text-gray-400">
+            {hasOpCosts
+              ? 'Includes cost of goods, packaging & courier charges. Payment-gateway fees not counted.'
+              : 'Profit on the items themselves — add packaging & delivery costs to see profit after everything.'}
+          </p>
+        </div>
+      )}
+
       {/* Orders over time */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
         <p className="text-sm font-bold text-gray-900 mb-3">Orders · last 14 days</p>
@@ -189,6 +327,34 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
           ))}
         </div>
       </div>
+
+      {/* Profit by product — best earners + thin-margin flags */}
+      {hasCostData && profRanked.length > 0 && (
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+          <p className="text-sm font-bold text-gray-900 mb-3">Profit by product</p>
+          <div className="space-y-2.5">
+            {profRanked.slice(0, 6).map((p) => (
+              <div key={p.name}>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-semibold text-gray-700 truncate pr-2">{p.name}</span>
+                  <span className="flex-shrink-0 tabular-nums inline-flex items-center gap-1.5">
+                    <span className="font-bold" style={{ color: p.profit >= 0 ? '#16a34a' : '#dc2626' }}>{formatINR(Math.round(p.profit))}</span>
+                    <span className={['text-[10px] font-bold px-1.5 py-0.5 rounded', p.margin < 15 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-600'].join(' ')}>{p.margin}%</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(Math.abs(p.profit) / bestProfMax) * 100}%`, backgroundColor: p.profit >= 0 ? themeColor : '#dc2626' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          {thin.length > 0 && (
+            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+              💡 <b>Thin margin:</b> {thin.slice(0, 3).map((p) => p.name).join(', ')}{thin.length > 3 ? ` +${thin.length - 3} more` : ''} — under 15%. Consider raising the price or bundling a combo.
+            </p>
+          )}
+        </div>
+      )}
 
       {advanced ? (
         <>
