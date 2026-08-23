@@ -67,10 +67,14 @@ export function calcCartTotals(items, cartConfig = BUSINESS_CONFIG.cart, payment
   // so every order shipped free and the delivery fee was never applied.
   const freeAbove = Number(freeShippingAbove);
   const hasFreeThreshold = Number.isFinite(freeAbove) && freeAbove > 0;
+  // Coerce the fee to a finite number: a store with a blank/undefined delivery
+  // charge must read as ₹0, never leak `undefined` into `total` (→ ₹NaN checkout).
+  const shipRaw = Number(shippingCharge);
+  const shipFee = Number.isFinite(shipRaw) && shipRaw > 0 ? shipRaw : 0;
   const shipping =
     items.length === 0                          ? 0
     : hasFreeThreshold && subtotal >= freeAbove ? 0
-    : shippingCharge;
+    : shipFee;
 
   // Extra charges — flat amounts the owner sets. Same 0/blank = "none" guard as
   // delivery, so a blank field never sneaks a charge onto the order.
