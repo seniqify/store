@@ -63,6 +63,24 @@ const PAYMENT_OPTIONS = [
   { value: 'cod',  label: '💵 Cash on Delivery (COD)' },
 ];
 
+// Returning-customer memory. A shopper's name / phone / address is the same
+// across every PocketLink store, so we remember it on THEIR device (never on our
+// servers) and pre-fill next time — a repeat buyer orders in a couple of taps.
+const PROFILE_KEY = 'pl_customer_v1';
+function loadProfile() {
+  try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch { return null; }
+}
+function saveProfile(p) {
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* storage blocked — fine */ }
+}
+// Enough saved detail to skip straight to the "welcome back" summary? A saved
+// delivery address must be complete; a name + phone alone is enough for pickup.
+function profileIsComplete(p) {
+  if (!p || !p.partyName || !p.mobile) return false;
+  if (p.addressLine || p.pincode || p.destination) return Boolean(p.addressLine && p.pincode && p.destination);
+  return true;
+}
+
 // ── Official WhatsApp icon (SVG, fill="currentColor") ─────────────────────────
 function WhatsAppIcon({ size = 20 }) {
   return (
@@ -85,6 +103,11 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [payError,    setPayError]    = useState('');      // online-payment error, if any
   const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
   const [showPreview, setShowPreview] = useState(false);
+
+  // Returning customer: remembered details on this device. `editing` = show the
+  // raw fields; otherwise we show a "welcome back" summary they can order from.
+  const [savedProfile] = useState(loadProfile);
+  const [editing, setEditing] = useState(() => !profileIsComplete(loadProfile()));
 
   // Coupon entered at checkout (validated against the store's live coupons).
   const [couponInput,   setCouponInput]   = useState('');
@@ -126,6 +149,19 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     saveAbandonedCheckout(formData, cart, config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.mobile]);
+
+  // One-time prefill from the remembered profile — only fills fields the parent
+  // hasn't already restored, so a draft is never clobbered.
+  useEffect(() => {
+    if (!savedProfile) return;
+    const merged = { ...formData };
+    let changed = false;
+    for (const k of ['partyName', 'mobile', 'addressLine', 'destination', 'pincode', 'paymentMethod']) {
+      if (!merged[k] && savedProfile[k]) { merged[k] = savedProfile[k]; changed = true; }
+    }
+    if (changed) onChange(merged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const taxPct     = Math.round((config.cart?.taxRate ?? 0) * 100);
   const itemCount  = cart.reduce((s, i) => s + i.qty, 0);
   const cartEmpty  = cart.length === 0;
@@ -154,6 +190,10 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const coupons        = config.coupons || [];
   const couponDiscount = appliedCoupon ? couponDiscountFor(appliedCoupon, subtotal) : 0;
   const finalTotal     = Math.max(0, total - couponDiscount);
+
+  // For the "welcome back" summary
+  const firstName = (formData.partyName || '').trim().split(/\s+/)[0] || '';
+  const savedAddr = composeDeliveryAddress(formData);
 
   // UPI pay link + a "Scan to pay" QR of the same payload. A scanned QR is a
   // trusted flow that works to personal VPAs, unlike a browser→app upi:// intent
@@ -203,6 +243,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     if (placing) return;
     const { isValid, errors: newErrors } = validateCustomerDetails(sendData, { requireDeliveryAddress: !isPickup });
     if (!isValid) {
+      setEditing(true);   // a "welcome back" summary can't show an error — reveal the fields
       setErrors(newErrors);
       document.getElementById(`cdf-${Object.keys(newErrors)[0]}`)?.focus();
       return;
@@ -288,6 +329,15 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     setAutoNotified(notified);
     setPlacing(false);
     setSubmitted(true);
+    // Remember this customer on their device so the next order is one tap.
+    saveProfile({
+      partyName:     formData.partyName,
+      mobile:        formData.mobile,
+      addressLine:   formData.addressLine,
+      destination:   formData.destination,
+      pincode:       formData.pincode,
+      paymentMethod: formData.paymentMethod,
+    });
     // Report the sale to the store's Meta Pixel — checkout finishes in WhatsApp,
     // so order-placed is the conversion. No-op without a pixel.
     pixelTrack('Purchase', { value: finalTotal, currency: 'INR', num_items: itemCount });
@@ -346,10 +396,10 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
 
   // ── Main form ─────────────────────────────────────────────────────────────
   return (
-    <div id="order-form" className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div id="order-form" className="bg-white rounded-2xl border border-gray-100 shadow-sm">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent">
+      <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent rounded-t-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {/* Seller identity — mirrors the storefront hero so checkout reads as
@@ -468,115 +518,172 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       {/* ── Form fields ──────────────────────────────────────────────────── */}
       <div className="px-6 py-5 space-y-4">
 
-        {/* Row 1 — Party name + Mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-          <FormField label="Party Name" required error={errors.partyName}>
-            <input
-              id="cdf-partyName"
-              type="text"
-              placeholder="e.g. Raj Textiles, Priya Stores"
-              autoComplete="organization"
-              value={formData.partyName}
-              onChange={(e) => handleChange('partyName', e.target.value)}
-              className={inputCls('partyName')}
-            />
-          </FormField>
-
-          <FormField
-            label="Mobile Number"
-            required
-            error={errors.mobile}
-            hint="10-digit number"
-          >
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400
-                               font-medium select-none pointer-events-none">
-                +91
-              </span>
-              <input
-                id="cdf-mobile"
-                type="tel"
-                inputMode="numeric"
-                placeholder="98765 43210"
-                maxLength={10}
-                value={formData.mobile}
-                onChange={(e) =>
-                  handleChange('mobile', e.target.value.replace(/\D/g, '').slice(0, 10))
-                }
-                className={[inputCls('mobile'), 'pl-12'].join(' ')}
-              />
+        {/* Returning customer — a saved profile lets them review & order in a
+            couple of taps instead of retyping everything. */}
+        {!editing && savedProfile ? (
+          <div className="rounded-2xl border border-brand/40 bg-gradient-to-b from-brand/5 to-white px-4 py-3.5">
+            <p className="text-sm font-bold text-gray-900 mb-2.5 flex items-center gap-1.5">
+              <span>👋</span> Welcome back{firstName ? `, ${firstName}` : ''}
+            </p>
+            <div className="space-y-1.5 text-sm text-gray-700">
+              <p className="flex items-start gap-2">
+                <span className="text-brand flex-shrink-0">📞</span>
+                <span className="tabular-nums">+91 {formData.mobile}</span>
+              </p>
+              {!isPickup && savedAddr && (
+                <p className="flex items-start gap-2">
+                  <span className="text-brand flex-shrink-0 mt-0.5">📍</span>
+                  <span>{savedAddr}</span>
+                </p>
+              )}
+              {isPickup && (
+                <p className="flex items-start gap-2">
+                  <span className="text-brand flex-shrink-0">🏪</span>
+                  <span>Pickup from the shop</span>
+                </p>
+              )}
             </div>
-          </FormField>
-        </div>
-
-        {/* Fulfilment choice — only when the store offers both */}
-        {dlvMode === 'both' && (
-          <div className="flex gap-2">
-            {[['delivery', '🛵 Home delivery'], ['pickup', '🏪 Pickup from shop']].map(([v, l]) => (
-              <button key={v} type="button" onClick={() => handleChange('fulfillment', v)}
-                className={[
-                  'flex-1 py-2.5 rounded-xl border text-sm font-semibold transition',
-                  (formData.fulfillment || 'delivery') === v
-                    ? 'border-brand bg-brand/5 text-brand-dark'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                ].join(' ')}>
-                {l}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button type="button" onClick={() => setEditing(true)}
+                className="text-xs font-bold text-gray-700 border border-gray-200 bg-white
+                           rounded-lg px-3 py-1.5 hover:border-gray-300 transition-colors">
+                ✎ Edit details
               </button>
-            ))}
-          </div>
-        )}
-
-        {/* Delivery address — full address for a real delivery slip.
-            Hidden entirely for pickup (nothing to ship). */}
-        {isPickup ? (
-          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
-            <span>🏪</span>
-            Pickup from the shop — timing will be confirmed on WhatsApp.
+              {!isPickup && (
+                <button type="button"
+                  onClick={() => { onChange({ ...formData, addressLine: '', destination: '', pincode: '' }); setEditing(true); }}
+                  className="text-xs font-bold text-gray-700 border border-gray-200 bg-white
+                             rounded-lg px-3 py-1.5 hover:border-gray-300 transition-colors">
+                  📍 Deliver somewhere else
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <>
-            <FormField
-              label="Delivery Address"
-              required
-              error={errors.addressLine}
-              hint={dlv.areas ? `We deliver in: ${dlv.areas}` : 'House / flat no., building, street, area'}
-            >
-              <textarea
-                id="cdf-addressLine"
-                rows={2}
-                placeholder="House / flat no., building, street, area, landmark"
-                value={formData.addressLine}
-                onChange={(e) => handleChange('addressLine', e.target.value)}
-                className={[inputCls('addressLine'), 'resize-none'].join(' ')}
-              />
-            </FormField>
-
+            {/* Row 1 — Your name + Mobile */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="City / Town" required error={errors.destination}>
+
+              <FormField label="Your Name" required error={errors.partyName}>
                 <input
-                  id="cdf-destination"
+                  id="cdf-partyName"
                   type="text"
-                  placeholder="e.g. Mumbai, Solapur"
-                  value={formData.destination}
-                  onChange={(e) => handleChange('destination', e.target.value)}
-                  className={inputCls('destination')}
+                  placeholder="e.g. Rahul Sharma"
+                  autoComplete="name"
+                  value={formData.partyName}
+                  onChange={(e) => handleChange('partyName', e.target.value)}
+                  className={inputCls('partyName')}
                 />
               </FormField>
 
-              <FormField label="PIN Code" required error={errors.pincode}>
-                <input
-                  id="cdf-pincode"
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="e.g. 413001"
-                  value={formData.pincode}
-                  onChange={(e) => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className={inputCls('pincode')}
-                />
+              <FormField
+                label="Mobile Number"
+                required
+                error={errors.mobile}
+                hint="10-digit number"
+              >
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400
+                                   font-medium select-none pointer-events-none">
+                    +91
+                  </span>
+                  <input
+                    id="cdf-mobile"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    value={formData.mobile}
+                    onChange={(e) =>
+                      handleChange('mobile', e.target.value.replace(/\D/g, '').slice(0, 10))
+                    }
+                    className={[inputCls('mobile'), 'pl-12'].join(' ')}
+                  />
+                </div>
               </FormField>
             </div>
+
+            {/* Fulfilment choice — only when the store offers both */}
+            {dlvMode === 'both' && (
+              <div className="flex gap-2">
+                {[['delivery', '🛵 Home delivery'], ['pickup', '🏪 Pickup from shop']].map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => handleChange('fulfillment', v)}
+                    className={[
+                      'flex-1 py-2.5 rounded-xl border text-sm font-semibold transition',
+                      (formData.fulfillment || 'delivery') === v
+                        ? 'border-brand bg-brand/5 text-brand-dark'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                    ].join(' ')}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Delivery address — full address for a real delivery slip.
+                Hidden entirely for pickup (nothing to ship). */}
+            {isPickup ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+                <span>🏪</span>
+                Pickup from the shop — timing will be confirmed on WhatsApp.
+              </div>
+            ) : (
+              <>
+                <FormField
+                  label="Delivery Address"
+                  required
+                  error={errors.addressLine}
+                  hint={dlv.areas ? `We deliver in: ${dlv.areas}` : 'House / flat no., building, street, area'}
+                >
+                  <textarea
+                    id="cdf-addressLine"
+                    rows={2}
+                    autoComplete="street-address"
+                    placeholder="House / flat no., building, street, area, landmark"
+                    value={formData.addressLine}
+                    onChange={(e) => handleChange('addressLine', e.target.value)}
+                    className={[inputCls('addressLine'), 'resize-none'].join(' ')}
+                  />
+                </FormField>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="City / Town" required error={errors.destination}>
+                    <input
+                      id="cdf-destination"
+                      type="text"
+                      autoComplete="address-level2"
+                      placeholder="e.g. Mumbai, Solapur"
+                      value={formData.destination}
+                      onChange={(e) => handleChange('destination', e.target.value)}
+                      className={inputCls('destination')}
+                    />
+                  </FormField>
+
+                  <FormField label="PIN Code" required error={errors.pincode}>
+                    <input
+                      id="cdf-pincode"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      maxLength={6}
+                      placeholder="e.g. 413001"
+                      value={formData.pincode}
+                      onChange={(e) => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className={inputCls('pincode')}
+                    />
+                  </FormField>
+                </div>
+              </>
+            )}
+
+            {/* First-timer reassurance — turns a long form into a one-time cost */}
+            {!savedProfile && (
+              <p className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-snug">
+                <span className="flex-shrink-0 mt-px">🔒</span>
+                We'll remember these on your phone — next time it's just one tap.
+              </p>
+            )}
           </>
         )}
 
@@ -870,40 +977,47 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
               )}
             </p>
 
-            {payError && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{payError}</p>
-            )}
-
-            {/* Place order — pays first when the online method is chosen */}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={placing}
-              className="w-full flex items-center justify-center gap-2.5
-                         bg-[#25D366] hover:bg-[#1ebe5d] active:bg-[#17a550]
-                         text-white font-bold text-base
-                         px-7 py-3.5 rounded-2xl
-                         shadow-lg hover:shadow-xl
-                         transition-all duration-200 active:scale-[0.98]
-                         min-h-[52px] disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {placing ? (
-                <>
-                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {formData.paymentMethod === 'online' ? 'Processing…' : 'Placing order…'}
-                </>
-              ) : formData.paymentMethod === 'online' ? (
-                <>🔒 Pay {formatINR(finalTotal)} securely</>
-              ) : (
-                <>
-                  <WhatsAppIcon size={21} />
-                  Send Order on WhatsApp
-                </>
-              )}
-            </button>
           </div>
         )}
       </div>
+
+      {/* ── Sticky action bar — the total & the button stay in view the whole
+             time, so the customer never scrolls to hunt for "how much / where do
+             I tap". Pins to the checkout sheet's scroll viewport. */}
+      {!cartEmpty && (
+        <div className="sticky bottom-0 z-10 bg-white/95 backdrop-blur border-t border-gray-100
+                        px-5 py-3 rounded-b-2xl shadow-[0_-10px_28px_-16px_rgba(0,0,0,0.28)]">
+          {payError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mb-2.5">{payError}</p>
+          )}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={placing}
+            className="w-full flex items-center justify-center gap-2.5
+                       bg-[#25D366] hover:bg-[#1ebe5d] active:bg-[#17a550]
+                       text-white font-bold text-base
+                       px-7 py-3.5 rounded-2xl
+                       shadow-lg hover:shadow-xl
+                       transition-all duration-200 active:scale-[0.98]
+                       min-h-[52px] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {placing ? (
+              <>
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {formData.paymentMethod === 'online' ? 'Processing…' : 'Placing order…'}
+              </>
+            ) : formData.paymentMethod === 'online' ? (
+              <>🔒 Pay {formatINR(finalTotal)} securely</>
+            ) : (
+              <>
+                <WhatsAppIcon size={21} />
+                Send Order · {formatINR(finalTotal)}
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
