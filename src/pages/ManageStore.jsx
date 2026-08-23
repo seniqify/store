@@ -620,7 +620,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       ...p,
       category: match ? match.id : p.category,
       ...(res.variant
-        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '', image: '' })) }
+        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '', cost: '', image: '' })) }
         : {}),
       attributes,
     }));
@@ -658,7 +658,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
       gstRate:     product.gstRate != null ? product.gstRate : '',
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
-      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', image: o.image || '' })) : [],
+      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', cost: o.cost ?? '', image: o.image || '' })) : [],
       variantExtras:  Array.isArray(product.variantExtras) ? product.variantExtras.map(g => ({ label: g.label || '', options: (g.options || []).map(o => ({ name: o.name || '', addPrice: o.addPrice ?? '' })) })) : [],
       attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
     });
@@ -716,6 +716,8 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
         name:  String(o.name || '').trim(),
         price: (o.price === '' || o.price == null) ? null : Number(o.price),
         mrp:   (o.mrp === '' || o.mrp == null) ? null : Number(o.mrp),
+        // Per-variant cost price (private) — powers correct profit per option.
+        cost:  (o.cost === '' || o.cost == null) ? undefined : Number(o.cost),
         image: (o.image && String(o.image).trim()) ? o.image : null,
       }))
       .filter(o => o.name);
@@ -1188,7 +1190,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       className={iCls(false)} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options — each with its own price, MRP &amp; optional photo</p>
+                    <p className="text-[11px] font-semibold text-gray-500 mb-1.5">Options — each with its own price, MRP, cost &amp; optional photo</p>
                     <div className="space-y-2">
                       {(form.variantOptions || []).map((o, i) => {
                         const setOpt = (patch) => { setForm(p => ({ ...p, variantOptions: p.variantOptions.map((x, idx) => idx === i ? { ...x, ...patch } : x) })); setErrors(p => ({ ...p, variants: '' })); };
@@ -1208,7 +1210,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                                   onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
                                   className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-3 gap-2">
                                 <div className="relative">
                                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                                   <input type="number" inputMode="numeric" min={0} placeholder="Price *"
@@ -1223,6 +1225,14 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                                     onChange={e => setOpt({ mrp: e.target.value })}
                                     className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                                 </div>
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                                  <input type="number" inputMode="numeric" min={0} placeholder="Cost"
+                                    title="Your buying cost for this option — private, powers profit in Stats"
+                                    value={o.cost}
+                                    onChange={e => setOpt({ cost: e.target.value })}
+                                    className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1233,7 +1243,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   </div>
                   <div className="flex items-center justify-between pt-0.5">
                     <button type="button"
-                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '', image: '' }] }))}
+                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '', cost: '', image: '' }] }))}
                       className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
                       style={{ color: themeColor }}>
                       <Plus size={13} /> Add option
@@ -2837,7 +2847,7 @@ export default function ManageStore() {
                        store={{ slug: businessSlug, businessName: config.businessName, logo: config.logo,
                                 logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
                                 whatsappNumber: config.whatsappNumber, theme: config.theme,
-                                shipping: config.shipping }} />
+                                shipping: config.shipping, products: config.products, cart: config.cart }} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

@@ -61,9 +61,6 @@ function composeDeliveryAddress({ addressLine, destination, pincode }) {
 
 const PAYMENT_OPTIONS = [
   { value: 'cod',  label: '💵 Cash on Delivery (COD)' },
-  { value: 'upi',  label: '📱 UPI (GPay / PhonePe / Paytm)' },
-  { value: 'qr',   label: '🔳 QR Code — scan & pay' },
-  { value: 'bank', label: '🏦 Bank Transfer (NEFT / RTGS)' },
 ];
 
 // ── Official WhatsApp icon (SVG, fill="currentColor") ─────────────────────────

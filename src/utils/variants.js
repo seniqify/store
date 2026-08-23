@@ -29,6 +29,39 @@ export function hasAnyOptions(product) {
 }
 
 /**
+ * The buying cost of ONE unit of an ordered item, for profit maths. When the
+ * product has priced variants, each option carries its OWN cost (a 250g pack
+ * costs less than a 1kg pack), so we resolve the cost of the specific option the
+ * customer picked — falling back to the product's base cost. Returns a positive
+ * number, or null when no usable cost is set (so callers can treat it as
+ * "uncovered" instead of counting it as pure profit).
+ *   product — the catalog product (from config.products)
+ *   item    — the ordered line (its `variantSelections`/`variant` names the pick)
+ */
+export function unitCostForItem(product, item) {
+  if (!product) return null;
+  const opts = product.variants?.options;
+  if (Array.isArray(opts) && opts.length) {
+    // The price-driving pick is the FIRST selection (see resolveSelection).
+    const pickName = item?.variantSelections?.[0]?.name
+      ?? (typeof item?.variant === 'string' ? item.variant.split(',')[0].trim() : null);
+    const opt = pickName ? opts.find((o) => o && o.name === pickName) : null;
+    const oc = Number(opt?.cost);
+    if (Number.isFinite(oc) && oc > 0) return oc;
+  }
+  const bc = Number(product?.cost);
+  return Number.isFinite(bc) && bc > 0 ? bc : null;
+}
+
+/** True when a product has any usable cost — a base cost or any variant cost. */
+export function hasAnyCost(product) {
+  const bc = Number(product?.cost);
+  if (Number.isFinite(bc) && bc > 0) return true;
+  const opts = product?.variants?.options;
+  return Array.isArray(opts) && opts.some((o) => { const c = Number(o?.cost); return Number.isFinite(c) && c > 0; });
+}
+
+/**
  * Resolve the effective price / MRP / image and a human-readable list of picks
  * for a product, given the chosen price-variant option name and the chosen
  * extra-option names (one per extra group, in order).

@@ -5,6 +5,7 @@ import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
+import { unitCostForItem } from '../../utils/variants';
 
 // Two vocabularies over the same rows: product stores see Orders (delivery
 // lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
@@ -14,7 +15,7 @@ const STATUS_ORDERS = {
   confirmed:  { label: 'Confirmed',       emoji: '✅', cls: 'bg-emerald-100 text-emerald-700' },
   dispatched: { label: 'Out for delivery', emoji: '🛵', cls: 'bg-indigo-100 text-indigo-700' },
   delivered:  { label: 'Delivered',       emoji: '📦', cls: 'bg-blue-100 text-blue-700' },
-  cancelled:  { label: 'Archived',        emoji: '🗄️', cls: 'bg-gray-100 text-gray-500' },
+  cancelled:  { label: 'Cancelled',       emoji: '🚫', cls: 'bg-gray-100 text-gray-500' },
 };
 const STATUS_LEADS = {
   new:        { label: 'New',       emoji: '🆕', cls: 'bg-amber-100 text-amber-700' },
@@ -288,6 +289,28 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
 
+  // Per-order profit (owner-only) — goods revenue minus this order's cost of
+  // goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
+  // the store's flat delivery cost), and the flat packaging cost. Shown only when
+  // every item in the order has a cost price set, so the number is complete and
+  // honest. Mirrors the aggregate maths in Stats → Profit.
+  const prodByName = {};
+  for (const p of (store.products || [])) { if (p && p.name) prodByName[p.name] = p; }
+  const oItems = Array.isArray(o.items) ? o.items : [];
+  let pGoods = 0, pCogs = 0, pUncovered = 0;
+  for (const it of oItems) {
+    const qty = Number(it.qty) || 0;
+    pGoods += (Number(it.price) || 0) * qty;
+    // Per-variant cost: the picked option's own cost, else the product base cost.
+    const c = unitCostForItem(prodByName[it.name], it);
+    if (c != null) pCogs += c * qty; else if (qty) pUncovered++;
+  }
+  const pDelivery = Number(o.shipping_cost) > 0 ? Number(o.shipping_cost)
+                  : Number(store.cart?.deliveryCost) > 0 ? Number(store.cart.deliveryCost) : 0;
+  const pPacking  = Number(store.cart?.packagingCost) > 0 ? Number(store.cart.packagingCost) : 0;
+  const pProfit   = pGoods - pCogs - pDelivery - pPacking;
+  const showProfit = !leads && oItems.length > 0 && pUncovered === 0 && pGoods > 0 && o.status !== 'cancelled';
+
   // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
   // Settings). Without a saved number it opens WhatsApp's chat picker instead.
   const riderMsg = [
@@ -472,6 +495,25 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
         </div>
       </div>
 
+      {/* Per-order profit — the real earning on this order, delivery included */}
+      {showProfit && (
+        <div className="px-4 mt-2.5">
+          <div className="rounded-xl bg-emerald-50/70 border border-emerald-100 px-3 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-emerald-800 inline-flex items-center gap-1">💰 Your profit</span>
+              <span className="text-sm font-extrabold tabular-nums" style={{ color: pProfit >= 0 ? '#15803d' : '#dc2626' }}>
+                {formatINR(Math.round(pProfit))}
+              </span>
+            </div>
+            <p className="text-[10px] text-emerald-700/80 mt-0.5 tabular-nums leading-snug">
+              {formatINR(Math.round(pGoods))} sales − {formatINR(Math.round(pCogs))} cost
+              {pDelivery > 0 ? ` − ${formatINR(Math.round(pDelivery))} delivery` : ''}
+              {pPacking > 0 ? ` − ${formatINR(Math.round(pPacking))} packing` : ''}
+            </p>
+          </div>
+        </div>
+      )}
+
       {o.notes && (
         <p className="px-4 mt-2 text-xs text-gray-500"><span className="font-semibold text-gray-600">Note:</span> {o.notes}</p>
       )}
@@ -529,15 +571,16 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
           )}
           {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
-              className={`flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 ${leads ? 'text-red-500 hover:bg-red-50' : 'text-gray-500 hover:bg-gray-100'}`}
-              title={leads ? 'Mark this lead as lost' : 'Archive — hides it from your active list (unarchive anytime). No message is sent to the customer.'}>
-              {leads ? 'Mark lost' : '🗄️ Archive'}
+              className="flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 text-red-500 hover:bg-red-50"
+              title={leads ? 'Mark this lead as lost' : 'Cancel this order — removes it from Sales & Profit. Use for test, duplicate or undelivered orders. The customer is NOT messaged. You can restore it anytime.'}>
+              {leads ? 'Mark lost' : '🚫 Cancel'}
             </button>
           )}
           {o.status === 'cancelled' && (
             <button disabled={busy} onClick={() => onStatus(o.id, 'new')}
-              className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50">
-              {leads ? 'Reopen lead' : 'Unarchive'}
+              className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50"
+              title={leads ? 'Reopen this lead' : 'Restore this order — counts in Sales & Profit again.'}>
+              {leads ? 'Reopen lead' : 'Restore'}
             </button>
           )}
         </div>

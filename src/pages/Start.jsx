@@ -8,9 +8,9 @@ import { findStoreByPhone, getPendingSignup } from '../utils/storeService';
 // a slow WhatsApp message lands would invalidate the code the user is waiting on.
 const RESEND_SECONDS = 60;
 
-// WhatsApp OTP is live (Seniqify template "optpt" / h042vmds6w). Set this to
-// false to bypass verification (the number is still captured and the flow
-// continues).
+// WhatsApp OTP is live (Seniqify template id "z0vm5t48dw", set in the send-otp
+// edge function). Set this to false to bypass verification (the number is still
+// captured and the flow continues).
 const OTP_ENABLED = true;
 
 const CATEGORY_CHIPS = [['🛍️', 'Shops'], ['🍽️', 'Food'], ['💇', 'Services'], ['🏨', 'Stays']];

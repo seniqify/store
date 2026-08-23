@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Lock, Sparkles, Clock, Wallet } from 'lucide-
 import { fetchOrders } from '../../utils/orderService';
 import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
+import { unitCostForItem, hasAnyCost } from '../../utils/variants';
 
 const DAY = 86400000;
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -98,12 +99,12 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // unpriced product is excluded, not counted as pure profit). Item-level: profit
   // on the goods themselves (before delivery/gateway costs), which is what the
   // seller most needs and what we can compute cleanly. ──
-  const costByName = {};
+  const prodByName = {};
   let productsWithCost = 0;
   for (const p of (products || [])) {
     if (p && p.name) {
-      const c = Number(p.cost);
-      if (Number.isFinite(c) && c > 0) { costByName[p.name] = c; productsWithCost++; }
+      prodByName[p.name] = p;
+      if (hasAnyCost(p)) productsWithCost++;   // base cost OR any variant cost
     }
   }
   const totalProducts = (products || []).filter((p) => p && p.name).length;
@@ -113,7 +114,8 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   for (const o of valid) for (const it of (o.items || [])) {
     const qty = Number(it.qty) || 0;
     const rev = (Number(it.price) || 0) * qty;
-    const unitCost = costByName[it.name];
+    // Per-variant cost: a picked option's own cost, else the product's base cost.
+    const unitCost = unitCostForItem(prodByName[it.name], it);
     if (unitCost != null) {
       const c = unitCost * qty;
       soldRevenue += rev; cogs += c;
@@ -290,6 +292,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
             {hasOpCosts
               ? 'Includes cost of goods, packaging & courier charges. Payment-gateway fees not counted.'
               : 'Profit on the items themselves — add packaging & delivery costs to see profit after everything.'}
+            {' '}Cancelled orders are excluded from Sales &amp; Profit.
           </p>
         </div>
       )}
