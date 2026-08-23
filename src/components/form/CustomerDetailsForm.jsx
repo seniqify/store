@@ -246,6 +246,15 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
           setPayError('Payment wasn’t completed. Your order is saved — tap Pay again, or pick another method.');
           return;
         }
+        // Paid. payments-verify already flips the client-inserted row to paid, but
+        // if that row was blocked on the customer's device the safety-net save below
+        // is the only copy — so stamp paid here too, or a real payment could land
+        // showing "unpaid". (upsert ignoreDuplicates keeps the verified row intact.)
+        orderRow.paid = true;
+        if (result.paymentId) {
+          orderRow.payment_ref = result.paymentId;
+          orderRow.payment_provider = 'razorpay';
+        }
       } catch (e) {
         setPlacing(false);
         setPayError(e?.message || 'Couldn’t start the payment. Try again, or choose another method.');
