@@ -16,7 +16,7 @@ import StoreSaleBanner from '../components/store/StoreSaleBanner';
 import { useCart } from '../hooks/useCart';
 import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
-import { calcCartTotals, formatINR } from '../utils/currency';
+import { calcCartTotals, formatINR, discountPercent } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
 import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
@@ -98,6 +98,16 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   const waLink      = whatsappLink(whatsappNumber, businessName, config.waMessage);
   const { total }   = calcCartTotals(cart, config.cart);
+
+  // Slim trust ribbon — the store's own signals, as small pills.
+  const trustPills = [
+    isVerified(effectivePlan(config)) ? '✓ Verified shop' : null,
+    ...(features || []).slice(0, 2).map((f) => `${f.emoji || '•'} ${f.title}`),
+    config.delivery?.mode !== 'pickup' ? '💵 COD available' : null,
+  ].filter(Boolean);
+
+  // "Most loved" bestseller rail — owner's product order = popularity.
+  const mostLoved = saleProducts.slice(0, 8);
 
   // Primary hero action: send shoppers into the catalog (browse → cart → checkout,
   // a recorded order) instead of straight to a WhatsApp chat that leaves no order.
@@ -205,188 +215,81 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
       {/* ── Store hero: cover image OR branded gradient + personal-brand card ── */}
       <header className="relative w-full">
-        <div className="relative w-full h-32 sm:h-56 overflow-hidden">
+        <div className="relative w-full h-40 sm:h-52 overflow-hidden">
           {coverImage ? (
             <img src={coverImage} alt={businessName} className="w-full h-full object-cover" />
           ) : (
             <HeroBanner style={config.theme?.banner} primary={primary} primaryDark={primaryDark} />
           )}
-          {coverImage && (
-            <div className="absolute inset-0"
-                 style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 55%)' }} />
-          )}
-          {/* Share (mobile) — floats on the banner like a profile action */}
+          {/* darken the bottom so the overlay text stays legible on any cover */}
+          <div className="absolute inset-0"
+               style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.04) 60%)' }} />
+          {/* Share — floats on the banner like a profile action */}
           <button type="button" onClick={shareStore} aria-label="Share this store"
-            className="sm:hidden absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur
+            className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur
                        border border-white/60 text-gray-600 flex items-center justify-center shadow-md active:scale-95">
             {shareCopied ? <Check size={15} className="text-emerald-600" /> : <Share2 size={15} />}
           </button>
-        </div>
-
-        {/* soft brand glow bleeding out from under the card */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-28 sm:top-44 w-[34rem] max-w-full h-44 rounded-full blur-3xl pointer-events-none"
-             style={{ background: `${primary}1c` }} />
-
-        <div className="max-w-7xl mx-auto px-3 sm:px-4">
-          {/* Personal-brand card: gradient hairline border (brand → white) around
-              a glass body with a soft brand wash. The colour is the store's own
-              theme colour, chosen by the owner in Manage → Settings. */}
-          <div className="relative z-10 -mt-14 sm:-mt-20 rounded-3xl p-[1.5px] animate-pl-fade-up"
-               style={{
-                 background: `linear-gradient(140deg, ${primary}45, ${primary}10 45%, rgba(255,255,255,0.9))`,
-                 boxShadow: `0 24px 48px -20px ${primary}38, 0 12px 32px rgba(15,23,42,0.08)`,
-               }}>
-            {/* Matte body: fully opaque white with a whisper of brand tint baked
-                into the top — no translucency, no blur */}
-            <div className="relative rounded-[22px] p-4 sm:p-6"
-                 style={{ background: `linear-gradient(180deg, ${primary}0a 0%, rgba(255,255,255,0) 45%), #ffffff` }}>
-
-              {/* Brand dot texture fading down the card's top wash (same dotted
-                  idiom as the promo ribbon) — pure decoration, kept whisper-quiet */}
-              <div aria-hidden className="absolute inset-x-0 top-0 h-24 rounded-t-[22px] pointer-events-none"
-                   style={{
-                     backgroundImage: `radial-gradient(${primary}21 1px, transparent 1px)`,
-                     backgroundSize: '12px 12px',
-                     maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)',
-                     WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)',
-                   }} />
-
-              {/* Mobile: centered profile composition · Desktop: left-aligned row */}
-              <div className="relative flex flex-col items-center text-center
-                              sm:flex-row sm:items-start sm:text-left gap-3 sm:gap-5">
-
-                {/* Logo — brand gradient ring + white gap (story-ring style) so
-                    it pops on any card, even white-background logos */}
-                <div className="flex-shrink-0 -mt-14 sm:-mt-16 rounded-2xl p-[3px]"
-                     style={{
-                       background: `linear-gradient(135deg, ${primary}, ${primaryDark})`,
-                       boxShadow: `0 14px 30px -8px ${primary}59`,
-                     }}>
-                  <div className="rounded-[13px] bg-white p-[3px]">
-                    {logo ? (
-                      <img src={logo} alt={businessName}
-                           className="w-20 h-20 rounded-[10px] object-cover bg-white" />
-                    ) : (
-                      <div className="w-20 h-20 rounded-[10px] flex items-center justify-center text-4xl"
-                           style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
-                        <span className="drop-shadow-sm">{logoEmoji ?? '🏪'}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0 pt-0.5 w-full">
-                  <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-950 leading-tight tracking-tight"
-                        style={{ fontFamily: "'Poppins', system-ui, sans-serif" }}>{businessName}</h1>
-                    {isVerified(effectivePlan(config)) && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
-                                       px-2 py-0.5 rounded-full flex-shrink-0">
-                        <Check size={10} strokeWidth={3} /> Verified
-                      </span>
-                    )}
-                    {heroRating?.count > 0 && (
-                      <button type="button"
-                        onClick={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                        className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10
-                                   px-2 py-0.5 rounded-full flex-shrink-0 active:scale-95 transition-transform"
-                        aria-label={`Rated ${heroRating.avg} by ${heroRating.count} customers — read reviews`}>
-                        <Star size={10} fill="currentColor" /> {heroRating.avg} ({heroRating.count})
-                      </button>
-                    )}
-                  </div>
-                  {(tagline || config.category) && (
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                      {tagline || `${config.category}${config.city ? ` · ${config.city}` : ''}`}
-                    </p>
-                  )}
-
-                  {/* Under the name: the store's own trust badges (Fast Delivery,
-                      Genuine Products…) — richer than plain chips. Falls back to a
-                      couple of info chips only when the owner hasn't set any. */}
-                  {features?.length > 0 ? (
-                    <div className="flex items-stretch gap-2 mt-3 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
-                      {features.map((f) => (
-                        <div key={f.title}
-                          className="flex items-center gap-2 flex-shrink-0 bg-gray-50 border border-gray-100 rounded-xl pl-2 pr-3 py-1.5">
-                          <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
-                                style={{ background: `${primary}14` }}>
-                            {f.emoji}
-                          </span>
-                          <div className="leading-tight text-left">
-                            <p className="text-[11px] font-bold text-gray-800 whitespace-nowrap">{f.title}</p>
-                            {f.desc && <p className="text-[9.5px] text-gray-400 whitespace-nowrap">{f.desc}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                      <Chip>{itemsEmoji} {products.length} {itemsWord}</Chip>
-                      {freeAbove > 0 && config.delivery?.mode !== 'pickup' && <Chip>🚚 Free delivery ₹{freeAbove}+</Chip>}
-                      {config.delivery?.mode === 'both' && <Chip>🏪 Pickup available</Chip>}
-                      {config.delivery?.mode === 'pickup' && <Chip>🏪 Pickup only</Chip>}
-                      {config.delivery?.eta && config.delivery?.mode !== 'pickup' && <Chip>⏱️ Delivers in {config.delivery.eta}</Chip>}
-                      {config.city && <Chip>📍 {config.city}</Chip>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Primary CTA: browse the catalog · share · quiet WhatsApp (desktop) */}
-                <div className="hidden sm:flex flex-col items-end gap-2 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={shareStore} aria-label="Share this store"
-                      className="w-10 h-10 rounded-xl bg-white/80 border border-gray-200 text-gray-500
-                                 hover:text-gray-800 hover:bg-white flex items-center justify-center
-                                 shadow-sm transition-all active:scale-95">
-                      {shareCopied ? <Check size={15} className="text-emerald-600" /> : <Share2 size={15} />}
-                    </button>
-                    <button type="button" onClick={scrollToProducts}
-                       className="inline-flex items-center gap-2 text-white text-sm font-bold px-5 py-3 rounded-xl
-                                  shadow-lg transition-all active:scale-95"
-                       style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})`, boxShadow: `0 10px 25px ${primary}40` }}>
-                      <ShoppingCart size={16} /> Browse {catalogWord}
-                    </button>
-                  </div>
-                  <a href={waLink} target="_blank" rel="noopener noreferrer"
-                     className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-gray-500 hover:text-emerald-600 transition-colors pr-1">
-                    <MessageCircle size={13} /> Questions? Chat on WhatsApp
-                  </a>
-                </div>
-              </div>
-
-              {/* Mobile: no big "browse" button — the search + category rail below
-                  put products one tap away. Keep a quiet WhatsApp support link. */}
-              <a href={waLink} target="_blank" rel="noopener noreferrer"
-                 className="sm:hidden mt-3.5 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500">
-                <MessageCircle size={13} /> Questions? Chat on WhatsApp
-              </a>
-            </div>
+          {/* Overlay: live-offer ribbon + one-line tagline (identity lives in the sticky header) */}
+          <div className="absolute inset-x-0 bottom-0 max-w-7xl mx-auto px-4 sm:px-6 pb-3.5 sm:pb-5">
+            {promoHeading && (
+              <span className="inline-block text-[11px] font-extrabold text-gray-900 bg-white/95 px-2.5 py-1 rounded-full mb-2 shadow-sm">
+                {promoEmoji ?? '🎉'} {promoHeading}
+              </span>
+            )}
+            {(tagline || config.category) && (
+              <p className="text-white font-bold text-[15px] sm:text-xl leading-snug max-w-[24rem] drop-shadow-md line-clamp-2"
+                 style={{ fontFamily: "'Poppins', system-ui, sans-serif" }}>
+                {tagline || `${config.category}${config.city ? ` · ${config.city}` : ''}`}
+              </p>
+            )}
           </div>
         </div>
+
       </header>
 
-      {/* ── Mobile quick-access: search + category rail, right under the hero,
-             so products are one tap away instead of a full screen down. ────── */}
-      <div className="lg:hidden">
+      {/* ── Shop controls: search + category pills + trust ribbon, right under
+             the cover so products are one tap away. ─────────────────────────── */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 mt-3.5 space-y-3">
+        {/* Search — mobile opens the Ask/search overlay; desktop uses the inline
+            StoreSearchBar rendered just below. */}
         {searchable && (
-          <div className="px-3 mt-3.5">
-            <button type="button" onClick={() => setAskOpen(true)}
-              className="w-full flex items-center gap-2.5 bg-white border border-gray-200 rounded-2xl px-4 py-3
-                         text-sm text-gray-400 shadow-sm active:scale-[0.99] transition">
-              <Search size={17} className="text-gray-400 flex-shrink-0" />
-              {aiAskEnabled ? `Ask anything, or search ${itemsWord}…` : `Search ${itemsWord}…`}
-            </button>
+          <button type="button" onClick={() => setAskOpen(true)}
+            className="lg:hidden w-full flex items-center gap-2.5 bg-white border border-gray-200 rounded-2xl px-4 py-3
+                       text-sm text-gray-400 shadow-sm active:scale-[0.99] transition">
+            <Search size={17} className="text-gray-400 flex-shrink-0" />
+            {aiAskEnabled ? `Ask anything, or search ${itemsWord}…` : `Search ${itemsWord}…`}
+          </button>
+        )}
+
+        {/* Category pills */}
+        {categories.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-3 px-3 pb-0.5">
+            {categories.map((c) => {
+              const on = activeCategory === c.id;
+              return (
+                <button key={c.id} type="button" onClick={() => selectCategory(c.id)}
+                  className={[
+                    'flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-full border transition active:scale-95',
+                    on ? 'bg-brand text-white border-brand shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300',
+                  ].join(' ')}>
+                  {c.id !== 'all' && c.emoji ? <span className="text-sm leading-none">{c.emoji}</span> : null}
+                  {c.id === 'all' ? 'All' : c.label}
+                </button>
+              );
+            })}
           </div>
         )}
-        {categories.length > 1 && (
-          <div className="px-1.5 mt-2">
-            <CategoryCircles
-              categories={categories}
-              products={saleProducts}
-              selected={activeCategory}
-              onChange={selectCategory}
-            />
+
+        {/* Trust ribbon — slim pills of the store's own signals */}
+        {trustPills.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {trustPills.map((t) => (
+              <span key={t} className="inline-flex items-center text-[11px] font-semibold text-gray-500
+                                       bg-gray-50 border border-gray-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+                {t}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -454,6 +357,59 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           {/* ── Left: Products + Order form ─────────────────────────────── */}
           <div className="w-full lg:flex-1 min-w-0 overflow-hidden space-y-6">
 
+            {/* ── "Most loved" bestseller rail — instant social proof + a fast
+                   path to popular items, above the full grid. ────────────────── */}
+            {mostLoved.length > 3 && activeCategory === 'all' && (
+              <section>
+                <h2 className="text-base font-extrabold text-gray-900 flex items-center gap-1.5 mb-2.5">
+                  ⭐ Most loved
+                </h2>
+                <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-3 px-3 pb-1">
+                  {mostLoved.map((p) => {
+                    const img    = p.image || (Array.isArray(p.images) ? p.images[0] : null);
+                    const hasMrp = Number(p.mrp) > Number(p.price);
+                    return (
+                      <div key={p.id} className="flex-shrink-0 w-[146px] bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                        <button type="button" onClick={() => navigate(`/${config.slug}/p/${p.id}`)} className="block w-full text-left">
+                          <div className="h-28 bg-gray-50 relative">
+                            {img
+                              ? <img src={img} alt={p.name} loading="lazy" className="w-full h-full object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center text-2xl">{itemsEmoji}</div>}
+                            {hasMrp && (
+                              <span className="absolute top-1.5 left-1.5 text-[9px] font-extrabold text-white bg-brand px-1.5 py-0.5 rounded">
+                                {discountPercent(p.price, p.mrp)}% OFF
+                              </span>
+                            )}
+                          </div>
+                          <div className="px-2.5 pt-2">
+                            <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2 h-8">{p.name}</p>
+                            <div className="flex items-baseline gap-1.5 mt-1">
+                              <span className="text-sm font-extrabold text-gray-900 tabular-nums">{formatINR(p.price)}</span>
+                              {hasMrp && <span className="text-[10px] text-gray-400 line-through tabular-nums">{formatINR(p.mrp)}</span>}
+                            </div>
+                          </div>
+                        </button>
+                        <div className="px-2.5 pb-2.5">
+                          <button type="button" onClick={() => handleAddToCart(p)}
+                            className="mt-2 w-full py-1.5 rounded-lg border border-brand text-brand bg-brand/5
+                                       text-[11px] font-extrabold active:scale-95 transition hover:bg-brand/10">
+                            ＋ Add
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Shop all heading */}
+            {products.length > 0 && (
+              <h2 className="text-base font-extrabold text-gray-900 -mb-2">
+                Shop all <span className="text-gray-400 font-bold">· {products.length} {itemsWord}</span>
+              </h2>
+            )}
+
             <ProductGrid
               products={saleProducts}
               categories={categories}
@@ -465,7 +421,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onOpenDetail={(id) => navigate(`/${config.slug}/p/${id}`)}
               activeCategory={activeCategory}
               onCategoryChange={setActiveCategory}
-              categoryRailClassName="hidden lg:block"   /* mobile uses the Categories tab */
+              categoryRailClassName="hidden"   /* category nav now lives in the pills above */
               showSearch={false}   /* the hero StoreSearchBar above already searches */
             />
 

@@ -1,14 +1,28 @@
-import { ShoppingCart, Phone, MessageCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ShoppingCart, Phone, MessageCircle, Check, Star } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
+import { isVerified, effectivePlan } from '../../utils/planLimits';
+import { fetchReviews, reviewStats } from '../../utils/reviewService';
 
 /**
  * Header — reads the active business config from context.
  * No props needed for business data; only cart state comes from outside.
  */
 export default function Header({ cartCount = 0, onCartOpen }) {
-  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType, waMessage } = useBusinessConfig();
+  const config = useBusinessConfig();
+  const { businessName, tagline, logo, logoEmoji, phone, whatsappNumber, cart, gst, businessType, waMessage } = config;
   const waLink = whatsappLink(whatsappNumber, businessName, waMessage);
+  const verified = isVerified(effectivePlan(config));
+
+  // Store rating → shown as a ★ pill next to the name (social proof up top).
+  const [rating, setRating] = useState(null);
+  useEffect(() => {
+    if (!config.slug) return;
+    let alive = true;
+    fetchReviews(config.slug).then((r) => { if (alive) setRating(reviewStats(r)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [config.slug]);
 
   // Top-strip message adapts to the business type + real delivery settings.
   // Only claim "free delivery above ₹X" when there's an actual offer (positive
@@ -58,11 +72,25 @@ export default function Header({ cartCount = 0, onCartOpen }) {
               {logoEmoji}
             </div>
           )}
-          <div>
-            <p className="font-bold text-gray-900 text-[15px] leading-none">{businessName}</p>
-            <p className="text-[11px] text-gray-400 leading-none mt-0.5 hidden sm:block">
-              {tagline}
-            </p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="font-bold text-gray-900 text-[15px] leading-none truncate max-w-[9.5rem] sm:max-w-none">{businessName}</p>
+              {verified && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-brand bg-brand/10
+                                 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                  <Check size={9} strokeWidth={3} /> Verified
+                </span>
+              )}
+            </div>
+            {rating?.count > 0 ? (
+              <p className="flex items-center gap-1 text-[11px] font-bold text-amber-600 leading-none mt-1">
+                <Star size={10} fill="currentColor" /> {rating.avg} <span className="text-gray-400 font-medium">({rating.count} reviews)</span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-gray-400 leading-none mt-0.5 hidden sm:block truncate max-w-[16rem]">
+                {tagline}
+              </p>
+            )}
           </div>
         </div>
 
