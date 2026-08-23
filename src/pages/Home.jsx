@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown, ArrowLeft, X } from 'lucide-react';
+import { ShoppingCart, MessageCircle, Check, Star, Share2, ChevronDown, ArrowLeft, X, Search } from 'lucide-react';
 import ProductGrid from '../components/product/ProductGrid';
 import ProductDetail from '../components/product/ProductDetail';
 import CategoryCircles from '../components/product/CategoryCircles';
@@ -205,7 +205,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
       {/* ── Store hero: cover image OR branded gradient + personal-brand card ── */}
       <header className="relative w-full">
-        <div className="relative w-full h-44 sm:h-56 overflow-hidden">
+        <div className="relative w-full h-32 sm:h-56 overflow-hidden">
           {coverImage ? (
             <img src={coverImage} alt={businessName} className="w-full h-full object-cover" />
           ) : (
@@ -355,15 +355,10 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                 </div>
               </div>
 
-              {/* Primary CTA (mobile): browse the catalog, WhatsApp demoted below */}
-              <button type="button" onClick={scrollToProducts}
-                 className="sm:hidden mt-4 w-full flex items-center justify-center gap-2 text-white text-sm font-bold
-                            py-3 rounded-xl shadow-lg active:scale-[0.99]"
-                 style={{ background: `linear-gradient(135deg, ${primary}, ${primaryDark})` }}>
-                <ShoppingCart size={16} /> Browse {catalogWord}
-              </button>
+              {/* Mobile: no big "browse" button — the search + category rail below
+                  put products one tap away. Keep a quiet WhatsApp support link. */}
               <a href={waLink} target="_blank" rel="noopener noreferrer"
-                 className="sm:hidden mt-2.5 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500">
+                 className="sm:hidden mt-3.5 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500">
                 <MessageCircle size={13} /> Questions? Chat on WhatsApp
               </a>
             </div>
@@ -371,9 +366,34 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         </div>
       </header>
 
-      {/* Scroll hint — a gently bouncing cue that the catalog is just below */}
+      {/* ── Mobile quick-access: search + category rail, right under the hero,
+             so products are one tap away instead of a full screen down. ────── */}
+      <div className="lg:hidden">
+        {searchable && (
+          <div className="px-3 mt-3.5">
+            <button type="button" onClick={() => setAskOpen(true)}
+              className="w-full flex items-center gap-2.5 bg-white border border-gray-200 rounded-2xl px-4 py-3
+                         text-sm text-gray-400 shadow-sm active:scale-[0.99] transition">
+              <Search size={17} className="text-gray-400 flex-shrink-0" />
+              {aiAskEnabled ? `Ask anything, or search ${itemsWord}…` : `Search ${itemsWord}…`}
+            </button>
+          </div>
+        )}
+        {categories.length > 1 && (
+          <div className="px-1.5 mt-2">
+            <CategoryCircles
+              categories={categories}
+              products={saleProducts}
+              selected={activeCategory}
+              onChange={selectCategory}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Scroll hint (desktop) — a gently bouncing cue that the catalog is below */}
       {products.length > 0 && (
-        <div className="flex justify-center mt-1">
+        <div className="hidden lg:flex justify-center mt-1">
           <button type="button" onClick={scrollToProducts} aria-label="Scroll down to products"
             className="flex flex-col items-center gap-0.5 text-gray-400 hover:text-gray-600 transition-colors">
             <span className="text-[10.5px] font-bold uppercase tracking-wider">Scroll to shop</span>
