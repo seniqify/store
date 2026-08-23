@@ -14,35 +14,44 @@ import { hashPin } from './pinHash';
  * readable by the owner via the PIN-checked RPCs.
  */
 
+/** Build the exact `orders` row for a placed order. Shared by the client insert
+ *  (saveOrder) and the server-side safety net (the order-notify edge function),
+ *  so both persist an identical shape. `id` is passed in so the same row id is
+ *  reused everywhere → the server upsert dedupes cleanly against the client insert. */
+export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coupon = null, id) {
+  const { subtotal, tax, shipping, packaging, codFee, total } =
+    calcCartTotals(cart, config.cart, customerDetails.paymentMethod);
+  const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
+  const netTotal = Math.max(0, total - couponDiscount);
+  const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
+  return {
+    ...(id ? { id } : {}),
+    store_slug:     config.slug,
+    customer_name:  customerDetails.partyName || customerDetails.name || '',
+    customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),
+    destination:    customerDetails.destination || customerDetails.city || '',
+    pincode:        String(customerDetails.pincode || '').replace(/\D/g, '').slice(0, 6),
+    payment_method: customerDetails.paymentMethod || '',
+    notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
+    items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
+    item_count:     cart.reduce((s, i) => s + i.qty, 0),
+    subtotal, tax, shipping, packaging, cod_fee: codFee, total: netTotal,
+    status:         'new',
+  };
+}
+
 /** Best-effort: record an order. Never throws — must not block the WhatsApp handoff.
  *  Returns the order's id (minted client-side, since RLS lets customers INSERT but
  *  not SELECT their row) so an online-payment flow can mark that exact order paid.
- *  Returns null if nothing was saved. */
-export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null) {
+ *  Pass an `id` to reuse a caller-minted row id (so the order-notify safety net can
+ *  dedupe against this insert). Returns null if nothing was saved. */
+export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null, id) {
   // Skip demo stores (slug stripped) and empty carts.
   if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return null;
   try {
-    const { subtotal, tax, shipping, packaging, codFee, total } =
-      calcCartTotals(cart, config.cart, customerDetails.paymentMethod);
-    const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
-    const netTotal = Math.max(0, total - couponDiscount);
-    const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
-    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
-    await supabase.from('orders').insert({
-      ...(id ? { id } : {}),
-      store_slug:     config.slug,
-      customer_name:  customerDetails.partyName || customerDetails.name || '',
-      customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),
-      destination:    customerDetails.destination || customerDetails.city || '',
-      pincode:        String(customerDetails.pincode || '').replace(/\D/g, '').slice(0, 6),
-      payment_method: customerDetails.paymentMethod || '',
-      notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
-      items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
-      item_count:     cart.reduce((s, i) => s + i.qty, 0),
-      subtotal, tax, shipping, packaging, cod_fee: codFee, total: netTotal,
-      status:         'new',
-    });
-    return id || null;
+    const rowId = id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
+    await supabase.from('orders').insert(buildOrderRow(customerDetails, cart, config, coupon, rowId));
+    return rowId || null;
   } catch (err) {
     // Best-effort — a failed save must never break the customer's order — but log
     // it (was fully silent) so a lost order leaves a trace to diagnose.

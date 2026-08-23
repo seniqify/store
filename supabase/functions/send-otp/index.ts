@@ -27,7 +27,7 @@ serve(async (req: Request) => {
     const {
       action, phone, code, businessName, slug,
       // order-notify fields:
-      sellerPhone, customerPhone, customerName, storeName, itemsSummary, orderTotal,
+      sellerPhone, customerPhone, customerName, storeName, itemsSummary, orderTotal, order,
     } = await req.json();
     // order-notify carries its own seller/customer numbers, not `phone`.
     if (action !== 'order-notify' && !phone) return json({ error: 'phone is required' }, 400);
@@ -147,6 +147,23 @@ serve(async (req: Request) => {
     // { notified:false } when the templates aren't configured yet, so the client
     // falls back to the classic wa.me hand-off — no order ever goes un-notified.
     if (action === 'order-notify') {
+      // ── Safety net: persist the order server-side ────────────────────────────
+      // The client already tries to INSERT the order itself, but that direct write
+      // can be silently blocked on the customer's device (ad-blocker / privacy
+      // browser / stale cached build / flaky network) while THIS call still gets
+      // through — so the seller sees a WhatsApp alert but no order in the dashboard.
+      // We re-save the exact row here with the service role. Idempotent: the row
+      // carries the same client-minted id, so `upsert … ignoreDuplicates` is a
+      // no-op when the client insert succeeded, and creates the row when it didn't.
+      // Never blocks or fails the notification.
+      if (order && typeof order === 'object' && order.id && order.store_slug) {
+        try {
+          await supabase.from('orders').upsert(order, { onConflict: 'id', ignoreDuplicates: true });
+        } catch (e) {
+          console.error('order-notify save error:', (e as Error)?.message);
+        }
+      }
+
       const apiKey      = Deno.env.get('SENIQIFY_API_KEY');
       const sellerUrl   = Deno.env.get('SENIQIFY_ORDER_SELLER_TEMPLATE_URL');
       const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');

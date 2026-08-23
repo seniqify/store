@@ -8,7 +8,7 @@ import {
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
 import { pixelTrack } from '../../utils/metaPixel';
-import { saveOrder, saveAbandonedCheckout } from '../../utils/orderService';
+import { saveOrder, saveAbandonedCheckout, buildOrderRow } from '../../utils/orderService';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { fetchReviews, reviewStats } from '../../utils/reviewService';
@@ -217,8 +217,16 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // notification below, so a slow edge function, a flaky mobile network, or the
     // customer closing the tab can NEVER lose a placed order. Awaited so the row is
     // written before we show "Order placed". (Best-effort — saveOrder never throws.)
-    // Returns the order id so an online payment can mark this exact order paid.
-    const orderRowId = await saveOrder(sendData, cart, effConfig, appliedCoupon);
+    //
+    // We mint the row id HERE and reuse it for (a) the client insert, (b) marking an
+    // online payment paid, and (c) the server-side safety net below. If the client's
+    // direct insert is ever blocked (ad-blocker / privacy browser / stale cache /
+    // flaky network), the order-notify edge function re-saves this exact row with the
+    // service role — so an order can't be lost as long as the notification is sent.
+    const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
+    const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId);
+    await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId);
+    const orderRowId = orderId;
 
     // ── Online payment ────────────────────────────────────────────────────────
     // Collect payment before confirming. The order is already saved (unpaid), so a
@@ -261,6 +269,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
         itemsSummary:  cart.map((i) => `${i.qty}× ${i.name}`).join(', '),
         orderTotal:    formatINR(finalTotal),
         slug:          config.slug,   // → "View order" button in the seller alert
+        order:         orderRow,      // server-side safety net: re-save if the client insert was blocked
       });
     } catch { /* fall back below */ }
 
