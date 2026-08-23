@@ -176,8 +176,8 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   // When available it's the first, most-prominent option.
   const onlineAvailable = Boolean(config.payments?.razorpay);
   const paymentOptions  = [
-    ...(onlineAvailable ? [{ value: 'online', label: '💳 Pay Online now — UPI / Card' }] : []),
-    ...PAYMENT_OPTIONS,
+    ...(onlineAvailable ? [{ value: 'online', label: '💳 Pay Online now — UPI / Card', pickLabel: '💳 Pay Online' }] : []),
+    ...PAYMENT_OPTIONS.map((o) => ({ ...o, pickLabel: '💵 Cash on Delivery' })),
   ];
   const [rating, setRating] = useState(null);
   useEffect(() => {
@@ -687,25 +687,35 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
           </>
         )}
 
-        {/* Payment Method */}
+        {/* Payment Method — tappable cards (bigger targets than a dropdown) */}
         <FormField
           label="Payment Method"
           required
           error={errors.paymentMethod}
         >
-          <select
-            id="cdf-paymentMethod"
-            value={formData.paymentMethod}
-            onChange={(e) => handleChange('paymentMethod', e.target.value)}
-            className={inputCls('paymentMethod')}
-          >
-            <option value="">Select payment method…</option>
-            {paymentOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <div className={paymentOptions.length > 1 ? 'grid grid-cols-2 gap-2.5' : 'grid grid-cols-1'}>
+            {paymentOptions.map((opt, i) => {
+              const sel = formData.paymentMethod === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  id={i === 0 ? 'cdf-paymentMethod' : undefined}
+                  onClick={() => handleChange('paymentMethod', opt.value)}
+                  aria-pressed={sel}
+                  className={[
+                    'flex items-center justify-center gap-1.5 text-center text-sm font-semibold',
+                    'rounded-xl border px-3 py-3 transition',
+                    sel
+                      ? 'border-brand bg-brand/5 text-brand-dark ring-1 ring-brand/30'
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white',
+                  ].join(' ')}
+                >
+                  {opt.pickLabel || opt.label}
+                </button>
+              );
+            })}
+          </div>
         </FormField>
 
         {/* ── Payment details hint ─────────────────────────────────────────
@@ -995,7 +1005,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             onClick={handleSubmit}
             disabled={placing}
             className="w-full flex items-center justify-center gap-2.5
-                       bg-[#25D366] hover:bg-[#1ebe5d] active:bg-[#17a550]
+                       bg-brand hover:bg-brand-dark active:bg-brand-dark
                        text-white font-bold text-base
                        px-7 py-3.5 rounded-2xl
                        shadow-lg hover:shadow-xl
@@ -1008,11 +1018,15 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                 {formData.paymentMethod === 'online' ? 'Processing…' : 'Placing order…'}
               </>
             ) : formData.paymentMethod === 'online' ? (
-              <>🔒 Pay {formatINR(finalTotal)} securely</>
+              <>
+                🔒 Pay
+                <span className="bg-white/20 px-2.5 py-0.5 rounded-lg tabular-nums">{formatINR(finalTotal)}</span>
+                securely
+              </>
             ) : (
               <>
-                <WhatsAppIcon size={21} />
-                Send Order · {formatINR(finalTotal)}
+                Place order
+                <span className="bg-white/20 px-2.5 py-0.5 rounded-lg tabular-nums">{formatINR(finalTotal)}</span>
               </>
             )}
           </button>
