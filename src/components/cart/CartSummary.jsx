@@ -47,7 +47,7 @@ export default function CartSummary({
 
   if (isEmpty) return null;   // nothing to summarize
 
-  const defaultCta = compact ? 'View Cart →' : 'Proceed to Checkout →';
+  const defaultCta = compact ? 'View Cart →' : 'Checkout →';
 
   return (
     <div className="space-y-3">

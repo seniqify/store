@@ -144,6 +144,13 @@ export default function CartSidebar({
               cart={cart}
               onCheckout={onCheckout}
             />
+            <button
+              onClick={onClose}
+              className="mt-2.5 w-full py-2.5 rounded-xl border border-gray-200 text-gray-600
+                         text-sm font-semibold hover:bg-gray-50 transition-colors active:scale-[0.99]"
+            >
+              ＋ Keep shopping
+            </button>
           </div>
         )}
       </aside>

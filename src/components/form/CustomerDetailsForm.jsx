@@ -7,6 +7,7 @@ import {
   openOrderOnWhatsApp,
 } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
+import { whatsappLink } from '../../utils/theme';
 import { pixelTrack } from '../../utils/metaPixel';
 import { saveOrder, saveAbandonedCheckout, buildOrderRow } from '../../utils/orderService';
 import { sendOrderNotifications } from '../../utils/otpService';
@@ -96,12 +97,23 @@ function WhatsAppIcon({ size = 20 }) {
   );
 }
 
+// One line in the order-confirmation recap.
+function Recap({ k, v, strong = false }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <span className="text-xs text-gray-500 flex-shrink-0">{k}</span>
+      <span className={['text-sm text-right', strong ? 'font-extrabold text-gray-900' : 'font-semibold text-gray-700'].join(' ')}>{v}</span>
+    </div>
+  );
+}
+
 export default function CustomerDetailsForm({ formData, onChange, cart, onOrderPlaced }) {
   const [errors,      setErrors]      = useState({});
   const [submitted,   setSubmitted]   = useState(false);
   const [placing,     setPlacing]     = useState(false);   // submit in flight
   const [payError,    setPayError]    = useState('');      // online-payment error, if any
   const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
+  const [orderSummary, setOrderSummary] = useState(null);  // snapshot for the confirmation screen
   const [showPreview, setShowPreview] = useState(false);
 
   // Returning customer: remembered details on this device. `editing` = show the
@@ -194,6 +206,11 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   // For the "welcome back" summary
   const firstName = (formData.partyName || '').trim().split(/\s+/)[0] || '';
   const savedAddr = composeDeliveryAddress(formData);
+
+  // Order-confirmation extras
+  const isRestaurant     = config.businessType === 'restaurant';
+  const deliveryEstimate = String(config.cart?.deliveryEstimate || (isRestaurant ? '30–45 min' : '3–5 days')).trim();
+  const waLink           = whatsappLink(config.whatsappNumber, config.businessName, config.waMessage);
 
   // UPI pay link + a "Scan to pay" QR of the same payload. A scanned QR is a
   // trusted flow that works to personal VPAs, unlike a browser→app upi:// intent
@@ -327,6 +344,18 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       openOrderOnWhatsApp(sendData, cart, effConfig, appliedCoupon); // order already saved
     }
     setAutoNotified(notified);
+    // Snapshot the order for the confirmation screen BEFORE the cart is cleared.
+    setOrderSummary({
+      ref:       (orderId || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase(),
+      itemCount,
+      total:     finalTotal,
+      name:      (sendData.partyName || '').trim(),
+      where:     isPickup ? 'Pickup from shop' : [formData.destination, formData.pincode].filter(Boolean).join(' — '),
+      payment:   formData.paymentMethod === 'online' ? 'Paid online'
+               : formData.paymentMethod === 'cod'    ? 'Cash on Delivery'
+               : 'Confirm on WhatsApp',
+      estimate:  isPickup ? null : deliveryEstimate,
+    });
     setPlacing(false);
     setSubmitted(true);
     // Remember this customer on their device so the next order is one tap.
@@ -355,41 +384,58 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     ].join(' ');
   }
 
-  // ── Success state ─────────────────────────────────────────────────────────
+  // ── Success state — a WhatsApp-native confirmation, not a dead end ──────────
   if (submitted) {
+    const s = orderSummary || {};
     return (
-      <div
-        id="order-form"
-        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center"
-      >
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 size={32} className="text-green-500" />
-        </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">
-          {autoNotified ? 'Order placed! 🎉' : 'Order sent to WhatsApp!'}
-        </h3>
-        <p className="text-sm text-gray-500 max-w-xs mx-auto mb-6">
-          {autoNotified ? (
-            <>
-              We've notified{' '}
-              <strong className="text-gray-700">{config.businessName}</strong>{' '}
-              on WhatsApp — they'll confirm shortly. You'll get a confirmation message too.
-            </>
-          ) : (
-            <>
-              Complete your order on WhatsApp with{' '}
-              <strong className="text-gray-700">{config.businessName}</strong>.
-              We'll confirm and dispatch soon.
-            </>
+      <div id="order-form" className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 pt-9 pb-6 text-center">
+          <div className="w-[70px] h-[70px] rounded-full flex items-center justify-center mx-auto mb-4
+                          shadow-lg shadow-emerald-500/30"
+               style={{ background: 'radial-gradient(circle at 50% 38%, #25d366, #128c40)' }}>
+            <CheckCircle2 size={38} className="text-white" strokeWidth={2.4} />
+          </div>
+          <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">
+            {autoNotified ? `Sent to ${config.businessName} ✓` : 'Order sent on WhatsApp!'}
+          </h3>
+          <p className="text-sm text-gray-500 max-w-xs mx-auto mt-2 leading-relaxed">
+            {autoNotified
+              ? <>They've got your order and will confirm on WhatsApp in a few minutes. A copy is on its way to you too.</>
+              : <>Finish it in the WhatsApp chat that just opened — <strong className="text-gray-700">{config.businessName}</strong> will confirm &amp; dispatch soon.</>}
+          </p>
+
+          {s.ref && (
+            <div className="inline-block mt-4 text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200
+                            rounded-lg px-3 py-1.5 tracking-wide">
+              Order&nbsp;#{s.ref}
+            </div>
           )}
-        </p>
-        <button
-          onClick={() => { setSubmitted(false); setAutoNotified(false); }}
-          className="text-sm font-semibold text-brand hover:text-brand-dark
-                     underline underline-offset-2 transition-colors"
-        >
-          Place another order
-        </button>
+
+          {/* Recap — reassures exactly what was placed */}
+          {orderSummary && (
+            <div className="mt-4 text-left rounded-2xl border border-gray-100 bg-gray-50/70 divide-y divide-gray-100">
+              <Recap k={`${s.itemCount} ${s.itemCount === 1 ? 'item' : 'items'}`} v={formatINR(s.total)} strong />
+              {s.name && <Recap k="Ordered by" v={s.where ? `${s.name} · ${s.where}` : s.name} />}
+              <Recap k="Payment" v={s.payment} />
+              {s.estimate && <Recap k="Arrives" v={s.estimate} />}
+            </div>
+          )}
+
+          {/* Actions — the WhatsApp thread is the real place to follow up */}
+          <div className="mt-5 flex flex-col gap-2.5">
+            <a href={waLink} target="_blank" rel="noopener noreferrer"
+               className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d]
+                          text-white font-bold text-sm py-3 rounded-xl transition-colors active:scale-[0.98]">
+              <WhatsAppIcon size={18} /> Chat with {config.businessName}
+            </a>
+            <button
+              onClick={() => { setSubmitted(false); setAutoNotified(false); setOrderSummary(null); }}
+              className="text-sm font-semibold text-brand hover:text-brand-dark transition-colors py-1.5"
+            >
+              Place another order
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
