@@ -281,13 +281,15 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           </div>
         )}
 
-        {/* Trust ribbon — slim pills of the store's own signals */}
+        {/* Trust strip — one clean scrolling line (dot-separated), not boxed
+            pills that wrap awkwardly. */}
         {trustPills.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {trustPills.map((t) => (
-              <span key={t} className="inline-flex items-center text-[11px] font-semibold text-gray-500
-                                       bg-gray-50 border border-gray-100 rounded-full px-2.5 py-1 whitespace-nowrap">
-                {t}
+          <div className="flex items-center gap-2.5 overflow-x-auto scrollbar-hide -mx-3 px-3
+                          text-[11.5px] font-semibold text-gray-500">
+            {trustPills.map((t, i) => (
+              <span key={t} className="flex items-center gap-2.5 flex-shrink-0 whitespace-nowrap">
+                {i > 0 && <span className="w-1 h-1 rounded-full bg-gray-300" aria-hidden />}
+                <span>{t}</span>
               </span>
             ))}
           </div>
