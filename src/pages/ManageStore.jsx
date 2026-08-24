@@ -17,7 +17,7 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
-  Truck, ShoppingCart,
+  Truck, ShoppingCart, LayoutDashboard,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -41,6 +41,7 @@ import ReviewsTab                                       from '../components/mana
 import OffersTab                                        from '../components/manage/OffersTab';
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 import CustomersTab                                      from '../components/manage/CustomersTab';
+import OverviewTab                                       from '../components/manage/OverviewTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
@@ -2530,7 +2531,7 @@ export default function ManageStore() {
   const [pinVerified, setPinVerified] = useState(false);
   const [storePin,    setStorePin]    = useState('');
   const [config,      setConfig]      = useState(null);
-  const [tab,         setTab]         = useState('orders');
+  const [tab,         setTab]         = useState('home');
   const [menuOpen,    setMenuOpen]    = useState(false);   // left slide-out nav drawer
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
@@ -2654,6 +2655,7 @@ export default function ManageStore() {
   const isService = config.businessType === 'service';
   const isRestaurant = config.businessType === 'restaurant';
   const TABS = [
+    { key: 'home',       label: 'Home',        icon: LayoutDashboard },
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
     ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned', icon: ShoppingCart }]),
@@ -2835,7 +2837,12 @@ export default function ManageStore() {
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
                      upgrade={!analyticsEnabled} phone={config.whatsappNumber} />
         )}
-        {tab === 'assistant' ? (
+        {tab === 'home' ? (
+          <div className="animate-pl-fade-up">
+            <OverviewTab slug={businessSlug} pin={storePin} config={config} themeColor={themeColor}
+                         businessName={config.businessName} onGoTab={setTab} />
+          </div>
+        ) : tab === 'assistant' ? (
           <div className="animate-pl-fade-up">
             <AssistantTab config={config} themeColor={themeColor} onGoTab={setTab} businessName={config.businessName} />
           </div>
