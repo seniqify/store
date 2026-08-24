@@ -126,6 +126,9 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
           onClick={() => onGoTab?.('orders')} />
       </div>
 
+      {/* Attention + week — stacked on mobile, side-by-side on desktop */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+
       {/* Needs your attention */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5">
@@ -154,22 +157,27 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
           <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">This week</span>
           <span className="text-base font-extrabold text-gray-900 tabular-nums">{formatINR(ov.weekTotal)}</span>
         </div>
-        <div className="mt-3 flex items-end gap-2 h-16">
+        <div className="mt-3 flex items-end gap-2">
           {ov.week.map((d, i) => {
             const isToday = i === ov.week.length - 1;
             const h = d.sales <= 0 ? 6 : Math.max(12, Math.round((d.sales / weekMax) * 100));
             const letter = new Date(d.dayStart).toLocaleDateString('en-IN', { weekday: 'narrow' });
             return (
               <div key={d.dayStart} className="flex-1 flex flex-col items-center gap-1.5">
-                <div className="w-full rounded-t-md transition-all"
-                  style={{ height: `${h}%`, backgroundColor: d.sales <= 0 ? '#e5e7eb' : themeColor, opacity: isToday || d.sales <= 0 ? 1 : 0.55 }}
-                  title={formatINR(d.sales)} />
+                {/* fixed-height track so the bar's % height has something to resolve against */}
+                <div className="w-full h-16 flex items-end">
+                  <div className="w-full rounded-t-md transition-all"
+                    style={{ height: `${h}%`, backgroundColor: d.sales <= 0 ? '#e5e7eb' : themeColor, opacity: isToday || d.sales <= 0 ? 1 : 0.55 }}
+                    title={formatINR(d.sales)} />
+                </div>
                 <span className={['text-[9px] font-bold', isToday ? 'text-gray-700' : 'text-gray-300'].join(' ')}>{letter}</span>
               </div>
             );
           })}
         </div>
       </div>
+
+      </div>{/* end attention + week grid */}
 
       {/* Quick actions */}
       <div className="grid grid-cols-3 gap-2">

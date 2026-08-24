@@ -2523,6 +2523,47 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 }
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
+// Grouped navigation shared by the mobile drawer AND the desktop sidebar.
+// Groups only render the tabs that exist for this store (service/restaurant vary).
+const NAV_GROUPS = [
+  { title: 'Run',        keys: ['home', 'orders', 'products', 'delivery'] },
+  { title: 'Grow',       keys: ['customers', 'reviews', 'offers', 'abandoned'] },
+  { title: 'Understand', keys: ['analytics', 'insights', 'assistant'] },
+  { title: 'Set up',     keys: ['settings'] },
+];
+
+function GroupedNav({ tabs, tab, onSelect }) {
+  const byKey = Object.fromEntries(tabs.map((t) => [t.key, t]));
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+      {NAV_GROUPS.map((g) => {
+        const items = g.keys.map((k) => byKey[k]).filter(Boolean);
+        if (!items.length) return null;
+        return (
+          <div key={g.title}>
+            <p className="px-4 mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">{g.title}</p>
+            <div className="space-y-1">
+              {items.map(({ key, label, icon: Icon }) => {
+                const active = tab === key;
+                return (
+                  <button key={key} type="button" onClick={() => onSelect(key)}
+                    className={[
+                      'w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-[14.5px] font-semibold transition-colors',
+                      active ? 'bg-white/20 text-white' : 'text-white/85 hover:bg-white/10',
+                    ].join(' ')}>
+                    <Icon size={18} className="flex-shrink-0" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function ManageStore() {
   const { businessSlug }  = useParams();
   const navigate          = useNavigate();
@@ -2670,13 +2711,13 @@ export default function ManageStore() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40 lg:pl-64">
 
       {/* ── Top bar (hamburger + current section title) ─────────────────────── */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
-        <div className="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
+        <div className="max-w-lg lg:max-w-3xl mx-auto px-4 h-16 flex items-center gap-3">
           <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu"
-                  className="p-2 -ml-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
+                  className="lg:hidden p-2 -ml-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
             <Menu size={22} />
           </button>
           <p className="text-base font-extrabold text-gray-900 truncate flex-1">
@@ -2719,17 +2760,17 @@ export default function ManageStore() {
         </div>
       )}
 
-      {/* ── Slide-out left nav drawer ───────────────────────────────────────── */}
+      {/* ── Slide-out left nav drawer (mobile only — desktop has a fixed sidebar) ─ */}
       <div
         className={[
-          'fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
+          'lg:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
           menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
         ].join(' ')}
         onClick={() => setMenuOpen(false)}
       />
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-50 w-72 max-w-[82%] flex flex-col text-white shadow-2xl',
+          'lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[82%] flex flex-col text-white shadow-2xl',
           'transition-transform duration-300 ease-out',
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
@@ -2758,25 +2799,8 @@ export default function ManageStore() {
 
         <div className="h-px bg-white/15 mx-5" />
 
-        {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {TABS.map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => { setTab(key); setMenuOpen(false); }}
-                className={[
-                  'w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold transition-colors',
-                  active ? 'bg-white/20 text-white' : 'text-white/85 hover:bg-white/10',
-                ].join(' ')}>
-                <Icon size={19} className="flex-shrink-0" />
-                {label}
-              </button>
-            );
-          })}
-        </nav>
+        {/* Nav items (grouped) */}
+        <GroupedNav tabs={TABS} tab={tab} onSelect={(k) => { setTab(k); setMenuOpen(false); }} />
 
         {/* Footer — lock the panel (re-asks for PIN) */}
         <div className="px-3 pb-6 pt-2 border-t border-white/15 mx-2">
@@ -2790,8 +2814,41 @@ export default function ManageStore() {
         </div>
       </aside>
 
+      {/* ── Desktop permanent sidebar (lg+) — replaces the drawer + skinny column ─ */}
+      <aside className="hidden lg:flex lg:flex-col fixed inset-y-0 left-0 w-64 z-30 text-white shadow-xl"
+             style={{ background: `linear-gradient(180deg, ${themeColor}, ${themeColor}e0)` }}>
+        <div className="px-5 pt-6 pb-4">
+          <div className="flex items-center gap-3">
+            {config.logo ? (
+              <img src={config.logo} alt="" className="w-11 h-11 rounded-full object-cover ring-2 ring-white/50 flex-shrink-0" />
+            ) : (
+              <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl bg-white/15 ring-2 ring-white/40 flex-shrink-0">
+                {config.logoEmoji || '🏪'}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-extrabold leading-tight truncate">{config.businessName}</p>
+              <p className="text-[11px] text-white/70 truncate">/{businessSlug}</p>
+            </div>
+          </div>
+          <Link to={`/${businessSlug}`}
+                className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg bg-white/15 hover:bg-white/25 transition-colors">
+            <ArrowLeft size={12} /> View page
+          </Link>
+        </div>
+        <div className="h-px bg-white/15 mx-5" />
+        <GroupedNav tabs={TABS} tab={tab} onSelect={setTab} />
+        <div className="px-3 pb-5 pt-2 border-t border-white/15 mx-2">
+          <button type="button" onClick={() => { setPinVerified(false); setStorePin(''); }}
+            className="w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-[14.5px] font-semibold text-white/85 hover:bg-white/10 transition-colors">
+            <LogOut size={18} className="flex-shrink-0" />
+            Lock &amp; Exit
+          </button>
+        </div>
+      </aside>
+
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
-      <main className="max-w-lg mx-auto px-4 pt-6 pb-24 lg:pb-6">
+      <main className="max-w-lg lg:max-w-3xl mx-auto px-4 pt-6 pb-24 lg:pb-6">
         {/* Reach hook — only on the Orders tab (the default landing). Settings has
             its own "share your page" hero and Stats has its own views number, so
             showing it everywhere would stack duplicate share cards. */}
