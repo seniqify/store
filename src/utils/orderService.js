@@ -126,6 +126,25 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) 
   }
 }
 
+/** Owner-only: a tiny, PII-safe "any new orders since X?" probe (PIN-checked
+ *  server-side). Returns { new_count, latest_name, latest_total, latest_at } —
+ *  one integer + the newest order's name/amount for the alert toast. Polled from
+ *  the Manage shell so a badge/toast/chime can fire the moment an order lands,
+ *  without pulling the whole order list every few seconds. A wrong PIN yields
+ *  new_count 0 (the server EXISTS check fails → no rows), so nothing leaks. */
+export async function fetchNewOrderSignal(slug, pin, sinceIso) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('new_orders_since', {
+      p_slug: slug, p_hashed_pin: hashed, p_since: sinceIso,
+    });
+    if (error) return null;
+    return Array.isArray(data) ? (data[0] || null) : (data || null);
+  } catch {
+    return null;
+  }
+}
+
 /** Owner-only: change an order's status (PIN-checked server-side). */
 export async function setOrderStatus(slug, pin, orderId, status) {
   try {

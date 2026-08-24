@@ -8,7 +8,7 @@
  *  3. After verified → tabs: Products | Categories | Settings
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft, showBrandBadge } from '../utils/planLimits';
@@ -18,6 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
+  Bell, Volume2, VolumeX,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -46,6 +47,9 @@ import AssistantTab                                      from '../components/man
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
+import NewOrderToast                                       from '../components/manage/NewOrderToast';
+import { useNewOrders }                                    from '../hooks/useNewOrders';
+import { orderSoundOn, setOrderSoundOn, playOrderChime, buzz, alertNewOrder } from '../utils/notifySound';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -1872,6 +1876,68 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
   );
 }
 
+// ── New-order alerts card (Settings) ──────────────────────────────────────────
+// Device-local sound/buzz preference (not stored in config — see notifySound.js).
+// Badge + pop-up are always on; this only gates the audible chime + vibration.
+function OrderAlertsCard({ themeColor }) {
+  const [soundOn, setSoundOn] = useState(() => orderSoundOn());
+
+  function toggle() {
+    const next = !soundOn;
+    setSoundOn(next);
+    setOrderSoundOn(next);
+    // Turning it on doubles as a test + unlocks the AudioContext (needs a gesture).
+    if (next) { playOrderChime(); buzz(); }
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl grid place-items-center flex-shrink-0"
+             style={{ background: `${themeColor}14`, color: themeColor }}>
+          <Bell size={17} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-extrabold text-gray-900">New-order alerts</p>
+          <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+            A red badge on <b>Orders</b> and a pop-up appear the moment an order lands — always on.
+            Turn on sound to also hear a chime and feel a buzz, handy when your phone's on the
+            counter during a rush.
+          </p>
+
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5">
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              {soundOn
+                ? <Volume2 size={16} style={{ color: themeColor }} />
+                : <VolumeX size={16} className="text-gray-400" />}
+              Sound &amp; buzz
+            </span>
+            <div className="flex items-center gap-3">
+              {soundOn && (
+                <button type="button" onClick={() => { playOrderChime(); buzz(); }}
+                        className="text-[11px] font-bold text-gray-500 hover:text-gray-800 underline underline-offset-2">
+                  Test
+                </button>
+              )}
+              <button type="button" role="switch" aria-checked={soundOn} aria-label="Sound and buzz on new order"
+                      onClick={toggle}
+                      className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+                      style={{ backgroundColor: soundOn ? themeColor : '#d1d5db' }}>
+                <span className={['absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                                  soundOn ? 'translate-x-5' : ''].join(' ')} />
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-2 text-[11px] text-gray-400 leading-snug">
+            Applies to <b>this device</b> only. On iPhone, keep this page open in a tab to hear the chime.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete, pin }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const [dirty, setDirty] = useState(false);
@@ -2011,6 +2077,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           </div>
         </div>
       </div>
+
+      {/* New-order alerts — badge/pop-up always on; toggle the chime + buzz */}
+      <OrderAlertsCard themeColor={themeColor} />
 
       {/* Remove-branding upsell — shown only on the Free plan */}
       {showBrandBadge(effectivePlan(config)) && (
@@ -2532,7 +2601,7 @@ const NAV_GROUPS = [
   { title: 'Set up',     keys: ['settings'] },
 ];
 
-function GroupedNav({ tabs, tab, onSelect }) {
+function GroupedNav({ tabs, tab, onSelect, badges = {} }) {
   const byKey = Object.fromEntries(tabs.map((t) => [t.key, t]));
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
@@ -2545,6 +2614,7 @@ function GroupedNav({ tabs, tab, onSelect }) {
             <div className="space-y-1">
               {items.map(({ key, label, icon: Icon }) => {
                 const active = tab === key;
+                const badge  = badges[key] || 0;
                 return (
                   <button key={key} type="button" onClick={() => onSelect(key)}
                     className={[
@@ -2553,6 +2623,12 @@ function GroupedNav({ tabs, tab, onSelect }) {
                     ].join(' ')}>
                     <Icon size={18} className="flex-shrink-0" />
                     {label}
+                    {badge > 0 && (
+                      <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white
+                                       text-[11px] font-extrabold tabular-nums grid place-items-center">
+                        {badge > 99 ? '99+' : badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -2577,6 +2653,37 @@ export default function ManageStore() {
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
   const saveTimerRef = useRef(null);
+
+  // ── New-order alerts (badge · pop-up · chime) ──────────────────────────────
+  // A tiny PIN-checked poll (useNewOrders) tells us when an order lands. The
+  // badge count feeds the Orders nav item; a toast + chime fire on arrival.
+  const [toast, setToast] = useState(null);          // { name, total, at, count } | null
+  const tabRef       = useRef(tab);                  // read the live tab inside async poll
+  const toastTimerRef = useRef(null);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+
+  const handleOrderArrive = useCallback((order, delta) => {
+    alertNewOrder();                                 // chime + buzz (only if opted in)
+    if (tabRef.current !== 'orders') setToast({ ...order, count: delta });
+  }, []);
+
+  const { newCount, markSeen } = useNewOrders({
+    slug: businessSlug, pin: storePin, enabled: pinVerified, onArrive: handleOrderArrive,
+  });
+
+  // Opening Orders (or a fresh order arriving while you're already there) clears
+  // the badge + any toast — you've now seen them.
+  useEffect(() => {
+    if (tab === 'orders') { markSeen(); setToast(null); }
+  }, [tab, newCount, markSeen]);
+
+  // Auto-dismiss the toast after 6s.
+  useEffect(() => {
+    if (!toast) return;
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(toastTimerRef.current);
+  }, [toast]);
 
   // Load store
   useEffect(() => {
@@ -2800,7 +2907,7 @@ export default function ManageStore() {
         <div className="h-px bg-white/15 mx-5" />
 
         {/* Nav items (grouped) */}
-        <GroupedNav tabs={TABS} tab={tab} onSelect={(k) => { setTab(k); setMenuOpen(false); }} />
+        <GroupedNav tabs={TABS} tab={tab} badges={{ orders: newCount }} onSelect={(k) => { setTab(k); setMenuOpen(false); }} />
 
         {/* Footer — lock the panel (re-asks for PIN) */}
         <div className="px-3 pb-6 pt-2 border-t border-white/15 mx-2">
@@ -2837,7 +2944,7 @@ export default function ManageStore() {
           </Link>
         </div>
         <div className="h-px bg-white/15 mx-5" />
-        <GroupedNav tabs={TABS} tab={tab} onSelect={setTab} />
+        <GroupedNav tabs={TABS} tab={tab} badges={{ orders: newCount }} onSelect={setTab} />
         <div className="px-3 pb-5 pt-2 border-t border-white/15 mx-2">
           <button type="button" onClick={() => { setPinVerified(false); setStorePin(''); }}
             className="w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-[14.5px] font-semibold text-white/85 hover:bg-white/10 transition-colors">
@@ -3011,12 +3118,22 @@ export default function ManageStore() {
             { key: 'customers', label: 'Customers',                        Icon: Users },
           ].map(({ key, label, Icon }) => {
             const active = tab === key;
+            const badge  = key === 'orders' ? newCount : 0;
             return (
               <button key={key} type="button" onClick={() => setTab(key)}
-                aria-label={label} aria-current={active ? 'page' : undefined}
+                aria-label={badge > 0 ? `${label}, ${badge} new` : label} aria-current={active ? 'page' : undefined}
                 className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
                 style={{ color: active ? themeColor : '#9ca3af' }}>
-                <Icon size={20} strokeWidth={active ? 2.4 : 2} />
+                <span className="relative">
+                  <Icon size={20} strokeWidth={active ? 2.4 : 2} />
+                  {badge > 0 && (
+                    <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500
+                                     text-white text-[9px] font-extrabold tabular-nums grid place-items-center
+                                     ring-2 ring-white">
+                      {badge > 9 ? '9+' : badge}
+                    </span>
+                  )}
+                </span>
                 <span className="text-[10px] font-bold leading-none">{label}</span>
               </button>
             );
@@ -3029,6 +3146,16 @@ export default function ManageStore() {
           </button>
         </div>
       </nav>
+
+      {/* New-order pop-up — appears on arrival when you're not on Orders; tapping
+          it (or opening Orders) clears the badge via the tab effect above. */}
+      {toast && (
+        <NewOrderToast
+          order={toast} count={toast.count} themeColor={themeColor}
+          onView={() => setTab('orders')}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
