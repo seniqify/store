@@ -144,7 +144,7 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
             <p className="text-xs text-gray-400 mt-0.5">New orders and alerts will show up here.</p>
           </div>
         ) : (
-          attention.map((a) => <AttentionRow key={a.key} {...a} />)
+          attention.map(({ key, ...row }) => <AttentionRow key={key} {...row} />)
         )}
       </div>
 

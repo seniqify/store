@@ -17,7 +17,7 @@ import {
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
-  Truck, ShoppingCart, LayoutDashboard,
+  Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -2791,7 +2791,7 @@ export default function ManageStore() {
       </aside>
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
-      <main className="max-w-lg mx-auto px-4 py-6">
+      <main className="max-w-lg mx-auto px-4 pt-6 pb-24 lg:pb-6">
         {/* Reach hook — only on the Orders tab (the default landing). Settings has
             its own "share your page" hero and Stats has its own views number, so
             showing it everywhere would stack duplicate share cards. */}
@@ -2939,6 +2939,39 @@ export default function ManageStore() {
         </div>
         )}
       </main>
+
+      {/* ── Mobile bottom tab bar — the 4 daily screens one thumb-tap away; the
+             rest live under "More" (opens the drawer). Solid white (no blur) to
+             stay smooth on iOS Safari. Desktop keeps the drawer nav. ────────── */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-100
+                      shadow-[0_-2px_12px_-6px_rgba(0,0,0,0.12)]"
+           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="max-w-lg mx-auto px-1.5 flex">
+          {[
+            { key: 'home',      label: 'Home',                             Icon: LayoutDashboard },
+            { key: 'orders',    label: isService ? 'Leads' : 'Orders',     Icon: ShoppingBag },
+            { key: 'products',  label: isRestaurant ? 'Menu' : 'Products', Icon: Package },
+            { key: 'customers', label: 'Customers',                        Icon: Users },
+          ].map(({ key, label, Icon }) => {
+            const active = tab === key;
+            return (
+              <button key={key} type="button" onClick={() => setTab(key)}
+                aria-label={label} aria-current={active ? 'page' : undefined}
+                className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
+                style={{ color: active ? themeColor : '#9ca3af' }}>
+                <Icon size={20} strokeWidth={active ? 2.4 : 2} />
+                <span className="text-[10px] font-bold leading-none">{label}</span>
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setMenuOpen(true)} aria-label="More sections"
+            className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
+            style={{ color: ['home', 'orders', 'products', 'customers'].includes(tab) ? '#9ca3af' : themeColor }}>
+            <MoreHorizontal size={20} strokeWidth={2} />
+            <span className="text-[10px] font-bold leading-none">More</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }
