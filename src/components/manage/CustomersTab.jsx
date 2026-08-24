@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Users, RefreshCw, Search, MessageCircle, Phone, ChevronDown, Megaphone } from 'lucide-react';
+import { Users, RefreshCw, Search, MessageCircle, Phone, ChevronDown, Megaphone, Download } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildCustomers, summarizeCustomers, segmentCounts, SEGMENTS } from '../../utils/customers';
+import { buildContactRows, contactsToCsv, downloadCsv, contactsFilename } from '../../utils/exportCustomers';
 import CampaignPanel from './CampaignPanel';
 
 /**
@@ -18,9 +19,30 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
   const [seg,       setSeg]       = useState('all');
   const [query,     setQuery]     = useState('');
   const [openPhone, setOpenPhone] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => { setOrders(null); setOrders(await fetchOrders(slug, pin)); }, [slug, pin]);
   useEffect(() => { load(); }, [load]);
+
+  // Export ALL contacts — buyers + abandoned-cart leads — as a CSV the owner can
+  // import into WhatsApp / contacts to win repeat sales. Re-fetches with
+  // abandoned rows included (the on-screen list hides those by default).
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const all  = await fetchOrders(slug, pin, { includeAbandoned: true });
+      const rows = buildContactRows(all);
+      if (!rows.length) {
+        alert('No customer contacts yet — they’ll appear here as orders (and abandoned carts) come in.');
+        return;
+      }
+      downloadCsv(contactsFilename(businessName, slug), contactsToCsv(rows));
+    } catch {
+      alert('Could not export contacts. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  }, [slug, pin, businessName]);
 
   const customers = useMemo(() => (orders ? buildCustomers(orders) : []), [orders]);
   const summary   = useMemo(() => summarizeCustomers(customers), [customers]);
@@ -52,7 +74,7 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
   if (customers.length === 0) {
     return (
       <div className="space-y-4">
-        <Header themeColor={themeColor} count={0} onRefresh={load} />
+        <Header themeColor={themeColor} count={0} onRefresh={load} onExport={handleExport} exporting={exporting} />
         <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
           <div className="text-4xl mb-3">👥</div>
           <p className="font-bold text-gray-800">No customers yet</p>
@@ -66,7 +88,7 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
 
   return (
     <div className="space-y-4">
-      <Header themeColor={themeColor} count={summary.total} onRefresh={load} />
+      <Header themeColor={themeColor} count={summary.total} onRefresh={load} onExport={handleExport} exporting={exporting} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-2">
@@ -123,20 +145,29 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
 
 // ── pieces ───────────────────────────────────────────────────────────────────
 
-function Header({ themeColor, count, onRefresh }) {
+function Header({ themeColor, count, onRefresh, onExport, exporting }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
         <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
           <Users size={18} style={{ color: themeColor }} /> Customers
         </h2>
         <p className="text-xs text-gray-400 mt-0.5">{count === 0 ? 'Built from your orders' : `${count} from your orders`}</p>
       </div>
-      <button onClick={onRefresh}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
-                   rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition">
-        <RefreshCw size={13} /> Refresh
-      </button>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button onClick={onExport} disabled={exporting}
+          title="Download all contacts (buyers + abandoned carts) as a CSV — for WhatsApp / contacts import"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white rounded-xl px-3 py-2
+                     active:scale-95 transition disabled:opacity-60 disabled:active:scale-100"
+          style={{ backgroundColor: themeColor }}>
+          <Download size={13} /> {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
+        <button onClick={onRefresh}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
+                     rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition">
+          <RefreshCw size={13} /> Refresh
+        </button>
+      </div>
     </div>
   );
 }
