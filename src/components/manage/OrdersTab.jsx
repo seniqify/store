@@ -262,7 +262,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           {/* How updates work */}
           <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
             <MessageCircle size={12} className="text-emerald-500 flex-shrink-0" />
-            Each status button opens WhatsApp so you can send the customer a ready-made update.
+            Status buttons just update the order. Tap “Send update” to WhatsApp the customer a ready-made note — only when you want.
           </p>
 
           {/* Order / lead cards */}
@@ -366,22 +366,32 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   // wa.me link prefilled with the status-update message for `status`.
   const waUpdate = (status) => `https://wa.me/91${phone}?text=${encodeURIComponent(updateMsg(status, o, storeName, leads))}`;
 
-  // Advance the order to `to` and, when we have the customer's number, open
-  // WhatsApp prefilled with that status's update so the owner can send it in one
-  // tap (the anchor's href is the user gesture; onClick persists the new status).
+  // Advancing an order is JUST the status change — accepting no longer auto-opens
+  // WhatsApp. Notifying the customer is a separate, optional step ("Send update"
+  // below), so accepting an order never forces a message to go out.
   function Advance({ to, label, style, className, full }) {
     const size = full ? 'w-full justify-center py-2.5 text-sm' : 'px-3 py-2 text-xs';
     const cls = `inline-flex items-center gap-1.5 font-bold text-white rounded-xl active:scale-95 disabled:opacity-50 ${size} ${className || ''}`;
-    return phone ? (
-      <a href={waUpdate(to)} target="_blank" rel="noopener noreferrer" onClick={() => onStatus(o.id, to)}
-         className={cls} style={style} title="Opens WhatsApp to notify the customer">
-        <MessageCircle size={14} /> {label}
-      </a>
-    ) : (
-      <button disabled={busy} onClick={() => onStatus(o.id, to)} className={cls} style={style}>
+    return (
+      <button type="button" disabled={busy} onClick={() => onStatus(o.id, to)} className={cls} style={style}>
         {label}
       </button>
     );
+  }
+
+  // Optional, explicit customer notification for the order's CURRENT status —
+  // decoupled from advancing it. Returns a button label, or null when there's no
+  // ready-made message worth sending for this status.
+  function sendUpdateLabel(status) {
+    if (leads) {
+      if (status === 'confirmed') return 'Send reply on WhatsApp';
+      if (status === 'delivered') return 'Send “we’re on!” message';
+      return null;
+    }
+    if (status === 'confirmed')  return 'Send confirmation to customer';
+    if (status === 'dispatched') return 'Send “out for delivery” update';
+    if (status === 'delivered')  return 'Send delivered update';
+    return null;
   }
 
   return (
@@ -523,7 +533,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
         {leads ? (
           <>
             {o.status === 'new' && (
-              <Advance to="confirmed" label="Reply & mark contacted" full style={{ backgroundColor: themeColor }} />
+              <Advance to="confirmed" label="Mark contacted" full style={{ backgroundColor: themeColor }} />
             )}
             {(o.status === 'confirmed' || o.status === 'dispatched') && (
               <Advance to="delivered" label="Mark won 🎉" full className="bg-blue-600 hover:bg-blue-700" />
@@ -532,21 +542,25 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
         ) : (
           <>
             {o.status === 'new' && (
-              <Advance to="confirmed" label="Accept order" full style={{ backgroundColor: themeColor }} />
+              <Advance to="confirmed" label="✅ Accept order" full style={{ backgroundColor: themeColor }} />
             )}
             {o.status === 'confirmed' && (
-              <Advance to="dispatched" label="Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
+              <Advance to="dispatched" label="🛵 Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
             )}
             {o.status === 'dispatched' && (
-              <Advance to="delivered" label="Mark Delivered" full className="bg-blue-600 hover:bg-blue-700" />
-            )}
-            {o.status === 'delivered' && phone && (
-              <a href={waUpdate('delivered')} target="_blank" rel="noopener noreferrer"
-                 className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95">
-                <MessageCircle size={13} /> Re-send delivered update
-              </a>
+              <Advance to="delivered" label="📦 Mark delivered" full className="bg-blue-600 hover:bg-blue-700" />
             )}
           </>
+        )}
+
+        {/* Optional, separate — WhatsApp the customer the ready-made update for the
+            CURRENT status. Never fires on its own; the owner chooses to send it. */}
+        {phone && sendUpdateLabel(o.status) && (
+          <a href={waUpdate(o.status)} target="_blank" rel="noopener noreferrer"
+             className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-200 bg-emerald-50 py-2 rounded-xl hover:bg-emerald-100 active:scale-95"
+             title="Opens WhatsApp with a ready-made message — nothing sends until you press send">
+            <MessageCircle size={13} /> {sendUpdateLabel(o.status)}
+          </a>
         )}
 
         {/* Courier shipping — for delivery orders when a courier is connected */}
