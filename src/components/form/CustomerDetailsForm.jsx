@@ -1041,8 +1041,8 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
              time, so the customer never scrolls to hunt for "how much / where do
              I tap". Pins to the checkout sheet's scroll viewport. */}
       {!cartEmpty && (
-        <div className="sticky bottom-0 z-10 bg-white/95 backdrop-blur border-t border-gray-100
-                        px-5 py-3 rounded-b-2xl shadow-[0_-10px_28px_-16px_rgba(0,0,0,0.28)]">
+        <div className="sticky bottom-0 z-10 bg-white border-t border-gray-100
+                        px-5 py-3 rounded-b-2xl shadow-[0_-4px_12px_-8px_rgba(0,0,0,0.15)]">
           {payError && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mb-2.5">{payError}</p>
           )}
@@ -1053,9 +1053,8 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             className="w-full flex items-center justify-center gap-2.5
                        bg-brand hover:bg-brand-dark active:bg-brand-dark
                        text-white font-bold text-base
-                       px-7 py-3.5 rounded-2xl
-                       shadow-lg hover:shadow-xl
-                       transition-all duration-200 active:scale-[0.98]
+                       px-7 py-3.5 rounded-2xl shadow-lg
+                       transition-colors duration-150
                        min-h-[52px] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {placing ? (

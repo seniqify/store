@@ -27,7 +27,7 @@ export default function CheckoutSheet({ open, onClose, onBack, title = 'Complete
         onClick={onClose}
         aria-hidden="true"
         className={[
-          'fixed inset-0 bg-black/40 backdrop-blur-sm z-[55] transition-opacity duration-300',
+          'fixed inset-0 bg-black/50 z-[55] transition-opacity duration-300',
           open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         ].join(' ')}
       />
@@ -64,7 +64,7 @@ export default function CheckoutSheet({ open, onClose, onBack, title = 'Complete
         </div>
 
         {/* Scrollable form body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain p-4">
           {children}
         </div>
       </aside>
