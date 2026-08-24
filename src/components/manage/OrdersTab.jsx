@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays } from 'lucide-react';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
@@ -26,6 +26,15 @@ const STATUS_LEADS = {
 };
 const FILTERS_ORDERS = ['all', 'new', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
 const FILTERS_LEADS  = ['all', 'new', 'confirmed', 'delivered', 'cancelled'];
+
+// Accent colour per status — drives the card's left stripe + progress fill.
+const STATUS_COLOR = {
+  new:        '#d97706',   // amber-600
+  confirmed:  '#059669',   // emerald-600
+  dispatched: '#4f46e5',   // indigo-600
+  delivered:  '#2563eb',   // blue-600
+  cancelled:  '#9ca3af',   // gray-400
+};
 
 // Customer-facing WhatsApp update for each status change. Sent from the owner's
 // own number via a prefilled wa.me link (one tap) — no API needed.
@@ -288,6 +297,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Per-order profit (owner-only) — goods revenue minus this order's cost of
   // goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
@@ -394,120 +404,89 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
     return null;
   }
 
+  // What goes in the "More" menu (secondary tools), gated by state.
+  const canRequestPay = Boolean(payMsg) && Boolean(phone) && o.status !== 'cancelled';
+  const canDispatch   = !leads && o.status !== 'cancelled' && o.status !== 'delivered';
+  const canCancel     = o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched';
+  const hasMore       = canRequestPay || canDispatch || canCancel || o.status === 'cancelled';
+
+  // Status progress (New → … → Delivered/Won). Cancelled sits off the path.
+  const accent     = STATUS_COLOR[o.status] || STATUS_COLOR.new;
+  const steps      = ['new', 'confirmed', 'dispatched', 'delivered'];
+  const stepLabels = leads ? ['New', 'Contacted', 'In talks', 'Won'] : ['New', 'Confirmed', 'Out', 'Delivered'];
+  const stepIdx    = steps.indexOf(o.status);
+
+  const toolBtn = 'flex-1 flex flex-col items-center gap-1 py-2 rounded-xl border border-gray-200 text-[10px] font-bold hover:bg-gray-50 active:scale-95';
+  const moreItem = 'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold hover:bg-gray-50 border-t border-gray-100 first:border-t-0';
+
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      {/* Top: time + payment status + fulfilment status */}
-      <div className="flex items-center justify-between gap-2 px-4 pt-3.5">
-        <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 flex-shrink-0">
-          <Clock size={11} /> {timeAgo(o.created_at)}
-        </span>
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-          {/* Paid / Unpaid — one tap for the owner to record payment received
-              (cash collected for COD, or UPI/bank credit for prepaid). */}
-          {!leads && (
-            <button type="button" onClick={() => onPaid(o.id, !o.paid)} disabled={busy}
-              className={[
-                'inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full active:scale-95 disabled:opacity-50 transition',
-                o.paid ? 'bg-emerald-100 text-emerald-700'
-                       : 'bg-white text-amber-600 border border-amber-300 hover:bg-amber-50',
-              ].join(' ')}
-              title={o.paid ? 'Paid — tap to mark unpaid' : 'Tap once you’ve received payment'}>
-              {o.paid ? <><Check size={11} strokeWidth={3} /> Paid</> : '💰 Mark paid'}
-            </button>
-          )}
-          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.emoji} {st.label}</span>
+      {/* Header — status accent · who + meta · amount + paid */}
+      <div className="flex items-start gap-3 px-4 pt-4">
+        <span className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: accent }} />
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-gray-900 leading-tight truncate">{o.customer_name || 'Customer'}</p>
+          <div className="flex items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] text-gray-400 flex-wrap">
+            <span className="inline-flex items-center gap-1"><Clock size={10} /> {timeAgo(o.created_at)}</span>
+            {o.destination && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="inline-flex items-center gap-0.5 min-w-0"><MapPin size={10} /><span className="truncate max-w-[8.5rem]">{o.destination}</span></span></>)}
+            {phone && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="tabular-nums">+91 {phone}</span></>)}
+            {o.payment_method && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="uppercase font-semibold text-gray-400">{o.payment_method}</span></>)}
+          </div>
         </div>
-      </div>
-
-      {/* Customer */}
-      <div className="px-4 pt-2">
-        <p className="font-extrabold text-gray-900 leading-tight">{o.customer_name || 'Customer'}</p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-gray-500">
-          {phone && <span className="tabular-nums">+91 {phone}</span>}
-          {o.destination && <span className="inline-flex items-center gap-1"><MapPin size={11} /> {o.destination}</span>}
-          {o.payment_method && <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{o.payment_method.toUpperCase()}</span>}
-        </div>
-      </div>
-
-      {/* Request payment — matches the mode the customer picked at checkout */}
-      {payMsg && phone && o.status !== 'cancelled' && (
-        <div className="px-4 mt-2.5">
-          <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`}
-             target="_blank" rel="noopener noreferrer"
-             className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-xl active:scale-95"
-             style={{ backgroundColor: '#25D366' }}
-             title="Opens WhatsApp with your payment details and the amount prefilled">
-            💰 Request payment · {totalStr}
-          </a>
-        </div>
-      )}
-
-      {/* Print a delivery / packing slip for the parcel (orders only). */}
-      {!leads && (
-        <div className="px-4 mt-2.5">
-          <button type="button" onClick={() => openDeliverySlip(o, store)}
-            className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold
-                       text-gray-600 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 active:scale-95"
-            title="Open a print-ready delivery slip (print or save as PDF)">
-            <Printer size={13} /> Print delivery slip
-          </button>
-        </div>
-      )}
-
-      {/* Dispatch to the store's own delivery boys (orders only). One rider =
-          one-tap button; several = a button each; none saved = WhatsApp picker. */}
-      {!leads && (
-        <div className="px-4 mt-2.5">
-          {dispatchRiders.length > 1 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold text-gray-400">🛵 Send to:</span>
-              {dispatchRiders.map((r) => (
-                <a key={r.phone} href={riderWa(r.phone)} target="_blank" rel="noopener noreferrer"
-                   className="text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-1.5
-                              rounded-xl hover:bg-gray-50 active:scale-95"
-                   title="Opens WhatsApp with the delivery details prefilled">
-                  {r.name?.trim() || `…${r.phone.slice(-4)}`}
-                </a>
-              ))}
-            </div>
+        <div className="text-right flex-shrink-0">
+          {!leads ? (
+            <>
+              <p className="text-xl font-extrabold text-gray-900 tabular-nums leading-none">{formatINR(o.total || 0)}</p>
+              <button type="button" onClick={() => onPaid(o.id, !o.paid)} disabled={busy}
+                className={[
+                  'mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full active:scale-95 disabled:opacity-50 transition',
+                  o.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700 border border-amber-200',
+                ].join(' ')}
+                title={o.paid ? 'Paid — tap to mark unpaid' : 'Tap once you’ve received payment'}>
+                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : '● Unpaid'}
+              </button>
+            </>
           ) : (
-            <a href={riderWa(dispatchRiders[0]?.phone)} target="_blank" rel="noopener noreferrer"
-               className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold
-                          text-gray-600 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 active:scale-95"
-               title={dispatchRiders.length ? 'Opens WhatsApp to your delivery boy with the address prefilled' : 'Opens WhatsApp — pick your delivery boy’s chat (save his number in the Delivery tab for one tap)'}>
-              🛵 Send to delivery boy
-            </a>
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.emoji} {st.label}</span>
           )}
+        </div>
+      </div>
+
+      {/* Status progress strip */}
+      {o.status === 'cancelled' ? (
+        <div className="px-4 pt-2.5"><span className="text-[11px] font-bold text-gray-400">🚫 {leads ? 'Marked lost' : 'Cancelled'}</span></div>
+      ) : (
+        <div className="px-4 pt-3">
+          <div className="flex items-center gap-1.5">
+            {steps.map((s, i) => (
+              <span key={s} className="flex-1 h-1 rounded-full" style={{ backgroundColor: i <= stepIdx ? accent : '#e5e7eb' }} />
+            ))}
+          </div>
+          <div className="flex justify-between mt-1">
+            {stepLabels.map((lbl, i) => (
+              <span key={lbl} className="text-[8.5px] font-bold uppercase tracking-wide"
+                    style={{ color: i === stepIdx ? accent : '#cbd5d0' }}>{lbl}</span>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Items (orders) / requested services (leads — a quote isn't a sale, so no ₹ totals) */}
-      <div className="px-4 mt-3 rounded-xl bg-gray-50 mx-4 py-2.5 sm:mx-0 sm:rounded-none sm:bg-transparent sm:px-4">
-        {(o.items || []).map((it, i) => (
-          <div key={i} className="flex items-center justify-between text-xs text-gray-600 py-0.5">
-            <span className="truncate pr-2">
+      {/* Items in full — every line stays on the card (no collapse) */}
+      <div className="px-4 pt-3">
+        {oItems.map((it, i) => (
+          <div key={i} className="flex items-center justify-between gap-3 text-xs py-0.5">
+            <span className="truncate text-gray-600">
               {leads ? '💼 ' : ''}{it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''}{leads ? '' : ` × ${it.qty}`}
             </span>
-            {!leads && <span className="tabular-nums flex-shrink-0">{formatINR((it.price || 0) * (it.qty || 0))}</span>}
+            {!leads && <span className="tabular-nums flex-shrink-0 font-semibold text-gray-700">{formatINR((it.price || 0) * (it.qty || 0))}</span>}
           </div>
         ))}
-        <div className="flex items-center justify-between pt-2 mt-1 border-t border-dashed border-gray-200">
-          {leads ? (
-            <span className="text-xs font-semibold text-gray-500">
-              {o.item_count} service{o.item_count === 1 ? '' : 's'} requested
-            </span>
-          ) : (
-            <>
-              <span className="text-xs font-semibold text-gray-500">{o.item_count} item{o.item_count === 1 ? '' : 's'} · Total</span>
-              <span className="font-extrabold tabular-nums" style={{ color: themeColor }}>{formatINR(o.total || 0)}</span>
-            </>
-          )}
-        </div>
+        {leads && <p className="text-[11px] text-gray-400 mt-1">{o.item_count} service{o.item_count === 1 ? '' : 's'} requested</p>}
       </div>
 
       {/* Per-order profit — the real earning on this order, delivery included */}
       {showProfit && (
-        <div className="px-4 mt-2.5">
+        <div className="px-4 pt-2.5">
           <div className="rounded-xl bg-emerald-50/70 border border-emerald-100 px-3 py-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-emerald-800 inline-flex items-center gap-1">💰 Your profit</span>
@@ -525,36 +504,24 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
       )}
 
       {o.notes && (
-        <p className="px-4 mt-2 text-xs text-gray-500"><span className="font-semibold text-gray-600">Note:</span> {o.notes}</p>
+        <p className="px-4 pt-2 text-xs text-gray-500"><span className="font-semibold text-gray-600">Note:</span> {o.notes}</p>
       )}
 
-      {/* Actions — primary next step on top (full width), contact + cancel below */}
-      <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-2">
+      {/* Primary next step (pure status change) + optional customer update + courier */}
+      <div className="px-4 pt-3 space-y-2">
         {leads ? (
           <>
-            {o.status === 'new' && (
-              <Advance to="confirmed" label="Mark contacted" full style={{ backgroundColor: themeColor }} />
-            )}
-            {(o.status === 'confirmed' || o.status === 'dispatched') && (
-              <Advance to="delivered" label="Mark won 🎉" full className="bg-blue-600 hover:bg-blue-700" />
-            )}
+            {o.status === 'new' && (<Advance to="confirmed" label="Mark contacted" full style={{ backgroundColor: themeColor }} />)}
+            {(o.status === 'confirmed' || o.status === 'dispatched') && (<Advance to="delivered" label="Mark won 🎉" full className="bg-blue-600 hover:bg-blue-700" />)}
           </>
         ) : (
           <>
-            {o.status === 'new' && (
-              <Advance to="confirmed" label="✅ Accept order" full style={{ backgroundColor: themeColor }} />
-            )}
-            {o.status === 'confirmed' && (
-              <Advance to="dispatched" label="🛵 Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />
-            )}
-            {o.status === 'dispatched' && (
-              <Advance to="delivered" label="📦 Mark delivered" full className="bg-blue-600 hover:bg-blue-700" />
-            )}
+            {o.status === 'new' && (<Advance to="confirmed" label="✅ Accept order" full style={{ backgroundColor: themeColor }} />)}
+            {o.status === 'confirmed' && (<Advance to="dispatched" label="🛵 Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />)}
+            {o.status === 'dispatched' && (<Advance to="delivered" label="📦 Mark delivered" full className="bg-blue-600 hover:bg-blue-700" />)}
           </>
         )}
 
-        {/* Optional, separate — WhatsApp the customer the ready-made update for the
-            CURRENT status. Never fires on its own; the owner chooses to send it. */}
         {phone && sendUpdateLabel(o.status) && (
           <a href={waUpdate(o.status)} target="_blank" rel="noopener noreferrer"
              className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-200 bg-emerald-50 py-2 rounded-xl hover:bg-emerald-100 active:scale-95"
@@ -563,39 +530,80 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
           </a>
         )}
 
-        {/* Courier shipping — for delivery orders when a courier is connected */}
         {!leads && (store.shipping?.delhivery || store.shipping?.shadowfax) && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
           <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier} />
         )}
+      </div>
 
-        {/* Contact the customer + cancel/reopen */}
-        <div className="flex items-center gap-2">
+      {/* Tool row — Chat · Call · Slip · More (secondary tools live under More) */}
+      <div className="px-4 py-3 mt-2.5 border-t border-gray-100">
+        <div className="flex items-stretch gap-2">
           {phone && (
-            <>
-              <a href={`https://wa.me/91${phone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
-                 className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-xl active:scale-95"
-                 style={{ backgroundColor: '#25D366' }}>
-                <MessageCircle size={14} /> WhatsApp
-              </a>
-              <a href={`tel:+91${phone}`}
-                 className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
-                <Phone size={13} /> Call
-              </a>
-            </>
+            <a href={`https://wa.me/91${phone}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+               className={`${toolBtn} text-emerald-600`} title="Chat with the customer on WhatsApp">
+              <MessageCircle size={16} /> Chat
+            </a>
           )}
-          {(o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched') && (
-            <button disabled={busy} onClick={() => onStatus(o.id, 'cancelled')}
-              className="flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 text-red-500 hover:bg-red-50"
-              title={leads ? 'Mark this lead as lost' : 'Cancel this order — removes it from Sales & Profit. Use for test, duplicate or undelivered orders. The customer is NOT messaged. You can restore it anytime.'}>
-              {leads ? 'Mark lost' : '🚫 Cancel'}
+          {phone && (
+            <a href={`tel:+91${phone}`} className={`${toolBtn} text-gray-600`}>
+              <Phone size={15} /> Call
+            </a>
+          )}
+          {!leads && (
+            <button type="button" onClick={() => openDeliverySlip(o, store)}
+              className={`${toolBtn} text-gray-600`} title="Print a delivery / packing slip">
+              <Printer size={15} /> Slip
             </button>
           )}
-          {o.status === 'cancelled' && (
-            <button disabled={busy} onClick={() => onStatus(o.id, 'new')}
-              className="flex-shrink-0 text-xs font-semibold text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 disabled:opacity-50"
-              title={leads ? 'Reopen this lead' : 'Restore this order — counts in Sales & Profit again.'}>
-              {leads ? 'Reopen lead' : 'Restore'}
-            </button>
+          {hasMore && (
+            <div className="flex-1 relative">
+              <button type="button" onClick={() => setMoreOpen((v) => !v)}
+                className={`${toolBtn} text-gray-600 w-full`} aria-haspopup="menu" aria-expanded={moreOpen}>
+                <MoreHorizontal size={16} /> More
+              </button>
+              {moreOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+                  <div className="absolute right-0 bottom-full mb-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-20" role="menu">
+                    {canRequestPay && (
+                      <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`} target="_blank" rel="noopener noreferrer"
+                         onClick={() => setMoreOpen(false)} className={`${moreItem} text-gray-700`}
+                         title="Opens WhatsApp with your payment details + amount prefilled">
+                        <span className="text-sm">💰</span> Request payment · {totalStr}
+                      </a>
+                    )}
+                    {canDispatch && (dispatchRiders.length > 1
+                      ? dispatchRiders.map((r) => (
+                          <a key={r.phone} href={riderWa(r.phone)} target="_blank" rel="noopener noreferrer"
+                             onClick={() => setMoreOpen(false)} className={`${moreItem} text-gray-700`}>
+                            <span className="text-sm">🛵</span> Send to {r.name?.trim() || `…${r.phone.slice(-4)}`}
+                          </a>
+                        ))
+                      : (
+                        <a href={riderWa(dispatchRiders[0]?.phone)} target="_blank" rel="noopener noreferrer"
+                           onClick={() => setMoreOpen(false)} className={`${moreItem} text-gray-700`}
+                           title={dispatchRiders.length ? 'Opens WhatsApp to your delivery boy, address prefilled' : 'Opens WhatsApp — pick your delivery boy (save his number in Delivery for one tap)'}>
+                          <span className="text-sm">🛵</span> Send to delivery boy
+                        </a>
+                      ))}
+                    {canCancel && (
+                      <button type="button" disabled={busy} onClick={() => { setMoreOpen(false); onStatus(o.id, 'cancelled'); }}
+                        className={`${moreItem} text-red-500 disabled:opacity-50`}
+                        title={leads ? 'Mark this lead as lost' : 'Cancel — removes it from Sales & Profit. The customer is NOT messaged. Restore anytime.'}>
+                        <span className="text-sm">🚫</span> {leads ? 'Mark lost' : 'Cancel order'}
+                      </button>
+                    )}
+                    {o.status === 'cancelled' && (
+                      <button type="button" disabled={busy} onClick={() => { setMoreOpen(false); onStatus(o.id, 'new'); }}
+                        className={`${moreItem} text-gray-700 disabled:opacity-50`}
+                        title={leads ? 'Reopen this lead' : 'Restore — counts in Sales & Profit again.'}>
+                        <span className="text-sm">↩️</span> {leads ? 'Reopen lead' : 'Restore order'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
