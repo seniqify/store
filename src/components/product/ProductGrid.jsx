@@ -3,6 +3,7 @@ import { Search, X, ChevronDown } from 'lucide-react';
 import ProductCard from './ProductCard';
 import CategoryCircles from './CategoryCircles';
 import EmptyState from '../ui/EmptyState';
+import { proofFor } from '../../utils/salesService';
 
 // Products shown before a "Show more" tap. Keeps big catalogues fast to render
 // and scannable — a 100-item store no longer paints as one endless scroll.
@@ -50,6 +51,7 @@ export default function ProductGrid({
   activeCategory: activeCategoryProp, onCategoryChange, categoryRailClassName = '',
   nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…', showSearch = true,
+  salesMap = null,        // Map<productName, {sold,orders,soldWeek}> → real social proof
 }) {
   // Category can be controlled by the parent (Home lifts it so the bottom-nav
   // "Categories" tab can drive the filter); otherwise it's local.
@@ -237,6 +239,7 @@ export default function ProductGrid({
                   onDecrease={onDecrease}
                   onSetQty={onSetQty}
                   onOpen={onOpenDetail}
+                  proof={salesMap ? proofFor(salesMap.get(product.name)) : null}
                 />
               ))}
             </div>

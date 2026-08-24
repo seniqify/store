@@ -19,6 +19,7 @@ import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR, discountPercent } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
 import { fetchReviews, reviewStats } from '../utils/reviewService';
+import { fetchProductSales, proofFor } from '../utils/salesService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
 
@@ -106,8 +107,24 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     config.delivery?.mode !== 'pickup' ? '💵 COD available' : null,
   ].filter(Boolean);
 
-  // "Most loved" bestseller rail — owner's product order = popularity.
-  const mostLoved = saleProducts.slice(0, 8);
+  // Real per-product sales (units sold, this-week demand), keyed by product name.
+  // Fetched once per store (cached) by the effect further down; null until then.
+  const [salesMap, setSalesMap] = useState(null);
+
+  // "Most loved" bestseller rail — ranked by REAL units sold when we have sales
+  // data, so it's true popularity, not just the owner's order. Falls back to the
+  // owner's first-8 order until the sales aggregate resolves (or if none exist).
+  const mostLoved = (() => {
+    if (salesMap && salesMap.size) {
+      const ranked = saleProducts
+        .map((p) => ({ p, sold: salesMap.get(p.name)?.sold || 0 }))
+        .filter((x) => x.sold > 0)
+        .sort((a, b) => b.sold - a.sold)
+        .map((x) => x.p);
+      if (ranked.length >= 4) return ranked.slice(0, 8);
+    }
+    return saleProducts.slice(0, 8);
+  })();
 
   // Primary hero action: send shoppers into the catalog (browse → cart → checkout,
   // a recorded order) instead of straight to a WhatsApp chat that leaves no order.
@@ -123,6 +140,15 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     if (!config.slug) return;
     let alive = true;
     fetchReviews(config.slug).then((r) => { if (alive) setHeroRating(reviewStats(r)); });
+    return () => { alive = false; };
+  }, [config.slug]);
+
+  // ── Real sales → social-proof badges + a genuinely-ranked bestseller rail ──
+  // One cached RPC per store (off the render path); cards enhance in when it lands.
+  useEffect(() => {
+    if (!config.slug) return;
+    let alive = true;
+    fetchProductSales(config.slug).then((m) => { if (alive) setSalesMap(m); });
     return () => { alive = false; };
   }, [config.slug]);
 
@@ -370,6 +396,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                   {mostLoved.map((p) => {
                     const img    = p.image || (Array.isArray(p.images) ? p.images[0] : null);
                     const hasMrp = Number(p.mrp) > Number(p.price);
+                    const rp     = salesMap ? proofFor(salesMap.get(p.name)) : null;
                     return (
                       <div key={p.id} className="flex-shrink-0 w-[146px] bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
                         <button type="button" onClick={() => navigate(`/${config.slug}/p/${p.id}`)} className="block w-full text-left">
@@ -389,6 +416,14 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                               <span className="text-sm font-extrabold text-gray-900 tabular-nums">{formatINR(p.price)}</span>
                               {hasMrp && <span className="text-[10px] text-gray-400 line-through tabular-nums">{formatINR(p.mrp)}</span>}
                             </div>
+                            {rp && (
+                              <span className={[
+                                'inline-flex items-center gap-1 text-[10px] font-bold leading-none mt-1',
+                                rp.hot ? 'text-orange-600' : 'text-gray-500',
+                              ].join(' ')}>
+                                {rp.hot ? '🔥' : '📈'} {rp.text}
+                              </span>
+                            )}
                           </div>
                         </button>
                         <div className="px-2.5 pb-2.5">
@@ -425,6 +460,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onCategoryChange={setActiveCategory}
               categoryRailClassName="hidden"   /* category nav now lives in the pills above */
               showSearch={false}   /* the hero StoreSearchBar above already searches */
+              salesMap={salesMap}  /* real social proof on each card */
             />
 
           </div>

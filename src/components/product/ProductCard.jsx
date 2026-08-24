@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Minus, Check } from 'lucide-react';
+import { Plus, Minus, Check, Flame, TrendingUp } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection } from '../../utils/variants';
 import QtyField from '../cart/QtyField';
@@ -12,6 +12,7 @@ export default function ProductCard({
   onDecrease,
   onSetQty,
   onOpen,          // (id) => void — opens the product page; absent = card not tappable
+  proof,           // { text, hot } | null — real social proof ("41 bought this week")
 }) {
   const [justAdded, setJustAdded] = useState(false);
   const openDetail = onOpen ? () => onOpen(product.id) : undefined;
@@ -184,6 +185,20 @@ export default function ProductCard({
         {saving > 0 && (
           <span className="text-[10px] font-bold text-green-600 leading-none">
             You save {formatINR(saving)}
+          </span>
+        )}
+
+        {/* Social proof — real, aggregated sales ("41 bought this week" / "63 sold").
+            Only shows when the numbers are strong enough to help (see proofFor). */}
+        {proof && (
+          <span className={[
+            'inline-flex items-center gap-1 text-[10px] font-bold leading-none',
+            proof.hot ? 'text-orange-600' : 'text-gray-500',
+          ].join(' ')}>
+            {proof.hot
+              ? <Flame size={11} strokeWidth={2.5} className="fill-orange-400 text-orange-500" />
+              : <TrendingUp size={11} strokeWidth={2.5} />}
+            {proof.text}
           </span>
         )}
 
