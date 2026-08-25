@@ -3041,7 +3041,7 @@ export default function ManageStore() {
         ) : tab === 'insights' ? (
           <div className="animate-pl-fade-up">
             <AiInsightsTab slug={businessSlug} pin={storePin} themeColor={themeColor}
-                           enabled={aiInsightsEnabled} businessName={config.businessName} />
+                           enabled={aiInsightsEnabled} businessName={config.businessName} config={config} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">

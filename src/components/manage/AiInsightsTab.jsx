@@ -4,13 +4,18 @@ import {
   Lock, RefreshCw, MessageSquareText, PackagePlus,
 } from 'lucide-react';
 import { fetchAiSearches, analyzeSearches, buildInsightSummary, generateRecommendations } from '../../utils/aiInsights';
+import BotKnowledge from './BotKnowledge';
 
 /**
  * AiInsightsTab — Premium dashboard analysing storefront AI Search Bar queries.
  * Tells the owner what customers want: top searches, missed-opportunity products,
  * intent mix, unanswered questions, trends, and AI-written recommendations.
+ *
+ * Bot Knowledge (WhatsApp AI doc generator) renders at the top for ALL plans —
+ * it's the seller's own data and it funnels them toward WhatsApp AI; the query
+ * insights below stay Premium-gated.
  */
-export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabled = false, businessName = 'your store' }) {
+export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabled = false, businessName = 'your store', config = {} }) {
   const [loading, setLoading]   = useState(true);
   const [insights, setInsights] = useState(null);
 
@@ -37,6 +42,9 @@ export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabl
     setRecsLoading(false);
   }
 
+  // Query-insight analytics stay Premium-gated; Bot Knowledge (rendered above,
+  // for every plan) sits outside this.
+  const insightsBody = () => {
   // ── Premium gate ───────────────────────────────────────────────────────────
   if (!enabled) {
     return (
@@ -208,6 +216,14 @@ export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabl
           </ul>
         </Section>
       )}
+    </div>
+  );
+  };  // end insightsBody
+
+  return (
+    <div className="space-y-5">
+      <BotKnowledge config={config} themeColor={themeColor} />
+      {insightsBody()}
     </div>
   );
 }
