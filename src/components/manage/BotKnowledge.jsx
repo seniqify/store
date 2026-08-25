@@ -87,7 +87,7 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
               <button type="button" onClick={handleDownload}
                 className="inline-flex items-center gap-1.5 text-sm font-bold text-white px-4 py-2.5 rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 style={{ backgroundColor: themeColor }}>
-                <Download size={15} /> Generate &amp; download
+                <Download size={15} /> Download Word doc
               </button>
               <button type="button" onClick={handleCopy}
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 border border-gray-200 px-3 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95 transition">
@@ -116,9 +116,9 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
             <div className="mt-3.5 rounded-xl border border-gray-100 bg-gray-50/70 px-3.5 py-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">How to use it</p>
               <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside marker:text-gray-400 marker:font-bold">
-                <li>Tap <strong className="text-gray-800">Generate &amp; download</strong> to save the file.</li>
+                <li>Tap <strong className="text-gray-800">Download Word doc</strong> to save the .docx file.</li>
                 <li>In WhatsApp Business / Meta, open your AI assistant and go to <strong className="text-gray-800">Knowledge</strong>.</li>
-                <li>Upload this file. Re-upload after you add or change products.</li>
+                <li>Upload this Word document. Re-upload after you add or change products.</li>
               </ol>
             </div>
           </>

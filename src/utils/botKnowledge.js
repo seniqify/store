@@ -1,31 +1,37 @@
 import { formatINR } from './currency';
+import { paragraphsToDocxBlob } from './docxWriter';
 
 /**
  * WhatsApp AI Knowledge document generator.
  *
  * Turns a store's live PocketLink config (store info + every product) into a
- * clean, factual, AI-retrieval-friendly PLAIN-TEXT document the seller can
- * download and upload into Meta / WhatsApp Business AI ("AI knowledge").
+ * factual, AI-retrieval-friendly knowledge document the seller downloads and
+ * uploads into Meta / WhatsApp Business AI ("AI knowledge").
  *
- * Design notes (see the CTO notes in the PR):
- *  • Plain text (.txt), not a marketing brochure or PDF — optimised for an LLM
- *    knowledge base, which retrieves text, not layout.
- *  • Images are included as their hosted URLs, never embedded. Un-uploaded
- *    base64 `data:` images are skipped (huge + useless to a text knowledge base).
+ * Output is a real Word **.docx** (via docxWriter) — Meta's knowledge upload
+ * rejects plain .txt, and a .docx is UTF-8 so ₹, Marathi/Devanagari and emoji
+ * all survive (a dependency-free PDF can't render those). We build structured
+ * paragraphs once, then derive BOTH the .docx (download) and a plain-text form
+ * (Preview / Copy) from them.
+ *
+ * Design notes (CTO):
+ *  • Images = hosted URLs, never embedded; un-uploaded base64 `data:` images are
+ *    skipped (useless + huge in a knowledge base).
  *  • Product links use PocketLink's REAL per-product route: /{slug}/p/{id}.
- *  • Missing fields are OMITTED — nothing is invented.
- *  • Pure + modular: `buildKnowledgeDoc(config)` returns a string, so a future
- *    Meta-API sync layer can reuse the exact same builder.
+ *  • Missing fields are OMITTED — nothing invented.
+ *  • Pure + modular: `knowledgeParas(config)` is the single source of truth, so a
+ *    future Meta-API sync layer can reuse it.
  */
 
 export const STORE_ORIGIN = 'https://www.pocketlink.store';
-
 export const storeUrl   = (slug) => `${STORE_ORIGIN}/${slug}`;
 export const productUrl = (slug, id) => `${STORE_ORIGIN}/${slug}/p/${id}`;
 
+// Font sizes in half-points (22 = 11pt).
+const SZ = { title: 34, meta: 18, section: 26, product: 24, body: 21 };
+
 const isHttpUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s.trim());
-const clean     = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-// Descriptions can be multi-line — keep line breaks but trim trailing space.
+const clean      = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 const cleanBlock = (s) => String(s ?? '').replace(/[ \t]+\n/g, '\n').trim();
 
 function availability(p) {
@@ -39,7 +45,6 @@ function availability(p) {
   return 'In stock';
 }
 
-// All usable (http) image URLs for a product: primary first, then gallery.
 function imageUrls(p) {
   const all = [p.image, ...(Array.isArray(p.images) ? p.images : [])];
   return [...new Set(all.filter(isHttpUrl).map((u) => u.trim()))];
@@ -48,11 +53,9 @@ function imageUrls(p) {
 function priceLine(p) {
   const price = Number(p.price) || 0;
   const mrp   = Number(p.mrp) || 0;
-  if (mrp > price) return `${formatINR(price)}  (MRP ${formatINR(mrp)})`;
-  return formatINR(price);
+  return mrp > price ? `${formatINR(price)}  (MRP ${formatINR(mrp)})` : formatINR(price);
 }
 
-// Priced variants (Size/Weight…) → "Small: ₹120, Large: ₹200".
 function variantLine(p) {
   const v = p.variants;
   if (!v || !v.label || !Array.isArray(v.options) || !v.options.length) return '';
@@ -62,7 +65,6 @@ function variantLine(p) {
   return parts.length ? `${clean(v.label)} — ${parts.join(', ')}` : '';
 }
 
-// Extra choice types (Colour, Pack…) with optional +₹ add-ons.
 function extrasLines(p) {
   const groups = Array.isArray(p.variantExtras) ? p.variantExtras : [];
   return groups
@@ -76,7 +78,6 @@ function extrasLines(p) {
     .filter(Boolean);
 }
 
-// Descriptive attributes → "Weight: 250 g; Type: Veg".
 function detailsLine(p) {
   const attrs = Array.isArray(p.attributes) ? p.attributes.filter((a) => a && clean(a.value)) : [];
   if (!attrs.length) return '';
@@ -89,108 +90,92 @@ function categoryLabel(config, p) {
   return cat ? clean(cat.label) : '';
 }
 
-// "+91 9175187668" from any stored form.
 function prettyPhone(raw) {
   const wa = String(raw || '').replace(/\D/g, '');
-  if (!wa) return '';
-  const last10 = wa.slice(-10);
-  return `+91 ${last10}`;
+  return wa ? `+91 ${wa.slice(-10)}` : '';
 }
 
-// ── Store header block ────────────────────────────────────────────────────────
-function storeBlock(config) {
+function normalizedProducts(config) {
+  return Array.isArray(config.products) ? config.products.filter((p) => p && clean(p.name)) : [];
+}
+
+// ── The single source of truth: structured paragraphs ─────────────────────────
+export function knowledgeParas(config = {}) {
   const slug = config.slug;
-  const lines = ['=================================', 'STORE INFORMATION', '================================='];
-  const push = (label, val) => { const v = clean(val); if (v) lines.push(`${label}: ${v}`); };
-
-  push('Store Name', config.businessName || config.name);
-  if (clean(config.tagline)) lines.push(`About: ${clean(config.tagline)}`);
-  lines.push(`Website: ${storeUrl(slug)}`);
-
-  const wa = prettyPhone(config.whatsappNumber);
-  if (wa) lines.push(`WhatsApp / Contact: ${wa}`);
-
-  const place = [config.address, config.area, config.state].map(clean).filter(Boolean).join(', ');
-  if (place) lines.push(`Location: ${place}`);
-  if (clean(config.gst)) lines.push(`GSTIN: ${clean(config.gst)}`);
-
-  const cats = (config.categories || []).filter((c) => c.id !== 'all').map((c) => clean(c.label)).filter(Boolean);
-  if (cats.length) lines.push(`Product categories: ${cats.join(', ')}`);
-
-  // Ordering / customer-service info (factual, from config only).
-  lines.push('', 'HOW TO ORDER:');
-  lines.push(`- Open the store link (${storeUrl(slug)}), choose products, and tap "Order on WhatsApp".`);
-  if (wa) lines.push(`- Or message the shop on WhatsApp at ${wa}.`);
-  const estimate = clean(config.cart?.deliveryEstimate);
-  if (estimate) lines.push(`- Typical delivery time: ${estimate}.`);
-  const freeAbove = Number(config.cart?.freeShippingAbove);
-  if (freeAbove > 0) lines.push(`- Free delivery on orders above ${formatINR(freeAbove)}.`);
-
-  return lines.join('\n');
-}
-
-// ── One product block ─────────────────────────────────────────────────────────
-function productBlock(config, p, index) {
-  const slug = config.slug;
-  const lines = [`PRODUCT ${index}`];
-  const push = (label, val) => { const v = clean(val); if (v) lines.push(`${label}: ${v}`); };
-
-  push('Name', p.name);
-  lines.push(`Price: ${priceLine(p)}`);
-  push('Unit / Pack', p.unit);
-  push('Category', categoryLabel(config, p));
-  lines.push(`Availability: ${availability(p)}`);
-
-  const desc = cleanBlock(p.description);
-  if (desc) lines.push(`Description: ${desc}`);
-
-  const variants = variantLine(p);
-  if (variants) lines.push(`Options: ${variants}`);
-  extrasLines(p).forEach((l) => lines.push(`Choice — ${l}`));
-
-  const details = detailsLine(p);
-  if (details) lines.push(`Details: ${details}`);
-
-  const imgs = imageUrls(p);
-  if (imgs.length) {
-    lines.push(`Image: ${imgs[0]}`);
-    if (imgs.length > 1) lines.push(`More images: ${imgs.slice(1).join(', ')}`);
-  }
-
-  lines.push(`Product link: ${productUrl(slug, p.id)}`);
-  return lines.join('\n');
-}
-
-/**
- * Build the full knowledge document (plain text) from a store config.
- * Always reflects the CURRENT config passed in — regenerate any time.
- */
-export function buildKnowledgeDoc(config = {}) {
-  const products = Array.isArray(config.products) ? config.products.filter((p) => p && clean(p.name)) : [];
+  const products = normalizedProducts(config);
   const name = clean(config.businessName || config.name) || 'This store';
   const now = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
-  const header = [
-    `WHATSAPP AI KNOWLEDGE — ${name}`,
-    `Source: PocketLink. Generated ${now}.`,
-    `This document lists the store's details and every product so an AI assistant can answer customer questions accurately. Prices and availability are correct as of generation; regenerate when products change.`,
-  ].join('\n');
+  const paras = [];
+  const P = (text, o = {}) => paras.push({ text, size: SZ.body, ...o });
+  const blank = () => paras.push({ text: '' });
 
-  const productsHeader = ['=================================', `PRODUCTS (${products.length} item${products.length === 1 ? '' : 's'})`, '================================='].join('\n');
-  const productBlocks = products.map((p, i) => productBlock(config, p, i + 1)).join('\n\n----------\n\n');
+  // Header
+  P(`WhatsApp AI Knowledge — ${name}`, { bold: true, size: SZ.title });
+  P(`Source: PocketLink. Generated ${now}.`, { size: SZ.meta });
+  P('This document lists the store’s details and every product so an AI assistant can answer customer questions accurately. Prices and availability are correct as of generation; regenerate when products change.', { size: SZ.meta });
+  blank();
 
-  return [
-    header,
-    storeBlock(config),
-    productsHeader,
-    products.length ? productBlocks : 'No products have been added to this store yet.',
-    `--- End of knowledge document · ${products.length} product${products.length === 1 ? '' : 's'} ---`,
-  ].join('\n\n');
+  // Store information
+  P('STORE INFORMATION', { bold: true, size: SZ.section });
+  const info = (label, val) => { const v = clean(val); if (v) P(`${label}: ${v}`); };
+  info('Store Name', config.businessName || config.name);
+  if (clean(config.tagline)) P(`About: ${clean(config.tagline)}`);
+  P(`Website: ${storeUrl(slug)}`);
+  const wa = prettyPhone(config.whatsappNumber);
+  if (wa) P(`WhatsApp / Contact: ${wa}`);
+  const place = [config.address, config.area, config.state].map(clean).filter(Boolean).join(', ');
+  if (place) P(`Location: ${place}`);
+  if (clean(config.gst)) P(`GSTIN: ${clean(config.gst)}`);
+  const cats = (config.categories || []).filter((c) => c.id !== 'all').map((c) => clean(c.label)).filter(Boolean);
+  if (cats.length) P(`Product categories: ${cats.join(', ')}`);
+  blank();
+
+  P('HOW TO ORDER', { bold: true, size: SZ.body });
+  P(`- Open the store link (${storeUrl(slug)}), choose products, and tap “Order on WhatsApp”.`);
+  if (wa) P(`- Or message the shop on WhatsApp at ${wa}.`);
+  const estimate = clean(config.cart?.deliveryEstimate);
+  if (estimate) P(`- Typical delivery time: ${estimate}.`);
+  const freeAbove = Number(config.cart?.freeShippingAbove);
+  if (freeAbove > 0) P(`- Free delivery on orders above ${formatINR(freeAbove)}.`);
+  blank();
+
+  // Products
+  P(`PRODUCTS (${products.length} item${products.length === 1 ? '' : 's'})`, { bold: true, size: SZ.section });
+  blank();
+
+  products.forEach((p, i) => {
+    P(`PRODUCT ${i + 1}: ${clean(p.name)}`, { bold: true, size: SZ.product });
+    P(`Price: ${priceLine(p)}`);
+    const unit = clean(p.unit); if (unit) P(`Unit / Pack: ${unit}`);
+    const cat = categoryLabel(config, p); if (cat) P(`Category: ${cat}`);
+    P(`Availability: ${availability(p)}`);
+    const desc = cleanBlock(p.description); if (desc) P(`Description: ${desc}`);
+    const variants = variantLine(p); if (variants) P(`Options: ${variants}`);
+    extrasLines(p).forEach((l) => P(`Choice — ${l}`));
+    const details = detailsLine(p); if (details) P(`Details: ${details}`);
+    const imgs = imageUrls(p);
+    if (imgs.length) {
+      P(`Image: ${imgs[0]}`);
+      if (imgs.length > 1) P(`More images: ${imgs.slice(1).join(', ')}`);
+    }
+    P(`Product link: ${productUrl(slug, p.id)}`);
+    blank();
+  });
+
+  if (!products.length) P('No products have been added to this store yet.');
+  P(`— End of knowledge document · ${products.length} product${products.length === 1 ? '' : 's'} —`, { size: SZ.meta });
+  return paras;
 }
 
-/** A quick, honest quality summary for the UI (helps the seller improve the doc). */
+/** Plain-text form (for Preview / Copy) — derived from the same paragraphs. */
+export function buildKnowledgeDoc(config = {}) {
+  return knowledgeParas(config).map((p) => p.text).join('\n');
+}
+
+/** A quick, honest quality summary for the UI. */
 export function knowledgeSummary(config = {}) {
-  const products = Array.isArray(config.products) ? config.products.filter((p) => p && clean(p.name)) : [];
+  const products = normalizedProducts(config);
   return {
     products:           products.length,
     withImage:          products.filter((p) => imageUrls(p).length > 0).length,
@@ -200,13 +185,12 @@ export function knowledgeSummary(config = {}) {
 
 export function knowledgeFilename(config = {}) {
   const slug = clean(config.slug) || 'store';
-  return `${slug}-whatsapp-ai-knowledge.txt`;
+  return `${slug}-whatsapp-ai-knowledge.docx`;
 }
 
-/** Build + download the document as a .txt file (browser only). */
+/** Build + download the knowledge document as a Word .docx (browser only). */
 export function downloadKnowledgeDoc(config = {}) {
-  const text = buildKnowledgeDoc(config);
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const blob = paragraphsToDocxBlob(knowledgeParas(config));
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
@@ -215,5 +199,4 @@ export function downloadKnowledgeDoc(config = {}) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return text;
 }
