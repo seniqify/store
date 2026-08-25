@@ -12,9 +12,10 @@ import { buildKnowledgeDoc, downloadKnowledgeDoc, knowledgeSummary, knowledgeFil
  * this is the download-and-upload version, built on the same doc builder.)
  */
 export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
-  const [preview, setPreview] = useState(false);
-  const [copied, setCopied]   = useState(false);
-  const [doc, setDoc]         = useState('');
+  const [preview, setPreview]   = useState(false);
+  const [copied, setCopied]     = useState(false);
+  const [doc, setDoc]           = useState('');
+  const [building, setBuilding] = useState(false);
 
   const summary = useMemo(() => knowledgeSummary(config), [config]);
   const hasProducts = summary.products > 0;
@@ -25,7 +26,11 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
     return text;
   }
 
-  function handleDownload() { downloadKnowledgeDoc(config); }
+  async function handleDownload() {
+    if (building) return;
+    setBuilding(true);                    // fetching + embedding product photos
+    try { await downloadKnowledgeDoc(config); } finally { setBuilding(false); }
+  }
 
   async function handleCopy() {
     const text = doc || ensureDoc();
@@ -84,10 +89,12 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={handleDownload}
-                className="inline-flex items-center gap-1.5 text-sm font-bold text-white px-4 py-2.5 rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all"
+              <button type="button" onClick={handleDownload} disabled={building}
+                className="inline-flex items-center gap-1.5 text-sm font-bold text-white px-4 py-2.5 rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-60"
                 style={{ backgroundColor: themeColor }}>
-                <Download size={15} /> Download Word doc
+                {building
+                  ? <><RefreshCw size={15} className="animate-spin" /> Building…</>
+                  : <><Download size={15} /> Download Word doc</>}
               </button>
               <button type="button" onClick={handleCopy}
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 border border-gray-200 px-3 py-2.5 rounded-xl hover:bg-gray-50 active:scale-95 transition">
@@ -99,8 +106,10 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
               </button>
             </div>
 
-            <p className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-2.5">
+            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400 mt-2.5">
               <FileText size={12} /> {knowledgeFilename(config)}
+              <span className="text-gray-300">·</span>
+              Product photos are embedded
               <span className="text-gray-300">·</span>
               <RefreshCw size={11} /> Regenerate whenever your products change.
             </p>

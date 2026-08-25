@@ -5,32 +5,29 @@ import { paragraphsToDocxBlob } from './docxWriter';
  * WhatsApp AI Knowledge document generator.
  *
  * Turns a store's live PocketLink config (store info + every product) into a
- * factual, AI-retrieval-friendly knowledge document the seller downloads and
- * uploads into Meta / WhatsApp Business AI ("AI knowledge").
- *
- * Output is a real Word **.docx** (via docxWriter) — Meta's knowledge upload
- * rejects plain .txt, and a .docx is UTF-8 so ₹, Marathi/Devanagari and emoji
- * all survive (a dependency-free PDF can't render those). We build structured
- * paragraphs once, then derive BOTH the .docx (download) and a plain-text form
- * (Preview / Copy) from them.
+ * factual knowledge document the seller downloads and uploads into Meta /
+ * WhatsApp Business AI. Output is a real Word **.docx** (Meta rejects .txt) with
+ * the **actual product photos embedded** — not links.
  *
  * Design notes (CTO):
- *  • Images = hosted URLs, never embedded; un-uploaded base64 `data:` images are
- *    skipped (useless + huge in a knowledge base).
+ *  • Real Word doc, UTF-8 → ₹, Marathi/Devanagari and emoji all survive.
+ *  • Product photos are FETCHED and embedded as image parts. If an image can't be
+ *    fetched (network/CORS/unsupported type), we fall back to printing its URL so
+ *    nothing is lost. Only JPEG/PNG embed (Word-reliable).
  *  • Product links use PocketLink's REAL per-product route: /{slug}/p/{id}.
  *  • Missing fields are OMITTED — nothing invented.
- *  • Pure + modular: `knowledgeParas(config)` is the single source of truth, so a
- *    future Meta-API sync layer can reuse it.
+ *  • Pure builders + a single `collectContent(config)`, so a future Meta-API sync
+ *    layer can reuse it.
  */
 
 export const STORE_ORIGIN = 'https://www.pocketlink.store';
 export const storeUrl   = (slug) => `${STORE_ORIGIN}/${slug}`;
 export const productUrl = (slug, id) => `${STORE_ORIGIN}/${slug}/p/${id}`;
 
-// Font sizes in half-points (22 = 11pt).
 const SZ = { title: 34, meta: 18, section: 26, product: 24, body: 21 };
 
 const isHttpUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s.trim());
+const isDataImg = (s) => typeof s === 'string' && /^data:image\//i.test(s.trim());
 const clean      = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 const cleanBlock = (s) => String(s ?? '').replace(/[ \t]+\n/g, '\n').trim();
 
@@ -45,10 +42,12 @@ function availability(p) {
   return 'In stock';
 }
 
-function imageUrls(p) {
+// Embeddable sources (hosted URLs + inline data images), primary first.
+function imageSrcs(p) {
   const all = [p.image, ...(Array.isArray(p.images) ? p.images : [])];
-  return [...new Set(all.filter(isHttpUrl).map((u) => u.trim()))];
+  return [...new Set(all.filter((s) => isHttpUrl(s) || isDataImg(s)).map((s) => s.trim()))];
 }
+const httpImageUrl = (p) => imageSrcs(p).find(isHttpUrl) || null;
 
 function priceLine(p) {
   const price = Number(p.price) || 0;
@@ -84,7 +83,6 @@ function detailsLine(p) {
   return attrs.map((a) => `${clean(a.label || a.key)}: ${clean(a.value)}`).join('; ');
 }
 
-// Plain label only — no decorative emoji (keep the doc factual for retrieval).
 function categoryLabel(config, p) {
   const cat = (config.categories || []).find((c) => c.id === p.category);
   return cat ? clean(cat.label) : '';
@@ -99,24 +97,24 @@ function normalizedProducts(config) {
   return Array.isArray(config.products) ? config.products.filter((p) => p && clean(p.name)) : [];
 }
 
-// ── The single source of truth: structured paragraphs ─────────────────────────
-export function knowledgeParas(config = {}) {
+// ── Structured content (single source of truth) ───────────────────────────────
+// Text paragraphs, plus an { image:{ src, url } } marker where each product photo
+// belongs. The text/docx builders each resolve that marker their own way.
+function collectContent(config = {}) {
   const slug = config.slug;
   const products = normalizedProducts(config);
   const name = clean(config.businessName || config.name) || 'This store';
   const now = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
-  const paras = [];
-  const P = (text, o = {}) => paras.push({ text, size: SZ.body, ...o });
-  const blank = () => paras.push({ text: '' });
+  const items = [];
+  const P = (text, o = {}) => items.push({ text, size: SZ.body, ...o });
+  const blank = () => items.push({ text: '' });
 
-  // Header
   P(`WhatsApp AI Knowledge — ${name}`, { bold: true, size: SZ.title });
   P(`Source: PocketLink. Generated ${now}.`, { size: SZ.meta });
   P('This document lists the store’s details and every product so an AI assistant can answer customer questions accurately. Prices and availability are correct as of generation; regenerate when products change.', { size: SZ.meta });
   blank();
 
-  // Store information
   P('STORE INFORMATION', { bold: true, size: SZ.section });
   const info = (label, val) => { const v = clean(val); if (v) P(`${label}: ${v}`); };
   info('Store Name', config.businessName || config.name);
@@ -140,12 +138,13 @@ export function knowledgeParas(config = {}) {
   if (freeAbove > 0) P(`- Free delivery on orders above ${formatINR(freeAbove)}.`);
   blank();
 
-  // Products
   P(`PRODUCTS (${products.length} item${products.length === 1 ? '' : 's'})`, { bold: true, size: SZ.section });
   blank();
 
   products.forEach((p, i) => {
     P(`PRODUCT ${i + 1}: ${clean(p.name)}`, { bold: true, size: SZ.product });
+    const srcs = imageSrcs(p);
+    if (srcs.length) items.push({ image: { src: srcs[0], url: httpImageUrl(p) } });
     P(`Price: ${priceLine(p)}`);
     const unit = clean(p.unit); if (unit) P(`Unit / Pack: ${unit}`);
     const cat = categoryLabel(config, p); if (cat) P(`Category: ${cat}`);
@@ -154,23 +153,81 @@ export function knowledgeParas(config = {}) {
     const variants = variantLine(p); if (variants) P(`Options: ${variants}`);
     extrasLines(p).forEach((l) => P(`Choice — ${l}`));
     const details = detailsLine(p); if (details) P(`Details: ${details}`);
-    const imgs = imageUrls(p);
-    if (imgs.length) {
-      P(`Image: ${imgs[0]}`);
-      if (imgs.length > 1) P(`More images: ${imgs.slice(1).join(', ')}`);
-    }
     P(`Product link: ${productUrl(slug, p.id)}`);
     blank();
   });
 
   if (!products.length) P('No products have been added to this store yet.');
   P(`— End of knowledge document · ${products.length} product${products.length === 1 ? '' : 's'} —`, { size: SZ.meta });
-  return paras;
+  return items;
 }
 
-/** Plain-text form (for Preview / Copy) — derived from the same paragraphs. */
+// Text paragraphs — image markers become an "Image: <url>" line (Preview / Copy).
+export function knowledgeParas(config = {}) {
+  return collectContent(config).flatMap((it) => {
+    if (it.image) return it.image.url ? [{ text: `Image: ${it.image.url}`, size: SZ.body }] : [];
+    return [it];
+  });
+}
+
+/** Plain-text form (Preview / Copy). */
 export function buildKnowledgeDoc(config = {}) {
   return knowledgeParas(config).map((p) => p.text).join('\n');
+}
+
+// ── Image fetch/decode for embedding (JPEG/PNG only) ──────────────────────────
+async function loadImagePart(src) {
+  try {
+    let bytes; let contentType = '';
+    if (isDataImg(src)) {
+      const comma = src.indexOf(',');
+      contentType = src.slice(5, comma).split(';')[0] || '';
+      const bin = atob(src.slice(comma + 1));
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      const res = await fetch(src, { mode: 'cors' });
+      if (!res.ok) return null;
+      bytes = new Uint8Array(await res.arrayBuffer());
+      contentType = res.headers.get('content-type') || '';
+    }
+    let ext = /jpe?g/i.test(contentType) ? 'jpeg' : /png/i.test(contentType) ? 'png' : null;
+    if (!ext) {                                   // sniff magic bytes
+      if (bytes[0] === 0xFF && bytes[1] === 0xD8) ext = 'jpeg';
+      else if (bytes[0] === 0x89 && bytes[1] === 0x50) ext = 'png';
+    }
+    if (!ext) return null;
+    let w = 0; let h = 0;
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bmp = await createImageBitmap(new Blob([bytes], { type: `image/${ext}` }));
+        w = bmp.width; h = bmp.height; bmp.close && bmp.close();
+      }
+    } catch { /* dimensions optional */ }
+    return { bytes, ext, w, h };
+  } catch {
+    return null;
+  }
+}
+
+// Docx items — product photos fetched + embedded; failed ones fall back to text.
+async function buildKnowledgeItems(config = {}) {
+  const content = collectContent(config);
+  const srcs = [...new Set(content.filter((it) => it.image?.src).map((it) => it.image.src))];
+  const loaded = new Map();
+  await Promise.all(srcs.map(async (s) => { loaded.set(s, await loadImagePart(s)); }));
+
+  const out = [];
+  for (const it of content) {
+    if (it.image) {
+      const part = it.image.src ? loaded.get(it.image.src) : null;
+      if (part) out.push({ img: part });
+      else if (it.image.url) out.push({ text: `Image: ${it.image.url}`, size: SZ.body });
+    } else {
+      out.push(it);
+    }
+  }
+  return out;
 }
 
 /** A quick, honest quality summary for the UI. */
@@ -178,7 +235,7 @@ export function knowledgeSummary(config = {}) {
   const products = normalizedProducts(config);
   return {
     products:           products.length,
-    withImage:          products.filter((p) => imageUrls(p).length > 0).length,
+    withImage:          products.filter((p) => imageSrcs(p).length > 0).length,
     missingDescription: products.filter((p) => !cleanBlock(p.description)).length,
   };
 }
@@ -188,9 +245,10 @@ export function knowledgeFilename(config = {}) {
   return `${slug}-whatsapp-ai-knowledge.docx`;
 }
 
-/** Build + download the knowledge document as a Word .docx (browser only). */
-export function downloadKnowledgeDoc(config = {}) {
-  const blob = paragraphsToDocxBlob(knowledgeParas(config));
+/** Build (fetch + embed images) and download the .docx. Async. */
+export async function downloadKnowledgeDoc(config = {}) {
+  const items = await buildKnowledgeItems(config);
+  const blob = paragraphsToDocxBlob(items);
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;

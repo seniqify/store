@@ -1,21 +1,23 @@
 /**
- * Minimal, dependency-free .docx writer.
+ * Minimal, dependency-free .docx writer — now with embedded images.
  *
- * A .docx is just a ZIP of Office Open XML parts. We build the ZIP with the
- * "stored" (uncompressed) method — valid per spec, so Word and document
- * uploaders (incl. Meta / WhatsApp AI knowledge) accept it — and emit UTF-8 XML,
- * so ₹, Devanagari/Marathi and emoji all render correctly (a base-font PDF can't
- * do that without embedding fonts). Reused by the Bot Knowledge generator; kept
- * generic so anything else can produce a Word doc from paragraphs.
+ * A .docx is a ZIP of Office Open XML parts. We build a "stored" (uncompressed)
+ * ZIP — valid per spec, so Word and document uploaders (incl. Meta / WhatsApp AI
+ * knowledge) accept it — and emit UTF-8 XML, so ₹, Marathi/Devanagari and emoji
+ * all render (a base-font PDF can't). Product photos are embedded as real image
+ * parts (not links).
  *
- * paragraphsToDocxBlob([{ text, bold, size, gap }]) → Blob (a .docx file).
- *   size = half-points (22 = 11pt); gap = twips of space after the paragraph.
- *   A paragraph with empty text renders as a blank line.
+ * paragraphsToDocxBlob(items) → Blob (a .docx). Each item is either:
+ *   { text, bold, size, gap }                         a paragraph
+ *   { img: { bytes:Uint8Array, ext:'png'|'jpeg', w, h } }   an inline picture
  */
 
 const enc = new TextEncoder();
+const EMU_PER_IN = 914400;
+const EMU_PER_PX = 9525;          // at 96 dpi
+const MAX_IMG_IN = 2.4;           // cap the displayed picture box
 
-// ── CRC-32 (needed in every ZIP entry) ────────────────────────────────────────
+// ── CRC-32 ────────────────────────────────────────────────────────────────────
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -80,21 +82,7 @@ function zipStore(files) {
 const xmlEscape = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const CONTENT_TYPES =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-  '<Default Extension="xml" ContentType="application/xml"/>' +
-  '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
-  '</Types>';
-
-const ROOT_RELS =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
-  '</Relationships>';
-
-function paragraphXml(p) {
+function textParagraphXml(p) {
   if (!p || !String(p.text ?? '').length) return '<w:p/>';
   const rpr = [];
   if (p.bold) rpr.push('<w:b/>');
@@ -104,27 +92,99 @@ function paragraphXml(p) {
   return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(p.text)}</w:t></w:r></w:p>`;
 }
 
-/** Build the raw .docx bytes from an array of paragraph descriptors. */
-export function paragraphsToDocx(paras = []) {
-  const body = paras.map(paragraphXml).join('');
+// Fit the picture into a MAX_IMG_IN square, keeping aspect ratio.
+function emuSize(wPx, hPx) {
+  const cap = MAX_IMG_IN * EMU_PER_IN;
+  if (!(wPx > 0) || !(hPx > 0)) return { cx: Math.round(1.8 * EMU_PER_IN), cy: Math.round(1.8 * EMU_PER_IN) };
+  let cx = wPx * EMU_PER_PX, cy = hPx * EMU_PER_PX;
+  const s = Math.min(cap / cx, cap / cy, 1);
+  return { cx: Math.round(cx * s), cy: Math.round(cy * s) };
+}
+
+function imageParagraphXml(rid, id, wPx, hPx) {
+  const { cx, cy } = emuSize(wPx, hPx);
+  return (
+    '<w:p><w:r><w:drawing>' +
+    `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:docPr id="${id}" name="Picture ${id}"/>` +
+    '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+    '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    `<pic:nvPicPr><pic:cNvPr id="${id}" name="Picture ${id}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+    '</pic:pic></a:graphicData></a:graphic></wp:inline>' +
+    '</w:drawing></w:r></w:p>'
+  );
+}
+
+/** Build the raw .docx bytes from an array of text/image items. */
+export function paragraphsToDocx(items = []) {
+  const media = [];
+  const rels = [];
+  const exts = new Set();
+  let imgN = 0;
+
+  const body = items.map((it) => {
+    if (it && it.img && it.img.bytes) {
+      imgN++;
+      const ext = it.img.ext === 'png' ? 'png' : 'jpeg';
+      exts.add(ext);
+      const file = `image${imgN}.${ext}`;
+      const rid = `rId${imgN}`;
+      media.push({ name: `word/media/${file}`, data: it.img.bytes });
+      rels.push({ id: rid, target: `media/${file}` });
+      return imageParagraphXml(rid, imgN, it.img.w, it.img.h);
+    }
+    return textParagraphXml(it);
+  }).join('');
+
+  const imgDefaults = [...exts].map((e) => `<Default Extension="${e}" ContentType="image/${e}"/>`).join('');
+  const contentTypes =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' + imgDefaults +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '</Types>';
+
+  const rootRels =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+    '</Relationships>';
+
+  const docRels =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    rels.map((r) => `<Relationship Id="${r.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${r.target}"/>`).join('') +
+    '</Relationships>';
+
   const documentXml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
-    body +
+    '<w:document ' +
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    '<w:body>' + body +
     '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>' +
     '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>' +
     '</w:body></w:document>';
 
   return zipStore([
-    { name: '[Content_Types].xml', data: enc.encode(CONTENT_TYPES) },
-    { name: '_rels/.rels',         data: enc.encode(ROOT_RELS) },
-    { name: 'word/document.xml',   data: enc.encode(documentXml) },
+    { name: '[Content_Types].xml',            data: enc.encode(contentTypes) },
+    { name: '_rels/.rels',                    data: enc.encode(rootRels) },
+    { name: 'word/_rels/document.xml.rels',   data: enc.encode(docRels) },
+    { name: 'word/document.xml',              data: enc.encode(documentXml) },
+    ...media,
   ]);
 }
 
-/** Same, wrapped as a downloadable .docx Blob. */
-export function paragraphsToDocxBlob(paras = []) {
-  return new Blob([paragraphsToDocx(paras)], {
+export function paragraphsToDocxBlob(items = []) {
+  return new Blob([paragraphsToDocx(items)], {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
 }
