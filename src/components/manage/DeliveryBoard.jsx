@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
-  ChevronRight, ExternalLink, RefreshCw, MessageCircle, PackageOpen,
+  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen,
 } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
@@ -39,8 +39,19 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const [orders, setOrders]   = useState(null);   // null = loading
   const [syncing, setSyncing] = useState(false);
   const [filter, setFilter]   = useState('all');
-  const [courier, setCourier] = useState('all');
-  const [active, setActive]   = useState(null);   // order open in the drawer
+  const [courier, setCourier]         = useState('all');
+  const [courierMenu, setCourierMenu] = useState(false);   // courier dropdown open
+  const [active, setActive]           = useState(null);    // order open in the drawer
+  const ddRef = useRef(null);
+
+  // close the courier dropdown on an outside tap
+  useEffect(() => {
+    if (!courierMenu) return undefined;
+    const h = (e) => { if (ddRef.current && !ddRef.current.contains(e.target)) setCourierMenu(false); };
+    document.addEventListener('mousedown', h);
+    document.addEventListener('touchstart', h);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('touchstart', h); };
+  }, [courierMenu]);
 
   const grab = useCallback(async () => {
     const rows = await fetchOrders(slug, pin);
@@ -94,14 +105,16 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
     .reduce((n, o) => n + (Number(o.total) || 0), 0);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
-  const CSEL_ON = {
-    all:       'bg-gray-900 text-white border-gray-900',
-    shadowfax: 'bg-orange-50 text-orange-700 border-orange-300',
-    delhivery: 'bg-indigo-50 text-indigo-700 border-indigo-300',
-    local:     'bg-emerald-50 text-emerald-700 border-emerald-300',
+  const TRIG = {
+    all:       'bg-white border-gray-200 text-gray-800',
+    shadowfax: 'bg-orange-50 border-orange-200 text-orange-700',
+    delhivery: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+    local:     'bg-emerald-50 border-emerald-200 text-emerald-700',
   };
   const courierCount = (k) => (orders || []).filter((o) => courierInfo(o.courier).key === k).length;
   const CourierIcon = (k) => (k === 'delhivery' ? Truck : k === 'all' ? Package : Bike);
+  const courierName = (k) => (k === 'all' ? 'All couriers' : courierInfo(k).name);
+  const courierNum  = (k) => (k === 'all' ? (orders || []).length : courierCount(k));
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -147,24 +160,36 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         )}
       </div>
 
-      {/* courier selector — only when more than one courier ships */}
+      {/* courier selector (dropdown) — only when more than one courier ships */}
       {showCourierSel && (
-        <div className="flex gap-2 mb-3">
-          {['all', ...courierKeys].map((k) => {
-            const on = activeCourier === k;
-            const Ic = CourierIcon(k);
-            const name = k === 'all' ? 'All' : courierInfo(k).name;
-            const n = k === 'all' ? (orders || []).length : courierCount(k);
-            return (
-              <button key={k} type="button" onClick={() => setCourier(k)}
-                className={['flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl border transition active:scale-95',
-                  on ? (CSEL_ON[k] || CSEL_ON.all) : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'].join(' ')}>
-                <Ic size={13} /> {name}
-                <span className={['text-[10px] font-extrabold px-1.5 rounded-full tabular-nums',
-                  on ? (k === 'all' ? 'bg-white/25 text-white' : 'bg-white/70') : 'bg-gray-100 text-gray-400'].join(' ')}>{n}</span>
-              </button>
-            );
-          })}
+        <div className="relative mb-3" ref={ddRef}>
+          {(() => { const Ic = CourierIcon(activeCourier); return (
+            <button type="button" onClick={() => setCourierMenu((v) => !v)} aria-haspopup="listbox" aria-expanded={courierMenu}
+              className={['inline-flex items-center gap-2 text-sm font-bold rounded-xl border px-3.5 py-2.5 shadow-sm active:scale-[0.98] transition',
+                TRIG[activeCourier] || TRIG.all].join(' ')}>
+              <Ic size={15} />
+              <span>{courierName(activeCourier)}</span>
+              <span className="text-[11px] font-extrabold text-gray-500 bg-black/5 rounded-full px-1.5 tabular-nums">{courierNum(activeCourier)}</span>
+              <ChevronDown size={15} className={`text-gray-400 transition-transform ${courierMenu ? 'rotate-180' : ''}`} />
+            </button>
+          ); })()}
+          {courierMenu && (
+            <div role="listbox" className="absolute left-0 top-full mt-1.5 z-30 w-60 max-w-[80vw] bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden">
+              {['all', ...courierKeys].map((k) => {
+                const on = activeCourier === k; const Ic = CourierIcon(k);
+                return (
+                  <button key={k} type="button" role="option" aria-selected={on}
+                    onClick={() => { setCourier(k); setCourierMenu(false); }}
+                    className={['w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-left', on ? 'bg-gray-50' : 'hover:bg-gray-50'].join(' ')}>
+                    <Ic size={15} className="text-gray-500 flex-shrink-0" />
+                    <span className="flex-1 text-gray-800">{courierName(k)}</span>
+                    <span className="text-[11px] font-extrabold text-gray-400 tabular-nums">{courierNum(k)}</span>
+                    {on && <Check size={14} className="text-gray-900" strokeWidth={3} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
