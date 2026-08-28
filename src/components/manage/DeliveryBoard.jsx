@@ -8,6 +8,7 @@ import { fetchOrders } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo } from '../../utils/deliveryStatus';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 const BUCKET_ICON = { attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check };
 
@@ -308,6 +309,9 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
     return () => { alive = false; };
   }, [slug, pin, o.id]);
 
+  // Lock the board behind the drawer so scrolling the timeline doesn't move it.
+  useScrollLock(true);
+
   const timeline = Array.isArray(data?.timeline) ? data.timeline : [];
   const trackUrl = data?.customerTrackUrl || data?.trackUrl || null;
   const waLink = trackWaLink(o, trackUrl, storeName);
@@ -335,7 +339,7 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
           </div>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4">
+        <div className="overflow-y-auto overscroll-contain px-5 py-4">
           {/* NDR alert */}
           {ndr && (
             <div className="rounded-2xl border border-red-100 bg-gradient-to-b from-white to-red-50/70 p-4 mb-4">
