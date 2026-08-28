@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
-  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen,
+  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter,
 } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
@@ -41,17 +41,22 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const [filter, setFilter]   = useState('all');
   const [courier, setCourier]         = useState('all');
   const [courierMenu, setCourierMenu] = useState(false);   // courier dropdown open
+  const [statusMenu, setStatusMenu]   = useState(false);   // status dropdown open
   const [active, setActive]           = useState(null);    // order open in the drawer
   const ddRef = useRef(null);
+  const sdRef = useRef(null);
 
-  // close the courier dropdown on an outside tap
+  // close either dropdown on an outside tap
   useEffect(() => {
-    if (!courierMenu) return undefined;
-    const h = (e) => { if (ddRef.current && !ddRef.current.contains(e.target)) setCourierMenu(false); };
+    if (!courierMenu && !statusMenu) return undefined;
+    const h = (e) => {
+      if (courierMenu && ddRef.current && !ddRef.current.contains(e.target)) setCourierMenu(false);
+      if (statusMenu && sdRef.current && !sdRef.current.contains(e.target)) setStatusMenu(false);
+    };
     document.addEventListener('mousedown', h);
     document.addEventListener('touchstart', h);
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('touchstart', h); };
-  }, [courierMenu]);
+  }, [courierMenu, statusMenu]);
 
   const grab = useCallback(async () => {
     const rows = await fetchOrders(slug, pin);
@@ -164,7 +169,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
       {showCourierSel && (
         <div className="relative mb-3" ref={ddRef}>
           {(() => { const Ic = CourierIcon(activeCourier); return (
-            <button type="button" onClick={() => setCourierMenu((v) => !v)} aria-haspopup="listbox" aria-expanded={courierMenu}
+            <button type="button" onClick={() => { setStatusMenu(false); setCourierMenu((v) => !v); }} aria-haspopup="listbox" aria-expanded={courierMenu}
               className={['inline-flex items-center gap-2 text-sm font-bold rounded-xl border px-3.5 py-2.5 shadow-sm active:scale-[0.98] transition',
                 TRIG[activeCourier] || TRIG.all].join(' ')}>
               <Ic size={15} />
@@ -193,18 +198,49 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       )}
 
-      {/* status filter chips + refresh */}
+      {/* status filter (dropdown) + refresh */}
       <div className="flex items-center gap-2 mb-3">
-        <div className="flex gap-2 overflow-x-auto flex-1 no-scrollbar -mx-1 px-1 py-0.5">
-          <Chip on={effFilter === 'all'} onClick={() => setFilter('all')}>All <b className="tabular-nums opacity-60">{total}</b></Chip>
-          {BUCKETS.filter((b) => count(b)).map((b) => (
-            <Chip key={b} tone={b === 'attention' ? 'red' : ''} on={effFilter === b} onClick={() => setFilter(b)}>
-              {BUCKET_META[b].label} <b className="tabular-nums opacity-60">{count(b)}</b>
-            </Chip>
-          ))}
+        <div className="relative" ref={sdRef}>
+          {(() => {
+            const cur = effFilter;
+            const Ic = cur === 'all' ? ListFilter : BUCKET_ICON[cur];
+            const label = cur === 'all' ? 'All statuses' : BUCKET_META[cur].label;
+            const n = cur === 'all' ? total : count(cur);
+            const tint = cur === 'all' ? 'bg-white border-gray-200 text-gray-800' : BUCKET_META[cur].soft;
+            return (
+              <button type="button" onClick={() => { setCourierMenu(false); setStatusMenu((v) => !v); }} aria-haspopup="listbox" aria-expanded={statusMenu}
+                className={['inline-flex items-center gap-2 text-sm font-bold rounded-xl border px-3.5 py-2.5 shadow-sm active:scale-[0.98] transition', tint].join(' ')}>
+                <Ic size={15} />
+                <span>{label}</span>
+                <span className="text-[11px] font-extrabold text-gray-500 bg-black/5 rounded-full px-1.5 tabular-nums">{n}</span>
+                <ChevronDown size={15} className={`text-gray-400 transition-transform ${statusMenu ? 'rotate-180' : ''}`} />
+              </button>
+            );
+          })()}
+          {statusMenu && (
+            <div role="listbox" className="absolute left-0 top-full mt-1.5 z-30 w-60 max-w-[80vw] bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden">
+              {['all', ...BUCKETS.filter((b) => count(b))].map((k) => {
+                const on = effFilter === k;
+                const Ic = k === 'all' ? ListFilter : BUCKET_ICON[k];
+                const label = k === 'all' ? 'All statuses' : BUCKET_META[k].label;
+                const n = k === 'all' ? total : count(k);
+                const dot = k === 'all' ? '#9ca3af' : BUCKET_META[k].stripe;
+                return (
+                  <button key={k} type="button" role="option" aria-selected={on}
+                    onClick={() => { setFilter(k); setStatusMenu(false); }}
+                    className={['w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-left', on ? 'bg-gray-50' : 'hover:bg-gray-50'].join(' ')}>
+                    <Ic size={15} className="flex-shrink-0" style={{ color: dot }} />
+                    <span className="flex-1 text-gray-800">{label}</span>
+                    <span className="text-[11px] font-extrabold text-gray-400 tabular-nums">{n}</span>
+                    {on && <Check size={14} className="text-gray-900" strokeWidth={3} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <button onClick={sync} disabled={syncing}
-          className="flex-shrink-0 p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50" aria-label="Refresh live status">
+          className="ml-auto flex-shrink-0 p-2.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50" aria-label="Refresh live status">
           <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -246,14 +282,6 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
       )}
     </div>
   );
-}
-
-function Chip({ on, tone, onClick, children }) {
-  const base = 'flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border whitespace-nowrap transition active:scale-95';
-  const cls = on
-    ? (tone === 'red' ? 'bg-red-600 text-white border-red-600' : 'bg-gray-900 text-white border-gray-900')
-    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50';
-  return <button type="button" onClick={onClick} className={`${base} ${cls}`}>{children}</button>;
 }
 
 function OrderCard({ o, bucket, themeColor, onOpen }) {
