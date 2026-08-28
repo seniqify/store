@@ -70,6 +70,20 @@ export async function bookShipment(slug, pin, orderId, details = {}) {
   return data;
 }
 
+/** Owner-only: refresh the live courier status for every open shipment in one
+ *  batch (PIN-checked). Returns { updated, checked }. Never throws — a failed
+ *  sync just leaves the stored statuses as-is. */
+export async function syncDeliveryStatuses(slug, pin) {
+  try {
+    const hashedPin = await hashPin(pin);
+    const { data, error } = await supabase.functions.invoke('shipping-sync', { body: { slug, hashedPin } });
+    if (error || data?.error) return { updated: 0, error: true };
+    return data || { updated: 0 };
+  } catch {
+    return { updated: 0, error: true };
+  }
+}
+
 /** Owner-only: label | track | cancel on a booked order (PIN-checked). */
 export async function shipmentOp(slug, pin, orderId, action) {
   const hashedPin = await hashPin(pin);

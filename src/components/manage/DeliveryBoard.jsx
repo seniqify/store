@@ -5,7 +5,7 @@ import {
   ChevronRight, ExternalLink, RefreshCw, MessageCircle, PackageOpen,
 } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
-import { shipmentOp } from '../../utils/shippingConnect';
+import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo } from '../../utils/deliveryStatus';
 
@@ -35,37 +35,72 @@ function trackWaLink(o, trackUrl, storeName) {
 }
 
 export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', storeName = '' }) {
-  const [orders, setOrders]       = useState(null);   // null = loading
-  const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter]       = useState('all');
-  const [active, setActive]       = useState(null);   // order open in the drawer
+  const [orders, setOrders]   = useState(null);   // null = loading
+  const [syncing, setSyncing] = useState(false);
+  const [filter, setFilter]   = useState('all');
+  const [courier, setCourier] = useState('all');
+  const [active, setActive]   = useState(null);   // order open in the drawer
 
-  const load = useCallback(async (silent) => {
-    if (!silent) setOrders(null); else setRefreshing(true);
-    try {
-      const rows = await fetchOrders(slug, pin);
-      // Only booked shipments belong on the board (they carry an AWB).
-      setOrders((rows || []).filter((o) => o.awb));
-    } finally { setRefreshing(false); }
+  const grab = useCallback(async () => {
+    const rows = await fetchOrders(slug, pin);
+    return (rows || []).filter((o) => o.awb);   // only booked shipments (they carry an AWB)
   }, [slug, pin]);
 
-  useEffect(() => { load(false); }, [load]);
+  // Pull the live courier status for every open shipment, then re-read. This is what
+  // keeps the board matching the courier — the stored status is only the booking-time
+  // value until the webhook or a manual Track updates it, which often never happens.
+  const sync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncDeliveryStatuses(slug, pin);
+      setOrders(await grab());
+    } finally { setSyncing(false); }
+  }, [slug, pin, grab]);
 
-  // Group into buckets.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setOrders(null);
+      const first = await grab();
+      if (!alive) return;
+      setOrders(first);                       // stored statuses render instantly
+      setSyncing(true);
+      await syncDeliveryStatuses(slug, pin);  // then correct them from the courier
+      if (!alive) return;
+      setOrders(await grab());
+      setSyncing(false);
+    })();
+    return () => { alive = false; };
+  }, [slug, pin, grab]);
+
+  // Which couriers appear → drives the selector (hidden for single-courier stores).
+  const courierKeys = [...new Set((orders || []).map((o) => courierInfo(o.courier).key))];
+  const showCourierSel = courierKeys.length > 1;
+  const activeCourier = showCourierSel ? courier : 'all';
+
+  // Courier-scoped pool → buckets. Courier + status filters compose.
+  const pool = (orders || []).filter((o) => activeCourier === 'all' || courierInfo(o.courier).key === activeCourier);
   const groups = {};
   BUCKETS.forEach((b) => { groups[b] = []; });
-  (orders || []).forEach((o) => {
-    const b = classifyBucket(o);
-    (groups[b] || (groups[b] = [])).push(o);
-  });
+  pool.forEach((o) => { const b = classifyBucket(o); (groups[b] || (groups[b] = [])).push(o); });
   const count = (b) => (groups[b] || []).length;
-  const total = (orders || []).length;
+  const total = pool.length;
+  // if the active status filter emptied out under this courier, fall back to All
+  const effFilter = (filter === 'all' || count(filter)) ? filter : 'all';
 
-  const codToCollect = (orders || [])
+  const codToCollect = pool
     .filter((o) => o.payment_method === 'cod' && !['delivered', 'cancelled'].includes(classifyBucket(o)))
     .reduce((n, o) => n + (Number(o.total) || 0), 0);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
+  const CSEL_ON = {
+    all:       'bg-gray-900 text-white border-gray-900',
+    shadowfax: 'bg-orange-50 text-orange-700 border-orange-300',
+    delhivery: 'bg-indigo-50 text-indigo-700 border-indigo-300',
+    local:     'bg-emerald-50 text-emerald-700 border-emerald-300',
+  };
+  const courierCount = (k) => (orders || []).filter((o) => courierInfo(o.courier).key === k).length;
+  const CourierIcon = (k) => (k === 'delhivery' ? Truck : k === 'all' ? Package : Bike);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -96,19 +131,55 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       </div>
 
-      {/* filter chips + refresh */}
+      {/* live-sync indicator */}
+      <div className="flex items-center gap-1.5 mb-2.5 px-0.5">
+        {syncing ? (
+          <>
+            <RefreshCw size={12} className="animate-spin text-gray-400" />
+            <span className="text-[11px] font-semibold text-gray-400">Syncing live status from the courier…</span>
+          </>
+        ) : (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 ring-2 ring-green-100" />
+            <span className="text-[11px] font-semibold text-green-600">Live status · synced from the courier</span>
+          </>
+        )}
+      </div>
+
+      {/* courier selector — only when more than one courier ships */}
+      {showCourierSel && (
+        <div className="flex gap-2 mb-3">
+          {['all', ...courierKeys].map((k) => {
+            const on = activeCourier === k;
+            const Ic = CourierIcon(k);
+            const name = k === 'all' ? 'All' : courierInfo(k).name;
+            const n = k === 'all' ? (orders || []).length : courierCount(k);
+            return (
+              <button key={k} type="button" onClick={() => setCourier(k)}
+                className={['flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl border transition active:scale-95',
+                  on ? (CSEL_ON[k] || CSEL_ON.all) : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'].join(' ')}>
+                <Ic size={13} /> {name}
+                <span className={['text-[10px] font-extrabold px-1.5 rounded-full tabular-nums',
+                  on ? (k === 'all' ? 'bg-white/25 text-white' : 'bg-white/70') : 'bg-gray-100 text-gray-400'].join(' ')}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* status filter chips + refresh */}
       <div className="flex items-center gap-2 mb-3">
         <div className="flex gap-2 overflow-x-auto flex-1 no-scrollbar -mx-1 px-1 py-0.5">
-          <Chip on={filter === 'all'} onClick={() => setFilter('all')}>All <b className="tabular-nums opacity-60">{total}</b></Chip>
+          <Chip on={effFilter === 'all'} onClick={() => setFilter('all')}>All <b className="tabular-nums opacity-60">{total}</b></Chip>
           {BUCKETS.filter((b) => count(b)).map((b) => (
-            <Chip key={b} tone={b === 'attention' ? 'red' : ''} on={filter === b} onClick={() => setFilter(b)}>
+            <Chip key={b} tone={b === 'attention' ? 'red' : ''} on={effFilter === b} onClick={() => setFilter(b)}>
               {BUCKET_META[b].label} <b className="tabular-nums opacity-60">{count(b)}</b>
             </Chip>
           ))}
         </div>
-        <button onClick={() => load(true)} disabled={refreshing}
-          className="flex-shrink-0 p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50" aria-label="Refresh">
-          <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+        <button onClick={sync} disabled={syncing}
+          className="flex-shrink-0 p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50" aria-label="Refresh live status">
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -123,7 +194,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       ) : (
         <div className="space-y-5">
-          {BUCKETS.filter((b) => count(b) && (filter === 'all' || filter === b)).map((b) => {
+          {BUCKETS.filter((b) => count(b) && (effFilter === 'all' || effFilter === b)).map((b) => {
             const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
             return (
               <section key={b}>
