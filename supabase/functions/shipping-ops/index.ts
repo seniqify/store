@@ -43,12 +43,35 @@ serve(async (req) => {
     if (order?.courier === 'shadowfax' || acct?.provider === 'shadowfax') {
       const sBase = acct?.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
       if (action === 'track') {
-        // Live status via the v4 tracking API; falls back to the stored status.
+        // Live status + full hub-by-hub journey via the v4 tracking API. Returns a
+        // normalised timeline the Delivery board renders in-app (no courier login).
         const tr = await fetch(`${sBase}/v4/clients/orders/${awb}/track/`, { headers: { Authorization: `Token ${token}` } });
         const td = await tr.json().catch(() => ({}));
-        const st = td?.order_details?.status_display || td?.order_details?.status || order?.shipment_status || 'Booked';
-        if (td?.order_details?.status_display) await supabase.from('orders').update({ shipment_status: st }).eq('id', orderId).eq('store_slug', slug);
-        return json({ status: st, trackUrl: null });
+        const od = td?.order_details || {};
+        const events = Array.isArray(td?.tracking_details) ? td.tracking_details : [];
+        const timeline = events.map((e: any) => ({
+          code:   String(e?.status_id || '').toLowerCase(),
+          label:  e?.status || '',
+          place:  e?.location || '',
+          ts:     e?.created || '',
+          remarks: e?.remarks || '',
+        }));
+        const st = od.status_display || od.status || order?.shipment_status || 'Booked';
+        if (od.status_display) await supabase.from('orders').update({ shipment_status: st }).eq('id', orderId).eq('store_slug', slug);
+        // NDR reason: if the latest scan is an attempt/exception code, surface its remark.
+        const last = events[events.length - 1] || {};
+        const lastCode = String(last?.status_id || '').toLowerCase();
+        const ndrCodes = ['nc', 'undelivered', 'cnr', 'npr', 'ud', 'customer_not_available', 'reattempt', 'address_issue', 'rto', 'rto_initiated'];
+        const ndr = ndrCodes.some((c) => lastCode.includes(c)) ? (last?.remarks || st) : null;
+        return json({
+          status: st,
+          timeline,
+          rider: od.rider_name ? { name: od.rider_name, phone: od.rider_contact || '' } : null,
+          promisedDate: od.promised_delivery_date || null,
+          customerTrackUrl: od.customer_track_url || null,
+          ndrReason: ndr,
+          trackUrl: null,
+        });
       }
       if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
       if (action === 'cancel') {
@@ -79,10 +102,32 @@ serve(async (req) => {
     if (action === 'track') {
       const r = await fetch(`${BASE}/api/v1/packages/json/?waybill=${awb}`, { headers });
       const d = await r.json().catch(() => ({}));
-      const st = d?.ShipmentData?.[0]?.Shipment?.Status?.Status || null;
-      const inst = d?.ShipmentData?.[0]?.Shipment?.Status?.Instructions || '';
+      const shp  = d?.ShipmentData?.[0]?.Shipment || {};
+      const st   = shp?.Status?.Status || null;
+      const inst = shp?.Status?.Instructions || '';
+      const scans = Array.isArray(shp?.Scans) ? shp.Scans : [];
+      const timeline = scans.map((s: any) => {
+        const sc = s?.ScanDetail || {};
+        return {
+          code:   String(sc?.StatusCode || '').toLowerCase(),
+          label:  sc?.Scan || '',
+          place:  sc?.ScannedLocation || '',
+          ts:     sc?.ScanDateTime || '',
+          remarks: sc?.Instructions || '',
+        };
+      });
       if (st) await supabase.from('orders').update({ shipment_status: st }).eq('id', orderId).eq('store_slug', slug);
-      return json({ status: st, instructions: inst, trackUrl: `https://www.delhivery.com/track/package/${awb}` });
+      const ndr = /pending|undeliver|not deliver|exception|\brto\b|address|refus|held/i.test(`${st} ${inst}`) ? (inst || st) : null;
+      return json({
+        status: st,
+        instructions: inst,
+        timeline,
+        rider: null,
+        promisedDate: shp?.ExpectedDeliveryDate || null,
+        customerTrackUrl: null,
+        ndrReason: ndr,
+        trackUrl: `https://www.delhivery.com/track/package/${awb}`,
+      });
     }
 
     if (action === 'cancel') {

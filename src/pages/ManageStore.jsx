@@ -46,6 +46,7 @@ import OverviewTab                                       from '../components/man
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
+import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 import NewOrderToast                                       from '../components/manage/NewOrderToast';
 import { useNewOrders }                                    from '../hooks/useNewOrders';
@@ -1694,6 +1695,31 @@ function HoursEditor({ value, onChange, themeColor }) {
 }
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
+// ── Delivery tab shell — an operational Shipments board (the daily job: track
+// every courier's parcels, act on what's stuck) + the fulfilment Settings below,
+// toggled by a segmented control. Board is the default. ──────────────────────
+function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError }) {
+  const [view, setView] = useState('board');
+  const seg = (k, label) => (
+    <button type="button" onClick={() => setView(k)}
+      className={['flex-1 text-sm font-bold py-2 rounded-lg transition active:scale-[0.98]',
+        view === k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'].join(' ')}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4 max-w-xs">
+        {seg('board', '🛵 Shipments')}
+        {seg('settings', '⚙ Settings')}
+      </div>
+      {view === 'board'
+        ? <DeliveryBoard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />
+        : <ManageDelivery config={config} onChange={onChange} onSave={onSave} saveStatus={saveStatus} saveError={saveError} />}
+    </div>
+  );
+}
+
 // ── Delivery tab — fulfilment, charges, areas, and the dispatch rider ─────────
 function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
   const themeColor = config.theme?.primary || '#0d9488';
@@ -3081,7 +3107,11 @@ export default function ManageStore() {
             />
           )}
           {tab === 'delivery' && (
-            <ManageDelivery
+            <DeliveryTab
+              slug={businessSlug}
+              pin={storePin}
+              themeColor={themeColor}
+              storeName={config.businessName || businessSlug}
               config={config}
               onChange={handleChange}
               onSave={handleSave}
