@@ -108,6 +108,9 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const codToCollect = pool
     .filter((o) => o.payment_method === 'cod' && !['delivered', 'cancelled'].includes(classifyBucket(o)))
     .reduce((n, o) => n + (Number(o.total) || 0), 0);
+  const codCollectedAmt = pool
+    .filter((o) => o.payment_method === 'cod' && classifyBucket(o) === 'delivered')
+    .reduce((n, o) => n + (Number(o.total) || 0), 0);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
   const TRIG = {
@@ -147,6 +150,9 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         <div className={stat}>
           <p className="text-2xl font-extrabold leading-none tabular-nums text-gray-900">{formatINR(codToCollect)}</p>
           <p className="text-[11px] font-semibold text-gray-500 mt-1.5">COD still to collect</p>
+          {codCollectedAmt > 0 && (
+            <p className="text-[10.5px] font-bold text-emerald-600 mt-1">✓ {formatINR(codCollectedAmt)} collected</p>
+          )}
         </div>
       </div>
 
@@ -288,6 +294,7 @@ function OrderCard({ o, bucket, themeColor, onOpen }) {
   const M = BUCKET_META[bucket];
   const c = courierInfo(o.courier);
   const isCod = o.payment_method === 'cod';
+  const codCollected = isCod && bucket === 'delivered';   // COD delivered = cash taken at the door
   const phone = last10(o.customer_phone);
   const items = Array.isArray(o.items) ? o.items : [];
   const prod = items.length
@@ -312,8 +319,11 @@ function OrderCard({ o, bucket, themeColor, onOpen }) {
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-base font-extrabold text-gray-900 tabular-nums leading-none">{formatINR(o.total || 0)}</p>
-            <span className={`inline-block mt-1.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${isCod ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700'}`}>
-              {isCod ? 'COD' : 'Paid'}
+            <span className={`inline-block mt-1.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${
+              codCollected ? 'bg-emerald-100 text-emerald-700'
+              : isCod ? 'bg-amber-50 text-amber-700 border border-amber-200'
+              : 'bg-emerald-50 text-emerald-700'}`}>
+              {codCollected ? '✓ Collected' : isCod ? 'COD' : 'Paid'}
             </span>
           </div>
           <ChevronRight size={16} className="text-gray-300 self-center flex-shrink-0" />
@@ -423,6 +433,36 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
               </span>
             )}
           </div>
+
+          {/* COD collection + proof of delivery */}
+          {(isCod || (data?.pod && (data.pod.name || data.pod.proof?.length))) && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-3.5 mb-4">
+              {isCod && (
+                bucket === 'delivered' ? (
+                  <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-700">
+                    <Check size={15} strokeWidth={3} /> Cash collected — {formatINR(o.total || 0)} taken at delivery
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-2 text-[13px] font-bold text-amber-700">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" /> To collect {formatINR(o.total || 0)} in cash at the door
+                  </p>
+                )
+              )}
+              {data?.pod && (data.pod.name || data.pod.proof?.length > 0) && (
+                <div className={isCod ? 'mt-2.5 pt-2.5 border-t border-gray-100' : ''}>
+                  {data.pod.name && (
+                    <p className="text-xs text-gray-600">Received by <b className="text-gray-900">{data.pod.name}</b>{data.pod.contact ? ` · ${data.pod.contact}` : ''}</p>
+                  )}
+                  {data.pod.proof?.map((u, i) => (
+                    <a key={i} href={u} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-600 border border-gray-200 rounded-lg px-2 py-1 mt-1.5 mr-1.5 hover:bg-gray-50">
+                      <ExternalLink size={11} /> Proof of delivery{data.pod.proof.length > 1 ? ` ${i + 1}` : ''}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* rider / promised date */}
           {(data?.rider?.name || data?.promisedDate) && (

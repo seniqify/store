@@ -63,6 +63,32 @@ serve(async (req) => {
         const lastCode = String(last?.status_id || '').toLowerCase();
         const ndrCodes = ['nc', 'undelivered', 'cnr', 'npr', 'ud', 'customer_not_available', 'reattempt', 'address_issue', 'rto', 'rto_initiated'];
         const ndr = ndrCodes.some((c) => lastCode.includes(c)) ? (last?.remarks || st) : null;
+
+        // Proof of delivery — only fetchable once delivered / returned-to-seller.
+        // Gives who received it (name + contact) and a signature/photo report link.
+        let pod = null;
+        if (/deliver|rts_d/i.test(`${st} ${lastCode}`)) {
+          try {
+            const pr = await fetch(`${sBase}/v1/clients/pod_details/`, {
+              method: 'POST',
+              headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ awb_numbers: [awb] }),
+            });
+            const pd = await pr.json().catch(() => ({}));
+            const rec = pd?.pod_details?.[awb];
+            if (rec) {
+              const clean = (v: unknown) => (v && v !== 'None' && v !== 'null' ? String(v) : null);
+              const urls = String(rec.recipient_signature || '').match(/https?:\/\/[^\s'"\]]+/g) || [];
+              pod = {
+                name:    clean(rec.recipient_name),
+                contact: clean(rec.recipient_contact),
+                by:      clean(rec.recipient),        // "CUSTOMER" etc.
+                proof:   urls,
+              };
+            }
+          } catch { /* POD is a nicety — never block tracking on it */ }
+        }
+
         return json({
           status: st,
           timeline,
@@ -70,6 +96,7 @@ serve(async (req) => {
           promisedDate: od.promised_delivery_date || null,
           customerTrackUrl: od.customer_track_url || null,
           ndrReason: ndr,
+          pod,
           trackUrl: null,
         });
       }
