@@ -18,7 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
-  Bell, Volume2, VolumeX,
+  Bell, Volume2, VolumeX, Layers,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -120,6 +120,35 @@ function FormSection({ title, action, children }) {
       </div>
       <div className="space-y-3">{children}</div>
     </section>
+  );
+}
+
+// Collapsible section for the advanced (optional) parts of the product form, so
+// a first-time seller sees only the essentials. `openWhen` opens it on mount
+// (e.g. editing a product that already uses this) and re-opens if it turns true
+// later (e.g. AI auto-fill adds variants).
+function Accordion({ icon: Icon, iconBg, iconColor, title, badge, subtitle, openWhen = false, children }) {
+  const [open, setOpen] = useState(!!openWhen);
+  useEffect(() => { if (openWhen) setOpen(true); }, [openWhen]);
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left">
+        <span className="w-8 h-8 flex-shrink-0 rounded-lg grid place-items-center"
+              style={{ background: iconBg, color: iconColor }}>
+          {Icon && <Icon size={16} />}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-bold text-gray-900 leading-tight">
+            {title}
+            {badge && <span className="ml-1.5 align-middle text-[10px] font-bold text-gray-500 bg-gray-100 rounded-full px-1.5 py-0.5">{badge}</span>}
+          </span>
+          {subtitle && <span className="block text-[11.5px] text-gray-400 mt-0.5 leading-snug">{subtitle}</span>}
+        </span>
+        <ChevronDown size={18} className={['text-gray-300 flex-shrink-0 transition-transform', open ? 'rotate-180' : ''].join(' ')} />
+      </button>
+      {open && <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">{children}</div>}
+    </div>
   );
 }
 
@@ -1008,62 +1037,91 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
           </div>
 
           {/* Scrollable, sectioned form body */}
-          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 bg-gray-50/40">
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-gray-50/40">
 
-            <FormSection title="Basics">
-              <div>
-                <label className={FIELD_LABEL}>Product Name <span className="text-red-500">*</span></label>
-                <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
-                       value={form.name}
-                       onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
-                       className={iCls(errors.name)} />
-                {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
-                {/* ✨ AI Auto-fill — category + variant + attributes from the name */}
-                <button type="button" onClick={autoFill} disabled={!form.name.trim() || aiLoading}
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40 active:scale-95 transition-transform"
-                  style={{ backgroundColor: themeColor }}>
-                  {aiLoading
-                    ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Thinking…</>
-                    : <><Star size={13} /> Auto-fill details</>}
-                </button>
-                {aiNote && <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{aiNote}</p>}
+            {/* ── The essentials: everything a seller needs to publish ── */}
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: `${themeColor}40` }}>
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100"
+                   style={{ background: `linear-gradient(180deg,#ffffff,${themeColor}0d)` }}>
+                <span className="w-5 h-5 rounded-md grid place-items-center text-white flex-shrink-0" style={{ backgroundColor: themeColor }}>
+                  <Check size={12} strokeWidth={3} />
+                </span>
+                <h4 className="text-[13px] font-extrabold text-gray-900 flex-1">The essentials</h4>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap"
+                      style={{ color: themeColor, borderColor: `${themeColor}55` }}>all you need to publish</span>
               </div>
-              <div>
-                <label className={FIELD_LABEL}>Category <span className="text-red-500">*</span></label>
-                <select value={form.category}
-                        onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
-                        className={iCls(errors.category)}>
-                  <option value="">Select category…</option>
-                  {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-                </select>
-                {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
+              <div className="p-4 space-y-4">
+                {/* Photo — the first thing customers see */}
+                <div>
+                  <label className={FIELD_LABEL}>Product photo <span className="text-gray-400 font-normal">· the first thing customers see</span></label>
+                  <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+                </div>
+                {/* Name + AI auto-fill */}
+                <div>
+                  <label className={FIELD_LABEL}>Product Name <span className="text-red-500">*</span></label>
+                  <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
+                         value={form.name}
+                         onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
+                         className={iCls(errors.name)} />
+                  {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+                  {/* ✨ AI Auto-fill — category + variant + attributes from the name */}
+                  <button type="button" onClick={autoFill} disabled={!form.name.trim() || aiLoading}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40 active:scale-95 transition-transform"
+                    style={{ backgroundColor: themeColor }}>
+                    {aiLoading
+                      ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Thinking…</>
+                      : <><Star size={13} /> Auto-fill details</>}
+                  </button>
+                  {aiNote && <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{aiNote}</p>}
+                </div>
+                {/* Price + MRP */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={FIELD_LABEL}>Price <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                      <input type="number" inputMode="numeric" min="0" placeholder="349"
+                             value={form.price}
+                             onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
+                             className={[iCls(errors.price), 'pl-7'].join(' ')} />
+                    </div>
+                    {errors.price && <p className="mt-1 text-xs text-red-500">{errors.price}</p>}
+                  </div>
+                  <div>
+                    <label className={FIELD_LABEL}>MRP <span className="text-gray-400 font-normal">· optional</span></label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+                      <input type="number" inputMode="numeric" min="0" placeholder="499"
+                             value={form.mrp}
+                             onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
+                             className={[iCls(false), 'pl-7'].join(' ')} />
+                    </div>
+                  </div>
+                </div>
+                {/* Category */}
+                <div>
+                  <label className={FIELD_LABEL}>Category <span className="text-red-500">*</span></label>
+                  <select value={form.category}
+                          onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
+                          className={iCls(errors.category)}>
+                    <option value="">Select category…</option>
+                    {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                  </select>
+                  {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
+                </div>
               </div>
-            </FormSection>
+            </div>
 
-            <FormSection title="Pricing">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={FIELD_LABEL}>Price <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                    <input type="number" inputMode="numeric" min="0" placeholder="349"
-                           value={form.price}
-                           onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
-                           className={[iCls(errors.price), 'pl-7'].join(' ')} />
-                  </div>
-                  {errors.price && <p className="mt-1 text-xs text-red-500">{errors.price}</p>}
-                </div>
-                <div>
-                  <label className={FIELD_LABEL}>MRP <span className="text-gray-400 font-normal">· optional</span></label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                    <input type="number" inputMode="numeric" min="0" placeholder="499"
-                           value={form.mrp}
-                           onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
-                           className={[iCls(false), 'pl-7'].join(' ')} />
-                  </div>
-                </div>
-              </div>
+            {/* ── Everything advanced, folded away until needed ── */}
+            <div className="flex items-center gap-2.5 pt-1">
+              <div className="h-px flex-1 bg-gray-200/70" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Add more — all optional</span>
+              <div className="h-px flex-1 bg-gray-200/70" />
+            </div>
+
+            <Accordion icon={Tag} iconBg="#fffbeb" iconColor="#b45309" title="Cost, stock &amp; tax"
+              subtitle="Your buying cost, inventory, GST &amp; unit"
+              openWhen={form.cost !== '' || form.stock !== '' || form.gstRate !== ''}>
               <div>
                 <label className={FIELD_LABEL}>Cost price <span className="text-gray-400 font-normal">· optional, private</span></label>
                 <div className="relative">
@@ -1144,19 +1202,17 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                   </p>
                 </div>
               )}
-            </FormSection>
+            </Accordion>
 
-            <FormSection title="Details">
+            <Accordion icon={ImagePlus} iconBg="#eff6ff" iconColor="#1d4ed8" title="Description &amp; gallery"
+              subtitle="A line customers read, plus extra photos"
+              openWhen={!!form.description || (form.images || []).length > 0}>
               <div>
                 <label className={FIELD_LABEL}>Description <span className="text-gray-400 font-normal">· optional</span></label>
                 <input type="text" placeholder="Short description"
                        value={form.description}
                        onChange={e => setForm(p => ({...p, description:e.target.value}))}
                        className={iCls(false)} />
-              </div>
-              <div>
-                <label className={FIELD_LABEL}>Product Image <span className="text-gray-400 font-normal">· optional</span></label>
-                <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
               </div>
               <div>
                 <label className={FIELD_LABEL}>More photos <span className="text-gray-400 font-normal">· optional</span></label>
@@ -1172,8 +1228,11 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 </div>
                 <p className="mt-1 text-xs text-gray-400">Shown as a swipeable gallery on the product page — add the back-of-pack, close-ups, or the product in use.</p>
               </div>
-            </FormSection>
+            </Accordion>
 
+            <Accordion icon={Layers} iconBg="#eef2ff" iconColor="#4338ca" title="Options &amp; variants"
+              subtitle="Size, weight or colour — let buyers pick one"
+              openWhen={showVariants || (form.variantExtras?.length > 0)}>
             <FormSection
               title="Variants"
               action={!showVariants && (
@@ -1335,10 +1394,12 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 </div>
               )}
             </FormSection>
+            </Accordion>
 
             {/* Attributes (AI-suggested or manual) — buyer-facing details */}
             {form.attributes.length > 0 && (
-              <FormSection title="Details">
+              <Accordion icon={Sparkles} iconBg="#f5f3ff" iconColor="#7c3aed" title="Product details"
+                subtitle="Buyer-facing specs the AI suggested" openWhen>
                 {form.attributes.map((a, i) => {
                   const setVal = (v) => setForm(p => ({ ...p, attributes: p.attributes.map((x, idx) => idx === i ? { ...x, value: v } : x) }));
                   return (
@@ -1362,7 +1423,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                     </div>
                   );
                 })}
-              </FormSection>
+              </Accordion>
             )}
 
             {/* Live preview — the exact storefront card, driven by the form.
