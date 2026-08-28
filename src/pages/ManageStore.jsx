@@ -2843,6 +2843,19 @@ export default function ManageStore() {
     { key: 'settings',   label: 'Settings',    icon: Settings2 },
   ];
 
+  // Mobile bottom bar: the daily screens one thumb-tap away. Stores that ship get
+  // Delivery in the bar (Products moves under "More"); service stores keep
+  // Products since they have no Delivery tab.
+  const bottomTabs = [
+    { key: 'home',      label: 'Home',                         Icon: LayoutDashboard },
+    { key: 'orders',    label: isService ? 'Leads' : 'Orders', Icon: ShoppingBag },
+    isService
+      ? { key: 'products', label: isRestaurant ? 'Menu' : 'Products', Icon: Package }
+      : { key: 'delivery', label: 'Delivery', Icon: Truck },
+    { key: 'customers', label: 'Customers',                    Icon: Users },
+  ];
+  const bottomKeys = bottomTabs.map((t) => t.key);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40 lg:pl-64">
 
@@ -3141,12 +3154,7 @@ export default function ManageStore() {
                       shadow-[0_-2px_12px_-6px_rgba(0,0,0,0.12)]"
            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="max-w-lg mx-auto px-1.5 flex">
-          {[
-            { key: 'home',      label: 'Home',                             Icon: LayoutDashboard },
-            { key: 'orders',    label: isService ? 'Leads' : 'Orders',     Icon: ShoppingBag },
-            { key: 'products',  label: isRestaurant ? 'Menu' : 'Products', Icon: Package },
-            { key: 'customers', label: 'Customers',                        Icon: Users },
-          ].map(({ key, label, Icon }) => {
+          {bottomTabs.map(({ key, label, Icon }) => {
             const active = tab === key;
             const badge  = key === 'orders' ? newCount : 0;
             return (
@@ -3170,7 +3178,7 @@ export default function ManageStore() {
           })}
           <button type="button" onClick={() => setMenuOpen(true)} aria-label="More sections"
             className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
-            style={{ color: ['home', 'orders', 'products', 'customers'].includes(tab) ? '#9ca3af' : themeColor }}>
+            style={{ color: bottomKeys.includes(tab) ? '#9ca3af' : themeColor }}>
             <MoreHorizontal size={20} strokeWidth={2} />
             <span className="text-[10px] font-bold leading-none">More</span>
           </button>
