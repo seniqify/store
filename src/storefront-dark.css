@@ -101,3 +101,47 @@
 [data-store-theme="dark"] .bg-white.rounded-2xl,
 [data-store-theme="dark"] .bg-white.rounded-3xl,
 [data-store-theme="dark"] .bg-white.rounded-xl { box-shadow: inset 0 0 0 1px var(--pl-line), 0 6px 18px rgba(0,0,0,.35); }
+
+/* ── brand "dark text" variant (text-brand-dark = a DARKER brand shade, meant
+      for light backgrounds) is muddy-to-unreadable on a dark ground. Use the
+      brighter brand accent instead — prices, cart totals, chips, the selected
+      payment card. bg-brand-dark (button fills) is left alone. ───────────── */
+[data-store-theme="dark"] .text-brand-dark { color: var(--color-brand) !important; }
+
+/* ── gradients that fade to white flash a bright band on dark. The returning
+      customer "Welcome back" card (from-brand/5 to-white) is the worst offender
+      — fade to the card surface so it stays a subtle brand-tinted dark card. ─ */
+[data-store-theme="dark"] .to-white { --tw-gradient-to: var(--pl-surface) !important; }
+
+/* ── coloured info panels (UPI / QR / bank / applied-coupon / pay-error) — a
+      bright pastel -50 fill is a glaring light block on dark. Recolour to a
+      dark tint of the same hue and brighten the on-panel text so it stays
+      legible; the hue still reads (blue = pay, violet = bank, green = ok). ── */
+[data-store-theme="dark"] .bg-blue-50        { background-color: rgba(37,99,235,.14) !important; }
+[data-store-theme="dark"] .border-blue-100   { border-color: rgba(96,140,230,.30) !important; }
+[data-store-theme="dark"] .text-blue-800     { color: #cfe0ff !important; }
+[data-store-theme="dark"] .text-blue-700     { color: #bcd4ff !important; }
+[data-store-theme="dark"] .text-blue-400     { color: #93aede !important; }
+
+[data-store-theme="dark"] .bg-violet-50      { background-color: rgba(124,58,237,.16) !important; }
+[data-store-theme="dark"] .border-violet-100 { border-color: rgba(150,110,240,.32) !important; }
+[data-store-theme="dark"] .text-violet-800   { color: #ddccff !important; }
+[data-store-theme="dark"] .text-violet-500,
+[data-store-theme="dark"] .text-violet-400   { color: #b6a0e6 !important; }
+
+[data-store-theme="dark"] .bg-green-50       { background-color: rgba(34,197,94,.13) !important; }
+[data-store-theme="dark"] .border-green-200  { border-color: rgba(55,209,125,.30) !important; }
+[data-store-theme="dark"] .text-green-700    { color: #4ade80 !important; }
+
+[data-store-theme="dark"] .bg-red-50         { background-color: rgba(239,68,68,.14) !important; }
+[data-store-theme="dark"] .border-red-100    { border-color: rgba(248,113,113,.30) !important; }
+[data-store-theme="dark"] .text-red-600      { color: #ff9494 !important; }
+[data-store-theme="dark"] .text-red-500      { color: #ff8a8a !important; }
+
+/* ── the header / "welcome back" brand wash (from-brand/5) vanishes on dark:
+      a 5% tint is invisible over near-black, so the checkout header reads as an
+      empty gap. Lift it to ~12% so the section still reads as an intentional
+      brand-tinted panel — matching the light design's intent. bg-brand/5 fills
+      (preview toggle, selected payment card) get the same small lift. ─────── */
+[data-store-theme="dark"] .from-brand\/5 { --tw-gradient-from: color-mix(in srgb, var(--color-brand) 12%, transparent) !important; }
+[data-store-theme="dark"] .bg-brand\/5   { background-color: color-mix(in srgb, var(--color-brand) 12%, transparent) !important; }
