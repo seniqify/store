@@ -1,11 +1,8 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Eye, EyeOff, Truck, Package, Wallet, Check, Star } from 'lucide-react';
+import { CheckCircle2, Truck, Package, Wallet, Check, Star } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
-import {
-  generateWhatsAppMessage,
-  openOrderOnWhatsApp,
-} from '../../utils/generateWhatsAppMessage';
+import { openOrderOnWhatsApp } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
 import { whatsappLink } from '../../utils/theme';
 import { pixelTrack } from '../../utils/metaPixel';
@@ -114,7 +111,6 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [payError,    setPayError]    = useState('');      // online-payment error, if any
   const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
   const [orderSummary, setOrderSummary] = useState(null);  // snapshot for the confirmation screen
-  const [showPreview, setShowPreview] = useState(false);
 
   // Returning customer: remembered details on this device. `editing` = show the
   // raw fields; otherwise we show a "welcome back" summary they can order from.
@@ -241,13 +237,6 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     setAppliedCoupon(c); setCouponError('');
   }
   function removeCoupon() { setAppliedCoupon(null); setCouponInput(''); setCouponError(''); }
-
-  // Preview is only meaningful once the required fields + cart are ready
-  const canPreview =
-    !cartEmpty &&
-    formData.partyName.trim() &&
-    formData.mobile.trim() &&
-    (isPickup || (formData.addressLine.trim() && formData.destination.trim() && formData.pincode.trim()));
 
   // ── Field change handler ──────────────────────────────────────────────────
   function handleChange(field, value) {
@@ -446,21 +435,21 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent rounded-t-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            {/* Seller identity — mirrors the storefront hero so checkout reads as
-                the same real, verified shop the customer was just browsing. */}
+        {/* Seller identity — mirrors the storefront hero so checkout reads as
+            the same real, verified shop the customer was just browsing. */}
+        <div className="flex items-center gap-3">
+          {(config.logo || config.logoEmoji) && (
+            <span className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
+                             overflow-hidden bg-gray-50 border border-gray-100"
+                  style={config.logo ? undefined : { background: `${primary}14` }}>
+              {config.logo
+                ? <img src={config.logo} alt="" className="w-full h-full object-cover" />
+                : config.logoEmoji}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              {(config.logo || config.logoEmoji) && (
-                <span className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0
-                                 overflow-hidden bg-gray-50 border border-gray-100"
-                      style={config.logo ? undefined : { background: `${primary}14` }}>
-                  {config.logo
-                    ? <img src={config.logo} alt="" className="w-full h-full object-cover" />
-                    : config.logoEmoji}
-                </span>
-              )}
-              <h2 className="text-base font-bold text-gray-900 truncate max-w-[12rem]">{config.businessName}</h2>
+              <h2 className="text-base font-bold text-gray-900 truncate max-w-[14rem]">{config.businessName}</h2>
               {verified && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand bg-brand/10
                                  px-2 py-0.5 rounded-full flex-shrink-0">
@@ -474,24 +463,10 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-0.5">
               Almost done — add your details &amp; we'll confirm your order on WhatsApp.
             </p>
           </div>
-
-          {/* Preview toggle — only visible when all required fields are ready */}
-          {canPreview && (
-            <button
-              type="button"
-              onClick={() => setShowPreview((v) => !v)}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold
-                         text-brand hover:text-brand-dark border border-brand/30 hover:border-brand/60
-                         bg-brand/5 hover:bg-brand/10 rounded-lg px-3 py-1.5 transition-colors mt-0.5"
-            >
-              {showPreview ? <EyeOff size={13} /> : <Eye size={13} />}
-              {showPreview ? 'Hide' : 'Preview'} message
-            </button>
-          )}
         </div>
       </div>
 
@@ -542,21 +517,6 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Message preview panel ─────────────────────────────────────── */}
-      {showPreview && canPreview && (
-        <div className="border-b border-gray-100 bg-gray-50">
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Message preview
-            </p>
-            <pre className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono
-                            bg-white border border-gray-200 rounded-xl px-4 py-3 overflow-x-auto">
-              {generateWhatsAppMessage(sendData, cart, effConfig, appliedCoupon)}
-            </pre>
           </div>
         </div>
       )}
