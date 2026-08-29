@@ -2081,6 +2081,11 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
     setDirty(true);
   }
 
+  function updateThemeMode(mode) {
+    onChange({ theme: { ...(config.theme || {}), mode } });
+    setDirty(true);
+  }
+
   function updatePhone(val) {
     // Strip any leading 91 the user pastes, then keep the 10-digit local number.
     const d = val.replace(/\D/g,'').replace(/^91(?=\d{10})/, '').slice(0,10);
@@ -2343,6 +2348,44 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             </div>
             <p className="mt-2 text-xs text-gray-400">Pick a preset or tap the rainbow swatch for any colour — your whole store recolours instantly.</p>
           </div>
+
+          {/* Storefront theme — Light vs Premium Dark (brand colour stays the accent) */}
+          {(() => {
+            const tc = config.theme?.primary || '#0d9488';
+            const mode = config.theme?.mode === 'dark' ? 'dark' : 'light';
+            const OPTS = [
+              { v: 'light', t: 'Light', d: 'Clean & bright', chip: '#f8fafc', line: '#e5e7eb' },
+              { v: 'dark',  t: 'Premium Dark', d: 'Bold, dark & luxe', chip: '#0c1310', line: '#1f2a24' },
+            ];
+            return (
+              <div>
+                <label className={lCls()}>Storefront theme</label>
+                <div className="flex gap-2.5 max-w-md">
+                  {OPTS.map((opt) => {
+                    const active = mode === opt.v;
+                    return (
+                      <button key={opt.v} type="button" onClick={() => updateThemeMode(opt.v)}
+                        className={['flex-1 rounded-2xl border p-3 text-left transition active:scale-[0.98]',
+                          active ? 'border-transparent' : 'border-gray-200 hover:border-gray-300'].join(' ')}
+                        style={active ? { boxShadow: `0 0 0 2px ${tc}`, backgroundColor: `${tc}0d` } : undefined}>
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-8 h-8 rounded-lg border flex-shrink-0 relative" style={{ backgroundColor: opt.chip, borderColor: opt.line }}>
+                            <span className="absolute bottom-1.5 left-1.5 right-3 h-1.5 rounded-full" style={{ backgroundColor: tc }} />
+                            <span className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: opt.v === 'dark' ? '#233029' : '#e5e7eb' }} />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold text-gray-900">{opt.t}</span>
+                            <span className="block text-[11px] text-gray-400">{opt.d}</span>
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-gray-400">Premium Dark gives your storefront a bold, dark look — great for jewellery, décor, fashion &amp; gifts. Your brand colour stays the accent.</p>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

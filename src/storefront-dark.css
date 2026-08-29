@@ -1,0 +1,103 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Storefront "Premium Dark" theme.
+ *
+ * Opt-in per store (config.theme.mode === 'dark'). Home.jsx / Checkout.jsx set
+ * data-store-theme="dark" on <html> only while a dark storefront is on screen,
+ * so Manage, the marketplace and light stores are never touched.
+ *
+ * The whole customer storefront is styled from here by remapping the neutral
+ * Tailwind surfaces (white / grays) to a warm near-black palette. The brand
+ * accent classes (bg-brand / text-brand) already use the store's own colour, so
+ * buttons, chips and highlights stay on-brand automatically. Semantic colours
+ * (discount rose, savings green, urgency amber) are left alone — they read fine
+ * on dark. Everything is !important because it overrides utility classes on the
+ * same elements; scoping to the attribute keeps light mode completely unaffected.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+[data-store-theme="dark"] {
+  --pl-bg:      #0a0f0c;
+  --pl-surface: #121a16;   /* cards */
+  --pl-sub:     #0d1310;   /* page sub-surface (bg-gray-50) */
+  --pl-elev:    #1a231d;   /* inputs / chips (bg-gray-100) */
+  --pl-elev2:   #212c25;   /* bg-gray-200 */
+  --pl-line:    rgba(255,255,255,.08);
+  --pl-line2:   rgba(255,255,255,.12);
+  --pl-ink:     #eef4f0;
+  --pl-body:    #c6d5cc;
+  --pl-dim:     #94a89e;
+  --pl-muted:   #6f8177;
+  --pl-faint:   #56655d;
+  background-color: var(--pl-bg);
+  color: var(--pl-ink);
+  color-scheme: dark;
+}
+[data-store-theme="dark"] body { background-color: var(--pl-bg); color: var(--pl-ink); }
+
+/* ── surfaces ─────────────────────────────────────────────────────────── */
+[data-store-theme="dark"] .bg-white          { background-color: var(--pl-surface) !important; }
+[data-store-theme="dark"] .bg-\[\#f8fafc\]    { background-color: var(--pl-bg) !important; }
+[data-store-theme="dark"] .bg-gray-50,
+[data-store-theme="dark"] .bg-gray-50\/60,
+[data-store-theme="dark"] .bg-gray-50\/70,
+[data-store-theme="dark"] .bg-gray-50\/40     { background-color: var(--pl-sub) !important; }
+[data-store-theme="dark"] .bg-gray-100        { background-color: var(--pl-elev) !important; }
+[data-store-theme="dark"] .bg-gray-200        { background-color: var(--pl-elev2) !important; }
+
+/* translucent white overlays / sticky headers → dark glass (leave /20–/30, they sit on brand buttons) */
+[data-store-theme="dark"] .bg-white\/70,
+[data-store-theme="dark"] .bg-white\/80,
+[data-store-theme="dark"] .bg-white\/90,
+[data-store-theme="dark"] .bg-white\/95       { background-color: rgba(12,18,15,.82) !important; }
+
+/* ── text ─────────────────────────────────────────────────────────────── */
+[data-store-theme="dark"] .text-gray-900,
+[data-store-theme="dark"] .text-gray-800      { color: var(--pl-ink) !important; }
+[data-store-theme="dark"] .text-gray-700,
+[data-store-theme="dark"] .text-gray-600      { color: var(--pl-body) !important; }
+[data-store-theme="dark"] .text-gray-500      { color: var(--pl-dim) !important; }
+[data-store-theme="dark"] .text-gray-400      { color: var(--pl-muted) !important; }
+[data-store-theme="dark"] .text-gray-300      { color: var(--pl-faint) !important; }
+[data-store-theme="dark"] .placeholder-gray-400::placeholder { color: var(--pl-faint) !important; }
+
+/* ── borders / dividers ───────────────────────────────────────────────── */
+[data-store-theme="dark"] .border-gray-100,
+[data-store-theme="dark"] .border-gray-200    { border-color: var(--pl-line) !important; }
+[data-store-theme="dark"] .border-gray-300    { border-color: var(--pl-line2) !important; }
+[data-store-theme="dark"] .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--pl-line) !important; }
+
+/* ── product image tile — warm brass glow behind photo / empty state ──── */
+[data-store-theme="dark"] .aspect-square.bg-gray-50,
+[data-store-theme="dark"] .aspect-square.bg-gray-100 {
+  background-color: #0e0b07 !important;
+  background-image: radial-gradient(circle at 50% 42%, rgba(227,169,92,.16), transparent 62%) !important;
+}
+[data-store-theme="dark"] .from-gray-50  { --tw-gradient-from: #1a130c !important; }
+[data-store-theme="dark"] .from-gray-100 { --tw-gradient-from: #1a130c !important; }
+[data-store-theme="dark"] .to-gray-100   { --tw-gradient-to:   #0c0a07 !important; }
+[data-store-theme="dark"] .to-gray-200   { --tw-gradient-to:   #0c0a07 !important; }
+
+/* ── inputs sit on elevated dark, not white-on-white ──────────────────── */
+[data-store-theme="dark"] input:not([type=checkbox]):not([type=radio]),
+[data-store-theme="dark"] textarea,
+[data-store-theme="dark"] select {
+  background-color: var(--pl-elev) !important;
+  color: var(--pl-ink) !important;
+  border-color: var(--pl-line) !important;
+}
+[data-store-theme="dark"] input::placeholder,
+[data-store-theme="dark"] textarea::placeholder { color: var(--pl-faint) !important; }
+
+/* ── shadows read as soft warm depth, not black smudge ────────────────── */
+[data-store-theme="dark"] .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.4) !important; }
+[data-store-theme="dark"] .shadow    { box-shadow: 0 2px 8px rgba(0,0,0,.45) !important; }
+[data-store-theme="dark"] .shadow-md { box-shadow: 0 6px 18px rgba(0,0,0,.5) !important; }
+[data-store-theme="dark"] .shadow-lg,
+[data-store-theme="dark"] .shadow-xl { box-shadow: 0 18px 40px -14px rgba(0,0,0,.6) !important; }
+
+/* ── savings / social proof pop a touch brighter on dark ──────────────── */
+[data-store-theme="dark"] .text-green-600 { color: #37d17d !important; }
+
+/* a hairline on cards so they separate from the ground even without a border */
+[data-store-theme="dark"] .bg-white.rounded-2xl,
+[data-store-theme="dark"] .bg-white.rounded-3xl,
+[data-store-theme="dark"] .bg-white.rounded-xl { box-shadow: inset 0 0 0 1px var(--pl-line), 0 6px 18px rgba(0,0,0,.35); }

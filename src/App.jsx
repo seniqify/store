@@ -106,6 +106,21 @@ function BusinessShell() {
 
   const handleCartCountChange = useCallback((c) => setCartCount(c), []);
 
+  // Premium Dark storefront (opt-in per store, config.theme.mode === 'dark').
+  // Flag <html> only while a dark customer store is on screen — this wrapper
+  // never mounts for Manage / marketplace / landing, so those stay light. Lives
+  // here (not in Home) so it holds steady across the catalog ↔ product routes.
+  const darkStore = config?.theme?.mode === 'dark';
+  useEffect(() => {
+    const el = document.documentElement;
+    if (darkStore) {
+      el.setAttribute('data-store-theme', 'dark');
+      return () => el.removeAttribute('data-store-theme');
+    }
+    el.removeAttribute('data-store-theme');
+    return undefined;
+  }, [darkStore]);
+
   useEffect(() => {
     let alive = true;
     // Always converge to the DB truth so owner edits (products, logo, cover)
