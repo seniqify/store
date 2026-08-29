@@ -13,6 +13,8 @@ export default function ProductCard({
   onSetQty,
   onOpen,          // (id) => void — opens the product page; absent = card not tappable
   proof,           // { text, hot } | null — real social proof ("41 bought this week")
+  premium = false, // Premium Dark storefront → cleaner card: brand price + %off chip,
+                   // outlined add button, less clutter. Light stores never pass this.
 }) {
   const [justAdded, setJustAdded] = useState(false);
   const openDetail = onOpen ? () => onOpen(product.id) : undefined;
@@ -112,10 +114,19 @@ export default function ProductCard({
             {product.badge}
           </span>
         ) : discount > 0 ? (
-          <span className="absolute top-2.5 left-2.5 bg-rose-500 text-white
-                           text-[10px] font-bold px-2.5 py-1 rounded-full leading-none shadow-md">
-            {discount}% OFF
-          </span>
+          premium ? (
+            // Premium shows the % OFF inline in the price, so the image badge is
+            // just a tidy on-brand "Sale" tag (not a loud red % duplicate).
+            <span className="absolute top-2.5 left-2.5 bg-brand text-white
+                             text-[10px] font-bold px-2.5 py-1 rounded-full leading-none shadow-md">
+              Sale
+            </span>
+          ) : (
+            <span className="absolute top-2.5 left-2.5 bg-rose-500 text-white
+                             text-[10px] font-bold px-2.5 py-1 rounded-full leading-none shadow-md">
+              {discount}% OFF
+            </span>
+          )
         ) : null}
 
         {/* In-cart pill */}
@@ -150,28 +161,31 @@ export default function ProductCard({
         </p>
 
         {/* Unit — hidden when the product has variants (the size chip already
-            states the quantity, so "per kg" next to a 250 gm option misleads). */}
-        {product.unit && !hasVariants && (
+            states the quantity, so "per kg" next to a 250 gm option misleads).
+            Premium keeps the card clean (unit/attributes/description live on the
+            product page), matching the redesigned catalog. */}
+        {!premium && product.unit && !hasVariants && (
           <p className="text-[10px] text-gray-400 leading-none">{product.unit}</p>
         )}
 
         {/* Attributes (e.g. Eggless · Chocolate) — one compact line */}
-        {Array.isArray(product.attributes) && product.attributes.length > 0 && (
+        {!premium && Array.isArray(product.attributes) && product.attributes.length > 0 && (
           <p className="text-[10px] text-gray-400 leading-tight line-clamp-1">
             {product.attributes.map((a) => a.value).filter(Boolean).slice(0, 3).join(' · ')}
           </p>
         )}
 
         {/* Description — short blurb the owner typed (was captured but never shown) */}
-        {product.description && (
+        {!premium && product.description && (
           <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
             {product.description}
           </p>
         )}
 
-        {/* Price — MRP strike-through reflects the selected variant's own MRP */}
+        {/* Price — MRP strike-through reflects the selected variant's own MRP.
+            Premium: price in the brand colour + an inline "% OFF" chip. */}
         <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1">
-          <span className="text-[17px] font-extrabold text-gray-900 tabular-nums tracking-tight">
+          <span className={['text-[17px] font-extrabold tabular-nums tracking-tight', premium ? 'text-brand' : 'text-gray-900'].join(' ')}>
             {formatINR(displayPrice)}
           </span>
           {displayMrp && displayMrp > displayPrice && (
@@ -179,10 +193,15 @@ export default function ProductCard({
               {formatINR(displayMrp)}
             </span>
           )}
+          {premium && discount > 0 && (
+            <span className="text-[10px] font-extrabold text-brand bg-brand/10 rounded px-1.5 py-0.5 leading-none">
+              {discount}% OFF
+            </span>
+          )}
         </div>
 
-        {/* Savings line */}
-        {saving > 0 && (
+        {/* Savings line (light only — premium shows the % OFF chip above instead) */}
+        {!premium && saving > 0 && (
           <span className="text-[10px] font-bold text-green-600 leading-none">
             You save {formatINR(saving)}
           </span>
@@ -262,7 +281,9 @@ export default function ProductCard({
             <button onClick={handleAdd}
               className={[
                 'w-full flex items-center justify-center gap-1.5 text-xs font-bold py-2.5 rounded-xl transition-all duration-150 active:scale-95',
-                justAdded ? 'bg-green-500 text-white shadow-md shadow-green-500/30' : 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/25',
+                justAdded ? 'bg-green-500 text-white shadow-md shadow-green-500/30'
+                : premium ? 'border-[1.5px] border-brand/45 text-brand bg-transparent hover:bg-brand/10'
+                : 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/25',
               ].join(' ')}>
               {justAdded
                 ? <><Check size={13} strokeWidth={3} /> Added!</>
@@ -278,6 +299,8 @@ export default function ProductCard({
               'transition-all duration-150 active:scale-95',
               justAdded
                 ? 'bg-green-500 text-white shadow-md shadow-green-500/30'
+                : premium
+                ? 'border-[1.5px] border-brand/45 text-brand bg-transparent hover:bg-brand/10'
                 : 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/25',
             ].join(' ')}
           >

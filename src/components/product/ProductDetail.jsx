@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown, Truck, ShieldCheck, Wallet, MessageCircle } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -12,8 +12,18 @@ import { pixelTrack } from '../../utils/metaPixel';
  * view: big image, full description, highlight tiles (from attributes), the
  * pack/variant pickers, the store rating, a share action, and a sticky buy bar.
  */
-export default function ProductDetail({ product, onClose, onAddToCart, onViewCart, rating, itemCount = 0 }) {
+export default function ProductDetail({ product, onClose, onAddToCart, onViewCart, rating, itemCount = 0, premium = false, config = {} }) {
   useScrollLock(true);   // freeze the store page behind the full-screen product view
+
+  // Premium Dark: a trust-badge row of REAL storefront facts (not invented product
+  // claims). Delivery time comes from the store's own settings when set.
+  const deliveryEta = config?.delivery?.eta || '';
+  const trustBadges = [
+    { Icon: Wallet,         t: 'COD',        s: 'Available' },
+    { Icon: Truck,          t: 'Delivery',   s: deliveryEta ? deliveryEta.slice(0, 12) : 'Fast & safe' },
+    { Icon: ShieldCheck,    t: 'Secure',     s: 'Checkout' },
+    { Icon: MessageCircle,  t: 'WhatsApp',   s: 'Support' },
+  ];
 
   // Report the product view to the store's Meta Pixel (no-op without a pixel).
   useEffect(() => {
@@ -126,8 +136,8 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
             )}
 
             {off > 0 && (
-              <span className="absolute top-3 left-3 text-[11px] font-extrabold text-white bg-rose-500 px-2.5 py-1 rounded-full shadow">
-                {off}% OFF
+              <span className={['absolute top-3 left-3 text-[11px] font-extrabold text-white px-2.5 py-1 rounded-full shadow', premium ? 'bg-brand' : 'bg-rose-500'].join(' ')}>
+                {premium ? 'Sale' : `${off}% OFF`}
               </span>
             )}
             {outOfStock && (
@@ -157,13 +167,27 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               {product.unit && !hasVariants && <p className="text-xs text-gray-400 mt-0.5">{product.unit}</p>}
             </div>
 
-            {/* Price */}
+            {/* Price — premium: brand colour + inline % OFF chip */}
             <div className="flex items-baseline gap-2.5 flex-wrap">
-              <span className="text-[26px] font-extrabold text-gray-900 tabular-nums tracking-tight">{formatINR(price)}</span>
+              <span className={['text-[26px] font-extrabold tabular-nums tracking-tight', premium ? 'text-brand' : 'text-gray-900'].join(' ')}>{formatINR(price)}</span>
               {mrp && mrp > price && <span className="text-sm text-gray-400 line-through tabular-nums">{formatINR(mrp)}</span>}
-              {saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
+              {premium && off > 0 && <span className="text-[12px] font-extrabold text-brand bg-brand/10 rounded-md px-2 py-0.5">{off}% OFF</span>}
+              {!premium && saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
               {lowStock && !outOfStock && <span className="w-full text-[13px] font-bold text-amber-600">🔥 Hurry — only {stockNum} left in stock!</span>}
             </div>
+
+            {/* Trust badges — real storefront facts (premium only) */}
+            {premium && (
+              <div className="grid grid-cols-4 gap-2">
+                {trustBadges.map(({ Icon, t, s }) => (
+                  <div key={t} className="bg-white border border-gray-100 rounded-xl px-2 py-2.5 text-center">
+                    <Icon size={17} className="mx-auto text-brand mb-1.5" />
+                    <p className="text-[10px] font-bold text-gray-800 leading-tight">{t}</p>
+                    <p className="text-[9px] text-gray-400 leading-tight">{s}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Priced variant type */}
             {hasVariants && (
@@ -213,18 +237,29 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               </div>
             )}
 
-            {/* Highlights (from attributes) */}
+            {/* Highlights (from attributes) — premium shows a tick checklist */}
             {attrs.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Highlights</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {attrs.map((a, i) => (
-                    <div key={`${a.key || a.label}-${i}`} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
-                      <p className="text-[10.5px] font-bold uppercase tracking-wide text-gray-400">{a.label || a.key}</p>
-                      <p className="text-sm font-bold text-gray-800 mt-0.5">{a.value}</p>
-                    </div>
-                  ))}
-                </div>
+                {premium ? (
+                  <div className="flex flex-col gap-2.5 mt-0.5">
+                    {attrs.map((a, i) => (
+                      <div key={`${a.key || a.label}-${i}`} className="flex items-center gap-2.5 text-sm font-semibold text-gray-700">
+                        <Check size={16} strokeWidth={3} className="text-brand flex-shrink-0" />
+                        <span>{a.label && <span className="text-gray-400 font-medium">{a.label}: </span>}{a.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {attrs.map((a, i) => (
+                      <div key={`${a.key || a.label}-${i}`} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                        <p className="text-[10.5px] font-bold uppercase tracking-wide text-gray-400">{a.label || a.key}</p>
+                        <p className="text-sm font-bold text-gray-800 mt-0.5">{a.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -250,7 +285,7 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
       {/* Sticky buy bar */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-t border-gray-100 bg-white/95 backdrop-blur">
         <div className="flex flex-col leading-none">
-          <span className="text-lg font-extrabold text-gray-900 tabular-nums">{formatINR(price)}</span>
+          <span className={['text-lg font-extrabold tabular-nums', premium ? 'text-brand' : 'text-gray-900'].join(' ')}>{formatINR(price)}</span>
           <span className="text-[10px] text-gray-400 font-semibold mt-0.5">Incl. all taxes</span>
         </div>
         {itemCount > 0 && (

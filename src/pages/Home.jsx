@@ -65,6 +65,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const primary     = theme?.primary ?? '#0d9488';
   const primaryDark = theme?.primaryDark ?? '#0f766e';
   const freeAbove   = config.cart?.freeShippingAbove ?? 0;
+  const premium     = theme?.mode === 'dark';   // Premium Dark storefront → redesigned cards + product page
 
   // Food stores read better with menu vocabulary ("Browse menu", "7 dishes").
   const isRestaurant = config.businessType === 'restaurant';
@@ -461,6 +462,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               categoryRailClassName="hidden"   /* category nav now lives in the pills above */
               showSearch={false}   /* the hero StoreSearchBar above already searches */
               salesMap={salesMap}  /* real social proof on each card */
+              premium={premium}
             />
 
           </div>
@@ -593,6 +595,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           onClose={() => navigate(`/${config.slug}`)}
           onAddToCart={handleAddToCart}
           onViewCart={() => { navigate(`/${config.slug}`); setCartOpen(true); }}
+          premium={premium}
+          config={config}
         />
       )}
 

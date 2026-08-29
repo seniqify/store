@@ -52,6 +52,7 @@ export default function ProductGrid({
   nounSingular = 'product', nounPlural = 'products',
   searchPlaceholder = 'Search products…', showSearch = true,
   salesMap = null,        // Map<productName, {sold,orders,soldWeek}> → real social proof
+  premium = false,        // Premium Dark storefront → redesigned cards
 }) {
   // Category can be controlled by the parent (Home lifts it so the bottom-nav
   // "Categories" tab can drive the filter); otherwise it's local.
@@ -240,6 +241,7 @@ export default function ProductGrid({
                   onSetQty={onSetQty}
                   onOpen={onOpenDetail}
                   proof={salesMap ? proofFor(salesMap.get(product.name)) : null}
+                  premium={premium}
                 />
               ))}
             </div>
