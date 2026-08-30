@@ -61,6 +61,17 @@ export async function fetchStoresConsole() {
   }
 }
 
+/** All team members (RLS: members only). For the Access tab. */
+export async function fetchTeam() {
+  try {
+    const { data, error } = await supabase.from('crm_team').select('user_id, name, role');
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
 /** Orders across all stores since an ISO timestamp (RLS: crm team only). */
 export async function fetchConsoleOrders(sinceIso) {
   try {
