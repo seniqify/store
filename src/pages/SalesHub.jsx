@@ -440,11 +440,11 @@ export default function SalesHub() {
   const [q, setQ]               = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [scope, setScope] = useState('mine');   // 'mine' = my leads · 'all' = whole team
 
   useEffect(() => {
     document.title = 'Sales Hub · PocketLink';
-    hubSession().then(setSession);
-    return onHubAuthChange(setSession);
+    /* preview */ return undefined;
   }, []);
 
   const me = useMemo(
@@ -477,6 +477,10 @@ export default function SalesHub() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [session, loadAll]);
 
+  // Default an exec to their own work; an admin to the whole team.
+  useEffect(() => { if (me?.user_id) setScope(me.role === 'admin' ? 'all' : 'mine'); }, [me?.user_id, me?.role]);
+
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try { await loadAll(); } finally { setRefreshing(false); }
@@ -485,8 +489,14 @@ export default function SalesHub() {
   // ── Derived data ──
   const today = todayIST();
 
+  // Leads scoped to the current view (mine vs whole team).
+  const scopedLeads = useMemo(
+    () => (scope === 'all' ? (leads || []) : (leads || []).filter((x) => x.assigned_to === me?.user_id)),
+    [leads, scope, me?.user_id],
+  );
+
   const kpis = useMemo(() => {
-    const l = leads || [];
+    const l = scopedLeads;
     const monthPrefix = today.slice(0, 7);
     const wonPaidMonth = l.filter((x) => x.status === 'won-paid' && istDateOf(x.created_at).startsWith(monthPrefix));
     return {
@@ -499,7 +509,7 @@ export default function SalesHub() {
       renewals7:       stores.filter((s) => s.exp && new Date(s.exp) > new Date() && new Date(s.exp) <= new Date(Date.now() + 7 * 86400000)).length,
       openLeads:       l.filter((x) => OPEN_STATUSES.includes(x.status)).length,
     };
-  }, [leads, stores, orders, today]);
+  }, [scopedLeads, stores, orders, today]);
 
   const perExec = useMemo(() => {
     const l = leads || [];
@@ -545,13 +555,13 @@ export default function SalesHub() {
   }, [stores, views, orders]);
 
   const followBuckets = useMemo(() => {
-    const l = (leads || []).filter((x) => x.next_follow_up && OPEN_STATUSES.includes(x.status));
+    const l = scopedLeads.filter((x) => x.next_follow_up && OPEN_STATUSES.includes(x.status));
     return {
       overdue:  l.filter((x) => x.next_follow_up <  today).sort((a, b) => a.next_follow_up.localeCompare(b.next_follow_up)),
       today:    l.filter((x) => x.next_follow_up === today),
       upcoming: l.filter((x) => x.next_follow_up >  today).sort((a, b) => a.next_follow_up.localeCompare(b.next_follow_up)).slice(0, 30),
     };
-  }, [leads, today]);
+  }, [scopedLeads, today]);
 
   const renewBuckets = useMemo(() => {
     const now = Date.now();
@@ -566,7 +576,7 @@ export default function SalesHub() {
   }, [stores]);
 
   const visibleLeads = useMemo(() => {
-    let l = leads || [];
+    let l = scopedLeads;
     if (statusFilter !== 'all') l = l.filter((x) => x.status === statusFilter);
     const needle = q.trim().toLowerCase();
     if (needle) {
@@ -575,7 +585,7 @@ export default function SalesHub() {
           .filter(Boolean).some((f) => String(f).toLowerCase().includes(needle)));
     }
     return l;
-  }, [leads, statusFilter, q]);
+  }, [scopedLeads, statusFilter, q]);
 
   async function quickStatus(lead, status) {
     const updated = await updateLead(lead.id, { status }).catch(() => null);
@@ -664,6 +674,18 @@ export default function SalesHub() {
         </div>
       </div>
 
+      {/* My-work / Team scope — only meaningful with more than one exec */}
+      {team && team.length > 1 && ['today', 'leads', 'follow'].includes(tab) && (
+        <div className="max-w-5xl mx-auto px-4 pt-3 flex justify-end">
+          <div className="inline-flex rounded-full border border-gray-200 bg-white overflow-hidden text-[11px] font-bold">
+            <button onClick={() => setScope('mine')}
+              className={scope === 'mine' ? 'bg-gray-900 text-white px-3.5 py-1.5' : 'text-gray-600 px-3.5 py-1.5 hover:bg-gray-50'}>My work</button>
+            <button onClick={() => setScope('all')}
+              className={scope === 'all' ? 'bg-gray-900 text-white px-3.5 py-1.5' : 'text-gray-600 px-3.5 py-1.5 hover:bg-gray-50'}>Team</button>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-5xl mx-auto px-4 py-5 pb-24">
         {leads === null ? (
           <div className="space-y-3">
@@ -687,7 +709,7 @@ export default function SalesHub() {
               <Kpi label="Renewals ≤ 7 days" value={kpis.renewals7} />
             </div>
 
-            {isAdmin && perExec.length > 0 && (
+            {isAdmin && scope === 'all' && perExec.length > 0 && (
               <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-5">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Team today</p>
                 <div className="space-y-2.5">
@@ -796,7 +818,7 @@ export default function SalesHub() {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
               {['all', ...Object.keys(STATUS)].map((k) => {
                 const active = statusFilter === k;
-                const n = k === 'all' ? (leads || []).length : (leads || []).filter((x) => x.status === k).length;
+                const n = k === 'all' ? scopedLeads.length : scopedLeads.filter((x) => x.status === k).length;
                 return (
                   <button key={k} onClick={() => setStatusFilter(k)}
                     className={[
