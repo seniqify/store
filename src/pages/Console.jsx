@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X, Check,
   ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
-  CalendarClock, MessageCircle, Wallet, Send, Sparkles, Box, Users,
+  CalendarClock, MessageCircle, Wallet, Send, Sparkles, Box, Users, KeyRound,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
@@ -382,6 +382,15 @@ export default function Console() {
       else { setTeam(await fetchTeam()); setToast('✓ Member removed'); }
     } catch (e) { setToast(`⚠ ${e.message}`); } finally { setTBusy(false); }
   }
+  async function resetPassword(t) {
+    if (!window.confirm(`Reset ${t.name || 'this member'}'s password? Their current one stops working immediately.`)) return;
+    setTBusy(true); setNewCred(null);
+    try {
+      const res = await manageTeam({ action: 'reset', userId: t.user_id });
+      if (res?.error) setToast(`⚠ ${res.message || res.error}`);
+      else { setNewCred({ email: res.email || t.name || 'member', password: res.tempPassword, reset: true }); setToast('✓ Password reset'); }
+    } catch (e) { setToast(`⚠ ${e.message}`); } finally { setTBusy(false); }
+  }
 
   // ── derived ──
   const kpis = useMemo(() => {
@@ -735,6 +744,18 @@ export default function Console() {
           {/* ACCESS */}
           {tab === 'access' && (
             <div className="space-y-4">
+              {newCred && (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 flex items-center gap-3">
+                  <KeyRound size={18} className="text-emerald-400 flex-shrink-0" />
+                  <div className="min-w-0 flex-1 text-[13px]">
+                    <span className="text-emerald-200 font-semibold">{newCred.reset ? 'New password for' : 'Account ready for'} {newCred.email}</span>{' '}
+                    <span className="text-emerald-100">— password </span><span className="font-mono font-bold text-white select-all text-sm">{newCred.password}</span>{' '}
+                    <span className={FAINT}>Share it now; it isn’t shown again.</span>
+                  </div>
+                  <button onClick={() => setNewCred(null)} className={`${DIM} hover:${INK}`}><X size={16} /></button>
+                </div>
+              )}
+
               <div className={`${CARD} p-4`} style={{ background: PANEL }}>
                 <p className={`text-sm font-bold ${INK} mb-3 flex items-center gap-2`}><Users size={15} className="text-emerald-400" /> Add a team member</p>
                 <div className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
@@ -743,17 +764,7 @@ export default function Console() {
                   <select value={tf.role} onChange={(e) => setTf({ ...tf, role: e.target.value })} className={darkInput}><option value="sales">Sales</option><option value="admin">Admin</option></select>
                   <button onClick={addMember} disabled={tBusy || !tf.email.trim()} className="px-4 py-2.5 rounded-xl text-sm font-bold text-[#06120b] bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 whitespace-nowrap">{tBusy ? 'Working…' : 'Add'}</button>
                 </div>
-                <p className={`text-[11px] ${FAINT} mt-2`}>Sales = Sales Hub access · Admin = full Console. If they’ve no account yet, one is created and a one-time password is shown.</p>
-                {newCred && (
-                  <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 flex items-center gap-3">
-                    <div className="min-w-0 flex-1 text-[12px]">
-                      <span className="text-emerald-200 font-semibold">Account created for {newCred.email}.</span>{' '}
-                      <span className="text-emerald-100">Temp password: </span><span className="font-mono font-bold text-white select-all">{newCred.password}</span>{' '}
-                      <span className={FAINT}>— share it; they can change it after signing in.</span>
-                    </div>
-                    <button onClick={() => setNewCred(null)} className={`${DIM} hover:${INK}`}><X size={15} /></button>
-                  </div>
-                )}
+                <p className={`text-[11px] ${FAINT} mt-2`}>Sales = Sales Hub access · Admin = full Console. New account → a one-time password appears above; an existing account → use the 🔑 key to reset &amp; share one.</p>
               </div>
 
               <Panel title="Team access" icon={Users} count={team.length}>
@@ -770,6 +781,7 @@ export default function Console() {
                               <p className={`text-[11px] ${FAINT} font-mono truncate`}>{t.user_id}</p>
                             </div>
                             <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.role === 'admin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-[#8b9d93]'}`}>{t.role === 'admin' ? '✦ Admin' : t.role === 'sales' ? 'Sales' : t.role || 'member'}</span>
+                            <button onClick={() => resetPassword(t)} disabled={tBusy} title="Reset password" className={`p-1.5 rounded-lg ${FAINT} hover:text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40`}><KeyRound size={15} /></button>
                             {!self && <button onClick={() => removeMember(t)} disabled={tBusy} title="Remove" className={`p-1.5 rounded-lg ${FAINT} hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40`}><X size={15} /></button>}
                           </div>
                         );

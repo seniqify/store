@@ -66,6 +66,15 @@ serve(async (req) => {
       return json({ ok: true, removed: userId });
     }
 
+    // ── reset password (set a new one-time password to share) ──
+    if (action === 'reset') {
+      if (!userId) return json({ error: 'missing', message: 'No member specified.' });
+      const newPass = `PL-${Math.random().toString(36).slice(2, 9)}${Math.floor(Math.random() * 90 + 10)}`;
+      const { data: u, error } = await admin.auth.admin.updateUserById(userId, { password: newPass });
+      if (error) return json({ error: 'reset_failed', message: error.message });
+      return json({ ok: true, tempPassword: newPass, email: u?.user?.email || null });
+    }
+
     // ── change role ──
     if (action === 'role') {
       if (!userId) return json({ error: 'missing', message: 'No member specified.' });
