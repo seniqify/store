@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X, Check,
-  ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, Wallet, Clock,
+  ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
@@ -124,6 +124,24 @@ function Tile({ label, value, sub, tone }) {
       <p className="text-xs font-semibold text-gray-500">{label}</p>
       <p className={`text-2xl font-extrabold mt-1 tabular-nums ${toneCls}`}>{value}</p>
       {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+// ══ Labelled proportion bars ══════════════════════════════════════════════════
+function MixBars({ rows }) {
+  const max = Math.max(1, ...rows.map((r) => r[1]));
+  return (
+    <div className="space-y-2.5">
+      {rows.map(([label, val, color]) => (
+        <div key={label} className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-gray-600 w-16 flex-shrink-0">{label}</span>
+          <div className="flex-1 h-2.5 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{ width: `${(val / max) * 100}%`, background: color }} />
+          </div>
+          <span className="text-xs font-bold text-gray-800 tabular-nums w-8 text-right">{val}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -343,6 +361,36 @@ export default function Console() {
     return items.sort((a, b) => (a.tone === 'slate' ? 1 : 0) - (b.tone === 'slate' ? 1 : 0)).slice(0, 8);
   }, [stores]);
 
+  const growth = useMemo(() => {
+    const now = Date.now();
+    const weeks = Array.from({ length: 8 }, () => 0);   // weeks[0] = this week
+    const planCount = { premium: 0, business: 0, free: 0 };
+    const statusCount = { active: 0, expiring: 0, expired: 0, free: 0 };
+    let paidActive = 0, paidExpired = 0;
+    stores.forEach((s) => {
+      if (s.created_at) {
+        const wk = Math.floor((now - new Date(s.created_at).getTime()) / (7 * DAY));
+        if (wk >= 0 && wk < 8) weeks[wk]++;
+      }
+      const p = s.plan || 'free';
+      if (p === 'premium') planCount.premium++;
+      else if (p === 'business') planCount.business++;
+      else if (!PAID.has(p)) planCount.free++;
+      const st = storeStatus(s);
+      statusCount[st.key] = (statusCount[st.key] || 0) + 1;
+      if (st.key === 'active' || st.key === 'expiring') paidActive++;
+      else if (st.key === 'expired') paidExpired++;
+    });
+    const paidTotal = paidActive + paidExpired;
+    return {
+      total: stores.length,
+      newThisWeek: weeks[0],
+      weekly: weeks.slice().reverse(),   // oldest → newest for the chart
+      planCount, statusCount, paidActive, paidExpired,
+      churnPct: paidTotal ? Math.round((paidExpired / paidTotal) * 100) : 0,
+    };
+  }, [stores]);
+
   const shownStores = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q ? stores.filter((s) => (s.name || '').toLowerCase().includes(q) || s.slug.toLowerCase().includes(q)) : stores;
@@ -371,8 +419,9 @@ export default function Console() {
   const NAV = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'stores',   label: 'Stores',   icon: StoreIcon, count: stores.length },
+    { id: 'growth',   label: 'Growth',   icon: TrendingUp },
   ];
-  const SOON = ['Billing', 'Orders', 'Access', 'Growth', 'Assistant'];
+  const SOON = ['Billing', 'Orders', 'Access', 'Assistant'];
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -512,6 +561,54 @@ export default function Console() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── GROWTH ── */}
+        {tab === 'growth' && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Tile label="Total stores" value={growth.total} sub={`${growth.newThisWeek} new this week`} />
+              <Tile label="Paid · active" value={growth.paidActive} sub="on Growth or Pro" />
+              <Tile label="Churned" value={growth.paidExpired} tone={growth.paidExpired ? 'rose' : undefined} sub={`${growth.churnPct}% of paid lapsed`} />
+              <Tile label="On Free" value={growth.statusCount.free || 0} sub="incl. never paid" />
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+              <p className="text-sm font-bold text-gray-900 mb-3">New stores · last 8 weeks</p>
+              <div className="flex items-end gap-2 h-28">
+                {growth.weekly.map((v, i) => {
+                  const max = Math.max(1, ...growth.weekly);
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                      <div className="w-full rounded-t-md bg-emerald-500/80" style={{ height: `${(v / max) * 100}%`, minHeight: v ? 6 : 2 }} title={`${v} new`} />
+                      <span className="text-[10px] text-gray-400 tabular-nums">{v}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-gray-400"><span>8 weeks ago</span><span>this week</span></div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+                <p className="text-sm font-bold text-gray-900 mb-3">Plan mix</p>
+                <MixBars rows={[
+                  ['Pro', growth.planCount.premium, '#059669'],
+                  ['Growth', growth.planCount.business, '#34d399'],
+                  ['Free', growth.planCount.free, '#cbd5e1'],
+                ]} />
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+                <p className="text-sm font-bold text-gray-900 mb-3">Store status</p>
+                <MixBars rows={[
+                  ['Active', growth.statusCount.active || 0, '#059669'],
+                  ['Expiring', growth.statusCount.expiring || 0, '#f59e0b'],
+                  ['Expired', growth.statusCount.expired || 0, '#f43f5e'],
+                  ['Free', growth.statusCount.free || 0, '#cbd5e1'],
+                ]} />
+              </div>
             </div>
           </div>
         )}
