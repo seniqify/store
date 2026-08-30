@@ -444,7 +444,8 @@ export default function SalesHub() {
 
   useEffect(() => {
     document.title = 'Sales Hub · PocketLink';
-    /* preview */ return undefined;
+    hubSession().then(setSession);
+    return onHubAuthChange(setSession);
   }, []);
 
   const me = useMemo(
