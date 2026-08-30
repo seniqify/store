@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X,
   ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
-  CalendarClock, MessageCircle,
+  CalendarClock, MessageCircle, Wallet,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
@@ -411,6 +411,24 @@ export default function Console() {
     return { list, lapsed, expiring: list.length - lapsed, reachable };
   }, [stores]);
 
+  const billing = useMemo(() => {
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const ledger = stores
+      .filter((s) => s.billing && Number(s.billing.amount) > 0)
+      .map((s) => ({
+        slug: s.slug, name: s.name || s.slug, plan: s.plan,
+        amount: Number(s.billing.amount), method: s.billing.method || '—',
+        term: s.billing.term, startedAt: s.billing.startedAt, expiresAt: s.billing.expiresAt || s.exp,
+      }))
+      .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0));
+    return {
+      ledger,
+      cashTotal: ledger.reduce((sum, l) => sum + l.amount, 0),
+      monthTotal: ledger.filter((l) => (l.startedAt || '').slice(0, 7) === thisMonth).reduce((s, l) => s + l.amount, 0),
+      onAutopay: stores.filter((s) => s.sub).length,
+    };
+  }, [stores]);
+
   const shownStores = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q ? stores.filter((s) => (s.name || '').toLowerCase().includes(q) || s.slug.toLowerCase().includes(q)) : stores;
@@ -441,8 +459,9 @@ export default function Console() {
     { id: 'stores',   label: 'Stores',   icon: StoreIcon, count: stores.length },
     { id: 'growth',   label: 'Growth',   icon: TrendingUp },
     { id: 'renewals', label: 'Renewals', icon: CalendarClock, count: renewals.list.length },
+    { id: 'billing',  label: 'Billing',  icon: Wallet },
   ];
-  const SOON = ['Billing', 'Orders', 'Access', 'Assistant'];
+  const SOON = ['Orders', 'Access', 'Assistant'];
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -688,6 +707,60 @@ export default function Console() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── BILLING ── */}
+        {tab === 'billing' && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Tile label="Cash collected" value={formatINR(billing.cashTotal)} sub={`${billing.ledger.length} logged`} />
+              <Tile label="This month" value={formatINR(billing.monthTotal)} sub="cash in" />
+              <Tile label="On auto-pay" value={billing.onAutopay} sub="Razorpay subscription" />
+              <Tile label="Manual / cash" value={billing.ledger.length} sub="logged in Console" />
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+                <Wallet size={15} className="text-emerald-600" />
+                <h3 className="text-sm font-bold text-gray-900">Cash ledger</h3>
+                <span className="text-xs text-gray-400">{billing.ledger.length}</span>
+                <span className="ml-auto text-[11px] text-gray-400">newest first</span>
+              </div>
+              {loading ? (
+                <div className="p-6 text-center text-sm text-gray-400">Loading…</div>
+              ) : billing.ledger.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-400">No cash payments logged yet. Log one from any store’s <b>Manage → Cash collected</b>.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-[10.5px] uppercase tracking-wide text-gray-400">
+                        <th className="text-left font-bold px-4 py-2.5">Store</th>
+                        <th className="text-left font-bold px-3 py-2.5">Plan</th>
+                        <th className="text-right font-bold px-3 py-2.5">Amount</th>
+                        <th className="text-left font-bold px-3 py-2.5">Method</th>
+                        <th className="text-left font-bold px-3 py-2.5">On</th>
+                        <th className="text-left font-bold px-3 py-2.5">Expires</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billing.ledger.map((l) => (
+                        <tr key={l.slug} className="border-t border-gray-50 hover:bg-gray-50/60">
+                          <td className="px-4 py-2.5 font-bold text-gray-900 truncate max-w-[14rem]">{l.name}</td>
+                          <td className="px-3 py-2.5"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${planBadgeCls(l.plan)}`}>{PLAN_NAME[l.plan] || l.plan}</span></td>
+                          <td className="px-3 py-2.5 text-right font-extrabold text-gray-900 tabular-nums">{formatINR(l.amount)}</td>
+                          <td className="px-3 py-2.5 text-gray-600 capitalize">{l.method}</td>
+                          <td className="px-3 py-2.5 text-[12px] text-gray-500 tabular-nums whitespace-nowrap">{l.startedAt ? fmtDate(l.startedAt) : '—'}</td>
+                          <td className="px-3 py-2.5 text-[12px] text-gray-500 tabular-nums whitespace-nowrap">{l.expiresAt ? fmtDate(l.expiresAt) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-400 px-1">Cash &amp; manual payments logged from the Console. Razorpay auto-pay subscriptions aren’t itemised here yet.</p>
           </div>
         )}
       </div>
