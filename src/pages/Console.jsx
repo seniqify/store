@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X,
   ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
-  CalendarClock, MessageCircle, Wallet,
+  CalendarClock, MessageCircle, Wallet, Send, Sparkles,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
   fetchMyTeamRow, fetchStoresConsole, fetchConsoleOrders, consoleUpdateStore,
-  yearsFromNowIso,
+  askAssistant, yearsFromNowIso,
 } from '../utils/consoleService';
 import { formatINR } from '../utils/currency';
 
@@ -281,6 +281,9 @@ export default function Console() {
   const [busySlug, setBusySlug] = useState(null);
   const [modal, setModal]     = useState(null);        // store being edited
   const [toast, setToast]     = useState('');
+  const [chat, setChat]       = useState([]);          // assistant thread
+  const [asking, setAsking]   = useState(false);
+  const [ask, setAsk]         = useState('');
 
   // Auth boot
   useEffect(() => {
@@ -331,6 +334,72 @@ export default function Console() {
     const verb = next === 'dark' ? 'Switch to Premium Dark' : 'Switch to Light';
     if (!window.confirm(`${verb} for "${s.name || s.slug}"? Customers will see this immediately.`)) return;
     applyPatch(s.slug, { theme: { ...(s.theme || {}), mode: next } }, 'theme');
+  }
+
+  // ── assistant: the model proposes intent, we build + apply the real write ──
+  function assistantPatch(action) {
+    if (!action || typeof action !== 'object') return null;
+    const store = stores.find((s) => s.slug === action.slug);
+    if (!store) return null;
+    if (action.type === 'set_theme' && (action.mode === 'light' || action.mode === 'dark')) {
+      return { store, label: 'assistant:theme', patch: { theme: { ...(store.theme || {}), mode: action.mode } },
+        desc: `Switch ${store.name || store.slug} to ${action.mode === 'dark' ? 'Premium Dark' : 'Light'}` };
+    }
+    if (action.type === 'set_plan' && SELECTABLE.includes(action.plan)) {
+      const patch = { plan: action.plan };
+      let exp = null;
+      const amt = Number(action.amount);
+      if (PAID.has(action.plan)) {
+        exp = action.term === '1y' ? yearsFromNowIso(1)
+            : action.term === '1m' ? new Date(Date.now() + 30 * DAY).toISOString() : null;
+        patch.planExpiresAt = exp;
+        if (amt > 0) patch.billingNote = {
+          plan: action.plan, planName: PLAN_NAME[action.plan], amount: amt, currency: 'INR',
+          method: action.method || 'cash', term: action.term, collected: true,
+          startedAt: new Date().toISOString().slice(0, 10),
+          expiresAt: exp ? exp.slice(0, 10) : null, setBy: 'console-assistant',
+        };
+      } else { patch.planExpiresAt = null; }
+      return { store, label: 'assistant:plan', patch,
+        desc: `Set ${store.name || store.slug} to ${PLAN_NAME[action.plan]}`
+          + (PAID.has(action.plan) ? ` · expires ${exp ? fmtDate(exp) : 'never'}` : '')
+          + (amt > 0 ? ` · log ₹${amt.toLocaleString('en-IN')} ${action.method || 'cash'}` : '') };
+    }
+    return null;
+  }
+
+  async function sendAssistant() {
+    const q = ask.trim();
+    if (!q || asking) return;
+    setAsk('');
+    setChat((c) => [...c, { role: 'me', text: q }]);
+    setAsking(true);
+    try {
+      const context = { stores: stores.map((s) => ({
+        slug: s.slug, name: s.name, plan: s.plan, status: storeStatus(s).key,
+        expires: s.exp || null, theme: s.theme?.mode || 'light',
+        cash: s.billing?.amount || null, whatsapp: Boolean(s.wa),
+      })) };
+      const res = await askAssistant(q, context);
+      if (res?.error === 'not_configured') setChat((c) => [...c, { role: 'ai', notConfigured: true }]);
+      else if (res?.error) setChat((c) => [...c, { role: 'ai', text: `⚠ ${res.message || res.error}` }]);
+      else setChat((c) => [...c, { role: 'ai', text: res.reply || '(no reply)', action: res.action || null }]);
+    } catch (e) {
+      setChat((c) => [...c, { role: 'ai', text: `⚠ ${e.message}` }]);
+    } finally { setAsking(false); }
+  }
+
+  async function approveAssistant(idx, action) {
+    const built = assistantPatch(action);
+    if (!built) { setToast('⚠ Could not apply that action'); return; }
+    setBusySlug(built.store.slug);
+    try {
+      const cfg = await consoleUpdateStore(built.store.slug, built.patch, built.label);
+      setStores((prev) => prev.map((s) => (s.slug === built.store.slug ? rowFromConfig(s, cfg) : s)));
+      setChat((c) => c.map((m, i) => (i === idx ? { ...m, done: true } : m)));
+      setToast(`✓ ${built.store.slug} updated`);
+    } catch (e) { setToast(`⚠ ${e.message}`); }
+    finally { setBusySlug(null); }
   }
 
   // ── derived ──
@@ -460,8 +529,9 @@ export default function Console() {
     { id: 'growth',   label: 'Growth',   icon: TrendingUp },
     { id: 'renewals', label: 'Renewals', icon: CalendarClock, count: renewals.list.length },
     { id: 'billing',  label: 'Billing',  icon: Wallet },
+    { id: 'assistant', label: 'Assistant', icon: Sparkles },
   ];
-  const SOON = ['Orders', 'Access', 'Assistant'];
+  const SOON = ['Orders', 'Access'];
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -761,6 +831,67 @@ export default function Console() {
               )}
             </div>
             <p className="text-[11px] text-gray-400 px-1">Cash &amp; manual payments logged from the Console. Razorpay auto-pay subscriptions aren’t itemised here yet.</p>
+          </div>
+        )}
+
+        {/* ── ASSISTANT ── */}
+        {tab === 'assistant' && (
+          <div className="max-w-2xl mx-auto flex flex-col" style={{ minHeight: '62vh' }}>
+            <div className="flex-1 space-y-3">
+              {chat.length === 0 && (
+                <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 text-center">
+                  <div className="w-11 h-11 rounded-xl bg-emerald-50 grid place-items-center mx-auto mb-3"><Sparkles size={20} className="text-emerald-600" /></div>
+                  <p className="font-bold text-gray-900">Ask your Console</p>
+                  <p className="text-sm text-gray-500 mt-1">Questions about your stores, or tell me a change — I’ll propose it for your one-tap approval.</p>
+                  <div className="flex flex-wrap gap-2 justify-center mt-4">
+                    {['Which stores expire this month?', 'Who has churned?', 'How much cash have I collected?', 'Renew Krupa Agarbatti Work as Pro for 1 year, ₹6000 cash'].map((s) => (
+                      <button key={s} onClick={() => setAsk(s)} className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 rounded-full px-3 py-1.5 hover:border-gray-300">{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chat.map((m, i) => (
+                <div key={i} className={m.role === 'me' ? 'flex justify-end' : ''}>
+                  {m.role === 'me' ? (
+                    <div className="max-w-[85%] bg-emerald-600 text-white rounded-2xl rounded-br-md px-3.5 py-2 text-sm">{m.text}</div>
+                  ) : m.notConfigured ? (
+                    <div className="max-w-[92%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      🔑 The assistant needs an <b>Anthropic API key</b>. Add <span className="font-mono text-xs">ANTHROPIC_API_KEY</span> in Supabase → Edge Functions → Secrets to activate it.
+                    </div>
+                  ) : (
+                    <div className="max-w-[92%]">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 mb-1 flex items-center gap-1"><Sparkles size={11} /> Assistant</div>
+                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{m.text}</div>
+                      {m.action && (
+                        <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                          <p className="text-xs font-bold text-gray-900 mb-2">{assistantPatch(m.action)?.desc || m.action.summary || 'Proposed change'}</p>
+                          {m.done ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><Check size={13} /> Applied · logged</span>
+                          ) : assistantPatch(m.action) ? (
+                            <div className="flex gap-2">
+                              <button onClick={() => approveAssistant(i, m.action)} disabled={!!busySlug}
+                                className="text-xs font-bold text-white bg-emerald-600 rounded-lg px-3 py-1.5 hover:bg-emerald-700 disabled:opacity-50">Approve &amp; apply</button>
+                              <button onClick={() => setChat((c) => c.map((x, j) => (j === i ? { ...x, action: null } : x)))} className="text-xs font-bold text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-100">Dismiss</button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">Couldn’t map this to a safe action.</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {asking && <div className="text-xs text-gray-400 flex items-center gap-2"><span className="w-3 h-3 border-2 border-gray-200 border-t-emerald-500 rounded-full animate-spin" /> thinking…</div>}
+            </div>
+            <div className="sticky bottom-3 mt-4">
+              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+                <input value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendAssistant(); }}
+                  placeholder="Ask, or tell me a change to make…" className="flex-1 text-sm outline-none text-gray-800 placeholder-gray-400 bg-transparent" />
+                <button onClick={sendAssistant} disabled={!ask.trim() || asking} className="w-9 h-9 rounded-lg bg-emerald-600 grid place-items-center text-white disabled:opacity-40"><Send size={15} /></button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5 px-1">Reads your live store data · proposes changes for your approval · never writes on its own.</p>
+            </div>
           </div>
         )}
       </div>

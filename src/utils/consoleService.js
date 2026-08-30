@@ -90,6 +90,23 @@ export async function consoleUpdateStore(slug, patch, action = 'update') {
   return data;
 }
 
+// ── Assistant (founder-only ops copilot) ──────────────────────────────────────
+/** Ask the console-assistant edge function. `context` carries a compact store
+ *  snapshot for the model to reason over. Returns { reply, action } — or an
+ *  { error, message } for not_configured / llm_error the UI can show plainly. */
+export async function askAssistant(question, context) {
+  const { data, error } = await supabase.functions.invoke('console-assistant', {
+    body: { question, context },
+  });
+  if (error) {
+    // Auth failures (401/403) surface here; the fn returns 200 for app errors.
+    let msg = error.message || 'Assistant unavailable';
+    try { const b = await error.context?.json?.(); if (b?.message) msg = b.message; } catch { /* ignore */ }
+    return { error: 'request_failed', message: msg };
+  }
+  return data;
+}
+
 // ── Small shared helpers ──────────────────────────────────────────────────────
 /** ISO timestamp for `days` days ago. */
 export function daysAgoIso(days) {
