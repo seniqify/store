@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X, Check,
+  LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X,
   ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
+  CalendarClock, MessageCircle,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
@@ -55,6 +56,16 @@ function planBadgeCls(plan) {
 function daysLeft(iso) {
   if (!iso) return null;
   return Math.ceil((new Date(iso).getTime() - Date.now()) / DAY);
+}
+/** One-tap WhatsApp renewal nudge to the store owner's number. */
+function nudgeLink(s) {
+  const digits = String(s.wa || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const phone = digits.length === 10 ? `91${digits}` : digits;
+  const msg = `Hi 👋 Your *${s.name || 'store'}* ${PLAN_NAME[s.plan] || ''} plan on PocketLink `
+    + `expired${s.exp ? ` on ${fmtDate(s.exp)}` : ''}. Renew now to keep your online store & `
+    + `WhatsApp orders live — reply here and I'll set it up for you. 🙏`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 /** Rebuild a store row from the full config the RPC returns. */
 function rowFromConfig(s, cfg) {
@@ -391,6 +402,15 @@ export default function Console() {
     };
   }, [stores]);
 
+  const renewals = useMemo(() => {
+    const list = stores
+      .filter((s) => { const k = storeStatus(s).key; return k === 'expired' || k === 'expiring'; })
+      .sort((a, b) => new Date(b.exp || 0) - new Date(a.exp || 0));   // freshest lapse first
+    const lapsed    = list.filter((s) => storeStatus(s).key === 'expired').length;
+    const reachable = list.filter((s) => s.wa).length;
+    return { list, lapsed, expiring: list.length - lapsed, reachable };
+  }, [stores]);
+
   const shownStores = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q ? stores.filter((s) => (s.name || '').toLowerCase().includes(q) || s.slug.toLowerCase().includes(q)) : stores;
@@ -420,6 +440,7 @@ export default function Console() {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'stores',   label: 'Stores',   icon: StoreIcon, count: stores.length },
     { id: 'growth',   label: 'Growth',   icon: TrendingUp },
+    { id: 'renewals', label: 'Renewals', icon: CalendarClock, count: renewals.list.length },
   ];
   const SOON = ['Billing', 'Orders', 'Access', 'Assistant'];
 
@@ -609,6 +630,63 @@ export default function Console() {
                   ['Free', growth.statusCount.free || 0, '#cbd5e1'],
                 ]} />
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── RENEWALS ── */}
+        {tab === 'renewals' && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-3 gap-3">
+              <Tile label="Lapsed" value={renewals.lapsed} tone={renewals.lapsed ? 'rose' : undefined} sub="paid → Free" />
+              <Tile label="Expiring ≤14d" value={renewals.expiring} tone={renewals.expiring ? 'amber' : undefined} sub="renew before they drop" />
+              <Tile label="Reachable" value={renewals.reachable} sub="have a WhatsApp #" />
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+                <CalendarClock size={15} className="text-emerald-600" />
+                <h3 className="text-sm font-bold text-gray-900">Renewal list</h3>
+                <span className="text-xs text-gray-400">{renewals.list.length}</span>
+                <span className="ml-auto text-[11px] text-gray-400">freshest lapse first</span>
+              </div>
+              {loading ? (
+                <div className="p-6 text-center text-sm text-gray-400">Loading…</div>
+              ) : renewals.list.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-400">No renewals pending — every paid store is current. 🎉</div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {renewals.list.map((s) => {
+                    const link   = nudgeLink(s);
+                    const lapsed = storeStatus(s).key === 'expired';
+                    const dl     = daysLeft(s.exp);
+                    return (
+                      <div key={s.slug} className="flex items-center gap-3 px-4 py-3">
+                        <span className={`w-1.5 h-9 rounded-full flex-shrink-0 ${lapsed ? 'bg-rose-400' : 'bg-amber-400'}`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-gray-900 truncate">
+                            {s.name || s.slug} <span className="text-[11px] font-semibold text-gray-400">· {PLAN_NAME[s.plan] || s.plan}</span>
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            {lapsed ? `Lapsed ${fmtDate(s.exp)}` : `Expires in ${dl}d · ${fmtDate(s.exp)}`}
+                            {s.wa ? ` · +91 ${s.wa}` : ' · no WhatsApp #'}
+                          </p>
+                        </div>
+                        {link ? (
+                          <a href={link} target="_blank" rel="noreferrer"
+                             className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#25D366] rounded-lg px-2.5 py-1.5 hover:bg-[#1ebe5d] transition active:scale-95">
+                            <MessageCircle size={13} /> Nudge
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-gray-300 px-2">no WhatsApp</span>
+                        )}
+                        <button onClick={() => setModal(s)}
+                          className="text-xs font-bold text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-lg px-2.5 py-1.5 hover:border-emerald-300">Renew</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
