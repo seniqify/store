@@ -125,7 +125,6 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     } else if (qty) { uncoveredUnits += qty; }
   }
   const grossProfit = soldRevenue - cogs;
-  const margin = soldRevenue > 0 ? Math.round((grossProfit / soldRevenue) * 100) : 0;
   const hasCostData = productsWithCost > 0 && soldRevenue > 0;
   const profRanked = Object.entries(profByProd)
     .map(([name, v]) => ({ name, profit: v.rev - v.cost, margin: v.rev > 0 ? Math.round(((v.rev - v.cost) / v.rev) * 100) : 0 }))
@@ -140,27 +139,37 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // delivery — comparing the two surfaces a hidden delivery loss. ──
   const pkgPer  = Number(packagingCost) > 0 ? Number(packagingCost) : 0;
   const dlvFlat = Number(deliveryCost)  > 0 ? Number(deliveryCost)  : 0;
-  let deliverySpend = 0, deliveryKnown = 0, deliveryCharged = 0;
+  let deliverySpend = 0, deliveryKnown = 0, deliveryCharged = 0, codCharged = 0, pkgCharged = 0;
   for (const o of valid) {
     const sc = Number(o.shipping_cost);
     if (Number.isFinite(sc) && sc > 0) { deliverySpend += sc; deliveryKnown++; }
     else if (dlvFlat > 0)              { deliverySpend += dlvFlat; }
-    deliveryCharged += Number(o.shipping) || 0;
+    deliveryCharged += Number(o.shipping)  || 0;   // delivery fee the customer paid
+    codCharged      += Number(o.cod_fee)   || 0;   // COD fee the customer paid
+    pkgCharged      += Number(o.packaging) || 0;   // packaging fee the customer paid
   }
   const packagingSpend = pkgPer * count;
   const operatingCosts = packagingSpend + deliverySpend;
-  const hasOpCosts     = hasCostData && operatingCosts > 0;
-  const netProfit      = grossProfit - operatingCosts;
-  const netMargin      = soldRevenue > 0 ? Math.round((netProfit / soldRevenue) * 100) : 0;
-  // Headline flips to the after-costs number once any operating cost is known.
-  const headProfit = hasOpCosts ? netProfit : grossProfit;
-  const headMargin = hasOpCosts ? netMargin : margin;
-  const deliveryLoss = hasOpCosts && deliverySpend > 0 && (deliverySpend - deliveryCharged) >= 20;
+  const hasOpCostsSet  = hasCostData && operatingCosts > 0;
+  // Fees the customer pays on top of the goods (delivery + COD + packaging) are
+  // revenue that offsets the courier / packaging spend — credit them, otherwise
+  // the courier charge is subtracted for free and profit reads too low (even
+  // negative), the same bug the per-order card had. Mirrors OrdersTab (o.total).
+  const feesCharged    = deliveryCharged + codCharged + pkgCharged;
+  const netProfit      = grossProfit + feesCharged - operatingCosts;
+  const netRevenue     = soldRevenue + feesCharged;
+  const netMargin      = netRevenue > 0 ? Math.round((netProfit / netRevenue) * 100) : 0;
+  // Headline is always the true number (goods margin + fees − costs); with no
+  // costs or fees it equals the goods-only profit, still nudging owners to add costs.
+  const headProfit = netProfit;
+  const headMargin = netMargin;
+  const deliveryLoss = hasOpCostsSet && deliverySpend > 0 && (deliverySpend - deliveryCharged) >= 20;
   const pnl = [
     { label: 'Sales', v: soldRevenue, neg: false },
+    ...(feesCharged   > 0 ? [{ label: 'Delivery & COD fees', v: feesCharged,   neg: false }] : []),
     { label: 'Cost of goods', v: cogs, neg: true },
-    ...(packagingSpend > 0 ? [{ label: 'Packaging', v: packagingSpend, neg: true }] : []),
-    ...(deliverySpend  > 0 ? [{ label: 'Delivery',  v: deliverySpend,  neg: true }] : []),
+    ...(packagingSpend > 0 ? [{ label: 'Packaging',     v: packagingSpend, neg: true }] : []),
+    ...(deliverySpend  > 0 ? [{ label: 'Delivery cost', v: deliverySpend,  neg: true }] : []),
   ];
 
   // ── Advanced (Premium) metrics — behaviour from the same orders ──
@@ -258,7 +267,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
                style={{ color: headProfit >= 0 ? '#16a34a' : '#dc2626' }}>
               {formatINR(Math.round(headProfit))}
             </p>
-            <p className="text-[11px] text-gray-400 mt-1">{hasOpCosts ? 'net profit after costs' : 'net profit on goods sold'}</p>
+            <p className="text-[11px] text-gray-400 mt-1">{hasOpCostsSet ? 'net profit after costs' : 'net profit'}</p>
           </div>
 
           {/* Receipt-style breakdown — Sales minus each cost */}
@@ -282,15 +291,15 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
               <button onClick={() => onGoTab?.('products')} className="ml-1 font-bold underline" style={{ color: themeColor }}>Fix →</button>
             </p>
           )}
-          {!hasOpCosts && (
+          {!hasOpCostsSet && (
             <button onClick={() => onGoTab?.('delivery')}
               className="mt-3 text-[11px] font-bold active:scale-95" style={{ color: themeColor }}>
               + Add packaging &amp; delivery costs for true profit →
             </button>
           )}
           <p className="mt-2 text-[10px] text-gray-400">
-            {hasOpCosts
-              ? 'Includes cost of goods, packaging & courier charges. Payment-gateway fees not counted.'
+            {hasOpCostsSet
+              ? 'Counts delivery & COD fees you charged as income, minus cost of goods, packaging & courier. Payment-gateway fees not counted.'
               : 'Profit on the items themselves — add packaging & delivery costs to see profit after everything.'}
             {' '}Cancelled orders are excluded from Sales &amp; Profit.
           </p>

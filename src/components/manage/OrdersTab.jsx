@@ -318,7 +318,13 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const pDelivery = Number(o.shipping_cost) > 0 ? Number(o.shipping_cost)
                   : Number(store.cart?.deliveryCost) > 0 ? Number(store.cart.deliveryCost) : 0;
   const pPacking  = Number(store.cart?.packagingCost) > 0 ? Number(store.cart.packagingCost) : 0;
-  const pProfit   = pGoods - pCogs - pDelivery - pPacking;
+  // Revenue is what the store actually COLLECTS — the order total (product +
+  // the delivery fee + COD fee the customer pays, less any discount) — NOT the
+  // product subtotal. Using product-only revenue subtracts the courier charge
+  // without ever crediting the delivery/COD fee the customer paid toward it,
+  // which understates (or flips negative) the real profit.
+  const pCollected = Number(o.total) > 0 ? Number(o.total) : pGoods;
+  const pProfit    = pCollected - pCogs - pDelivery - pPacking;
   const showProfit = !leads && oItems.length > 0 && pUncovered === 0 && pGoods > 0 && o.status !== 'cancelled';
 
   // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
@@ -495,7 +501,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
               </span>
             </div>
             <p className="text-[10px] text-emerald-700/80 mt-0.5 tabular-nums leading-snug">
-              {formatINR(Math.round(pGoods))} sales − {formatINR(Math.round(pCogs))} cost
+              {formatINR(Math.round(pCollected))} collected − {formatINR(Math.round(pCogs))} cost
               {pDelivery > 0 ? ` − ${formatINR(Math.round(pDelivery))} delivery` : ''}
               {pPacking > 0 ? ` − ${formatINR(Math.round(pPacking))} packing` : ''}
             </p>
