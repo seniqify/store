@@ -35,7 +35,7 @@ serve(async (req) => {
     if (action === 'add') {
       const e = String(email || '').trim().toLowerCase();
       if (!e || !e.includes('@')) return json({ error: 'bad_email', message: 'Enter a valid email.' });
-      const r = role === 'admin' ? 'admin' : 'exec';
+      const r = role === 'admin' ? 'admin' : 'sales';
 
       const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
       let target = (list?.users || []).find((u) => (u.email || '').toLowerCase() === e) || null;
@@ -69,7 +69,7 @@ serve(async (req) => {
     // ── change role ──
     if (action === 'role') {
       if (!userId) return json({ error: 'missing', message: 'No member specified.' });
-      const r = role === 'admin' ? 'admin' : 'exec';
+      const r = role === 'admin' ? 'admin' : 'sales';
       const { error } = await admin.from('crm_team').update({ role: r }).eq('user_id', userId);
       if (error) return json({ error: 'db', message: error.message });
       return json({ ok: true });

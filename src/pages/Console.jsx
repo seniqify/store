@@ -267,7 +267,7 @@ export default function Console() {
   const [chat, setChat]       = useState([]);
   const [asking, setAsking]   = useState(false);
   const [ask, setAsk]         = useState('');
-  const [tf, setTf]           = useState({ email: '', name: '', role: 'exec' });  // team add form
+  const [tf, setTf]           = useState({ email: '', name: '', role: 'sales' });  // team add form
   const [tBusy, setTBusy]     = useState(false);
   const [newCred, setNewCred] = useState(null);   // {email,password} for a just-created account
 
@@ -366,7 +366,7 @@ export default function Console() {
       const res = await manageTeam({ action: 'add', email, name: tf.name.trim(), role: tf.role });
       if (res?.error) { setToast(`⚠ ${res.message || res.error}`); }
       else {
-        setTf({ email: '', name: '', role: 'exec' });
+        setTf({ email: '', name: '', role: 'sales' });
         setTeam(await fetchTeam());
         if (res.created && res.tempPassword) setNewCred({ email, password: res.tempPassword });
         setToast(`✓ ${email} added`);
@@ -740,10 +740,10 @@ export default function Console() {
                 <div className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
                   <input value={tf.email} onChange={(e) => setTf({ ...tf, email: e.target.value })} placeholder="email@address.com" className={darkInput} />
                   <input value={tf.name} onChange={(e) => setTf({ ...tf, name: e.target.value })} placeholder="Name (optional)" className={darkInput} />
-                  <select value={tf.role} onChange={(e) => setTf({ ...tf, role: e.target.value })} className={darkInput}><option value="exec">Exec</option><option value="admin">Admin</option></select>
+                  <select value={tf.role} onChange={(e) => setTf({ ...tf, role: e.target.value })} className={darkInput}><option value="sales">Sales</option><option value="admin">Admin</option></select>
                   <button onClick={addMember} disabled={tBusy || !tf.email.trim()} className="px-4 py-2.5 rounded-xl text-sm font-bold text-[#06120b] bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 whitespace-nowrap">{tBusy ? 'Working…' : 'Add'}</button>
                 </div>
-                <p className={`text-[11px] ${FAINT} mt-2`}>Exec = Sales Hub access · Admin = full Console. If they’ve no account yet, one is created and a one-time password is shown.</p>
+                <p className={`text-[11px] ${FAINT} mt-2`}>Sales = Sales Hub access · Admin = full Console. If they’ve no account yet, one is created and a one-time password is shown.</p>
                 {newCred && (
                   <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 flex items-center gap-3">
                     <div className="min-w-0 flex-1 text-[12px]">
@@ -769,7 +769,7 @@ export default function Console() {
                               <p className={`text-sm font-bold ${INK} truncate`}>{t.name || 'Unnamed'}{self ? ' · you' : ''}</p>
                               <p className={`text-[11px] ${FAINT} font-mono truncate`}>{t.user_id}</p>
                             </div>
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.role === 'admin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-[#8b9d93]'}`}>{t.role === 'admin' ? '✦ Admin' : t.role || 'member'}</span>
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.role === 'admin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-[#8b9d93]'}`}>{t.role === 'admin' ? '✦ Admin' : t.role === 'sales' ? 'Sales' : t.role || 'member'}</span>
                             {!self && <button onClick={() => removeMember(t)} disabled={tBusy} title="Remove" className={`p-1.5 rounded-lg ${FAINT} hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40`}><X size={15} /></button>}
                           </div>
                         );
