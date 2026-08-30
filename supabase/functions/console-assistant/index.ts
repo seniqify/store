@@ -78,7 +78,9 @@ serve(async (req) => {
       return json({ error: 'llm_error', message: t.slice(0, 400) });
     }
     const data = await resp.json();
-    const text = (data?.content?.[0]?.text || '').trim();
+    // claude-sonnet-5 can prepend a "thinking" block, so take the text block —
+    // not content[0], which may be the thinking (it has no .text) → empty reply.
+    const text = ((data?.content || []).find((c: { type?: string }) => c.type === 'text') as { text?: string } | undefined)?.text?.trim() || '';
 
     // Tolerant parse — the model should return {reply, action}, but fall back to
     // the raw text as the reply if it doesn't.
