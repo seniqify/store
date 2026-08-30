@@ -7,7 +7,7 @@ import {
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
   fetchMyTeamRow, fetchStoresConsole, fetchConsoleOrders, fetchTeam,
-  consoleUpdateStore, askAssistant, yearsFromNowIso,
+  consoleUpdateStore, askAssistant, manageTeam, yearsFromNowIso,
 } from '../utils/consoleService';
 import { formatINR } from '../utils/currency';
 
@@ -267,6 +267,9 @@ export default function Console() {
   const [chat, setChat]       = useState([]);
   const [asking, setAsking]   = useState(false);
   const [ask, setAsk]         = useState('');
+  const [tf, setTf]           = useState({ email: '', name: '', role: 'exec' });  // team add form
+  const [tBusy, setTBusy]     = useState(false);
+  const [newCred, setNewCred] = useState(null);   // {email,password} for a just-created account
 
   useEffect(() => { consoleSession().then((s) => setSession(s)); return onConsoleAuthChange((s) => setSession(s)); }, []);
   useEffect(() => {
@@ -352,6 +355,32 @@ export default function Console() {
       setChat((c) => c.map((m, i) => (i === idx ? { ...m, done: true } : m)));
       setToast(`✓ ${built.store.slug} updated`);
     } catch (e) { setToast(`⚠ ${e.message}`); } finally { setBusySlug(null); }
+  }
+
+  // ── team access ──
+  async function addMember() {
+    const email = tf.email.trim();
+    if (!email || tBusy) return;
+    setTBusy(true); setNewCred(null);
+    try {
+      const res = await manageTeam({ action: 'add', email, name: tf.name.trim(), role: tf.role });
+      if (res?.error) { setToast(`⚠ ${res.message || res.error}`); }
+      else {
+        setTf({ email: '', name: '', role: 'exec' });
+        setTeam(await fetchTeam());
+        if (res.created && res.tempPassword) setNewCred({ email, password: res.tempPassword });
+        setToast(`✓ ${email} added`);
+      }
+    } catch (e) { setToast(`⚠ ${e.message}`); } finally { setTBusy(false); }
+  }
+  async function removeMember(t) {
+    if (!window.confirm(`Remove ${t.name || 'this member'} from the team?`)) return;
+    setTBusy(true);
+    try {
+      const res = await manageTeam({ action: 'remove', userId: t.user_id });
+      if (res?.error) setToast(`⚠ ${res.message || res.error}`);
+      else { setTeam(await fetchTeam()); setToast('✓ Member removed'); }
+    } catch (e) { setToast(`⚠ ${e.message}`); } finally { setTBusy(false); }
   }
 
   // ── derived ──
@@ -705,25 +734,49 @@ export default function Console() {
 
           {/* ACCESS */}
           {tab === 'access' && (
-            <Panel title="Team access" icon={Users} count={team.length}>
-              {loading ? <div className={`p-6 text-center text-sm ${FAINT}`}>Loading…</div>
-                : team.length === 0 ? <div className={`p-6 text-center text-sm ${FAINT}`}>No team members.</div>
-                : <div className="divide-y divide-white/[0.05]">
-                    {team.map((t) => (
-                      <div key={t.user_id} className="flex items-center gap-3 px-4 py-3">
-                        <span className="w-9 h-9 rounded-lg grid place-items-center font-extrabold text-[13px] text-[#06120b]" style={{ background: 'linear-gradient(140deg,#22c55e,#16a34a)' }}>
-                          {(t.name || '?').slice(0, 2).toUpperCase()}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-sm font-bold ${INK} truncate`}>{t.name || 'Unnamed'}{t.user_id === me?.user_id ? ' · you' : ''}</p>
-                          <p className={`text-[11px] ${FAINT} font-mono truncate`}>{t.user_id}</p>
-                        </div>
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.role === 'admin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-[#8b9d93]'}`}>{t.role === 'admin' ? '✦ Admin' : t.role || 'member'}</span>
-                      </div>
-                    ))}
-                  </div>}
-              <div className={`px-4 py-3 border-t ${LINE} text-[11px] ${FAINT}`}>Adding &amp; removing members from here is coming next — for now manage crm_team directly.</div>
-            </Panel>
+            <div className="space-y-4">
+              <div className={`${CARD} p-4`} style={{ background: PANEL }}>
+                <p className={`text-sm font-bold ${INK} mb-3 flex items-center gap-2`}><Users size={15} className="text-emerald-400" /> Add a team member</p>
+                <div className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
+                  <input value={tf.email} onChange={(e) => setTf({ ...tf, email: e.target.value })} placeholder="email@address.com" className={darkInput} />
+                  <input value={tf.name} onChange={(e) => setTf({ ...tf, name: e.target.value })} placeholder="Name (optional)" className={darkInput} />
+                  <select value={tf.role} onChange={(e) => setTf({ ...tf, role: e.target.value })} className={darkInput}><option value="exec">Exec</option><option value="admin">Admin</option></select>
+                  <button onClick={addMember} disabled={tBusy || !tf.email.trim()} className="px-4 py-2.5 rounded-xl text-sm font-bold text-[#06120b] bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 whitespace-nowrap">{tBusy ? 'Working…' : 'Add'}</button>
+                </div>
+                <p className={`text-[11px] ${FAINT} mt-2`}>Exec = Sales Hub access · Admin = full Console. If they’ve no account yet, one is created and a one-time password is shown.</p>
+                {newCred && (
+                  <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 flex items-center gap-3">
+                    <div className="min-w-0 flex-1 text-[12px]">
+                      <span className="text-emerald-200 font-semibold">Account created for {newCred.email}.</span>{' '}
+                      <span className="text-emerald-100">Temp password: </span><span className="font-mono font-bold text-white select-all">{newCred.password}</span>{' '}
+                      <span className={FAINT}>— share it; they can change it after signing in.</span>
+                    </div>
+                    <button onClick={() => setNewCred(null)} className={`${DIM} hover:${INK}`}><X size={15} /></button>
+                  </div>
+                )}
+              </div>
+
+              <Panel title="Team access" icon={Users} count={team.length}>
+                {loading ? <div className={`p-6 text-center text-sm ${FAINT}`}>Loading…</div>
+                  : team.length === 0 ? <div className={`p-6 text-center text-sm ${FAINT}`}>No team members.</div>
+                  : <div className="divide-y divide-white/[0.05]">
+                      {team.map((t) => {
+                        const self = t.user_id === me?.user_id;
+                        return (
+                          <div key={t.user_id} className="flex items-center gap-3 px-4 py-3">
+                            <span className="w-9 h-9 rounded-lg grid place-items-center font-extrabold text-[13px] text-[#06120b]" style={{ background: 'linear-gradient(140deg,#22c55e,#16a34a)' }}>{(t.name || '?').slice(0, 2).toUpperCase()}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-bold ${INK} truncate`}>{t.name || 'Unnamed'}{self ? ' · you' : ''}</p>
+                              <p className={`text-[11px] ${FAINT} font-mono truncate`}>{t.user_id}</p>
+                            </div>
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${t.role === 'admin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-[#8b9d93]'}`}>{t.role === 'admin' ? '✦ Admin' : t.role || 'member'}</span>
+                            {!self && <button onClick={() => removeMember(t)} disabled={tBusy} title="Remove" className={`p-1.5 rounded-lg ${FAINT} hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40`}><X size={15} /></button>}
+                          </div>
+                        );
+                      })}
+                    </div>}
+              </Panel>
+            </div>
           )}
 
           {/* ASSISTANT */}

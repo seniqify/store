@@ -118,6 +118,21 @@ export async function askAssistant(question, context) {
   return data;
 }
 
+// ── Team management (founder-only edge function) ──────────────────────────────
+/** Add / remove / re-role a crm_team member. payload:
+ *  { action:'add', email, name, role } | { action:'remove', userId }
+ *  | { action:'role', userId, role }. Returns the fn body (may hold an
+ *  { error, message }, or { created, tempPassword } for a new account). */
+export async function manageTeam(payload) {
+  const { data, error } = await supabase.functions.invoke('console-team', { body: payload });
+  if (error) {
+    let msg = error.message || 'Team update failed';
+    try { const b = await error.context?.json?.(); if (b?.message || b?.error) msg = b.message || b.error; } catch { /* ignore */ }
+    return { error: 'request_failed', message: msg };
+  }
+  return data;
+}
+
 // ── Small shared helpers ──────────────────────────────────────────────────────
 /** ISO timestamp for `days` days ago. */
 export function daysAgoIso(days) {
