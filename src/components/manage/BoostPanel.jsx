@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, AlertTriangle, Info, Check, ChevronDown, ChevronUp, Globe } from 'lucide-react';
 import { previewCampaign } from '../../utils/metaCampaign';
+import { launchCreate, launchActivate, launchPause, launchStop } from '../../utils/metaLaunch';
+import { consoleSession, fetchMyTeamRow } from '../../utils/consoleService';
 
 /**
  * Manage → Ads → Create campaign (Stage 2C): configure → preview → approve.
@@ -27,6 +29,11 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
   const [data, setData] = useState(null);
   const [approved, setApproved] = useState(false);
   const [showPayloads, setShowPayloads] = useState(false);
+  // Founder-only launch (Stage 2D). The server re-verifies crm_team admin; this
+  // just decides whether to show the launch controls (a founder session present).
+  const [isFounder, setIsFounder] = useState(false);
+  const [launch, setLaunch] = useState(null);          // { launchId, status, ids, busy, error, step }
+  const [confirmSpend, setConfirmSpend] = useState(false);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
@@ -42,6 +49,44 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     } catch {
       setErr('Could not build the preview. Try again.');
     } finally { setBusy(false); }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const s = await consoleSession();
+        if (!s?.user) return;
+        const row = await fetchMyTeamRow(s.user.id);
+        if (alive && row?.role === 'admin') setIsFounder(true);
+      } catch { /* not a founder — owner dry-run flow */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  function launchErr(r) {
+    if (r.error === 'blocked') return 'Resolve the blockers above before launching.';
+    if (r.error === 'partial') return `Created up to the ${r.step} step — tap Launch again to resume safely.`;
+    if (r.error === 'in_progress') return 'This launch is already being created — wait a moment.';
+    if (r.error === 'founder_only') return 'Founder access only.';
+    if (r.error === 'not_connected') return 'Meta isn’t connected for this store.';
+    return r.message || 'Launch failed. Try again.';
+  }
+  async function doLaunch() {
+    const launchId = launch?.launchId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    setLaunch({ launchId, busy: true, error: '' });
+    try {
+      const r = await launchCreate(config.slug, launchId, { promote: form.promote, productId: form.productId, dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: 'traffic' });
+      if (r?.error) setLaunch({ launchId, status: r.status || '', step: r.step, error: launchErr(r) });
+      else setLaunch({ launchId, status: r.status, ids: r.ids });
+    } catch (e) { setLaunch({ launchId, error: e.message || 'Launch failed.' }); }
+  }
+  async function act(fn) {
+    setLaunch((l) => ({ ...l, busy: true, error: '' }));
+    try {
+      const r = await fn(launch.launchId);
+      setLaunch((l) => (r?.error ? { ...l, busy: false, error: r.message || r.error } : { ...l, busy: false, status: r.status }));
+    } catch (e) { setLaunch((l) => ({ ...l, busy: false, error: e.message })); }
   }
 
   const label = 'block text-xs font-semibold text-gray-600 mb-1.5';
@@ -188,12 +233,53 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         )}
       </div>
 
-      {/* Approve — dry-run only */}
+      {/* Founder: real launch controls · Owner: dry-run approve only */}
       <div className="border-t border-gray-100 pt-3">
-        {approved ? (
+        {isFounder ? (
+          !d.launchReady ? (
+            <p className="text-xs text-gray-500">Resolve the blockers above before this can launch.</p>
+          ) : launch?.status === 'active' ? (
+            <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 space-y-2">
+              <p className="text-sm font-bold text-green-800">● Live — spending up to {money(d.budget?.total, cur)} over {d.budget?.days} days.</p>
+              <p className="text-[11px] text-green-700/80">Meta’s ad review may hold delivery for a little while.</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => act(launchPause)} disabled={launch.busy} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-50">Pause</button>
+                <button type="button" onClick={() => act(launchStop)} disabled={launch.busy} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 disabled:opacity-50">Stop</button>
+              </div>
+              {launch.error && <p className="text-xs text-red-600">{launch.error}</p>}
+            </div>
+          ) : (launch?.status === 'created' || launch?.status === 'paused') ? (
+            <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-3 space-y-2.5">
+              <p className="text-sm font-bold text-gray-800">Campaign created ({launch.status}) — <span className="text-green-700">nothing is spending yet</span>.</p>
+              <label className="flex items-start gap-2 text-xs text-gray-600">
+                <input type="checkbox" checked={confirmSpend} onChange={(e) => setConfirmSpend(e.target.checked)} className="mt-0.5" />
+                <span>I understand this will start spending up to <b>{money(d.budget?.total, cur)}</b> over {d.budget?.days} days.</span>
+              </label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => act(launchActivate)} disabled={!confirmSpend || launch.busy}
+                  className="text-xs font-bold px-3 py-2 rounded-lg text-white disabled:opacity-40" style={{ background: themeColor }}>
+                  {launch.busy ? 'Working…' : 'Activate — start spending'}
+                </button>
+                <button type="button" onClick={() => act(launchStop)} disabled={launch.busy} className="text-xs font-bold px-3 py-2 rounded-lg border border-red-200 text-red-600 disabled:opacity-50">Stop</button>
+              </div>
+              {launch.error && <p className="text-xs text-red-600">{launch.error}</p>}
+            </div>
+          ) : launch?.status === 'stopped' ? (
+            <p className="text-sm font-semibold text-gray-600">Campaign stopped. It’s kept in Meta (paused), not deleted.</p>
+          ) : (
+            <>
+              <button type="button" onClick={doLaunch} disabled={launch?.busy}
+                className="w-full py-2.5 rounded-xl text-white text-sm font-bold active:scale-[0.98] transition disabled:opacity-50" style={{ background: themeColor }}>
+                {launch?.busy ? 'Creating (paused)…' : 'Launch campaign — creates PAUSED, no spend yet'}
+              </button>
+              <p className="mt-1.5 text-[11px] text-gray-400 text-center">Founder-only. Creates everything paused; you activate spending in the next step.</p>
+              {launch?.error && <p className="mt-1.5 text-xs text-red-600 text-center">{launch.error}</p>}
+            </>
+          )
+        ) : approved ? (
           <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 flex items-start gap-2">
             <Check size={16} className="text-green-600 mt-0.5" />
-            <p className="text-sm text-green-800"><b>Approved (dry run).</b> Nothing was created or charged — launching is enabled in the next stage.</p>
+            <p className="text-sm text-green-800"><b>Approved (dry run).</b> Nothing was created or charged — the founder enables launching.</p>
           </div>
         ) : (
           <>
