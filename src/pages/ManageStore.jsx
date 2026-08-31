@@ -2731,7 +2731,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 // Groups only render the tabs that exist for this store (service/restaurant vary).
 const NAV_GROUPS = [
   { title: 'Run',        keys: ['home', 'orders', 'products', 'delivery'] },
-  { title: 'Grow',       keys: ['customers', 'reviews', 'offers', 'abandoned'] },
+  { title: 'Grow',       keys: ['customers', 'reviews', 'offers', 'ads', 'abandoned'] },
   { title: 'Understand', keys: ['analytics', 'insights', 'assistant'] },
   { title: 'Set up',     keys: ['settings'] },
 ];
