@@ -89,17 +89,25 @@ $$;
 revoke all on function public.meta_capi_claim(uuid, text, text, text, text, int, int) from anon, authenticated;
 revoke all on function public.meta_capi_mark(uuid, text, text, int, text) from anon, authenticated;
 
+-- ── Shared secret store (RLS-locked; seeded once, out of git) ────────────────────
+-- The trigger reads the secret from this table (deterministic on pooled
+-- connections, unlike a GUC). If empty, the trigger is a no-op (feature off).
+create table if not exists public.meta_capi_config (
+  id     int primary key default 1 check (id = 1),
+  secret text
+);
+alter table public.meta_capi_config enable row level security;
+revoke all on public.meta_capi_config from anon, authenticated;
+
 -- ── Trigger: fire meta-capi when an order becomes purchase-eligible ──────────────
--- Secret comes from a DB setting (set once, out of git):
---   alter database postgres set app.meta_capi_secret = '<secret>';
--- If unset, the trigger is a no-op (feature stays off).
 create or replace function public.meta_capi_notify() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
-  v_secret text := current_setting('app.meta_capi_secret', true);
+  v_secret text;
   v_new boolean;
   v_old boolean;
 begin
+  select secret into v_secret from public.meta_capi_config where id = 1;
   if v_secret is null or v_secret = '' then return NEW; end if;
   if NEW.status = 'abandoned' or coalesce(NEW.total, 0) <= 0 then return NEW; end if;
 
@@ -124,7 +132,8 @@ create trigger trg_meta_capi
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- ONE-TIME SETUP (run separately, with a real secret — keep it out of git):
---   alter database postgres set app.meta_capi_secret = '<same value as META_CAPI_SECRET env>';
--- Then set the edge-function secret META_CAPI_SECRET to the same value and deploy
--- the meta-capi function. Until both are set, no events are sent.
+--   insert into public.meta_capi_config (id, secret) values (1, '<secret>')
+--     on conflict (id) do update set secret = excluded.secret;
+-- Set the SAME value as the edge-function secret META_CAPI_SECRET and deploy the
+-- meta-capi function (--no-verify-jwt). Until both are set, no events are sent.
 -- ══════════════════════════════════════════════════════════════════════════════
