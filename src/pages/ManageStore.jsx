@@ -45,6 +45,7 @@ import CustomersTab                                      from '../components/man
 import OverviewTab                                       from '../components/manage/OverviewTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
+import MetaConnect                                        from '../components/manage/MetaConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
@@ -2283,6 +2284,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
               </div>
             )}
           </div>
+
+          {/* Connect Meta — Facebook Login for Business (Stage 1: OAuth connect) */}
+          <MetaConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
           {/* Online payments — connect the store's own Razorpay */}
           <PaymentsConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />

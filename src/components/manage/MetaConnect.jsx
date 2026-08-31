@@ -1,0 +1,137 @@
+import { useState, useEffect } from 'react';
+import { Check, Share2, ShieldCheck } from 'lucide-react';
+import { startMetaConnect, disconnectMeta } from '../../utils/metaConnect';
+
+/**
+ * Settings → Connect Meta (Facebook Login for Business, Stage 1).
+ *
+ * "Connect Meta" hands the seller off to Meta's login; our server-side callback
+ * exchanges the code, stores the token in the RLS-locked store_meta_accounts
+ * table, and mirrors a public-safe summary onto config.meta — which is all this
+ * card ever reads. The token never touches the browser. Mirrors the idiom of
+ * PaymentsConnect / ShippingConnect.
+ */
+
+// Friendly copy for the ?meta=error&reason=… values the callback may redirect with.
+const REASONS = {
+  denied:   'You cancelled the Meta authorization — no problem, you can connect any time.',
+  state:    'That connection link expired. Please tap Connect Meta again.',
+  config:   'Meta connection isn’t fully set up yet. Please try again shortly.',
+  exchange: 'Meta couldn’t complete the sign-in. Please try connecting again.',
+  nocode:   'Meta didn’t return an authorization. Please try again.',
+  store:    'We couldn’t save the connection. Please try again.',
+  server:   'Something went wrong connecting to Meta. Please try again.',
+};
+
+// Read the one-time connect result Meta's callback appended to the URL.
+function readMetaNotice() {
+  if (typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  const m = p.get('meta');
+  if (m === 'connected') return { type: 'success', text: 'Meta connected successfully.' };
+  if (m === 'error') return { type: 'error', text: REASONS[p.get('reason')] || 'Could not connect to Meta. Please try again.' };
+  return null;
+}
+
+export default function MetaConnect({ config, pin, themeColor = '#0d9488', onConfig }) {
+  const meta      = config.meta || {};
+  const connected = Boolean(meta.connected);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState('');
+  // Compute the result banner once from the URL (lazy init — no setState in an
+  // effect). Connection status itself comes from config.meta, which ManageStore
+  // refreshes from the DB after the round-trip.
+  const [notice, setNotice] = useState(readMetaNotice);
+
+  // Strip the ?meta=… params so a refresh doesn't re-show the banner.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams(window.location.search);
+    if (!p.has('meta')) return;
+    p.delete('meta'); p.delete('reason');
+    const qs = p.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }, []);
+
+  async function connect() {
+    setErr(''); setBusy(true);
+    try {
+      await startMetaConnect(config.slug, pin);   // redirects to Meta on success
+    } catch (e) {
+      setErr(e.message || 'Could not start the connection. Please try again.');
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setErr(''); setBusy(true);
+    try {
+      await disconnectMeta(config.slug, pin);
+      onConfig?.({ meta: { connected: false } });   // keep in-memory config in sync
+      setNotice(null);
+    } catch (e) {
+      setErr(e.message || 'Could not disconnect. Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+        Connect Meta <span className="text-gray-400 font-normal">· Facebook / Instagram business</span>
+      </label>
+
+      {notice && (
+        <div className={`mb-2 rounded-xl px-3 py-2 text-xs font-medium border ${
+          notice.type === 'success'
+            ? 'bg-green-50 text-green-700 border-green-200'
+            : 'bg-red-50 text-red-600 border-red-200'}`}>
+          {notice.text}
+        </div>
+      )}
+
+      {connected ? (
+        /* Connected state */
+        <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center flex-shrink-0">
+              <Check size={14} strokeWidth={3} />
+            </span>
+            <p className="text-sm font-bold text-green-800">Meta Connected ✓</p>
+          </div>
+          {meta.businessName && (
+            <p className="text-xs text-green-700/90 mt-1.5">
+              Business: <b>{meta.businessName}</b>
+              {meta.adAccountCount ? ` · ${meta.adAccountCount} ad account${meta.adAccountCount === 1 ? '' : 's'}` : ''}
+            </p>
+          )}
+          <p className="text-xs text-gray-500 mt-2">
+            Your Facebook / Instagram business is linked to PocketLink. Managing your ads from here is coming next.
+          </p>
+          {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
+          <button type="button" onClick={disconnect} disabled={busy}
+            className="mt-2.5 text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50">
+            {busy ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        </div>
+      ) : (
+        /* Connect prompt */
+        <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-3">
+          <div className="flex items-start gap-2 text-xs text-gray-500">
+            <Share2 size={15} className="flex-shrink-0 mt-0.5" style={{ color: themeColor }} />
+            <span>Connect your Facebook / Instagram business assets to PocketLink to manage your advertising from one place.</span>
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <button type="button" onClick={connect} disabled={busy}
+            className="w-full py-2.5 rounded-xl text-white text-sm font-bold active:scale-[0.98] transition disabled:opacity-50"
+            style={{ background: themeColor }}>
+            {busy ? 'Redirecting…' : 'Connect Meta'}
+          </button>
+          <p className="text-[11px] text-gray-400 leading-snug flex items-start gap-1.5">
+            <ShieldCheck size={13} className="flex-shrink-0 mt-px" />
+            <span>You’ll sign in with Facebook and choose which business &amp; ad accounts to share. We never see your password, and your access is stored securely — never in your browser.</span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
