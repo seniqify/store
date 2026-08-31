@@ -41,10 +41,12 @@ const SELECT_ERRORS = {
  *  it, and pulls the Page's Instagram account from the same response. */
 export async function selectMetaPage(slug, pin, pageId) {
   const hashedPin = await hashPin(pin);
-  const res = await fetch('/api/meta/select-page', {
+  // Served by the campaign-preview function (action: 'select-page') — one endpoint,
+  // same PIN gate — to stay within Vercel's serverless-function limit.
+  const res = await fetch('/api/meta/campaign-preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug, hashedPin, pageId }),
+    body: JSON.stringify({ action: 'select-page', slug, hashedPin, pageId }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data?.error) throw new Error(SELECT_ERRORS[data?.error] || 'Could not save the Page. Please try again.');
