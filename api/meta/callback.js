@@ -66,19 +66,27 @@ export default async function handler(req, res) {
       ? perms.body.data.filter((p) => p.status === 'granted').map((p) => p.permission)
       : [];
 
-    // From the (first) shared ad account: backfill the Business Portfolio when
-    // /me/businesses is empty, and pick up the Pixel the seller shared so we can
-    // auto-fill their storefront Meta Pixel ID (pixel IDs are public, not secret).
-    let pixelId = null;
+    // Backfill the Business Portfolio from the (first) shared ad account when
+    // /me/businesses is empty.
     const firstAd = adAccountIds[0];
-    if (firstAd) {
-      const [acct, pixels] = await Promise.all([
-        graphGet(firstAd, { fields: 'business{id,name}', access_token: token }),
-        graphGet(`${firstAd}/adspixels`, { fields: 'id,name', access_token: token }),
-      ]);
+    if (firstAd && !business) {
+      const acct = await graphGet(firstAd, { fields: 'business{id,name}', access_token: token });
       const b = acct.body?.business;
-      if (!business && b?.id) business = { id: b.id, name: b.name };
-      pixelId = pixels.body?.data?.[0]?.id || null;
+      if (b?.id) business = { id: b.id, name: b.name };
+    }
+
+    // Find the Pixel the seller shared so we can auto-fill their storefront Meta
+    // Pixel ID. Login-for-Business pixels usually live on the business (owned or
+    // client), sometimes on the ad account — try each, take the first found.
+    // (Pixel IDs are public, used client-side by the storefront — safe in config.)
+    let pixelId = null;
+    const pixelSources = [];
+    if (business?.id) pixelSources.push(`${business.id}/owned_pixels`, `${business.id}/client_pixels`);
+    if (firstAd)      pixelSources.push(`${firstAd}/adspixels`);
+    for (const src of pixelSources) {
+      const r = await graphGet(src, { fields: 'id,name', access_token: token });
+      const id = r.body?.data?.[0]?.id;
+      if (id) { pixelId = id; break; }
     }
 
     // 7) Store server-side (RLS-locked; service role only).
