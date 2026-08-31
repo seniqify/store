@@ -18,7 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
-  Bell, Volume2, VolumeX, Layers,
+  Bell, Volume2, VolumeX, Layers, Megaphone,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -42,6 +42,7 @@ import ReviewsTab                                       from '../components/mana
 import OffersTab                                        from '../components/manage/OffersTab';
 import AiInsightsTab                                    from '../components/manage/AiInsightsTab';
 import CustomersTab                                      from '../components/manage/CustomersTab';
+import AdsTab                                            from '../components/manage/AdsTab';
 import OverviewTab                                       from '../components/manage/OverviewTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
@@ -2944,6 +2945,7 @@ export default function ManageStore() {
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
+    ...(config.meta?.connected ? [{ key: 'ads', label: 'Ads', icon: Megaphone }] : []),
     { key: 'reviews',    label: 'Reviews',     icon: Star      },
     { key: 'products',   label: isRestaurant ? 'Menu' : 'Products', icon: Package  },
     { key: 'offers',     label: 'Offers',      icon: Percent  },
@@ -3189,6 +3191,10 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <AiInsightsTab slug={businessSlug} pin={storePin} themeColor={themeColor}
                            enabled={aiInsightsEnabled} businessName={config.businessName} config={config} />
+          </div>
+        ) : tab === 'ads' ? (
+          <div className="animate-pl-fade-up">
+            <AdsTab config={config} pin={storePin} themeColor={themeColor} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
