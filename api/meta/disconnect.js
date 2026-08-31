@@ -33,11 +33,16 @@ export default async function handler(req, res) {
     // Mark revoked and drop the stored token.
     await updateMetaStatus(slug, { status: 'revoked', access_token: null });
 
-    // Clear the public-safe flag from the store config.
+    // Clear the public-safe connection flag from the store config — but preserve the
+    // CAPI configuration (capiEnabled / capiTestCode) so a later reconnect keeps the
+    // Conversions API / test-event setup intact. (Stage 2B behavior itself untouched.)
     const config = await getStoreConfig(slug);
     if (config) {
-      const { meta, ...rest } = config;   // eslint-disable-line no-unused-vars
-      await patchStoreConfig(slug, { ...rest, meta: { connected: false } });
+      const { meta = {}, ...rest } = config;
+      const preservedCapi = {};
+      if (meta.capiEnabled !== undefined) preservedCapi.capiEnabled = meta.capiEnabled;
+      if (meta.capiTestCode) preservedCapi.capiTestCode = meta.capiTestCode;
+      await patchStoreConfig(slug, { ...rest, meta: { connected: false, ...preservedCapi } });
     }
 
     res.status(200).json({ connected: false });

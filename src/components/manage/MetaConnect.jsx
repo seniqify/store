@@ -175,10 +175,16 @@ export default function MetaConnect({ config, pin, themeColor = '#0d9488', onCon
             Your Facebook / Instagram business is linked to PocketLink. Manage your ads in the <b>Ads</b> tab.
           </p>
           {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
-          <button type="button" onClick={disconnect} disabled={busy}
-            className="mt-2.5 text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50">
-            {busy ? 'Disconnecting…' : 'Disconnect'}
-          </button>
+          <div className="mt-2.5 flex items-center gap-4">
+            <button type="button" onClick={connect} disabled={busy}
+              className="text-xs font-semibold disabled:opacity-50" style={{ color: themeColor }}>
+              {busy ? 'Redirecting…' : 'Reconnect'}
+            </button>
+            <button type="button" onClick={disconnect} disabled={busy}
+              className="text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50">
+              {busy ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          </div>
         </div>
       ) : (
         /* Connect prompt */

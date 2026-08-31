@@ -132,11 +132,12 @@ export default async function handler(req, res) {
       const patch = {
         ...config,
         meta: {
+          ...(config.meta || {}),                  // preserve CAPI config (capiEnabled, capiTestCode) + any other meta.* across reconnects
           connected: true,
           businessId: business?.id || null,
           businessName: business?.name || null,
           adAccountCount: adAccountIds.length,
-          pixelId: pixelId || null,
+          pixelId: pixelId || config.meta?.pixelId || null,
           pages,                                   // full menu (public-safe)
           pageId: selected?.id || null,            // the selected Page (single source of truth for 2C/2D)
           pageName: selected?.name || null,
