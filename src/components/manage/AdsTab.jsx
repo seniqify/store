@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, TrendingUp } from 'lucide-react';
+import { Megaphone, RefreshCw, AlertCircle, TrendingUp, Plus } from 'lucide-react';
 import { fetchAdsPerformance } from '../../utils/metaAds';
+import BoostPanel from './BoostPanel';
 
 /**
  * Manage → Ads (Stage 2a): read-only Meta ad performance for a connected store.
@@ -44,6 +45,7 @@ const objLabel = (o) => OBJECTIVE_LABEL[o] || (o ? o.replace(/^OUTCOME_/, '').to
 
 export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
   const [range, setRange] = useState('7d');
+  const [showBoost, setShowBoost] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState({ loading: true, data: null, error: '' });
 
@@ -66,6 +68,8 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
   const pickRange = (r) => { if (r === range) return; setState((s) => ({ ...s, loading: true })); setRange(r); };
 
   const { loading, data, error } = state;
+
+  if (showBoost) return <BoostPanel config={config} pin={pin} themeColor={themeColor} onClose={() => setShowBoost(false)} />;
   const cur = data?.currency || 'INR';
   const t = data?.totals;
 
@@ -94,6 +98,11 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setShowBoost(true)}
+            className="inline-flex items-center gap-1 text-xs font-bold text-white px-3 py-1.5 rounded-lg active:scale-95 transition"
+            style={{ background: themeColor }}>
+            <Plus size={14} /> Create campaign
+          </button>
           {RangeToggle}
           <button type="button" onClick={refresh} disabled={loading} aria-label="Refresh"
             className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-50">

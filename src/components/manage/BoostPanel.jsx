@@ -1,0 +1,220 @@
+import { useState } from 'react';
+import { ArrowLeft, AlertTriangle, Info, Check, ChevronDown, ChevronUp, Globe } from 'lucide-react';
+import { previewCampaign } from '../../utils/metaCampaign';
+
+/**
+ * Manage → Ads → Create campaign (Stage 2C): configure → preview → approve.
+ * ENTIRELY read-only — the preview is a dry run built server-side; nothing is
+ * created on Meta and no money is spent. "Approve" is a dry-run acknowledgement
+ * only (launching arrives in a later stage).
+ */
+
+const money = (n, cur = 'INR') => (cur === 'INR' ? `₹${Number(n || 0).toLocaleString('en-IN')}` : `${Number(n || 0).toLocaleString('en-IN')} ${cur}`);
+
+const ERR = {
+  not_connected: 'Connect Meta in Settings first.',
+  no_ad_account: 'No ad account connected — reconnect Meta and share an ad account.',
+  reauth: 'Your Meta connection expired — reconnect in Settings → Connect Meta.',
+  objective_unavailable: 'That objective isn’t available yet.',
+};
+
+export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClose }) {
+  const products = Array.isArray(config.products) ? config.products : [];
+  const [form, setForm] = useState({ promote: 'store', productId: products[0]?.id ?? '', dailyBudget: 200, days: 7 });
+  const [step, setStep] = useState('configure');   // configure | preview
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [data, setData] = useState(null);
+  const [approved, setApproved] = useState(false);
+  const [showPayloads, setShowPayloads] = useState(false);
+
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  async function runPreview() {
+    setErr(''); setBusy(true); setApproved(false);
+    try {
+      const d = await previewCampaign(config.slug, pin, {
+        promote: form.promote, productId: form.productId,
+        dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: 'traffic',
+      });
+      if (d?.error) { setErr(ERR[d.error] || 'Something went wrong. Try again.'); setBusy(false); return; }
+      setData(d); setStep('preview');
+    } catch {
+      setErr('Could not build the preview. Try again.');
+    } finally { setBusy(false); }
+  }
+
+  const label = 'block text-xs font-semibold text-gray-600 mb-1.5';
+  const input = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand';
+
+  // ── Configure ──────────────────────────────────────────────────────────────
+  if (step === 'configure') {
+    return (
+      <div className="animate-pl-fade-up max-w-lg">
+        <button type="button" onClick={onClose} className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800 mb-3">
+          <ArrowLeft size={16} /> Back to Ads
+        </button>
+        <h2 className="text-lg font-extrabold text-gray-900">Create a campaign</h2>
+        <p className="text-xs text-gray-400 mt-0.5 mb-4">Preview exactly what would run — nothing is created or charged here.</p>
+
+        <div className="space-y-4">
+          <div>
+            <label className={label}>What to promote</label>
+            <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-sm font-bold w-full">
+              {[['store', 'Whole store'], ['product', 'A product']].map(([v, t]) => (
+                <button key={v} type="button" onClick={() => set({ promote: v })}
+                  className={`flex-1 px-3 py-2 transition ${form.promote === v ? 'text-white' : 'text-gray-500 bg-white hover:bg-gray-50'}`}
+                  style={form.promote === v ? { background: themeColor } : undefined}>{t}</button>
+              ))}
+            </div>
+          </div>
+
+          {form.promote === 'product' && (
+            <div>
+              <label className={label}>Product</label>
+              <select value={form.productId} onChange={(e) => set({ productId: e.target.value })} className={input}>
+                {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.price ? ` — ₹${p.price}` : ''}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className={label}>Goal</label>
+            <select value="traffic" disabled className={`${input} bg-gray-50 text-gray-500`}>
+              <option value="traffic">Website visits (Traffic)</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-400">Sales-optimised campaigns come in a later update.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Daily budget (₹)</label>
+              <input type="number" min={1} inputMode="numeric" value={form.dailyBudget}
+                     onChange={(e) => set({ dailyBudget: e.target.value.replace(/[^0-9]/g, '') })} className={input} />
+            </div>
+            <div>
+              <label className={label}>Run for (days)</label>
+              <input type="number" min={1} max={90} inputMode="numeric" value={form.days}
+                     onChange={(e) => set({ days: e.target.value.replace(/[^0-9]/g, '') })} className={input} />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            Estimated total: <b>{money((Number(form.dailyBudget) || 0) * (Number(form.days) || 0))}</b> over {Number(form.days) || 0} day{Number(form.days) === 1 ? '' : 's'}.
+          </p>
+
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <button type="button" onClick={runPreview} disabled={busy || !form.dailyBudget || !form.days}
+            className="w-full py-2.5 rounded-xl text-white text-sm font-bold active:scale-[0.98] transition disabled:opacity-50"
+            style={{ background: themeColor }}>
+            {busy ? 'Building preview…' : 'Preview campaign'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Preview + approve ──────────────────────────────────────────────────────
+  const d = data || {};
+  const cur = d.currency || 'INR';
+  const c = d.creative || {};
+  const blockers = d.launchBlockers || [];
+  const warnings = d.warnings || [];
+
+  return (
+    <div className="animate-pl-fade-up max-w-lg space-y-4">
+      <button type="button" onClick={() => { setStep('configure'); setApproved(false); }} className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800">
+        <ArrowLeft size={16} /> Edit
+      </button>
+
+      {/* Ad creative mock */}
+      <div>
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Ad preview</p>
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden max-w-sm">
+          <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+              {config.logo ? <img src={config.logo} alt="" className="w-full h-full object-cover" /> : <span>{config.logoEmoji || '🏪'}</span>}
+            </div>
+            <div className="leading-tight">
+              <p className="text-[13px] font-bold text-gray-900">{d.page?.name || config.businessName || 'Your Page'}</p>
+              <p className="text-[10px] text-gray-400">Sponsored · <Globe size={9} className="inline" /></p>
+            </div>
+          </div>
+          {c.primaryText && <p className="px-3 pb-2 text-[13px] text-gray-800">{c.primaryText}</p>}
+          <div className="aspect-[1.91/1] bg-gray-50">
+            {c.imageUrl ? <img src={c.imageUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full grid place-items-center text-3xl text-gray-300">🖼️</div>}
+          </div>
+          <div className="px-3 py-2.5 flex items-center gap-2 bg-gray-50 border-t border-gray-100">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-gray-400 uppercase truncate">pocketlink.store</p>
+              <p className="text-[13px] font-bold text-gray-900 truncate">{c.headline}</p>
+            </div>
+            <span className="text-[12px] font-bold text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 whitespace-nowrap">{c.cta || 'Shop Now'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 text-sm">
+        <Row k="Goal" v={d.objective?.label || 'Website visits'} />
+        <Row k="Daily budget" v={money(d.budget?.daily, cur)} />
+        <Row k="Duration" v={`${d.budget?.days} days`} />
+        <Row k="Estimated total" v={<b>{money(d.budget?.total, cur)}</b>} />
+        <Row k="Audience" v={d.targeting?.resolved ? `${d.targeting.label} · Age ${d.targeting.ageMin}–${d.targeting.ageMax}` : '— not set —'} />
+        <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none connected</span>} last />
+      </div>
+
+      {/* Blockers */}
+      {blockers.length > 0 && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3.5">
+          <p className="text-sm font-bold text-red-700 flex items-center gap-1.5"><AlertTriangle size={15} /> Fix before this can launch</p>
+          <ul className="mt-1.5 space-y-1 text-xs text-red-700/90 list-disc pl-4">
+            {blockers.map((b, i) => <li key={i}>{b}</li>)}
+          </ul>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 space-y-1">
+          {warnings.map((w, i) => <p key={i} className="flex items-start gap-1.5"><Info size={13} className="flex-shrink-0 mt-0.5" />{w}</p>)}
+        </div>
+      )}
+
+      {/* Exact payloads */}
+      <div>
+        <button type="button" onClick={() => setShowPayloads((s) => !s)} className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-800">
+          {showPayloads ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Exact API payloads (dry run — not sent)
+        </button>
+        {showPayloads && (
+          <pre className="mt-2 text-[10px] leading-snug bg-gray-900 text-gray-100 rounded-xl p-3 overflow-x-auto">{JSON.stringify(d.payloads, null, 2)}</pre>
+        )}
+      </div>
+
+      {/* Approve — dry-run only */}
+      <div className="border-t border-gray-100 pt-3">
+        {approved ? (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 flex items-start gap-2">
+            <Check size={16} className="text-green-600 mt-0.5" />
+            <p className="text-sm text-green-800"><b>Approved (dry run).</b> Nothing was created or charged — launching is enabled in the next stage.</p>
+          </div>
+        ) : (
+          <>
+            <button type="button" onClick={() => setApproved(true)} disabled={!d.launchReady}
+              className="w-full py-2.5 rounded-xl text-white text-sm font-bold active:scale-[0.98] transition disabled:opacity-40"
+              style={{ background: themeColor }}>
+              {d.launchReady ? 'Approve (dry run — no spend)' : 'Resolve the blockers above to approve'}
+            </button>
+            <p className="mt-1.5 text-[11px] text-gray-400 text-center">This does not create a campaign or spend money.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v, last }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 py-1.5 ${last ? '' : 'border-b border-gray-200/70'}`}>
+      <span className="text-gray-500">{k}</span>
+      <span className="text-gray-900 font-semibold text-right">{v}</span>
+    </div>
+  );
+}
