@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Check, Share2, ShieldCheck } from 'lucide-react';
-import { startMetaConnect, disconnectMeta } from '../../utils/metaConnect';
+import { startMetaConnect, disconnectMeta, selectMetaPage } from '../../utils/metaConnect';
 
 /**
  * Settings → Connect Meta (Facebook Login for Business, Stage 1).
@@ -42,6 +42,29 @@ export default function MetaConnect({ config, pin, themeColor = '#0d9488', onCon
   // effect). Connection status itself comes from config.meta, which ManageStore
   // refreshes from the DB after the round-trip.
   const [notice, setNotice] = useState(readMetaNotice);
+
+  // Facebook Page (ad identity). meta.pages === null → an older connection made
+  // before Page capture existed → the seller must reconnect. The selected Page
+  // (meta.pageId) is the single source of truth for 2C preview / 2D launch.
+  const pages      = Array.isArray(meta.pages) ? meta.pages : null;
+  const selectedId = meta.pageId ? String(meta.pageId) : '';
+  const selectedPage = (pages && pages.find((p) => p.id === selectedId))
+    || (selectedId ? { id: selectedId, name: meta.pageName || 'Facebook Page' } : null);
+  const [choice, setChoice]         = useState(selectedId);
+  const [savingPage, setSavingPage] = useState(false);
+  const [changing, setChanging]     = useState(false);
+
+  async function savePage(id) {
+    if (!id) { setErr('Please choose a Page.'); return; }
+    setErr(''); setSavingPage(true);
+    try {
+      const d = await selectMetaPage(config.slug, pin, id);
+      onConfig?.({ meta: { ...meta, pageId: d.pageId, pageName: d.pageName, igId: d.ig?.id || null, igUsername: d.ig?.username || null } });
+      setChanging(false);
+    } catch (e) {
+      setErr(e.message || 'Could not save the Page.');
+    } finally { setSavingPage(false); }
+  }
 
   // Strip the ?meta=… params so a refresh doesn't re-show the banner.
   useEffect(() => {
@@ -104,8 +127,52 @@ export default function MetaConnect({ config, pin, themeColor = '#0d9488', onCon
               {meta.adAccountCount ? ` · ${meta.adAccountCount} ad account${meta.adAccountCount === 1 ? '' : 's'}` : ''}
             </p>
           )}
+
+          {/* Facebook Page = the ad identity used for campaigns (Stage 2C/2D). */}
+          {pages === null ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+              Reconnect to enable ads — Page access needed.
+            </p>
+          ) : selectedPage && !changing ? (
+            <div className="text-xs text-green-700/90 mt-1.5">
+              Page: <b>{selectedPage.name}</b>
+              {meta.igUsername ? <> · IG: <b>@{meta.igUsername}</b></> : null}
+              {pages.length > 1 && (
+                <button type="button" onClick={() => { setChoice(selectedId); setChanging(true); }}
+                  className="ml-2 font-semibold text-green-800 hover:underline">Change</button>
+              )}
+            </div>
+          ) : pages.length === 0 ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+              No Facebook Page found in your Meta business. Add a Page, then reconnect to run ads.
+            </p>
+          ) : (
+            <div className="mt-2">
+              <label className="block text-[11px] font-semibold text-green-800 mb-1">
+                {selectedPage ? 'Change the Facebook Page to advertise from' : 'Choose the Facebook Page to advertise from'}
+              </label>
+              <div className="flex gap-2">
+                <select value={choice} onChange={(e) => setChoice(e.target.value)}
+                  className="flex-1 text-xs rounded-lg border border-green-200 bg-white px-2 py-1.5">
+                  <option value="">Select a Page…</option>
+                  {pages.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}{p.ig ? ` (IG @${p.ig.username})` : ''}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => savePage(choice)} disabled={savingPage || !choice}
+                  className="text-xs font-bold text-white px-3 rounded-lg disabled:opacity-50" style={{ background: themeColor }}>
+                  {savingPage ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              {changing && (
+                <button type="button" onClick={() => setChanging(false)}
+                  className="mt-1 text-[11px] text-gray-400 hover:text-gray-600">Cancel</button>
+              )}
+            </div>
+          )}
+
           <p className="text-xs text-gray-500 mt-2">
-            Your Facebook / Instagram business is linked to PocketLink. Managing your ads from here is coming next.
+            Your Facebook / Instagram business is linked to PocketLink. Manage your ads in the <b>Ads</b> tab.
           </p>
           {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
           <button type="button" onClick={disconnect} disabled={busy}

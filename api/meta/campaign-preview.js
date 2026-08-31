@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     if (!adId) { res.status(200).json({ error: 'no_ad_account' }); return; }
 
     const out = await buildCampaign(
-      { slug, adId, token: acct.access_token, cfg: config || {}, businessId: acct.business_id || config?.meta?.businessId || null },
+      { slug, adId, token: acct.access_token, cfg: config || {} },
       { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId },
     );
     res.status(200).json(out);

@@ -89,6 +89,23 @@ export default async function handler(req, res) {
       if (id) { pixelId = id; break; }
     }
 
+    // Capture ALL Facebook Pages the seller granted (Login for Business +
+    // pages_show_list), plus each Page's linked Instagram professional account. We
+    // store the full menu and let the seller/founder choose — we NEVER silently
+    // advertise from an arbitrary Page. Page IDs / IG usernames are public → safe
+    // in config.meta. (page access_token is intentionally NOT requested/stored.)
+    let pages = [];
+    const acc = await graphGet('me/accounts', { fields: 'id,name,instagram_business_account{id,username,name}', access_token: token });
+    if (Array.isArray(acc.body?.data)) {
+      pages = acc.body.data.filter((p) => p?.id).map((p) => ({
+        id: String(p.id),
+        name: p.name || 'Facebook Page',
+        ig: p.instagram_business_account?.id
+          ? { id: String(p.instagram_business_account.id), username: p.instagram_business_account.username || p.instagram_business_account.name || '' }
+          : null,
+      }));
+    }
+
     // 7) Store server-side (RLS-locked; service role only).
     const now = new Date().toISOString();
     const stored = await upsertMetaAccount({
@@ -105,6 +122,13 @@ export default async function handler(req, res) {
     //    storefront tracking turns on without them pasting it manually.
     const config = await getStoreConfig(slug);
     if (config) {
+      // Page selection: preserve a still-valid prior choice across reconnects;
+      // auto-select when there is exactly one; otherwise require an explicit pick
+      // (never auto-choose from several — that is the seller's/founder's decision).
+      const priorPageId = config.meta?.pageId ? String(config.meta.pageId) : '';
+      let selected = priorPageId ? pages.find((p) => p.id === priorPageId) : null;
+      if (!selected && pages.length === 1) selected = pages[0];
+
       const patch = {
         ...config,
         meta: {
@@ -113,6 +137,11 @@ export default async function handler(req, res) {
           businessName: business?.name || null,
           adAccountCount: adAccountIds.length,
           pixelId: pixelId || null,
+          pages,                                   // full menu (public-safe)
+          pageId: selected?.id || null,            // the selected Page (single source of truth for 2C/2D)
+          pageName: selected?.name || null,
+          igId: selected?.ig?.id || null,          // Instagram follows the selected Page
+          igUsername: selected?.ig?.username || null,
           connectedAt: now,
           expiresAt,
         },

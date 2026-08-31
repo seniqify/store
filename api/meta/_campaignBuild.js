@@ -18,7 +18,7 @@ export const OBJECTIVES = {
 
 // buildCampaign — validate + build. READ-ONLY. Returns the preview object with
 // the exact payloads + launchBlockers; { error } for auth/config problems.
-export async function buildCampaign({ slug, adId, token, cfg, businessId }, input) {
+export async function buildCampaign({ slug, adId, token, cfg }, input) {
   const meta = cfg.meta || {};
   const warnings = [];
   const launchBlockers = [];
@@ -52,16 +52,27 @@ export async function buildCampaign({ slug, adId, token, cfg, businessId }, inpu
   if (daily <= 0) launchBlockers.push('Set a daily budget.');
   else if (minRupees && daily < minRupees) launchBlockers.push(`Daily budget must be at least ₹${minRupees} for this ad account.`);
 
-  // ── Read-only: eligible Facebook Page from the connected business ──
+  // ── Read-only: the Facebook Page = ONLY the explicitly selected + still-accessible
+  // one. config.meta.pageId is chosen in Settings → Connect Meta and validated
+  // server-side by select-page.js; it is the single source of truth for 2C/2D. We
+  // never auto-pick from several Pages, and we re-validate the selection live so a
+  // revoked/removed Page becomes a hard blocker instead of a wrong-Page launch.
   let page = null;
-  if (businessId) {
-    const [owned, client] = await Promise.all([
-      graphGet(`${businessId}/owned_pages`, { fields: 'id,name', access_token: token }),
-      graphGet(`${businessId}/client_pages`, { fields: 'id,name', access_token: token }),
-    ]);
-    page = owned.body?.data?.[0] || client.body?.data?.[0] || null;
+  const selectedPageId = meta.pageId ? String(meta.pageId) : '';
+  if (selectedPageId) {
+    const pr = await graphGet(selectedPageId, { fields: 'id,name', access_token: token });
+    if (pr?.body?.error?.code === 190 || pr?.body?.error?.type === 'OAuthException') return { error: 'reauth' };
+    if (pr.body?.id) page = { id: String(pr.body.id), name: pr.body.name || meta.pageName || 'Facebook Page' };
   }
-  if (!page) launchBlockers.push('No Facebook Page is available in your connected Meta business — a Page is required to run ads. Add/connect a Page in Meta Business settings, then reconnect Meta.');
+  if (!page) {
+    if (!selectedPageId && Array.isArray(meta.pages) && meta.pages.length > 1) {
+      launchBlockers.push('Choose which Facebook Page to advertise from in Settings → Connect Meta.');
+    } else if (!selectedPageId) {
+      launchBlockers.push('No Facebook Page is connected — add/connect a Page in Meta Business settings, then reconnect Meta.');
+    } else {
+      launchBlockers.push('Your selected Facebook Page is no longer accessible — reconnect Meta or reselect the Page.');
+    }
+  }
 
   // ── Read-only: resolve location dynamically (never hardcoded) ──
   let geo = null; let geoLabel = '';

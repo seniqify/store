@@ -68,7 +68,7 @@ async function doCreate(slug, launchId, input) {
   const config = await getStoreConfig(slug);
   const token = acct.access_token;
 
-  const built = await buildCampaign({ slug, adId, token, cfg: config || {}, businessId: acct.business_id || config?.meta?.businessId || null }, input);
+  const built = await buildCampaign({ slug, adId, token, cfg: config || {} }, input);
   if (built.error) return built;                                   // reauth, etc.
   if (!built.launchReady) return { error: 'blocked', launchBlockers: built.launchBlockers, warnings: built.warnings };
 
