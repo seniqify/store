@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { calcCartTotals } from './currency';
 import { couponDiscountFor } from './offers';
 import { hashPin } from './pinHash';
+import { getMetaMatchData } from './metaPixel';
 
 /**
  * Order capture + retrieval.
@@ -24,8 +25,12 @@ export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coup
   const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
   const netTotal = Math.max(0, total - couponDiscount);
   const couponNote = couponDiscount > 0 ? `Coupon ${coupon.code} (−₹${couponDiscount})` : '';
+  // Meta match signals (fbp/fbc/ua) captured now so a later server-side CAPI
+  // Purchase (fired at merchant-accept / payment-verify) can still be matched.
+  const { fbp, fbc, ua } = getMetaMatchData();
   return {
     ...(id ? { id } : {}),
+    fbp: fbp || null, fbc: fbc || null, client_ua: ua || null,
     store_slug:     config.slug,
     customer_name:  customerDetails.partyName || customerDetails.name || '',
     customer_phone: String(customerDetails.mobile || customerDetails.phone || '').replace(/\D/g, '').slice(-10),

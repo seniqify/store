@@ -358,7 +358,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     });
     // Report the sale to the store's Meta Pixel — checkout finishes in WhatsApp,
     // so order-placed is the conversion. No-op without a pixel.
-    pixelTrack('Purchase', { value: finalTotal, currency: 'INR', num_items: itemCount });
+    pixelTrack('Purchase', { value: finalTotal, currency: 'INR', num_items: itemCount }, orderId);
     onOrderPlaced?.();   // empty the cart now that the order is placed
   }
 

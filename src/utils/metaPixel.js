@@ -38,8 +38,27 @@ export function initMetaPixel(pixelId) {
   activeId = id;
 }
 
-/** Fire a standard event to the active store's pixel — no-op if none is set. */
-export function pixelTrack(event, data) {
+/** Fire a standard event to the active store's pixel — no-op if none is set.
+ *  Pass `eventID` (e.g. the order id) so a matching server-side CAPI event with
+ *  the same id is de-duplicated by Meta. */
+export function pixelTrack(event, data, eventID) {
   if (typeof window === 'undefined' || typeof window.fbq !== 'function' || !activeId) return;
-  window.fbq('trackSingle', activeId, event, data || {});
+  if (eventID) window.fbq('trackSingle', activeId, event, data || {}, { eventID: String(eventID) });
+  else window.fbq('trackSingle', activeId, event, data || {});
+}
+
+/** Read the Meta match signals the browser Pixel sets (_fbp / _fbc cookies) plus
+ *  the user agent, captured at order placement so a later server-side CAPI
+ *  Purchase can be matched + deduplicated even when it fires much later. */
+export function getMetaMatchData() {
+  if (typeof document === 'undefined') return { fbp: null, fbc: null, ua: null };
+  const cookie = (name) => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  };
+  return {
+    fbp: cookie('_fbp'),
+    fbc: cookie('_fbc'),
+    ua:  typeof navigator !== 'undefined' ? navigator.userAgent : null,
+  };
 }
