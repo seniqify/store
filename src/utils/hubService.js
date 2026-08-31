@@ -83,7 +83,7 @@ export async function fetchStoresLite() {
                name:config->>businessName, plan:config->>plan,
                exp:config->>planExpiresAt, sub:config->>razorpaySubscriptionId,
                wa:config->>whatsappNumber, city:config->>city,
-               bt:config->>businessType`)
+               bt:config->>businessType, mgr:config->>managedBy`)
       .limit(1000);
     if (error) return [];
     return data || [];

@@ -490,10 +490,20 @@ export default function SalesHub() {
   // ── Derived data ──
   const today = todayIST();
 
+  // Sales members are locked to their own work; only an admin can view team-wide.
+  const effScope = isAdmin ? scope : 'mine';
+  const teamMap = useMemo(() => Object.fromEntries((team || []).map((t) => [t.user_id, t.name])), [team]);
+  // Stores this view may see: null = all (admin "Team"); a Set of my assigned slugs otherwise.
+  const myStoreSlugs = useMemo(
+    () => (effScope === 'all' ? null : new Set(stores.filter((s) => s.mgr === me?.user_id).map((s) => s.slug))),
+    [stores, effScope, me?.user_id],
+  );
+  const seeStore = useCallback((slug) => !myStoreSlugs || myStoreSlugs.has(slug), [myStoreSlugs]);
+
   // Leads scoped to the current view (mine vs whole team).
   const scopedLeads = useMemo(
-    () => (scope === 'all' ? (leads || []) : (leads || []).filter((x) => x.assigned_to === me?.user_id)),
-    [leads, scope, me?.user_id],
+    () => (effScope === 'all' ? (leads || []) : (leads || []).filter((x) => x.assigned_to === me?.user_id)),
+    [leads, effScope, me?.user_id],
   );
 
   const kpis = useMemo(() => {
@@ -503,14 +513,14 @@ export default function SalesHub() {
     return {
       leadsToday:      l.filter((x) => istDateOf(x.created_at) === today).length,
       followupsDue:    l.filter((x) => x.next_follow_up && x.next_follow_up <= today && OPEN_STATUSES.includes(x.status)).length,
-      newStoresToday:  stores.filter((s) => istDateOf(s.created_at) === today).length,
-      ordersToday:     orders.filter((o) => istDateOf(o.created_at) === today && Number(o.total) > 0).length,
+      newStoresToday:  stores.filter((s) => seeStore(s.slug) && istDateOf(s.created_at) === today).length,
+      ordersToday:     orders.filter((o) => seeStore(o.store_slug) && istDateOf(o.created_at) === today && Number(o.total) > 0).length,
       wonPaidMonth:    wonPaidMonth.length,
       collectedMonth:  wonPaidMonth.reduce((s, x) => s + (Number(x.amount) || 0), 0),
-      renewals7:       stores.filter((s) => s.exp && new Date(s.exp) > new Date() && new Date(s.exp) <= new Date(Date.now() + 7 * 86400000)).length,
+      renewals7:       stores.filter((s) => seeStore(s.slug) && s.exp && new Date(s.exp) > new Date() && new Date(s.exp) <= new Date(Date.now() + 7 * 86400000)).length,
       openLeads:       l.filter((x) => OPEN_STATUSES.includes(x.status)).length,
     };
-  }, [scopedLeads, stores, orders, today]);
+  }, [scopedLeads, stores, orders, today, seeStore]);
 
   const perExec = useMemo(() => {
     const l = leads || [];
@@ -531,21 +541,22 @@ export default function SalesHub() {
   const feed = useMemo(() => {
     const ev = [];
     for (const s of stores) {
-      if (new Date(s.created_at) > new Date(Date.now() - 7 * 86400000)) {
+      if (seeStore(s.slug) && new Date(s.created_at) > new Date(Date.now() - 7 * 86400000)) {
         ev.push({ at: s.created_at, icon: '🏪', text: `New store registered — ${s.name || s.slug}`, sub: `${PLAN_NAME[s.plan] || s.plan || 'Free'}${s.city ? ` · ${s.city}` : ''}` });
       }
     }
     for (const o of orders) {
+      if (!seeStore(o.store_slug)) continue;
       ev.push(Number(o.total) > 0
         ? { at: o.created_at, icon: '🛒', text: `Order ₹${Number(o.total).toLocaleString('en-IN')} — ${storeName(o.store_slug)}`, sub: `${o.item_count} item${o.item_count === 1 ? '' : 's'} · ${o.customer_name || 'customer'}` }
         : { at: o.created_at, icon: '💼', text: `Quote lead — ${storeName(o.store_slug)}`, sub: o.customer_name || 'customer' });
     }
     return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
-  }, [stores, orders, storeName]);
+  }, [stores, orders, storeName, seeStore]);
 
   const health = useMemo(() => {
     const map = {};
-    for (const s of stores) map[s.slug] = { ...s, views7: 0, orders7: 0, rev7: 0 };
+    for (const s of stores) if (seeStore(s.slug)) map[s.slug] = { ...s, views7: 0, orders7: 0, rev7: 0 };
     for (const v of views)  { if (map[v.store_slug]) map[v.store_slug].views7 += 1; }
     for (const o of orders) {
       if (!map[o.store_slug]) continue;
@@ -553,7 +564,7 @@ export default function SalesHub() {
       map[o.store_slug].rev7 += Number(o.total) || 0;
     }
     return Object.values(map).sort((a, b) => b.views7 - a.views7);
-  }, [stores, views, orders]);
+  }, [stores, views, orders, seeStore]);
 
   const followBuckets = useMemo(() => {
     const l = scopedLeads.filter((x) => x.next_follow_up && OPEN_STATUSES.includes(x.status));
@@ -566,7 +577,7 @@ export default function SalesHub() {
 
   const renewBuckets = useMemo(() => {
     const now = Date.now();
-    const withExp = stores.filter((s) => s.exp && s.plan && s.plan !== 'free');
+    const withExp = stores.filter((s) => seeStore(s.slug) && s.exp && s.plan && s.plan !== 'free');
     const days = (s) => Math.ceil((new Date(s.exp).getTime() - now) / 86400000);
     return {
       expired: withExp.filter((s) => days(s) <= 0).sort((a, b) => new Date(b.exp) - new Date(a.exp)).slice(0, 25),
@@ -574,7 +585,7 @@ export default function SalesHub() {
       d15:     withExp.filter((s) => days(s) > 7  && days(s) <= 15).sort((a, b) => new Date(a.exp) - new Date(b.exp)),
       d30:     withExp.filter((s) => days(s) > 15 && days(s) <= 30).sort((a, b) => new Date(a.exp) - new Date(b.exp)),
     };
-  }, [stores]);
+  }, [stores, seeStore]);
 
   const visibleLeads = useMemo(() => {
     let l = scopedLeads;
@@ -675,8 +686,8 @@ export default function SalesHub() {
         </div>
       </div>
 
-      {/* My-work / Team scope — only meaningful with more than one exec */}
-      {team && team.length > 1 && ['today', 'leads', 'follow'].includes(tab) && (
+      {/* My-work / Team scope — admin only; sales members are locked to their own */}
+      {isAdmin && team && team.length > 1 && ['today', 'leads', 'follow', 'activity', 'renew'].includes(tab) && (
         <div className="max-w-5xl mx-auto px-4 pt-3 flex justify-end">
           <div className="inline-flex rounded-full border border-gray-200 bg-white overflow-hidden text-[11px] font-bold">
             <button onClick={() => setScope('mine')}
@@ -776,6 +787,7 @@ export default function SalesHub() {
                             {s.name || s.slug}
                           </a>
                           {s.city && <span className="text-[11px] text-gray-400 ml-1.5">{s.city}</span>}
+                          {isAdmin && effScope === 'all' && s.mgr && <span className="text-[11px] text-gray-400 ml-1.5">· 👤 {teamMap[s.mgr] || 'assigned'}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">{PLAN_NAME[s.plan] || s.plan || 'Free'}{s.sub ? ' ✓' : ''}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-gray-800">{s.views7}</td>
@@ -919,6 +931,7 @@ export default function SalesHub() {
                               <p className="text-[11px] text-gray-400 mt-0.5">
                                 {PLAN_NAME[s.plan] || s.plan}{s.sub ? ' · auto-pay ✓' : ' · manual/coupon'}
                                 {' · '}{new Date(s.exp) < new Date() ? 'expired' : 'expires'} {new Date(s.exp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                {isAdmin && effScope === 'all' && s.mgr ? ` · 👤 ${teamMap[s.mgr] || 'assigned'}` : ''}
                               </p>
                             </div>
                             {s.sub

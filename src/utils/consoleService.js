@@ -52,7 +52,7 @@ export async function fetchStoresConsole() {
                exp:config->>planExpiresAt, bt:config->>businessType,
                wa:config->>whatsappNumber, city:config->>city,
                sub:config->>razorpaySubscriptionId, logoEmoji:config->>logoEmoji,
-               theme:config->theme, billing:config->billingNote`)
+               mgr:config->>managedBy, theme:config->theme, billing:config->billingNote`)
       .limit(2000);
     if (error) return [];
     return data || [];

@@ -69,7 +69,8 @@ function nudgeLink(s) {
 }
 function rowFromConfig(s, cfg) {
   if (!cfg || typeof cfg !== 'object') return s;
-  return { ...s, plan: cfg.plan ?? s.plan, exp: cfg.planExpiresAt ?? null, theme: cfg.theme ?? s.theme, billing: cfg.billingNote ?? s.billing };
+  return { ...s, plan: cfg.plan ?? s.plan, exp: cfg.planExpiresAt ?? null, theme: cfg.theme ?? s.theme,
+    billing: cfg.billingNote ?? s.billing, mgr: cfg.managedBy ?? null };
 }
 
 const darkInput = `w-full rounded-xl px-3 py-2.5 text-sm bg-[#0d1310] border border-white/[0.09] text-[#eef4f0]
@@ -307,6 +308,14 @@ export default function Console() {
     if (!window.confirm(`${verb} for "${s.name || s.slug}"? Customers see this immediately.`)) return;
     applyPatch(s.slug, { theme: { ...(s.theme || {}), mode: next } }, 'theme');
   }
+  async function assignStore(slug, userId) {
+    setBusySlug(slug);
+    try {
+      const cfg = await consoleUpdateStore(slug, { managedBy: userId || null }, 'assign');
+      setStores((prev) => prev.map((s) => (s.slug === slug ? rowFromConfig(s, cfg) : s)));
+      setToast(userId ? '✓ Owner set' : '✓ Unassigned');
+    } catch (e) { setToast(`⚠ ${e.message}`); } finally { setBusySlug(null); }
+  }
 
   // ── assistant ──
   function assistantPatch(action) {
@@ -472,6 +481,8 @@ export default function Console() {
     };
   }, [orders]);
 
+  const teamMap = useMemo(() => Object.fromEntries((team || []).map((t) => [t.user_id, t.name])), [team]);
+
   // ── gates ──
   if (session === undefined || (session && me === undefined))
     return <div className="min-h-screen grid place-items-center" style={{ background: BG }}><div className="w-8 h-8 border-4 border-white/10 border-t-emerald-500 rounded-full animate-spin" /></div>;
@@ -580,10 +591,11 @@ export default function Console() {
                   <thead><tr className={`text-[10.5px] uppercase tracking-wide ${FAINT}`}>
                     <th className="text-left font-bold px-4 py-2.5">Store</th><th className="text-left font-bold px-3 py-2.5">Plan</th>
                     <th className="text-left font-bold px-3 py-2.5">Status</th><th className="text-left font-bold px-3 py-2.5">Expires</th>
+                    <th className="text-left font-bold px-3 py-2.5">Owner</th>
                     <th className="text-left font-bold px-3 py-2.5">Theme</th><th className="px-3 py-2.5"></th>
                   </tr></thead>
                   <tbody>
-                    {loading ? <tr><td colSpan={6} className={`px-4 py-8 text-center ${FAINT}`}>Loading stores…</td></tr>
+                    {loading ? <tr><td colSpan={7} className={`px-4 py-8 text-center ${FAINT}`}>Loading stores…</td></tr>
                     : shownStores.map((s) => {
                       const st = storeStatus(s); const dark = s.theme?.mode === 'dark';
                       return (
@@ -601,6 +613,13 @@ export default function Console() {
                           <td className="px-3 py-2.5"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
                           <td className={`px-3 py-2.5 text-[12px] ${DIM} tabular-nums whitespace-nowrap`}>{PAID.has(s.plan) ? fmtDate(s.exp) : '—'}</td>
                           <td className="px-3 py-2.5">
+                            <select value={s.mgr || ''} onChange={(e) => assignStore(s.slug, e.target.value)} disabled={busySlug === s.slug}
+                              className="text-[11px] font-semibold rounded-lg px-2 py-1 border border-white/[0.08] bg-[#0d1310] text-[#c3d3ca] outline-none focus:border-emerald-500/50 max-w-[9rem] disabled:opacity-50">
+                              <option value="">Unassigned</option>
+                              {team.map((t) => <option key={t.user_id} value={t.user_id}>{t.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2.5">
                             <button onClick={() => toggleTheme(s)} disabled={busySlug === s.slug} className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${BODY} border border-white/[0.08] rounded-lg px-2 py-1 hover:border-white/20 disabled:opacity-50`}>
                               {dark ? <Moon size={11} /> : <Sun size={11} />} {dark ? 'Dark' : 'Light'}
                             </button>
@@ -612,7 +631,7 @@ export default function Console() {
                         </tr>
                       );
                     })}
-                    {!loading && shownStores.length === 0 && <tr><td colSpan={6} className={`px-4 py-8 text-center ${FAINT}`}>No stores match “{query}”.</td></tr>}
+                    {!loading && shownStores.length === 0 && <tr><td colSpan={7} className={`px-4 py-8 text-center ${FAINT}`}>No stores match “{query}”.</td></tr>}
                   </tbody>
                 </table>
               </div>
