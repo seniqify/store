@@ -54,17 +54,32 @@ export default async function handler(req, res) {
     const expiresIn = Number(long.body?.expires_in || short.body?.expires_in || 0);
     const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
 
-    // 6) Identify Business Portfolio, ad accounts, and granted scopes.
+    // 6) Granted scopes, ad accounts, and Business Portfolio.
     const [biz, ads, perms] = await Promise.all([
       graphGet('me/businesses',  { fields: 'id,name', access_token: token }),
       graphGet('me/adaccounts',  { fields: 'id,account_id,name', access_token: token }),
       graphGet('me/permissions', { access_token: token }),
     ]);
-    const business     = biz.body?.data?.[0] || null;
+    let business       = biz.body?.data?.[0] || null;
     const adAccountIds = Array.isArray(ads.body?.data)  ? ads.body.data.map((a) => a.id).filter(Boolean) : [];
     const scopes       = Array.isArray(perms.body?.data)
       ? perms.body.data.filter((p) => p.status === 'granted').map((p) => p.permission)
       : [];
+
+    // From the (first) shared ad account: backfill the Business Portfolio when
+    // /me/businesses is empty, and pick up the Pixel the seller shared so we can
+    // auto-fill their storefront Meta Pixel ID (pixel IDs are public, not secret).
+    let pixelId = null;
+    const firstAd = adAccountIds[0];
+    if (firstAd) {
+      const [acct, pixels] = await Promise.all([
+        graphGet(firstAd, { fields: 'business{id,name}', access_token: token }),
+        graphGet(`${firstAd}/adspixels`, { fields: 'id,name', access_token: token }),
+      ]);
+      const b = acct.body?.business;
+      if (!business && b?.id) business = { id: b.id, name: b.name };
+      pixelId = pixels.body?.data?.[0]?.id || null;
+    }
 
     // 7) Store server-side (RLS-locked; service role only).
     const now = new Date().toISOString();
@@ -77,20 +92,25 @@ export default async function handler(req, res) {
     });
     if (!stored) return back(res, slug, { meta: 'error', reason: 'store' });
 
-    // 8) Public-safe mirror onto the store config (NEVER the token).
+    // 8) Public-safe mirror onto the store config (NEVER the token). When the
+    //    seller shared a Pixel, auto-fill the existing Meta Pixel ID field so
+    //    storefront tracking turns on without them pasting it manually.
     const config = await getStoreConfig(slug);
     if (config) {
-      await patchStoreConfig(slug, {
+      const patch = {
         ...config,
         meta: {
           connected: true,
           businessId: business?.id || null,
           businessName: business?.name || null,
           adAccountCount: adAccountIds.length,
+          pixelId: pixelId || null,
           connectedAt: now,
           expiresAt,
         },
-      });
+      };
+      if (pixelId) patch.metaPixelId = pixelId;   // fills the Meta Pixel ID input
+      await patchStoreConfig(slug, patch);
     }
 
     return back(res, slug, { meta: 'connected' });
