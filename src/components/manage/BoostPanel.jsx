@@ -137,6 +137,8 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         objective: r.objective, promote: r.promote, productId: r.productId,
         dailyBudget: r.dailyBudget, days: r.days, audienceStrategy: r.audienceStrategy,
         radiusKm: r.radiusKm, ageMin: r.ageMin, ageMax: r.ageMax, gender: r.gender,
+        // Measurement snapshot (2E-2): preserve the recommendation + experiment tag.
+        recommendation: data.recommendation, strategy_source: 'pocketlink_reco', experiment_id: launchId,
       });
       if (res?.error) setLaunch({ launchId, status: res.status || '', step: res.step, error: launchErr(res) });
       else setLaunch({ launchId, status: res.status, ids: res.ids });

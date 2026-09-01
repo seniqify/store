@@ -43,6 +43,71 @@ const OBJECTIVE_LABEL = {
 };
 const objLabel = (o) => OBJECTIVE_LABEL[o] || (o ? o.replace(/^OUTCOME_/, '').toLowerCase() : '');
 
+// 2E-2 measurement — one PocketLink campaign: funnel + Meta-vs-truth reconciliation.
+function MeasuredCard({ mc, cur, themeColor }) {
+  const [open, setOpen] = useState(false);
+  const s = mc.snapshot || {};
+  const d = mc.derived || {};
+  const x = (n) => (n == null ? '—' : `${Number(n).toFixed(2)}×`);
+  const funnel = [
+    ['Spend', money(mc.meta.spend, cur)], ['Reach', fmtInt(mc.meta.reach)], ['Clicks', fmtInt(mc.meta.clicks)],
+    ['Visits', fmtInt(mc.meta.lpv)], ['Add-to-cart', fmtInt(mc.meta.atc)], ['Checkout', fmtInt(mc.meta.checkout)],
+  ];
+  const recon = [
+    ['Purchases / Orders', fmtInt(mc.meta.purchases), fmtInt(mc.pl.orders)],
+    ['Revenue', money(mc.meta.revenue, cur), money(mc.pl.revenue, cur)],
+    ['Cost / order', d.cppMeta != null ? money(d.cppMeta, cur) : '—', d.cppPl != null ? money(d.cppPl, cur) : '—'],
+    ['ROAS', x(d.roasMeta), x(d.roasPl)],
+  ];
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-3.5">
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-bold text-gray-900 truncate flex-1">{mc.name || 'Campaign'}</p>
+        <span className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: `${themeColor}14`, color: themeColor }}>
+          {mc.strategySource === 'pocketlink_reco' ? 'PocketLink' : (mc.strategySource || 'manual')}
+        </span>
+        <StatusChip status={mc.status === 'active' ? 'ACTIVE' : mc.status} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center mt-2.5">
+        {funnel.map(([k, v]) => (
+          <div key={k}><p className="text-[9px] text-gray-400 uppercase tracking-wide">{k}</p><p className="text-sm font-bold text-gray-900 tabular-nums">{v}</p></div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-lg border border-gray-100 overflow-hidden text-xs">
+        <div className="grid grid-cols-3 bg-gray-50 font-semibold text-gray-500">
+          <span className="px-2.5 py-1.5"> </span><span className="px-2.5 py-1.5 text-center">Meta</span><span className="px-2.5 py-1.5 text-center">PocketLink</span>
+        </div>
+        {recon.map(([k, a, b]) => (
+          <div key={k} className="grid grid-cols-3 border-t border-gray-100">
+            <span className="px-2.5 py-1.5 text-gray-500">{k}</span>
+            <span className="px-2.5 py-1.5 text-center font-bold text-gray-900 tabular-nums">{a}</span>
+            <span className="px-2.5 py-1.5 text-center font-bold text-gray-900 tabular-nums">{b}</span>
+          </div>
+        ))}
+      </div>
+      {mc.pl.deliveredOrders > 0 && (
+        <p className="text-[10px] text-gray-400 mt-1">Delivered: {fmtInt(mc.pl.deliveredOrders)} orders · {money(mc.pl.deliveredRevenue, cur)}</p>
+      )}
+
+      <button type="button" onClick={() => setOpen((v) => !v)} className="mt-2 text-[11px] font-semibold text-gray-400 hover:text-gray-600">
+        {open ? 'Hide' : 'Show'} what PocketLink recommended
+      </button>
+      {open && (
+        <div className="mt-1.5 text-[11px] text-gray-500 space-y-0.5">
+          {s.goal?.title && <p><b>Goal:</b> {s.goal.title}</p>}
+          {s.product && <p><b>Promoting:</b> {s.product}</p>}
+          {s.audienceStrategy && <p><b>Audience:</b> {s.audienceStrategy === 'auto' ? 'PocketLink finds buyers (Advantage+)' : 'Manual'}{s.location?.label ? ` · ${s.location.label}` : ''}</p>}
+          {s.budget && <p><b>Budget:</b> {money(s.budget.daily, cur)}/day · {s.budget.days} days</p>}
+          {s.reason && <p className="text-gray-400 italic">{s.reason}</p>}
+          {mc.experimentId && <p className="text-gray-300">exp {String(mc.experimentId).slice(0, 8)} · {mc.strategySource}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
   const [range, setRange] = useState('7d');
   const [showBoost, setShowBoost] = useState(false);
@@ -202,8 +267,24 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
             )}
           </div>
 
+          {/* 2E-2 Measurement — our launched campaigns, Meta vs PocketLink truth */}
+          {data.measured?.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2 mt-1">
+                <TrendingUp size={14} className="text-gray-400" />
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">PocketLink campaigns — measurement</p>
+              </div>
+              <div className="space-y-2">
+                {data.measured.map((mc) => <MeasuredCard key={mc.campaignId} mc={mc} cur={cur} themeColor={themeColor} />)}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">
+                Meta figures are ad-attributed (modeled); PocketLink figures are your actual orders in the campaign window. Shown separately, never blended.
+              </p>
+            </div>
+          )}
+
           <p className="text-[11px] text-gray-400 text-center pt-1">
-            Read-only — numbers come straight from Meta. Managing campaigns from here is coming next.
+            Read-only — Meta numbers come straight from Meta; order/revenue truth from your PocketLink orders.
           </p>
         </>
       )}

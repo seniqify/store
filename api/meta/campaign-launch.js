@@ -60,7 +60,7 @@ async function graphPost(path, params, token) {
 const ids = (row) => ({ campaign_id: row.campaign_id, adset_id: row.adset_id, creative_id: row.creative_id, ad_id: row.ad_id });
 
 // ── CREATE (PAUSED, idempotent, resume-forward) ────────────────────────────────
-async function doCreate(slug, launchId, input) {
+async function doCreate(slug, launchId, input, meta) {
   const acct = await getMetaAccount(slug);
   if (!acct || acct.status !== 'connected' || !acct.access_token) return { error: 'not_connected' };
   const adId = (acct.ad_account_ids || [])[0];
@@ -72,12 +72,35 @@ async function doCreate(slug, launchId, input) {
   if (built.error) return built;                                   // reauth, etc.
   if (!built.launchReady) return { error: 'blocked', launchBlockers: built.launchBlockers, warnings: built.warnings };
 
-  const claim = await rpc('meta_campaign_claim', { p_launch_id: launchId, p_store_slug: slug, p_config: { input, budget: built.budget, objective: built.objective.key } });
+  // Full recommendation/config SNAPSHOT — frozen at creation (PAUSED), before any
+  // spend, so the first campaign's decision + "why" is preserved for measurement.
+  const strategySource = meta?.strategy_source || 'pocketlink_reco';
+  const experimentId = meta?.experiment_id || null;
+  const snapshot = {
+    capturedAt: new Date().toISOString(), strategySource, experimentId,
+    goal: meta?.recommendation?.goal || null,
+    objective: built.objective,
+    audienceStrategy: input.audienceStrategy || 'auto',
+    promote: built.creative?.promote || null,
+    product: built.creative?.productName || null,
+    location: { label: built.targeting?.label || null, radiusKm: input.radiusKm ?? null },
+    age: { min: built.targeting?.ageMin ?? null, max: built.targeting?.ageMax ?? null },
+    gender: built.targeting?.genderLabel || null,
+    budget: built.budget,
+    creative: built.creative ? { headline: built.creative.headline, primaryText: built.creative.primaryText, cta: built.creative.cta, imageUrl: built.creative.imageUrl } : null,
+    destination: built.creative?.link || null,
+    pageId: built.page?.id || null,
+    pixelId: config?.meta?.pixelId || config?.metaPixelId || null,
+    reason: meta?.recommendation?.overall || null,
+    reasons: meta?.recommendation?.reasons || null,
+  };
+
+  const claim = await rpc('meta_campaign_claim', { p_launch_id: launchId, p_store_slug: slug, p_config: snapshot });
   if (claim === 'already_created') { const row = await getLaunch(launchId); return { ok: true, status: row.status, launchId, ids: ids(row), alreadyCreated: true }; }
   if (claim === 'locked') return { error: 'in_progress' };
   if (claim === 'exhausted') return { error: 'exhausted' };
 
-  await set(launchId, { objective: built.objective.key, daily_budget: built.budget.daily, days: built.budget.days, lifetime_minor: built.budget.lifetimeMinor, currency: built.currency, spend_cap_set: built.budget.spendCapApplied, page_id: built.page.id, error: '' });
+  await set(launchId, { objective: built.objective.key, daily_budget: built.budget.daily, days: built.budget.days, lifetime_minor: built.budget.lifetimeMinor, currency: built.currency, spend_cap_set: built.budget.spendCapApplied, page_id: built.page.id, strategy_source: strategySource, experiment_id: experimentId, error: '' });
 
   let row = await getLaunch(launchId);
   const P = built.payloads;
@@ -141,7 +164,9 @@ export default async function handler(req, res) {
     if (action === 'create') {
       const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
       if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
-      res.status(200).json(await doCreate(slug, launchId, { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy }));
+      res.status(200).json(await doCreate(slug, launchId,
+        { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy },
+        { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
       return;
     }
     if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
