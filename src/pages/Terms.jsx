@@ -1,10 +1,10 @@
 import {
   FileCheck, Store, ClipboardCheck, Ban, CreditCard, Copyright,
-  ShieldAlert, Scale, Power, RefreshCw, Landmark,
+  ShieldAlert, Scale, Power, RefreshCw, Landmark, Megaphone,
 } from 'lucide-react';
 import LegalPage, { Bullets, Callout } from '../components/legal/LegalPage';
 
-const LAST_UPDATED = 'June 2026';
+const LAST_UPDATED = 'September 2026';
 
 const SECTIONS = [
   {
@@ -81,6 +81,28 @@ const SECTIONS = [
           Refunds for any product or service a customer buys from a shop are solely between that
           customer and the shop — PocketLink is not involved.
         </p>
+      </>
+    ),
+  },
+  {
+    id: 'ads', title: 'Advertising via connected accounts', icon: Megaphone,
+    content: (
+      <>
+        <p>
+          PocketLink lets you connect your own Meta (Facebook/Instagram) account to create and measure
+          ads for your store. This feature is optional. If you choose to use it:
+        </p>
+        <Bullets items={[
+          'You authorise PocketLink to create, manage and read the performance of campaigns in the ad account you connect, based on the choices you make in the dashboard.',
+          <>Ad spend is billed by <strong>Meta</strong> to the payment method on your ad account — <strong>not</strong> by PocketLink. You are solely responsible for that spend.</>,
+          'You must comply with Meta’s Advertising Standards and platform policies, and you are responsible for the products and claims you advertise.',
+          'You can disconnect Meta at any time to revoke PocketLink’s access to your Meta assets.',
+        ]} />
+        <Callout tone="amber" title="No performance guarantee">
+          PocketLink helps you set up and measure ads, but we do not guarantee any particular reach,
+          number of orders, revenue or return on ad spend. Advertising results depend on many factors
+          outside our control.
+        </Callout>
       </>
     ),
   },
