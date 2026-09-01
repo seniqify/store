@@ -14,6 +14,7 @@ const PAGE_PLACEHOLDER = 'PAGE_ID_REQUIRED';
 export const OBJECTIVES = {
   traffic: { key: 'traffic', label: 'Website visits', campaignObjective: 'OUTCOME_TRAFFIC', optimizationGoal: 'LINK_CLICKS', billingEvent: 'IMPRESSIONS', available: true },
   sales:   { key: 'sales',   label: 'Sales / Purchases', campaignObjective: 'OUTCOME_SALES', optimizationGoal: 'OFFSITE_CONVERSIONS', billingEvent: 'IMPRESSIONS', usesPixelPurchase: true, available: true },
+  awareness:{ key: 'awareness', label: 'Awareness / Reach', campaignObjective: 'OUTCOME_AWARENESS', optimizationGoal: 'REACH', billingEvent: 'IMPRESSIONS', available: true },
 };
 
 // buildCampaign — validate + build. READ-ONLY. Returns the preview object with
@@ -54,6 +55,12 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   const gender = ['women', 'men'].includes(String(input.gender)) ? String(input.gender) : 'all';
   const genders = gender === 'women' ? [2] : gender === 'men' ? [1] : null;  // Meta: 1=male, 2=female; omit = all
   const genderLabel = gender === 'women' ? 'Women' : gender === 'men' ? 'Men' : 'All';
+
+  // Audience strategy. 'auto' = Advantage+ Audience: Meta's AI finds buyers and
+  // treats geo/age/gender as limits — the "let PocketLink find buyers" default.
+  // 'manual' = only the geo/age/gender we pass. (Interests etc. arrive in Advanced.)
+  const audienceStrategy = input.audienceStrategy === 'manual' ? 'manual' : 'auto';
+  const strategyLabel = audienceStrategy === 'auto' ? 'PocketLink finds buyers (Advantage+)' : 'Manual audience';
 
   const promote = input.promote === 'product' ? 'product' : 'store';
   const product = promote === 'product' ? (cfg.products || []).find((p) => String(p.id) === String(input.productId)) || null : null;
@@ -129,7 +136,11 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     optimization_goal: objDef.optimizationGoal,
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     destination_type: 'WEBSITE',
-    targeting: { ...(geo ? { geo_locations: geo } : {}), age_min: ageMin, age_max: ageMax, ...(genders ? { genders } : {}) },
+    targeting: {
+      ...(geo ? { geo_locations: geo } : {}),
+      age_min: ageMin, age_max: ageMax, ...(genders ? { genders } : {}),
+      ...(audienceStrategy === 'auto' ? { targeting_automation: { advantage_audience: 1 } } : {}),
+    },
     start_time: startTime,
     end_time: endTime,
     status: 'PAUSED',
@@ -166,7 +177,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     objective: { key: objDef.key, label: objDef.label },
     budget: { daily, days, total, currency, lifetimeMinor, spendCapApplied: spendCapEligible },
     creative: { imageUrl, headline, primaryText, link, cta: 'Shop Now', promote, productName: product?.name || null },
-    targeting: { label: geoLabel, ageMin, ageMax, genderLabel, resolved: !!geo },
+    targeting: { label: geoLabel, ageMin, ageMax, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
     warnings, launchBlockers, launchReady: launchBlockers.length === 0,
     payloads, caps: CAPS,

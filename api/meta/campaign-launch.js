@@ -141,7 +141,7 @@ export default async function handler(req, res) {
     if (action === 'create') {
       const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
       if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
-      res.status(200).json(await doCreate(slug, launchId, { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax }));
+      res.status(200).json(await doCreate(slug, launchId, { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy }));
       return;
     }
     if (!launchId) { res.status(400).json({ error: 'missing' }); return; }

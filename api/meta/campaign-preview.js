@@ -12,6 +12,7 @@
 //     rejected server-side. Writes only the local page selection — no Meta writes.
 import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
+import { recommend } from './_recommend.js';
 
 const mapPage = (p) => ({
   id: String(p.id),
@@ -67,14 +68,21 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Stage 2C preview (default) ──
+    // ── Stage 2E preview (default): recommendation engine → shared builder ──
+    // The seller sends BUSINESS decisions; recommend() turns them into the exact
+    // technical config; buildCampaign() renders the dry-run. `resolved` is echoed
+    // back so the launch sends the identical config (preview == launch).
     const adId = (acct.ad_account_ids || [])[0];
     if (!adId) { res.status(200).json({ error: 'no_ad_account' }); return; }
-    const out = await buildCampaign(
-      { slug, adId, token: acct.access_token, cfg: config || {} },
-      { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax },
-    );
-    res.status(200).json(out);
+    const biz = {
+      goal: body.goal, promote: body.promote, productId: body.productId,
+      audienceMode: body.audienceMode, budgetMode: body.budgetMode,
+      dailyBudget: body.dailyBudget, days: body.days,
+      radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, gender: body.gender,
+    };
+    const rec = await recommend({ slug, cfg: config || {}, biz });
+    const out = await buildCampaign({ slug, adId, token: acct.access_token, cfg: config || {} }, rec.input);
+    res.status(200).json({ ...out, recommendation: rec.recommendation, resolved: rec.resolved });
   } catch {
     res.status(200).json({ error: 'server' });
   }
