@@ -10,7 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // The access token is read server-side from the RLS-locked store_meta_accounts;
 // it never reaches the browser. No raw PII is logged.
 
-const GRAPH_VER = 'v21.0';
+const GRAPH_VER = 'v25.0';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, x-capi-secret' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 

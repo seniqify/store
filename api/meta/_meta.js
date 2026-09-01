@@ -14,7 +14,7 @@ export const ANON =
 
 // Non-secret config (env overrides; sensible defaults so the flow works once the
 // secrets below are set). App ID / config_id / redirect URI are all public.
-export const GRAPH_VER    = process.env.META_GRAPH_VERSION  || 'v21.0';
+export const GRAPH_VER    = process.env.META_GRAPH_VERSION  || 'v25.0';
 export const APP_ID       = process.env.META_APP_ID         || '1579880590578328';
 export const CONFIG_ID    = process.env.META_LOGIN_CONFIG_ID || '899668282953808';
 export const REDIRECT_URI = process.env.META_REDIRECT_URI   || 'https://www.pocketlink.store/api/meta/callback';

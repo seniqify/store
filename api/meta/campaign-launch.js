@@ -17,7 +17,7 @@
 import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 
-const GRAPH = 'https://graph.facebook.com/v21.0';
+const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
 
 // ── Founder gate: valid Supabase session + crm_team admin ──────────────────────
