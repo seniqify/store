@@ -13,6 +13,12 @@ const TEMPLATE_ID  = 'z0vm5t48dw';
 const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL')
   ?? `https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/${TEMPLATE_ID}/process`;
 
+// How long the OTP is valid. The live template now has a SECOND variable {{2}}
+// (validity in minutes) — sending only {{1}} makes the provider reject the send
+// with 422 "Missing values for keys: 2", so the OTP silently never goes out.
+// Keep this in sync with both the expiry below and the template copy.
+const OTP_TTL_MIN = 10;
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -40,7 +46,7 @@ serve(async (req: Request) => {
     // ── SEND ─────────────────────────────────────────────────────────────────
     if (action === 'send') {
       const otp       = String(Math.floor(100000 + Math.random() * 900000));
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+      const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000).toISOString();
 
       // Replace any previous OTP for this phone
       await supabase.from('otp_codes').delete().eq('phone', phone);
@@ -66,7 +72,8 @@ serve(async (req: Request) => {
           const waRes = await fetch(SENIQIFY_URL, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ receiver, values: { '1': otp } }),
+            // Template now expects {{1}}=code and {{2}}=validity minutes.
+            body: JSON.stringify({ receiver, values: { '1': otp, '2': String(OTP_TTL_MIN) } }),
           });
           if (!waRes.ok) console.error(`Seniqify ${waRes.status}: ${await waRes.text()}`);
         } catch (e) {
