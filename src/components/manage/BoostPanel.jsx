@@ -22,7 +22,7 @@ const ERR = {
 
 export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClose }) {
   const products = Array.isArray(config.products) ? config.products : [];
-  const [form, setForm] = useState({ promote: 'store', productId: products[0]?.id ?? '', dailyBudget: 200, days: 7, objective: 'traffic' });
+  const [form, setForm] = useState({ promote: 'store', productId: products[0]?.id ?? '', dailyBudget: 200, days: 7, objective: 'traffic', gender: 'all', radiusKm: 25, ageMin: 18, ageMax: 65 });
   const [step, setStep] = useState('configure');   // configure | preview
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -43,6 +43,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
       const d = await previewCampaign(config.slug, pin, {
         promote: form.promote, productId: form.productId,
         dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: form.objective,
+        gender: form.gender, radiusKm: Number(form.radiusKm), ageMin: Number(form.ageMin), ageMax: Number(form.ageMax),
       });
       if (d?.error) { setErr(ERR[d.error] || 'Something went wrong. Try again.'); setBusy(false); return; }
       setData(d); setStep('preview');
@@ -76,7 +77,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     const launchId = launch?.launchId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     setLaunch({ launchId, busy: true, error: '' });
     try {
-      const r = await launchCreate(config.slug, launchId, { promote: form.promote, productId: form.productId, dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: form.objective });
+      const r = await launchCreate(config.slug, launchId, { promote: form.promote, productId: form.productId, dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: form.objective, gender: form.gender, radiusKm: Number(form.radiusKm), ageMin: Number(form.ageMin), ageMax: Number(form.ageMax) });
       if (r?.error) setLaunch({ launchId, status: r.status || '', step: r.step, error: launchErr(r) });
       else setLaunch({ launchId, status: r.status, ids: r.ids });
     } catch (e) { setLaunch({ launchId, error: e.message || 'Launch failed.' }); }
@@ -134,6 +135,42 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
                 ? 'Optimises for buyers via your Meta Pixel. Best once your store has recent purchases; needs the Pixel connected.'
                 : 'Sends people to your store — good for a new store building its first orders.'}
             </p>
+          </div>
+
+          <div>
+            <label className={label}>Audience</label>
+            <div className="space-y-2.5 rounded-xl border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">Show to</span>
+                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs font-semibold">
+                  {[['all', 'Everyone'], ['women', 'Women'], ['men', 'Men']].map(([v, t]) => (
+                    <button key={v} type="button" onClick={() => set({ gender: v })}
+                      className={`px-2.5 py-1.5 transition ${form.gender === v ? 'text-white' : 'text-gray-500 bg-white hover:bg-gray-50'}`}
+                      style={form.gender === v ? { background: themeColor } : undefined}>{t}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">Distance around {config.city || 'your area'}</span>
+                <select value={form.radiusKm} onChange={(e) => set({ radiusKm: Number(e.target.value) })}
+                  className="text-xs rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+                  {[10, 25, 40].map((km) => <option key={km} value={km}>{km} km</option>)}
+                </select>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">Age</span>
+                <div className="flex items-center gap-1.5">
+                  <input type="number" min={13} max={65} inputMode="numeric" value={form.ageMin}
+                    onChange={(e) => set({ ageMin: e.target.value.replace(/[^0-9]/g, '') })}
+                    className="w-14 px-2 py-1.5 text-xs rounded-lg border border-gray-200" />
+                  <span className="text-gray-400 text-xs">to</span>
+                  <input type="number" min={13} max={65} inputMode="numeric" value={form.ageMax}
+                    onChange={(e) => set({ ageMax: e.target.value.replace(/[^0-9]/g, '') })}
+                    className="w-14 px-2 py-1.5 text-xs rounded-lg border border-gray-200" />
+                </div>
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">Interests are kept broad on purpose — Meta finds buyers using your Pixel. Narrowing too far can starve delivery.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -209,7 +246,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         <Row k="Daily budget" v={money(d.budget?.daily, cur)} />
         <Row k="Duration" v={`${d.budget?.days} days`} />
         <Row k="Estimated total" v={<b>{money(d.budget?.total, cur)}</b>} />
-        <Row k="Audience" v={d.targeting?.resolved ? `${d.targeting.label} · Age ${d.targeting.ageMin}–${d.targeting.ageMax}` : '— not set —'} />
+        <Row k="Audience" v={d.targeting?.resolved ? `${d.targeting.label} · Age ${d.targeting.ageMin}–${d.targeting.ageMax}${d.targeting.genderLabel && d.targeting.genderLabel !== 'All' ? ` · ${d.targeting.genderLabel}` : ''}` : '— not set —'} />
         <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none connected</span>} last />
       </div>
 

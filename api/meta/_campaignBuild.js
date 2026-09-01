@@ -43,6 +43,18 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     warnings.push(`Total capped at ₹${CAPS.maxTotal.toLocaleString('en-IN')} — duration reduced to ${days} days.`);
   }
 
+  // Audience controls (smart & simple): location radius, age band, gender. Interests
+  // stay broad on purpose — Meta optimises via the Purchase pixel. Clamp everything.
+  let radiusKm = Math.floor(Number(input.radiusKm) || 25);
+  if (radiusKm < 1) radiusKm = 1; if (radiusKm > 80) radiusKm = 80;          // Meta city-radius max ~80km
+  let ageMin = Math.floor(Number(input.ageMin) || 18);
+  if (ageMin < 13) ageMin = 13; if (ageMin > 65) ageMin = 65;                // Meta age floor 13
+  let ageMax = Math.floor(Number(input.ageMax) || 65);
+  if (ageMax > 65) ageMax = 65; if (ageMax < ageMin) ageMax = ageMin;
+  const gender = ['women', 'men'].includes(String(input.gender)) ? String(input.gender) : 'all';
+  const genders = gender === 'women' ? [2] : gender === 'men' ? [1] : null;  // Meta: 1=male, 2=female; omit = all
+  const genderLabel = gender === 'women' ? 'Women' : gender === 'men' ? 'Men' : 'All';
+
   const promote = input.promote === 'product' ? 'product' : 'store';
   const product = promote === 'product' ? (cfg.products || []).find((p) => String(p.id) === String(input.productId)) || null : null;
 
@@ -85,7 +97,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   if (city) {
     const gr = await graphGet('search', { type: 'adgeolocation', location_types: JSON.stringify(['city']), q: city, access_token: token });
     const hit = (gr.body?.data || [])[0];
-    if (hit?.key) { geo = { cities: [{ key: hit.key, radius: 25, distance_unit: 'kilometer' }] }; geoLabel = `${hit.name}${hit.region ? `, ${hit.region}` : ''} · +25km`; }
+    if (hit?.key) { geo = { cities: [{ key: hit.key, radius: radiusKm, distance_unit: 'kilometer' }] }; geoLabel = `${hit.name}${hit.region ? `, ${hit.region}` : ''} · +${radiusKm}km`; }
   }
   if (!geo && region) {
     const gr = await graphGet('search', { type: 'adgeolocation', location_types: JSON.stringify(['region']), q: region, access_token: token });
@@ -117,7 +129,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     optimization_goal: objDef.optimizationGoal,
     bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     destination_type: 'WEBSITE',
-    targeting: { ...(geo ? { geo_locations: geo } : {}), age_min: 18, age_max: 65 },
+    targeting: { ...(geo ? { geo_locations: geo } : {}), age_min: ageMin, age_max: ageMax, ...(genders ? { genders } : {}) },
     start_time: startTime,
     end_time: endTime,
     status: 'PAUSED',
@@ -154,7 +166,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     objective: { key: objDef.key, label: objDef.label },
     budget: { daily, days, total, currency, lifetimeMinor, spendCapApplied: spendCapEligible },
     creative: { imageUrl, headline, primaryText, link, cta: 'Shop Now', promote, productName: product?.name || null },
-    targeting: { label: geoLabel, ageMin: 18, ageMax: 65, resolved: !!geo },
+    targeting: { label: geoLabel, ageMin, ageMax, genderLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
     warnings, launchBlockers, launchReady: launchBlockers.length === 0,
     payloads, caps: CAPS,
