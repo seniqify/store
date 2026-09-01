@@ -13,7 +13,7 @@ const PAGE_PLACEHOLDER = 'PAGE_ID_REQUIRED';
 
 export const OBJECTIVES = {
   traffic: { key: 'traffic', label: 'Website visits', campaignObjective: 'OUTCOME_TRAFFIC', optimizationGoal: 'LINK_CLICKS', billingEvent: 'IMPRESSIONS', available: true },
-  sales:   { key: 'sales',   label: 'Sales / Purchases', campaignObjective: 'OUTCOME_SALES', optimizationGoal: 'OFFSITE_CONVERSIONS', billingEvent: 'IMPRESSIONS', usesPixelPurchase: true, available: false },
+  sales:   { key: 'sales',   label: 'Sales / Purchases', campaignObjective: 'OUTCOME_SALES', optimizationGoal: 'OFFSITE_CONVERSIONS', billingEvent: 'IMPRESSIONS', usesPixelPurchase: true, available: true },
 };
 
 // buildCampaign — validate + build. READ-ONLY. Returns the preview object with
@@ -25,6 +25,10 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
 
   const objDef = OBJECTIVES[String(input.objective || 'traffic')] || OBJECTIVES.traffic;
   if (!objDef.available) launchBlockers.push('That objective is not available yet.');
+
+  // Sales (purchase-optimised) needs a Pixel to optimise toward Purchase events.
+  const pixelId = meta.pixelId || cfg.metaPixelId || null;
+  if (objDef.usesPixelPurchase && !pixelId) launchBlockers.push('Connect your Meta Pixel to run a Sales (purchase-optimised) campaign — or choose the Website visits goal.');
 
   // Clamp to hard caps (server-authoritative — never trust the client).
   let days = Math.floor(Number(input.days) || 7);
@@ -118,7 +122,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     end_time: endTime,
     status: 'PAUSED',
   };
-  if (objDef.usesPixelPurchase && meta.pixelId) adset.promoted_object = { pixel_id: String(meta.pixelId), custom_event_type: 'PURCHASE' };
+  if (objDef.usesPixelPurchase && pixelId) adset.promoted_object = { pixel_id: String(pixelId), custom_event_type: 'PURCHASE' };
 
   // spend_cap only when total ≥ Meta's minimum (~$100/₹8,500). Secondary belt,
   // NOT the primary ceiling (lifetime_budget + end_time + our caps are).

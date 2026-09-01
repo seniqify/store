@@ -22,7 +22,7 @@ const ERR = {
 
 export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClose }) {
   const products = Array.isArray(config.products) ? config.products : [];
-  const [form, setForm] = useState({ promote: 'store', productId: products[0]?.id ?? '', dailyBudget: 200, days: 7 });
+  const [form, setForm] = useState({ promote: 'store', productId: products[0]?.id ?? '', dailyBudget: 200, days: 7, objective: 'traffic' });
   const [step, setStep] = useState('configure');   // configure | preview
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -42,7 +42,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     try {
       const d = await previewCampaign(config.slug, pin, {
         promote: form.promote, productId: form.productId,
-        dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: 'traffic',
+        dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: form.objective,
       });
       if (d?.error) { setErr(ERR[d.error] || 'Something went wrong. Try again.'); setBusy(false); return; }
       setData(d); setStep('preview');
@@ -76,7 +76,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     const launchId = launch?.launchId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     setLaunch({ launchId, busy: true, error: '' });
     try {
-      const r = await launchCreate(config.slug, launchId, { promote: form.promote, productId: form.productId, dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: 'traffic' });
+      const r = await launchCreate(config.slug, launchId, { promote: form.promote, productId: form.productId, dailyBudget: Number(form.dailyBudget), days: Number(form.days), objective: form.objective });
       if (r?.error) setLaunch({ launchId, status: r.status || '', step: r.step, error: launchErr(r) });
       else setLaunch({ launchId, status: r.status, ids: r.ids });
     } catch (e) { setLaunch({ launchId, error: e.message || 'Launch failed.' }); }
@@ -125,10 +125,15 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 
           <div>
             <label className={label}>Goal</label>
-            <select value="traffic" disabled className={`${input} bg-gray-50 text-gray-500`}>
+            <select value={form.objective} onChange={(e) => set({ objective: e.target.value })} className={input}>
               <option value="traffic">Website visits (Traffic)</option>
+              <option value="sales">Sales / Purchases</option>
             </select>
-            <p className="mt-1 text-[11px] text-gray-400">Sales-optimised campaigns come in a later update.</p>
+            <p className="mt-1 text-[11px] text-gray-400">
+              {form.objective === 'sales'
+                ? 'Optimises for buyers via your Meta Pixel. Best once your store has recent purchases; needs the Pixel connected.'
+                : 'Sends people to your store — good for a new store building its first orders.'}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
