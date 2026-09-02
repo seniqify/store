@@ -40,7 +40,8 @@ const STATUS = {
 };
 const OPEN_STATUSES = ['new', 'contacted', 'demo', 'interested'];
 
-const PLAN_NAME = { free: 'Free', business: 'Growth', premium: 'Pro', pro: 'Pro (legacy)', starter: 'Starter' };
+// One plan now ('premium' = PocketLink). Legacy names kept so old stores render.
+const PLAN_NAME = { free: 'Free', premium: 'PocketLink', business: 'Growth (legacy)', pro: 'Pro (legacy)', starter: 'Starter (legacy)' };
 
 const EMPTY_LEAD = {
   business_name: '', owner_name: '', phone: '', category: '', city: 'Solapur', area: '',
@@ -278,8 +279,7 @@ function LeadForm({ me, team, initial, onSaved, onCancel }) {
               <select value={form.plan} onChange={(e) => set('plan', e.target.value)} className={inputCls}>
                 <option value="">Select…</option>
                 <option value="free">Free</option>
-                <option value="business">Growth ₹199</option>
-                <option value="premium">Pro ₹599</option>
+                <option value="premium">PocketLink ₹1,099</option>
               </select>
             </div>
             <div>
@@ -919,7 +919,7 @@ export default function SalesHub() {
                 ) : (
                   <div className="space-y-2.5">
                     {list.map((s) => {
-                      const waRenew = `Hi! Your PocketLink ${PLAN_NAME[s.plan] || s.plan} plan for ${s.name || s.slug} ${new Date(s.exp) < new Date() ? 'has expired' : `expires on ${new Date(s.exp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}. Renew from just ₹199/mo and keep everything running: https://www.pocketlink.store/plans 😊`;
+                      const waRenew = `Hi! Your PocketLink ${PLAN_NAME[s.plan] || s.plan} plan for ${s.name || s.slug} ${new Date(s.exp) < new Date() ? 'has expired' : `expires on ${new Date(s.exp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}. Renew at ₹1,099/mo (or ₹9,999/year) and keep everything running: https://www.pocketlink.store/plans 😊`;
                       return (
                         <div key={s.slug} className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
                           <div className="flex items-start justify-between gap-2">

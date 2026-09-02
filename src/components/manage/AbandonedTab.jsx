@@ -82,7 +82,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white
                         transition-all hover:opacity-90 active:scale-[0.98] shadow-sm"
              style={{ backgroundColor: themeColor }}>
-            Upgrade to Growth — ₹199/mo →
+            Activate your plan — ₹1,099/mo →
           </a>
         </div>
       </div>

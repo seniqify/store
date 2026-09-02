@@ -5,20 +5,37 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Razorpay Plan IDs. plan → period → plan_id. 2026-07 pricing: internal key
-// 'business' is displayed "Growth" (₹199/mo · ₹1,999/yr) and 'premium' is
-// displayed "Pro" (₹599/mo · ₹5,999/yr). The amounts debited are these plans'
-// amounts — they MUST match the prices shown in src/pages/Plans.jsx & Checkout.
-// All older plans (starter 149, legacy pro 249 'plan_Szqmm…', old business 500
-// 'plan_Szqmn3…', old premium 1000 'plan_SzqmnP…') are retired but permanent —
-// existing mandates keep charging them until migrated.
+// Razorpay Plan IDs. plan -> period -> plan_id.
+//
+// 2026-09 pricing: PocketLink is now ONE plan — ₹1,099/mo · ₹9,999/yr — that
+// includes every feature (see src/utils/planLimits.js). The internal key stays
+// 'premium' because that key is already recorded on stores and carried through
+// the subscription notes + webhook, so collapsing the tiers needed no migration.
+//
+// IMPORTANT: changing a plan_id here only affects NEW subscriptions. Existing
+// mandates keep charging the plan_id they were created with inside Razorpay, so
+// grandfathered customers are untouched by this map.
+//
+// Retired but permanent (existing mandates keep renewing on them):
+//   starter  149 : plan_T534Tj7pKAPhOP / plan_T534TvGMXAl18M
+//   pro      249 : plan_Szqmme5MgX3kcg / plan_SzqmmuDV66K4lm
+//   business 199 : plan_T8tUVJDyKVHUqA / plan_T8tUVTmHtEauYl
+//   premium  599 : plan_T8tUVd3OJkD8m8 / plan_T8tUVnFLUkTGYl
+//   prem+   1000 : plan_SzqmnPq8JoWcSc / plan_SzqmnZ9M5keufj
 const PLAN_IDS: Record<string, Record<string, string>> = {
-  starter:  { monthly: 'plan_T534Tj7pKAPhOP', yearly: 'plan_T534TvGMXAl18M' },
-  pro:      { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },   // legacy ₹249 — grandfathered renewals only
-  business: { monthly: 'plan_T8tUVJDyKVHUqA', yearly: 'plan_T8tUVTmHtEauYl' },   // Growth ₹199 — retired from signup, grandfathered renewals only
-  premium:  { monthly: 'plan_T8tUVd3OJkD8m8', yearly: 'plan_T8tUVnFLUkTGYl' },   // Pro ₹599 / ₹5,999 — team-sold (manual activation), not offered self-serve
-  // Pro (online) ₹1,000/mo · ₹10,000/yr — the self-serve tier. Reuses the old
-  // premium ₹1,000 plan_ids; same features as Pro, recorded on the store as 'premium'.
+  // THE plan — ₹1,099/mo · ₹9,999/yr (created 2026-09-01, GST-inclusive).
+  // The amount debited is the plan_id's amount, NEVER the price shown in the UI:
+  // if you change the displayed price, create new plans and swap these ids, and
+  // always deploy this function BEFORE the front-end.
+  premium: {
+    monthly: 'plan_TX4Yj0ktnJ9Ic3',
+    yearly:  'plan_TX4a4orxglrlrC',
+  },
+
+  // Legacy keys kept so any in-flight/grandfathered checkout still resolves.
+  starter:      { monthly: 'plan_T534Tj7pKAPhOP', yearly: 'plan_T534TvGMXAl18M' },
+  pro:          { monthly: 'plan_Szqmme5MgX3kcg', yearly: 'plan_SzqmmuDV66K4lm' },
+  business:     { monthly: 'plan_T8tUVJDyKVHUqA', yearly: 'plan_T8tUVTmHtEauYl' },
   premium_plus: { monthly: 'plan_SzqmnPq8JoWcSc', yearly: 'plan_SzqmnZ9M5keufj' },
 };
 
@@ -33,6 +50,10 @@ serve(async (req) => {
 
     const planId = PLAN_IDS[plan]?.[period];
     if (!planId) throw new Error('Invalid plan or billing period');
+    // Fail loudly rather than silently charging a wrong/stale amount.
+    if (planId.startsWith('REPLACE_WITH_')) {
+      throw new Error('Razorpay plan_id not configured for this plan/period yet');
+    }
 
     // The ₹1,000 online tier (premium_plus) grants the same features as Pro, so
     // the store is recorded as 'premium' — only the debited amount differs. The

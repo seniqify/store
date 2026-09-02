@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase';
 import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
+import { PRICE } from '../utils/planLimits';
 
 // Display names follow the pricing page: internal key 'business' = Growth,
 // 'premium' = Pro. ('pro' key is the retired ₹249 tier — grandfathered only.)
@@ -18,9 +19,9 @@ const PLAN_INFO = {
     features: ['50 products', 'Verified badge', 'Variants & coupons', 'AI assistant + priority support'],
   },
   premium: {
-    name:  'Pro',
-    color: '#8b5cf6',
-    features: ['Unlimited products', 'Unlimited AI + insights', 'Advanced analytics', 'Auto updates + offers engine'],
+    name:  'PocketLink',
+    color: '#10b981',
+    features: ['Unlimited products', 'Online payments + shipping', 'Facebook & Instagram ads', 'Profit tracking + AI insights'],
   },
   // ₹1,000 online tier — same Pro features, self-serve. Recorded as 'premium'.
   premium_plus: {
@@ -40,8 +41,8 @@ const PERIOD_LABEL = {
 const CHARGES = {
   pro:          { monthly: 249,  yearly: 2490 },   // legacy, grandfathered
   business:     { monthly: 199,  yearly: 1999 },   // Growth — grandfathered renewals only
-  premium:      { monthly: 599,  yearly: 5999 },   // Pro — team-sold (manual), not self-serve
-  premium_plus: { monthly: 1000, yearly: 10000 },  // Pro (online, self-serve)
+  premium:      { monthly: PRICE.monthly, yearly: PRICE.yearly },  // THE plan — ₹1,099 / ₹9,999
+  premium_plus: { monthly: 1000, yearly: 10000 },  // retired tier — grandfathered links only
 };
 
 function loadRazorpayScript() {
@@ -271,7 +272,7 @@ export default function Checkout() {
                 {PERIOD_LABEL[period]}
               </span>
             </div>
-            <p className="text-sm text-gray-400 mt-1">{billingNote} + GST</p>
+            <p className="text-sm text-gray-400 mt-1">{billingNote} · incl. GST</p>
             <div className="flex flex-wrap gap-2 mt-3">
               {plan.features.map((f) => (
                 <span key={f} className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">

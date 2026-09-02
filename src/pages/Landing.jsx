@@ -26,7 +26,7 @@ const VALUE_PROPS = [
   { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
   { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
   { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'From ₹599/mo — no commission, no per-order fees, no surprises. Cancel anytime.' },
+  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'One plan at ₹1,099/mo — everything included. No commission, no per-order fees. Cancel anytime.' },
 ];
 
 const USE_CASES = [
@@ -47,23 +47,21 @@ const STATS = [
   { value: '∞',     label: 'orders, no limits' },
 ];
 
-// Pricing plans — 2 tiers, mirrors the real prices on /plans (see PRICING/PLANS
-// in Plans.jsx — the source of truth). Free was retired: every store now pays
-// upfront starting at Growth. Yearly = 10× monthly, billed on /plans + /checkout.
+// Pricing — ONE plan, everything included. Mirrors PRICE in utils/planLimits.js
+// (the single source of truth) and the card on /plans.
 const PRICING_PLANS = [
   {
-    name: 'Pro', icon: '👑', tagline: 'Best price — our team sets you up', accent: '#a78bfa',
-    price: 599, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
+    name: 'PocketLink', icon: '👑', tagline: 'Everything included — one simple plan', accent: '#34d399',
+    price: 1099, originalPrice: null, priceNote: 'incl. GST · billed monthly · or ₹9,999/year · cancel anytime',
     popular: true, to: '/plans', cta: 'Get started',
-    features: ['Unlimited products & categories', 'Verified badge — no PocketLink branding', 'Unlimited AI assistant + business insights', 'Advanced analytics + offers engine', 'Variants, coupons & online payments'],
-    caveat: 'Set up with our team — no online payment needed',
-  },
-  {
-    name: 'Pro', icon: '⚡', tagline: 'Instant — subscribe & go live now', accent: '#34d399',
-    price: 1000, originalPrice: null, priceNote: '+ GST · billed monthly · cancel anytime',
-    popular: false, to: '/start?plan=premium_plus', cta: 'Subscribe online',
-    features: ['Everything in Pro — unlimited', 'Go live online in 2 minutes', 'Self-serve — pay & activate instantly', 'Auto WhatsApp order updates', 'Full AI suite + analytics'],
-    caveat: null,
+    features: [
+      'Unlimited products & categories',
+      'Online payments, UPI, COD + pan-India shipping',
+      'Facebook & Instagram ads — built & measured',
+      'Real profit tracking + AI business insights',
+      'Verified badge, variants, coupons & offers',
+    ],
+    caveat: 'One plan. No tiers, no upsells — every feature included.',
   },
 ];
 
@@ -1356,7 +1354,7 @@ export default function Landing() {
           </Reveal>
           <div className="space-y-3">
             {[
-              { q: 'How much does PocketLink cost?', a: 'Growth is ₹199/month — a complete, branded store for a growing business. Pro is ₹599/month — unlimited everything plus the full AI suite and scaling tools. No setup fee, cancel anytime.' },
+              { q: 'How much does PocketLink cost?', a: 'One plan, everything included — ₹1,099/month, or ₹9,999/year (about 2½ months free). No tiers, no setup fee, 0% commission, cancel anytime.' },
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
               { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
               { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
@@ -1414,7 +1412,7 @@ export default function Landing() {
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
                 Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
-                from ₹199/mo, no commission and no setup fee. Cancel anytime.
+                ₹1,099/mo — everything included, no commission, no setup fee. Cancel anytime.
               </p>
               <Link
                 to="/start"
