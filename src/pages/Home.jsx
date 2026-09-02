@@ -18,6 +18,7 @@ import { useBusinessConfig } from '../contexts/BusinessContext';
 import { whatsappLink } from '../utils/theme';
 import { calcCartTotals, formatINR, discountPercent } from '../utils/currency';
 import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
+import { resolveSelection, buildCartItem } from '../utils/variants';
 import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { fetchProductSales, proofFor } from '../utils/salesService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
@@ -395,8 +396,13 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                 </h2>
                 <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-3 px-3 pb-1">
                   {mostLoved.map((p) => {
-                    const img    = p.image || (Array.isArray(p.images) ? p.images[0] : null);
-                    const hasMrp = Number(p.mrp) > Number(p.price);
+                    // Resolve the SAME default selection ProductCard shows (first
+                    // price-variant option + first of each extra). Reading p.price
+                    // directly showed the base price here while the grid showed the
+                    // default variant's price — same product, two prices.
+                    const sel    = resolveSelection(p, null, []);
+                    const img    = sel.image || (Array.isArray(p.images) ? p.images[0] : null);
+                    const hasMrp = Number(sel.mrp) > Number(sel.price);
                     const rp     = salesMap ? proofFor(salesMap.get(p.name)) : null;
                     return (
                       <div key={p.id} className="flex-shrink-0 w-[146px] bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
@@ -407,15 +413,15 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                               : <div className="w-full h-full flex items-center justify-center text-2xl">{itemsEmoji}</div>}
                             {hasMrp && (
                               <span className="absolute top-1.5 left-1.5 text-[9px] font-extrabold text-white bg-brand px-1.5 py-0.5 rounded">
-                                {discountPercent(p.price, p.mrp)}% OFF
+                                {discountPercent(sel.price, sel.mrp)}% OFF
                               </span>
                             )}
                           </div>
                           <div className="px-2.5 pt-2">
                             <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2 h-8">{p.name}</p>
                             <div className="flex items-baseline gap-1.5 mt-1">
-                              <span className="text-sm font-extrabold text-gray-900 tabular-nums">{formatINR(p.price)}</span>
-                              {hasMrp && <span className="text-[10px] text-gray-400 line-through tabular-nums">{formatINR(p.mrp)}</span>}
+                              <span className="text-sm font-extrabold text-gray-900 tabular-nums">{formatINR(sel.price)}</span>
+                              {hasMrp && <span className="text-[10px] text-gray-400 line-through tabular-nums">{formatINR(sel.mrp)}</span>}
                             </div>
                             {rp && (
                               <span className={[
@@ -428,7 +434,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                           </div>
                         </button>
                         <div className="px-2.5 pb-2.5">
-                          <button type="button" onClick={() => handleAddToCart(p)}
+                          <button type="button" onClick={() => handleAddToCart(buildCartItem(p, null, []))}
                             className="mt-2 w-full py-1.5 rounded-lg border border-brand text-brand bg-brand/5
                                        text-[11px] font-extrabold active:scale-95 transition hover:bg-brand/10">
                             ＋ Add
