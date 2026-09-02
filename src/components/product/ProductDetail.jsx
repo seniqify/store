@@ -137,7 +137,7 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
 
             {off > 0 && (
               <span className={['absolute top-3 left-3 text-[11px] font-extrabold text-white px-2.5 py-1 rounded-full shadow', premium ? 'bg-brand' : 'bg-rose-500'].join(' ')}>
-                {premium ? 'Sale' : `${off}% OFF`}
+                Sale
               </span>
             )}
             {outOfStock && (
@@ -167,27 +167,26 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               {product.unit && !hasVariants && <p className="text-xs text-gray-400 mt-0.5">{product.unit}</p>}
             </div>
 
-            {/* Price — premium: brand colour + inline % OFF chip */}
+            {/* Price — same structure everywhere: price, MRP, % OFF chip, saving.
+                Only the colour differs by theme. */}
             <div className="flex items-baseline gap-2.5 flex-wrap">
               <span className={['text-[26px] font-extrabold tabular-nums tracking-tight', premium ? 'text-brand' : 'text-gray-900'].join(' ')}>{formatINR(price)}</span>
               {mrp && mrp > price && <span className="text-sm text-gray-400 line-through tabular-nums">{formatINR(mrp)}</span>}
-              {premium && off > 0 && <span className="text-[12px] font-extrabold text-brand bg-brand/10 rounded-md px-2 py-0.5">{off}% OFF</span>}
-              {!premium && saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
+              {off > 0 && <span className="text-[12px] font-extrabold text-brand bg-brand/10 rounded-md px-2 py-0.5">{off}% OFF</span>}
+              {saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
               {lowStock && !outOfStock && <span className="w-full text-[13px] font-bold text-amber-600">🔥 Hurry — only {stockNum} left in stock!</span>}
             </div>
 
-            {/* Trust badges — real storefront facts (premium only) */}
-            {premium && (
-              <div className="grid grid-cols-4 gap-2">
-                {trustBadges.map(({ Icon, t, s }) => (
-                  <div key={t} className="bg-white border border-gray-100 rounded-xl px-2 py-2.5 text-center">
-                    <Icon size={17} className="mx-auto text-brand mb-1.5" />
-                    <p className="text-[10px] font-bold text-gray-800 leading-tight">{t}</p>
-                    <p className="text-[9px] text-gray-400 leading-tight">{s}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Trust badges — real storefront facts, shown on every store */}
+            <div className="grid grid-cols-4 gap-2">
+              {trustBadges.map(({ Icon, t, s }) => (
+                <div key={t} className="bg-white border border-gray-100 rounded-xl px-2 py-2.5 text-center">
+                  <Icon size={17} className="mx-auto text-brand mb-1.5" />
+                  <p className="text-[10px] font-bold text-gray-800 leading-tight">{t}</p>
+                  <p className="text-[9px] text-gray-400 leading-tight">{s}</p>
+                </div>
+              ))}
+            </div>
 
             {/* Priced variant type */}
             {hasVariants && (
@@ -237,29 +236,18 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               </div>
             )}
 
-            {/* Highlights (from attributes) — premium shows a tick checklist */}
+            {/* Highlights (from attributes) — one tick checklist for every store */}
             {attrs.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Highlights</p>
-                {premium ? (
-                  <div className="flex flex-col gap-2.5 mt-0.5">
-                    {attrs.map((a, i) => (
-                      <div key={`${a.key || a.label}-${i}`} className="flex items-center gap-2.5 text-sm font-semibold text-gray-700">
-                        <Check size={16} strokeWidth={3} className="text-brand flex-shrink-0" />
-                        <span>{a.label && <span className="text-gray-400 font-medium">{a.label}: </span>}{a.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {attrs.map((a, i) => (
-                      <div key={`${a.key || a.label}-${i}`} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
-                        <p className="text-[10.5px] font-bold uppercase tracking-wide text-gray-400">{a.label || a.key}</p>
-                        <p className="text-sm font-bold text-gray-800 mt-0.5">{a.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-col gap-2.5 mt-0.5">
+                  {attrs.map((a, i) => (
+                    <div key={`${a.key || a.label}-${i}`} className="flex items-center gap-2.5 text-sm font-semibold text-gray-700">
+                      <Check size={16} strokeWidth={3} className="text-brand flex-shrink-0" />
+                      <span>{a.label && <span className="text-gray-400 font-medium">{a.label}: </span>}{a.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
