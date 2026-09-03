@@ -174,6 +174,13 @@ serve(async (req: Request) => {
       const apiKey      = Deno.env.get('SENIQIFY_API_KEY');
       const sellerUrl   = Deno.env.get('SENIQIFY_ORDER_SELLER_TEMPLATE_URL');
       const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');
+      // "order confirm" — the buyer's thank-you PLUS a "Confirm my order" button.
+      // Only COD orders get it: that's where RTO and fake orders come from, and a
+      // prepaid buyer has already committed. Same idiom as the OTP/welcome sends —
+      // the /process URL is the credential, overridable by secret without a deploy.
+      const confirmUrl  = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL')
+        ?? 'https://campaignadmin.backendprod.com/webhook/template/ae2d3f2a-5e9d-4104-9ed2-da40792890f0/process';
+      const isCod = String(order?.payment_method || '').toLowerCase() === 'cod';
 
       // Not set up yet → tell the client to fall back to wa.me. The seller alert
       // is the critical one (they must not miss an order), so gate on it.
@@ -216,10 +223,41 @@ serve(async (req: Request) => {
           }
         } catch (e) { console.error('order-notify seller error:', (e as Error)?.message); }
 
-        // Customer — "Thank you for your order at {{1}}! Total {{2}} …" (optional)
+        // Customer — exactly ONE message, never two. A COD buyer gets the "order
+        // confirm" template (order details + a "Confirm my order" button); every
+        // other payment method gets the plain thank-you.
         try {
           const cust = toWa(customerPhone);
-          if (customerUrl && cust) {
+
+          // confirm_token is minted by the DB, so it only exists once the row is
+          // saved — read it back rather than minting one here. Both the client
+          // insert and the safety-net upsert have already run, so the row is there.
+          let token = '';
+          if (cust && isCod && confirmUrl && order?.id) {
+            const { data: saved } = await supabase
+              .from('orders').select('confirm_token').eq('id', order.id).maybeSingle();
+            token = saved?.confirm_token ? String(saved.confirm_token) : '';
+            if (!token) console.error('order-notify: no confirm_token for order', order.id);
+          }
+
+          if (token) {
+            // "order confirm": {{1}} buyer, {{2}} store, {{3}} items, {{4}} total,
+            // {{5}} = the button's URL suffix → https://www.pocketlink.store/{{5}}.
+            // Suffix ONLY — a full URL here would double the domain and Meta
+            // rejects it. Tapping it opens /confirm/<token>, which calls
+            // confirm_order_by_token and stamps orders.customer_confirmed_at.
+            const r = await fetch(confirmUrl, { method: 'POST', headers, body: JSON.stringify({
+              receiver: cust,
+              values: {
+                '1': String(customerName || 'there'),
+                '2': String(storeName    || 'the store'),
+                '3': String(itemsSummary || 'your items'),
+                '4': String(orderTotal   || ''),
+                '5': `confirm/${token}`,
+              },
+            }) });
+            if (!r.ok) console.error(`order-notify confirm ${r.status}: ${await r.text()}`);
+          } else if (customerUrl && cust) {
             const r = await fetch(customerUrl, { method: 'POST', headers, body: JSON.stringify({
               receiver: cust,
               values: { '1': String(storeName || 'the store'), '2': String(orderTotal || '') },
