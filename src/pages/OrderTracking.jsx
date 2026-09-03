@@ -98,8 +98,16 @@ export default function OrderTracking() {
       try {
         // Arriving from the WhatsApp button confirms first, then reads back the
         // fresh row so the page reflects the confirmation immediately.
+        //
+        // NOTE: supabase.rpc() returns a thenable, NOT a Promise — it implements
+        // .then but has no .catch. Calling .catch() on it throws a TypeError that
+        // lands in the outer catch and shows "Something went wrong" instead of
+        // the order. Errors surface on the returned { error } field, so a plain
+        // await inside its own try is the correct shape here.
         if (isConfirmRoute) {
-          await supabase.rpc('confirm_order_by_token', { p_token: token }).catch(() => {});
+          try {
+            await supabase.rpc('confirm_order_by_token', { p_token: token });
+          } catch { /* a failed confirm must not stop the order rendering */ }
         }
         const d = await load();
         if (!alive) return;
