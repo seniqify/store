@@ -4,7 +4,8 @@ import {
   ArrowRight, MessageCircle, Check, Star, Zap,
   Sparkles, MapPin, ChevronRight,
   Pencil, Share2, QrCode, Copy, Globe, Plus,
-  Wallet, Palette, Receipt, Smartphone, Gift,
+  Wallet, Palette,
+  Megaphone, TrendingUp, Truck, ShoppingCart,
 } from 'lucide-react';
 import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
@@ -21,29 +22,34 @@ import { getStoreStatus } from '../utils/storeHours';
 const WA = '#25D366';        // WhatsApp green — primary CTA
 
 const VALUE_PROPS = [
-  { Icon: Smartphone, title: 'No app downloads',     desc: 'Your page opens in any browser. Customers order through WhatsApp — which they already have.' },
-  { Icon: Wallet,     title: '0% commission',        desc: 'Keep every rupee. We never take a cut of your sales, unlike marketplaces and food apps.' },
-  { Icon: Palette,    title: 'Beautiful by default', desc: 'Pick a colour, add a logo, done. Five page templates tuned for different businesses.' },
-  { Icon: Receipt,    title: 'GST-ready pricing',    desc: 'Show tax-inclusive prices and totals. Orders arrive itemised and ready to fulfil.' },
-  { Icon: Zap,        title: 'Live in minutes',      desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
-  { Icon: Gift,       title: 'Fair, simple pricing',        desc: 'One plan at ₹1,099/mo — everything included. No commission, no per-order fees. Cancel anytime.' },
+  { Icon: Megaphone,    title: 'Ads without an agency',  desc: 'Tell us your goal — we build the Facebook & Instagram campaign, write it, target it and measure it. Nothing spends until you approve.' },
+  { Icon: TrendingUp,   title: 'Real profit, not vanity', desc: 'We subtract product cost, packaging, actual courier charges and ad spend — then show which products quietly lose you money.' },
+  { Icon: Truck,        title: 'Shipping built in',       desc: 'Delhivery and Shadowfax connected. Book a courier in one tap, track it live, handle NDR and COD collection.' },
+  { Icon: ShoppingCart, title: 'Recover lost carts',      desc: 'See who nearly ordered and nudge them on WhatsApp in one tap. Plus stock tracking, coupons and an offers engine.' },
+  { Icon: Wallet,       title: '0% commission',           desc: 'Keep every rupee. Payments land in your own account — we never take a cut, unlike marketplaces and food apps.' },
+  { Icon: Zap,          title: 'Live in minutes',         desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
 ];
 
 const USE_CASES = [
-  { emoji: '🛒', label: 'Retail & Wholesale', desc: 'Electronics, groceries, apparel, manufacturers', color: '#0d9488' },
-  { emoji: '🔧', label: 'Services & Agencies', desc: 'Salons, repairs, consultants, home services',     color: '#6366f1' },
+  { emoji: '🛒', label: 'Retail & Wholesale',  desc: 'Electronics, groceries, apparel, manufacturers', color: '#0d9488' },
+  { emoji: '🍽️', label: 'Restaurants & Food',  desc: 'Menus, dishes, bakeries, home & cloud kitchens', color: '#f59e0b' },
+  { emoji: '🔧', label: 'Services & Agencies', desc: 'Salons, repairs, consultants, home services',    color: '#6366f1' },
 ];
 
-const TESTIMONIALS = [
-  { emoji: '👩🏽‍🍳', name: 'Priya Sharma',  biz: 'Sharma Sweets, Jaipur',     quote: 'Set up my sweet shop in one evening. Festival orders now come straight to WhatsApp — no more lost messages.' },
-  { emoji: '👨🏽‍🔧', name: 'Imran Khan',    biz: 'QuickFix Repairs, Delhi',   quote: 'My customers just tap the link and book. Zero commission means I keep everything I earn.' },
-  { emoji: '👩🏽‍💼', name: 'Anjali Rao',     biz: 'Bloom Boutique, Bengaluru', quote: 'It looks like an expensive website but it cost me next to nothing and took ten minutes. My Instagram bio finally has a real business page.' },
+// Real PocketLink stores. Deliberately NO quotes and NO star ratings until we have
+// genuine ones from the owners — inventing either is a credibility (and consumer
+// protection) risk we don't need to take.
+const REAL_SHOPS = [
+  { emoji: '🌶️', name: 'Royal Foods & Spices',   biz: 'Spices & masala · Solapur', slug: 'royalfoodsmasale' },
+  { emoji: '🧁', name: 'Upahar Cookies & Cakes', biz: 'Bakery · Solapur',          slug: 'upaharcookiescakes' },
+  { emoji: '🧼', name: 'Cheri & Co.',            biz: 'Handmade soaps · Solapur',  slug: 'cheriandco' },
+  { emoji: '👕', name: 'Sarthak Garments',       biz: 'Garments · Solapur',        slug: 'sarthakgarments' },
 ];
 
 const STATS = [
   { value: '2 min', label: 'to go live' },
   { value: '0%',    label: 'order commission' },
-  { value: '2',     label: 'simple plans' },
+  { value: '1',     label: 'plan, everything included' },
   { value: '∞',     label: 'orders, no limits' },
 ];
 
@@ -1163,36 +1169,29 @@ export default function Landing() {
           <Reveal className="text-center mb-12">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700
                           bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 mb-4
-                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Loved by shop owners</p>
+                          before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-emerald-500">Live on PocketLink</p>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
               Real shops, real orders
             </h2>
           </Reveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            {TESTIMONIALS.map(({ emoji, name, biz, quote }, idx) => (
-              <Reveal key={name} delay={idx * 0.1}
-                className="group relative bg-white border border-gray-100 rounded-3xl p-7 shadow-sm flex flex-col
-                           hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-                {/* oversized quote mark */}
-                <span className="absolute -top-3 right-4 text-7xl font-serif text-emerald-100 select-none leading-none
-                                 group-hover:text-emerald-200 transition-colors">”</span>
-                <div className="relative flex items-center gap-0.5 mb-3">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={15} className="text-amber-400 fill-amber-400" />
-                  ))}
-                </div>
-                <p className="relative text-sm text-gray-700 leading-relaxed flex-1">{quote}</p>
-                <div className="relative flex items-center gap-3 mt-5 pt-4 border-t border-gray-100">
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100
-                                  flex items-center justify-center text-xl flex-shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+            {REAL_SHOPS.map(({ emoji, name, biz, slug }, idx) => (
+              <Reveal key={slug} delay={idx * 0.1}>
+                <a href={`/${slug}`} target="_blank" rel="noopener noreferrer"
+                   className="group block h-full bg-white border border-gray-100 rounded-3xl p-6 shadow-sm
+                              hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50
+                                  border border-emerald-100 flex items-center justify-center text-2xl mb-4">
                     {emoji}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-extrabold text-gray-900 text-sm leading-tight truncate">{name}</p>
-                    <p className="text-xs text-gray-400 truncate">{biz}</p>
-                  </div>
-                </div>
+                  <p className="font-extrabold text-gray-900 text-sm leading-tight">{name}</p>
+                  <p className="text-xs text-gray-400 mt-1">{biz}</p>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 mt-3
+                                   group-hover:gap-2 transition-all">
+                    View store <ArrowRight size={12} />
+                  </span>
+                </a>
               </Reveal>
             ))}
           </div>
