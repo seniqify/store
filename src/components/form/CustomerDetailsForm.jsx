@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Truck, Package, Wallet, Check, Star } from 'lucide-react';
+import { CheckCircle2, Truck, Package, Wallet, Check, Star, PackageSearch } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
 import { openOrderOnWhatsApp } from '../../utils/generateWhatsAppMessage';
@@ -271,8 +271,12 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // flaky network), the order-notify edge function re-saves this exact row with the
     // service role — so an order can't be lost as long as the notification is sent.
     const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
-    const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId);
-    await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId);
+    // Minted here too (not left to the DB default) so both writes carry the SAME
+    // token and we can hand the buyer their tracking link on the screen below —
+    // RLS lets a customer INSERT an order but never SELECT it back.
+    const confirmToken = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
+    const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+    await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
     const orderRowId = orderId;
 
     // ── Online payment ────────────────────────────────────────────────────────
@@ -344,6 +348,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                : formData.paymentMethod === 'cod'    ? 'Cash on Delivery'
                : 'Confirm on WhatsApp',
       estimate:  isPickup ? null : deliveryEstimate,
+      track:     confirmToken ? `/order/${confirmToken}` : null,
     });
     setPlacing(false);
     setSubmitted(true);
@@ -417,6 +422,16 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                           text-white font-bold text-sm py-3 rounded-xl transition-colors active:scale-[0.98]">
               <WhatsAppIcon size={18} /> Chat with {config.businessName}
             </a>
+            {/* The buyer's own order page — the same link their WhatsApp message
+                carries, so they have it before that message even arrives. */}
+            {s.track && (
+              <a href={s.track}
+                 className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200
+                            text-gray-800 font-bold text-sm py-3 rounded-xl transition-colors
+                            hover:bg-gray-50 active:scale-[0.98]">
+                <PackageSearch size={17} /> Track your order
+              </a>
+            )}
             <button
               onClick={() => { setSubmitted(false); setAutoNotified(false); setOrderSummary(null); }}
               className="text-sm font-semibold text-brand hover:text-brand-dark transition-colors py-1.5"

@@ -18,8 +18,15 @@ import { getMetaMatchData } from './metaPixel';
 /** Build the exact `orders` row for a placed order. Shared by the client insert
  *  (saveOrder) and the server-side safety net (the order-notify edge function),
  *  so both persist an identical shape. `id` is passed in so the same row id is
- *  reused everywhere → the server upsert dedupes cleanly against the client insert. */
-export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coupon = null, id) {
+ *  reused everywhere → the server upsert dedupes cleanly against the client insert.
+ *
+ *  `confirmToken` is passed in for the same reason: the DB would happily mint one
+ *  by default, but then the checkout success screen could not link to
+ *  /order/<token> without a round-trip (RLS lets customers INSERT an order and
+ *  never SELECT it back). Minting it caller-side means the client insert and the
+ *  safety-net upsert agree on one token, and the buyer gets their tracking link
+ *  the instant the order is placed. */
+export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coupon = null, id, confirmToken) {
   const { subtotal, tax, shipping, packaging, codFee, total } =
     calcCartTotals(cart, config.cart, customerDetails.paymentMethod);
   const couponDiscount = coupon ? couponDiscountFor(coupon, subtotal) : 0;
@@ -30,6 +37,7 @@ export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coup
   const { fbp, fbc, ua } = getMetaMatchData();
   return {
     ...(id ? { id } : {}),
+    ...(confirmToken ? { confirm_token: confirmToken } : {}),
     fbp: fbp || null, fbc: fbc || null, client_ua: ua || null,
     store_slug:     config.slug,
     customer_name:  customerDetails.partyName || customerDetails.name || '',
@@ -49,13 +57,14 @@ export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coup
  *  Returns the order's id (minted client-side, since RLS lets customers INSERT but
  *  not SELECT their row) so an online-payment flow can mark that exact order paid.
  *  Pass an `id` to reuse a caller-minted row id (so the order-notify safety net can
- *  dedupe against this insert). Returns null if nothing was saved. */
-export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null, id) {
+ *  dedupe against this insert), and `confirmToken` so the caller can build the
+ *  buyer's /order/<token> tracking link. Returns null if nothing was saved. */
+export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null, id, confirmToken) {
   // Skip demo stores (slug stripped) and empty carts.
   if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return null;
   try {
     const rowId = id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
-    await supabase.from('orders').insert(buildOrderRow(customerDetails, cart, config, coupon, rowId));
+    await supabase.from('orders').insert(buildOrderRow(customerDetails, cart, config, coupon, rowId, confirmToken));
     return rowId || null;
   } catch (err) {
     // Best-effort — a failed save must never break the customer's order — but log

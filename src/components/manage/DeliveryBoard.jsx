@@ -25,6 +25,15 @@ function fmtTs(ts) {
 const digits = (p) => String(p || '').replace(/\D/g, '');
 const last10 = (p) => digits(p).slice(-10);
 
+// The buyer's own order page on PocketLink. Preferred over the courier's own
+// tracking URL because it exists for EVERY order — couriers only sometimes
+// publish one — and it shows the shop's branding rather than Delhivery's.
+function buyerTrackUrl(o) {
+  if (!o?.confirm_token) return null;
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.pocketlink.store';
+  return `${origin}/order/${o.confirm_token}`;
+}
+
 // wa.me link that sends the customer their live tracking link, from the owner's number.
 function trackWaLink(o, trackUrl, storeName) {
   const phone = last10(o.customer_phone);
@@ -376,7 +385,7 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
   useScrollLock(true);
 
   const timeline = Array.isArray(data?.timeline) ? data.timeline : [];
-  const trackUrl = data?.customerTrackUrl || data?.trackUrl || null;
+  const trackUrl = buyerTrackUrl(o) || data?.customerTrackUrl || data?.trackUrl || null;
   const waLink = trackWaLink(o, trackUrl, storeName);
   const ndr = data?.ndrReason || (bucket === 'attention' ? prettyStatus(o.shipment_status) : null);
 

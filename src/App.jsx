@@ -26,7 +26,7 @@ const Console    = lazy(() => import('./pages/Console'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
 const DataDeletion = lazy(() => import('./pages/DataDeletion'));
-const ConfirmOrder = lazy(() => import('./pages/ConfirmOrder'));
+const OrderTracking = lazy(() => import('./pages/OrderTracking'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
 
 function PageLoader() {
@@ -237,7 +237,11 @@ export default function App() {
             <Route path="/terms"                 element={<Terms />} />
             <Route path="/privacy"               element={<Privacy />} />
             <Route path="/data-deletion"         element={<DataDeletion />} />
-            <Route path="/confirm/:token"        element={<ConfirmOrder />} />
+            {/* Both routes render the buyer's order page. /confirm is the link
+                inside the WhatsApp order message (it confirms, then shows the
+                page); /order is the same page, read-only. */}
+            <Route path="/confirm/:token"        element={<OrderTracking />} />
+            <Route path="/order/:token"          element={<OrderTracking />} />
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/console"               element={<Console />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />
