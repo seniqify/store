@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal } from 'lucide-react';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
@@ -80,6 +80,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
 
   const [orders,     setOrders]     = useState(null);   // null = loading
   const [filter,     setFilter]     = useState('all');
+  const [query,      setQuery]      = useState('');     // find one customer / order fast
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);
@@ -150,10 +151,33 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   };
   const prettyDate = (ymd) => new Date(ymd + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
-  const filtered = (orders || [])
-    .filter((o) => (filter === 'all' ? true : o.status === filter))
-    .filter((o) => (unpaidOnly ? !o.paid : true))
-    .filter(matchDate);
+  // ── Search — the way to find ONE customer without scrolling ────────────────
+  // A search deliberately IGNORES the date/status/unpaid chips and looks at every
+  // order. Searching a name while "Today" is selected and getting nothing is the
+  // exact frustration this is here to remove — if the order exists, it is found.
+  const q         = query.trim().toLowerCase();
+  const qDigits   = q.replace(/\D/g, '');
+  const searching = q.length > 0;
+  // The short reference the customer sees on their order page / WhatsApp
+  // ("Order #A7F2C"), so a seller can paste back whatever the buyer quotes.
+  const orderRef  = (o) => String(o.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+  const matchQuery = (o) => {
+    if (!searching) return true;
+    // Phone: compare digits only, so "98765 43210" and "+919876543210" both hit.
+    if (qDigits.length >= 3 && String(o.customer_phone || '').replace(/\D/g, '').includes(qDigits)) return true;
+    const hay = [
+      o.customer_name, o.destination, o.awb, o.courier, orderRef(o),
+      ...(Array.isArray(o.items) ? o.items.map((i) => i?.name) : []),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  };
+
+  const filtered = searching
+    ? (orders || []).filter(matchQuery)
+    : (orders || [])
+        .filter((o) => (filter === 'all' ? true : o.status === filter))
+        .filter((o) => (unpaidOnly ? !o.paid : true))
+        .filter(matchDate);
 
   // ── Loading ──
   if (orders === null) {
@@ -206,6 +230,32 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
         </div>
       ) : (
         <>
+          {/* Search — find one customer or order without scrolling the whole list */}
+          <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 py-2">
+            <Search size={15} className="text-gray-400 flex-shrink-0" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)}
+                   placeholder={leads ? 'Search name, number or requirement…' : 'Search name, number, item or order #…'}
+                   className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none" />
+            {searching && (
+              <button onClick={() => setQuery('')} aria-label="Clear search"
+                className="flex-shrink-0 w-5 h-5 grid place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Say plainly that a search spans everything, so an empty result is trusted. */}
+          {searching && (
+            <p className="text-[11px] text-gray-400 px-1 -mt-1">
+              {filtered.length === 0
+                ? <>No {noun} matches “{query.trim()}”.</>
+                : <><b className="text-gray-600">{filtered.length}</b> {filtered.length === 1 ? noun : `${noun}s`} found — searching all dates and statuses.</>}
+            </p>
+          )}
+
+          {/* Chips are hidden while searching — a search overrides them, so leaving
+              them looking active would misrepresent what the list is showing. */}
+          {!searching && (<>
           {/* Date filter — Today / Yesterday / pick any day, so the list isn't endless */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
             {[
@@ -267,6 +317,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
               </button>
             )}
           </div>
+          </>)}
 
           {/* How updates work */}
           <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
@@ -280,7 +331,8 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
               <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
                          storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads={leads} riders={riders} payInfo={payInfo} store={store} />
             ))}
-            {filtered.length === 0 && (
+            {/* The searching case already has its own message above the list. */}
+            {filtered.length === 0 && !searching && (
               <p className="text-center text-sm text-gray-400 py-8">
                 No {filter === 'all' ? '' : `${STATUS[filter]?.label.toLowerCase()} `}{noun}s
                 {dateFilter === 'all' ? '' : dateFilter === 'today' ? ' today' : dateFilter === 'yesterday' ? ' yesterday' : ` on ${prettyDate(dateFilter)}`}.
