@@ -26,6 +26,7 @@ const Console    = lazy(() => import('./pages/Console'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
 const DataDeletion = lazy(() => import('./pages/DataDeletion'));
+const ConfirmOrder = lazy(() => import('./pages/ConfirmOrder'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
 
 function PageLoader() {
@@ -236,6 +237,7 @@ export default function App() {
             <Route path="/terms"                 element={<Terms />} />
             <Route path="/privacy"               element={<Privacy />} />
             <Route path="/data-deletion"         element={<DataDeletion />} />
+            <Route path="/confirm/:token"        element={<ConfirmOrder />} />
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/console"               element={<Console />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />

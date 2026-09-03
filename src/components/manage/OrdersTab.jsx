@@ -437,6 +437,15 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
             {o.destination && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="inline-flex items-center gap-0.5 min-w-0"><MapPin size={10} /><span className="truncate max-w-[8.5rem]">{o.destination}</span></span></>)}
             {phone && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="tabular-nums">+91 {phone}</span></>)}
             {o.payment_method && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="uppercase font-semibold text-gray-400">{o.payment_method}</span></>)}
+            {/* Buyer confirmation — the RTO / fake-order signal. We show ONLY the
+                confirmed state: until the WhatsApp confirm button is live for every
+                new order, an "awaiting" chip would light up every historical order
+                for no reason. */}
+            {!leads && o.customer_confirmed_at && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" />
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+                    title={`Buyer confirmed this order on ${new Date(o.customer_confirmed_at).toLocaleString('en-IN')}`}>
+                <Check size={9} strokeWidth={3} /> Buyer confirmed
+              </span></>)}
           </div>
         </div>
         <div className="text-right flex-shrink-0">
