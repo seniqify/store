@@ -4,6 +4,33 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GRACE_MS = 3 * 86400 * 1000; // 3-day cushion so a slightly-late charge never downgrades a store
 
+// Reverse of create-razorpay-subscription's PLAN_IDS: plan_id -> plan + period.
+//
+// A subscription created through PocketLink's checkout carries notes
+// {plan, period, phone}. One created by hand in the Razorpay dashboard (a
+// renewal link sent to a customer, say) carries NO notes at all — which used to
+// make this webhook exit silently and drop a real payment on the floor. The
+// plan_id is always present on the subscription entity, so it can stand in.
+//
+// Keep in sync with create-razorpay-subscription/index.ts.
+const PLAN_BY_ID: Record<string, { plan: string; period: string }> = {
+  // Current plan — ₹1,099/mo · ₹9,999/yr
+  plan_TX4Yj0ktnJ9Ic3: { plan: 'premium', period: 'monthly' },
+  plan_TX4a4orxglrlrC: { plan: 'premium', period: 'yearly'  },
+  // Retired but permanent — existing mandates keep renewing on these.
+  plan_T534Tj7pKAPhOP: { plan: 'starter',  period: 'monthly' },
+  plan_T534TvGMXAl18M: { plan: 'starter',  period: 'yearly'  },
+  plan_Szqmme5MgX3kcg: { plan: 'pro',      period: 'monthly' },
+  plan_SzqmmuDV66K4lm: { plan: 'pro',      period: 'yearly'  },
+  plan_T8tUVJDyKVHUqA: { plan: 'business', period: 'monthly' },
+  plan_T8tUVTmHtEauYl: { plan: 'business', period: 'yearly'  },
+  plan_T8tUVd3OJkD8m8: { plan: 'premium',  period: 'monthly' },
+  plan_T8tUVnFLUkTGYl: { plan: 'premium',  period: 'yearly'  },
+  // premium_plus is recorded as 'premium' — only the debited amount differed.
+  plan_SzqmnPq8JoWcSc: { plan: 'premium',  period: 'monthly' },
+  plan_SzqmnZ9M5keufj: { plan: 'premium',  period: 'yearly'  },
+};
+
 async function hmacHex(secret: string, message: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -32,15 +59,36 @@ serve(async (req) => {
     const event = JSON.parse(raw);
     const type  = event.event as string;
     const sub   = event.payload?.subscription?.entity;
-    if (!sub) return new Response('ok', { status: 200 }); // not a subscription event we handle
+    const pay   = event.payload?.payment?.entity;
+    if (!sub) {
+      console.log(`razorpay-webhook: ignored ${type} (no subscription entity)`);
+      return new Response('ok', { status: 200 });
+    }
 
-    const plan       = sub.notes?.plan ?? null;
-    const phone      = sub.notes?.phone ?? null;
+    // ── Identify the customer ────────────────────────────────────────────────
+    // Prefer the notes our own checkout writes; fall back to the phone on the
+    // payment entity, which Razorpay includes on subscription.charged. Without
+    // this fallback a dashboard-created subscription is unattributable.
+    const phone = sub.notes?.phone ?? pay?.contact ?? null;
+    const fromNotes = Boolean(sub.notes?.phone);
+
+    // Same idea for the plan: notes first, then the plan_id it is billing on.
+    const mapped     = PLAN_BY_ID[String(sub.plan_id ?? '')] ?? null;
+    const plan       = sub.notes?.plan ?? mapped?.plan ?? null;
+    const period     = sub.notes?.period ?? mapped?.period ?? 'monthly';
     const currentEnd = sub.current_end ? sub.current_end * 1000 : Date.now();
-    if (!phone) return new Response('ok', { status: 200 });
+
+    if (!phone) {
+      // Nothing to match on. Log loudly — a real payment may have just been
+      // dropped, and silence here is how that goes unnoticed for weeks.
+      console.error(
+        `razorpay-webhook: UNATTRIBUTABLE ${type} sub=${sub.id} plan_id=${sub.plan_id} ` +
+        `— no notes.phone and no payment.contact. Payment may need manual provisioning.`,
+      );
+      return new Response('ok', { status: 200 });
+    }
 
     // Decide the new expiry based on the event
-    const period     = sub.notes?.period ?? 'monthly';
     const fallbackMs = (period === 'yearly' ? 368 : 33) * 86400000;
     let planExpiresAt: string | null = null;
     let active = false; // true for paid/active events (vs. a stop event)
@@ -59,6 +107,7 @@ serve(async (req) => {
       // Stops renewing → stays active until the end of the cycle already paid for
       planExpiresAt = new Date(currentEnd).toISOString();
     } else {
+      console.log(`razorpay-webhook: no-op event ${type} sub=${sub.id}`);
       return new Response('ok', { status: 200 }); // authenticated/pending — nothing to do
     }
 
@@ -87,6 +136,10 @@ serve(async (req) => {
         .from('stores')
         .update({ config: newConfig, updated_at: new Date().toISOString() })
         .eq('slug', store.slug);
+      console.log(
+        `razorpay-webhook: ${type} → ${store.slug} plan=${plan} until=${planExpiresAt} ` +
+        `(phone from ${fromNotes ? 'notes' : 'payment.contact'})`,
+      );
     } else if (active && plan) {
       // No store yet → a first-time subscriber who paid but hasn't built their
       // store (or whose browser failed after paying). Record the paid plan by
@@ -98,6 +151,12 @@ serve(async (req) => {
           { phone: last10, plan, plan_expires_at: planExpiresAt, subscription_id: sub.id },
           { onConflict: 'phone' },
         );
+      console.log(`razorpay-webhook: ${type} → no store for ${last10}, parked in pending_signups`);
+    } else {
+      console.error(
+        `razorpay-webhook: ${type} sub=${sub.id} phone=${last10} matched NO store and ` +
+        `could not be parked (active=${active} plan=${plan}). Needs manual provisioning.`,
+      );
     }
 
     return new Response('ok', { status: 200 });
