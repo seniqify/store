@@ -67,6 +67,36 @@ export async function verifyStorePin(slug, hashedPin) {
   }
 }
 
+// ── Ad-account id normalization ───────────────────────────────────────────────
+// Meta ad-account ids are `act_<digits>`. Sources disagree about the prefix: the
+// OAuth callback stores them WITH `act_`, while a hand-entered or API-echoed id
+// often arrives without it. Code that blindly re-prefixed produced
+// `act_act_1896623077683652`, which 400s on EVERY Marketing API call — which is
+// why reporting (which used the id as-is) worked while campaign creation never
+// could. Normalise in one place so callers can interpolate the result straight
+// into a Graph path. Returns null for anything that isn't a usable account id.
+export function normalizeAdAccountId(raw) {
+  const digits = String(raw ?? '').trim().replace(/^(?:act_)+/i, '');
+  return /^\d+$/.test(digits) ? `act_${digits}` : null;
+}
+
+// ── Live permission check ─────────────────────────────────────────────────────
+// store_meta_accounts.scopes records what was granted AT CONNECT TIME. That is
+// not proof of current access: a user can revoke a permission, and Meta can
+// withdraw one when an App Review request is rejected. Anything that spends or
+// writes must ask Meta what is granted right now.
+//   → { granted: Set<string> }            on success
+//   → { error: string, granted: null }    when the check itself failed
+export async function getGrantedPermissions(token) {
+  const r = await graphGet('me/permissions', { access_token: token });
+  if (r?.body?.error) {
+    return { granted: null, error: r.body.error.message || 'permission_check_failed' };
+  }
+  const rows = Array.isArray(r?.body?.data) ? r.body.data : [];
+  if (!rows.length) return { granted: null, error: 'permission_check_empty' };
+  return { granted: new Set(rows.filter((p) => p?.status === 'granted').map((p) => p.permission)) };
+}
+
 // ── Meta Graph GET (resilient — never throws) ─────────────────────────────────
 export async function graphGet(path, params) {
   try {

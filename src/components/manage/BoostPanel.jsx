@@ -360,8 +360,15 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         <Row k="Who we reach" v={`${d.targeting?.resolved ? d.targeting.label : 'your area'} · Age ${d.targeting?.ageMin}–${d.targeting?.ageMax}${d.targeting?.genderLabel && d.targeting.genderLabel !== 'All' ? ` · ${d.targeting.genderLabel}` : ''}`} />
         <Row k="Strategy" v={d.targeting?.strategyLabel || 'PocketLink finds buyers'} />
         <Row k="Budget" v={`${money(d.budget?.daily, cur)}/day · ${d.budget?.days} days`} />
-        <Row k="Up to" v={<b>{money(d.budget?.total, cur)}</b>} />
-        <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none — connect in Settings</span>} last />
+        {/* Say what enforces the ceiling. At small totals Meta will not accept a
+            campaign spend cap, so the limit is the ad set lifetime budget + end
+            date — claiming a spend cap there would be untrue. */}
+        <Row k="Up to" v={<span><b>{money(d.budget?.total, cur)}</b>{d.budget?.enforcedBy ? <span className="text-gray-400 font-normal"> · {d.budget.enforcedBy}</span> : null}</span>} />
+        <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none — connect in Settings</span>} />
+        <Row k="Ad account" v={d.adAccountId || '—'} />
+        {/* Where the button actually lands. SHOP_NOW opens the PocketLink product
+            page; WhatsApp comes later, at checkout. */}
+        <Row k="Button" v={`${c.cta || 'Shop Now'} → ${c.destinationLabel || 'Your PocketLink shop'}`} last />
       </div>
 
       {/* Why each choice — the seller's transparency into PocketLink's decisions */}
@@ -417,7 +424,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
               {busy ? 'Rebuilding…' : 'Update plan'}
             </button>
             <button type="button" onClick={() => setShowPayloads((v) => !v)} className="text-[11px] font-semibold text-gray-400 hover:text-gray-600">
-              {showPayloads ? 'Hide' : 'Show'} exact Meta payloads (dry run — not sent)
+              {showPayloads ? 'Hide' : 'Show'} exact Meta payloads (preview only — nothing sent to Meta)
             </button>
             {showPayloads && <pre className="text-[10px] bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto">{JSON.stringify(d.payloads, null, 2)}</pre>}
           </div>
@@ -436,9 +443,15 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
           <div>
             <button type="button" disabled={!d.launchReady || approved} onClick={() => setApproved(true)}
               className={primaryBtn} style={{ background: themeColor }}>
-              {approved ? 'Approved ✓ (dry run — no spend)' : 'Approve (dry run — no spend)'}
+              {approved ? 'Plan approved ✓ (preview only)' : 'Approve this plan (preview only)'}
             </button>
-            <p className="text-[11px] text-gray-400 text-center mt-2">This is a preview. Going live is done by the PocketLink team.</p>
+            {/* Truthful about what just happened: approving records YOUR choice.
+                It does not call Meta and creates no campaign, ad set or ad. */}
+            <p className="text-[11px] text-gray-400 text-center mt-2 leading-relaxed">
+              Preview only — <b className="text-gray-500">nothing is created in Meta</b> and nothing is spent.
+              Creating the paused campaign needs the <code>ads_management</code> permission, which
+              PocketLink is still getting approved by Meta. Your reporting above is live and unaffected.
+            </p>
           </div>
         )}
       </div>
@@ -454,7 +467,7 @@ function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend,
     return (
       <div>
         <button type="button" disabled={!ready || busy} onClick={doLaunch} className={`${btn} text-white`} style={{ background: themeColor }}>
-          {busy ? 'Creating (paused)…' : 'Launch — creates it paused (no spend yet)'}
+          {busy ? 'Creating paused objects in Meta…' : 'Create paused campaign in Meta'}
         </button>
         {launch?.error && <p className="text-xs text-red-600 mt-2">{launch.error}</p>}
         {!ready && <p className="text-[11px] text-gray-400 text-center mt-2">Resolve the items above to enable launch.</p>}
@@ -477,7 +490,22 @@ function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend,
   // created or paused → offer activation with an explicit spend confirmation
   return (
     <div className="space-y-2.5">
-      <p className="text-sm font-bold text-gray-800">{status === 'paused' ? 'Paused' : 'Created — paused, no spend yet ✓'}</p>
+      <p className="text-sm font-bold text-gray-800">
+        {status === 'paused' ? 'Paused'
+          : launch?.verified?.allPaused ? 'Created in Meta — verified PAUSED, no spend ✓'
+          : launch?.verified ? 'Created in Meta — could not verify all objects are paused'
+          : 'Created — paused, no spend yet'}
+      </p>
+      {launch?.ids?.campaign_id && (
+        <p className="text-[11px] text-gray-500 break-all">
+          Campaign <b>{launch.ids.campaign_id}</b>
+          {launch.ids.adset_id ? <> · Ad set <b>{launch.ids.adset_id}</b></> : null}
+          {launch.ids.ad_id ? <> · Ad <b>{launch.ids.ad_id}</b></> : null}
+          {launch.adsManagerUrl && (
+            <> · <a href={launch.adsManagerUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">Open in Ads Manager</a></>
+          )}
+        </p>
+      )}
       <label className="flex items-start gap-2 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-xl p-3">
         <input type="checkbox" checked={confirmSpend} onChange={(e) => setConfirmSpend(e.target.checked)} className="mt-0.5" />
         <span>I understand activating starts real spending, up to <b>{money(total)}</b> over the run.</span>

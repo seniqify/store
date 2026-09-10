@@ -14,8 +14,12 @@
 // spend. SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig } from './_meta.js';
+import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, normalizeAdAccountId, getGrantedPermissions, graphGet } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
+
+// Meta permission required to create delivery objects. Checked LIVE against
+// /me/permissions before any write — stored scopes are only a connect-time record.
+const CREATE_PERMISSION = 'ads_management';
 
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
@@ -63,12 +67,26 @@ const ids = (row) => ({ campaign_id: row.campaign_id, adset_id: row.adset_id, cr
 async function doCreate(slug, launchId, input, meta) {
   const acct = await getMetaAccount(slug);
   if (!acct || acct.status !== 'connected' || !acct.access_token) return { error: 'not_connected' };
-  const adId = (acct.ad_account_ids || [])[0];
-  if (!adId) return { error: 'no_ad_account' };
+  // Tenant isolation: the account row is looked up BY SLUG, and the ad account
+  // must be one this store actually connected — never an id supplied by the caller.
+  const adAccount = normalizeAdAccountId((acct.ad_account_ids || [])[0]);
+  if (!adAccount) return { error: 'no_ad_account' };
   const config = await getStoreConfig(slug);
   const token = acct.access_token;
 
-  const built = await buildCampaign({ slug, adId, token, cfg: config || {} }, input);
+  // Live permission gate — before the idempotency lease, so a merchant without
+  // ads_management burns no launch attempts and gets an accurate reason.
+  const perms = await getGrantedPermissions(token);
+  if (!perms.granted) return { error: 'permission_check_failed', message: perms.error };
+  if (!perms.granted.has(CREATE_PERMISSION)) {
+    return {
+      error: 'missing_permission',
+      permission: CREATE_PERMISSION,
+      granted: [...perms.granted].sort(),
+    };
+  }
+
+  const built = await buildCampaign({ slug, adId: adAccount, token, cfg: config || {} }, input);
   if (built.error) return built;                                   // reauth, etc.
   if (!built.launchReady) return { error: 'blocked', launchBlockers: built.launchBlockers, warnings: built.warnings };
 
@@ -107,27 +125,56 @@ async function doCreate(slug, launchId, input, meta) {
   const fail = async (step, r) => { await set(launchId, { status: 'partial', error: `${step}: ${r.body?.error?.message || r.status}` }); return { error: 'partial', step, message: r.body?.error?.message || `Meta ${step} create failed`, ids: ids(await getLaunch(launchId)) }; };
 
   if (!row.campaign_id) {
-    const r = await graphPost(`act_${adId}/campaigns`, P.campaign.body, token);
+    const r = await graphPost(`${adAccount}/campaigns`, P.campaign.body, token);
     if (!r.ok || !r.body?.id) return fail('campaign', r);
     await set(launchId, { campaign_id: r.body.id }); row.campaign_id = r.body.id;
   }
   if (!row.adset_id) {
-    const r = await graphPost(`act_${adId}/adsets`, { ...P.adset.body, campaign_id: row.campaign_id }, token);
+    const r = await graphPost(`${adAccount}/adsets`, { ...P.adset.body, campaign_id: row.campaign_id }, token);
     if (!r.ok || !r.body?.id) return fail('adset', r);
     await set(launchId, { adset_id: r.body.id }); row.adset_id = r.body.id;
   }
   if (!row.creative_id) {
-    const r = await graphPost(`act_${adId}/adcreatives`, P.adcreative.body, token);
+    const r = await graphPost(`${adAccount}/adcreatives`, P.adcreative.body, token);
     if (!r.ok || !r.body?.id) return fail('creative', r);
     await set(launchId, { creative_id: r.body.id }); row.creative_id = r.body.id;
   }
   if (!row.ad_id) {
-    const r = await graphPost(`act_${adId}/ads`, { ...P.ad.body, adset_id: row.adset_id, creative: { creative_id: row.creative_id } }, token);
+    const r = await graphPost(`${adAccount}/ads`, { ...P.ad.body, adset_id: row.adset_id, creative: { creative_id: row.creative_id } }, token);
     if (!r.ok || !r.body?.id) return fail('ad', r);
     await set(launchId, { ad_id: r.body.id }); row.ad_id = r.body.id;
   }
+  // Read the objects back from Meta and confirm they really are PAUSED. We never
+  // claim "created paused" on the strength of the create call alone — the whole
+  // safety story rests on this being true, so it is verified, not assumed.
+  const verified = await verifyPaused(row, token);
   await set(launchId, { status: 'created', error: '' });
-  return { ok: true, status: 'created', launchId, ids: ids(row), page: built.page, budget: built.budget, warnings: built.warnings };
+  return {
+    ok: true, status: 'created', launchId, ids: ids(row),
+    page: built.page, budget: built.budget, warnings: built.warnings,
+    verified,
+    adsManagerUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${adAccount.replace(/^act_/, '')}&selected_campaign_ids=${row.campaign_id}`,
+  };
+}
+
+// Read back effective_status/status for each created object. Returns what Meta
+// reports, plus allPaused so the UI can state verification honestly.
+async function verifyPaused(row, token) {
+  const targets = [
+    ['campaign', row.campaign_id],
+    ['adset',    row.adset_id],
+    ['ad',       row.ad_id],
+  ].filter(([, id]) => id);
+  const statuses = {};
+  for (const [kind, id] of targets) {
+    const r = await graphGet(id, { fields: 'status,effective_status', access_token: token });
+    statuses[kind] = r?.body?.error
+      ? { error: r.body.error.message || 'read_failed' }
+      : { status: r?.body?.status || null, effectiveStatus: r?.body?.effective_status || null };
+  }
+  const read = Object.values(statuses).filter((s) => !s.error);
+  const allPaused = read.length === targets.length && read.every((s) => s.status === 'PAUSED');
+  return { statuses, allPaused };
 }
 
 // ── Status-flip actions ────────────────────────────────────────────────────────

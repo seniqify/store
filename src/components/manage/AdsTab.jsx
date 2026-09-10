@@ -112,6 +112,8 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
   const [range, setRange] = useState('7d');
   const [showBoost, setShowBoost] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Which connected ad account the dashboard is reading. null = the store's first.
+  const [adAccountId, setAdAccountId] = useState(null);
   const [state, setState] = useState({ loading: true, data: null, error: '' });
 
   // Fetch on mount, on range change, and on manual refresh. The effect's only
@@ -121,18 +123,20 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
     let alive = true;
     (async () => {
       let d;
-      try { d = await fetchAdsPerformance(config.slug, pin, range); }
+      try { d = await fetchAdsPerformance(config.slug, pin, range, adAccountId); }
       catch { d = { error: 'server' }; }
       if (!alive) return;
-      setState(d?.error ? { loading: false, data: null, error: d.error } : { loading: false, data: d, error: '' });
+      setState(d?.error
+        ? { loading: false, data: null, error: d.error, message: d.message || '', code: d.code ?? null }
+        : { loading: false, data: d, error: '', message: '', code: null });
     })();
     return () => { alive = false; };
-  }, [config.slug, pin, range, reloadKey]);
+  }, [config.slug, pin, range, reloadKey, adAccountId]);
 
   const refresh   = () => { setState((s) => ({ ...s, loading: true })); setReloadKey((k) => k + 1); };
   const pickRange = (r) => { if (r === range) return; setState((s) => ({ ...s, loading: true })); setRange(r); };
 
-  const { loading, data, error } = state;
+  const { loading, data, error, message: errMessage, code: errCode } = state;
 
   if (showBoost) return <BoostPanel config={config} pin={pin} themeColor={themeColor} onClose={() => setShowBoost(false)} />;
   const cur = data?.currency || 'INR';
@@ -159,7 +163,10 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
             <Megaphone size={18} style={{ color: themeColor }} /> Ad performance
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {data?.accountName ? `${data.accountName} · ` : ''}Live from Meta · read-only
+            {data?.accountName ? `${data.accountName} · ` : ''}
+            {data?.adAccountId ? `${data.adAccountId} · ` : ''}
+            {data?.timezone ? `${data.timezone} · ` : ''}
+            {data?.currency ? `${data.currency} · ` : ''}Live from Meta · read-only
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -208,7 +215,14 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
       )}
       {!loading && error && !['reauth', 'not_connected', 'no_ad_account'].includes(error) && (
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
-          <p className="text-sm text-gray-600">Couldn’t load ad performance right now.</p>
+          <div className="min-w-0">
+            <p className="text-sm text-gray-700 font-semibold">Couldn’t load ad performance</p>
+            {/* Show what Meta actually said. A reporting failure must never be
+                rendered as a dashboard full of zeros. */}
+            {errMessage
+              ? <p className="text-xs text-gray-500 mt-0.5 break-words">{errMessage}{errCode ? ` (code ${errCode})` : ''}</p>
+              : <p className="text-xs text-gray-500 mt-0.5">No details were returned. Please try again.</p>}
+          </div>
           <button type="button" onClick={refresh} className="text-xs font-bold text-white px-3 py-1.5 rounded-lg" style={{ background: themeColor }}>Try again</button>
         </div>
       )}
@@ -216,14 +230,43 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
       {/* Data */}
       {!loading && !error && data && (
         <>
+          {/* Explicit ad-account choice. Only rendered when this store connected
+              more than one — the server rejects any account it does not own. */}
+          {Array.isArray(data.adAccounts) && data.adAccounts.length > 1 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Ad account</span>
+              {data.adAccounts.map((a) => (
+                <button key={a} type="button" onClick={() => setAdAccountId(a)}
+                  className={['text-xs font-semibold px-2.5 py-1 rounded-lg border transition',
+                    a === data.adAccountId ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'].join(' ')}>
+                  {a}
+                </button>
+              ))}
+            </div>
+          )}
           {/* Summary tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             <Tile label="Spend" value={money(t.spend, cur)} sub={range === '7d' ? 'last 7 days' : 'last 30 days'} />
             <Tile label="Reach" value={fmtInt(t.reach)} sub="people" />
-            <Tile label={t.resultLabel || 'Results'} value={fmtInt(t.results)} sub={t.results > 0 && t.costPerResult != null ? `${money(t.costPerResult, cur)} each` : '—'} />
-            <Tile label="Link clicks" value={fmtInt(t.linkClicks || t.clicks)} />
+            {/* "Results" is always the label — it used to inherit resultLabel,
+                which on an empty account read 'link clicks' and produced a second
+                card with the same title as the one below it. */}
+            <Tile
+              label="Results"
+              value={fmtInt(t.results)}
+              sub={t.resultLabel
+                ? `${t.resultLabel === 'purchases' ? 'Meta-attributed purchases' : t.resultLabel}${t.results > 0 && t.costPerResult != null ? ` · ${money(t.costPerResult, cur)} each` : ''}`
+                : '—'}
+            />
+            <Tile label="Link clicks" value={fmtInt(t.linkClicks)} sub="taps through to your page" />
             <Tile label="Impressions" value={fmtInt(t.impressions)} />
-            <Tile label="CTR" value={`${Number(t.ctr || 0).toFixed(2)}%`} />
+            {/* Meta’s ctr counts ALL clicks (reactions, profile taps…), not just
+                link clicks — so both are shown, each named for what it is. */}
+            <Tile
+              label="CTR (all clicks)"
+              value={`${Number(t.ctr || 0).toFixed(2)}%`}
+              sub={`Link CTR ${Number(t.ctrLink || 0).toFixed(2)}%`}
+            />
           </div>
 
           {/* Campaigns */}
