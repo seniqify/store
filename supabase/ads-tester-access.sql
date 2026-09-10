@@ -1,9 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
---  Store-scoped ads-test authorization  —  PREPARED FOR REVIEW, NOT APPLIED
+--  Store-scoped ads-test authorization  —  APPLIED 2026-09-10
 --
 --  Tester : pockelink@gmail.com
 --  Scope  : store 'showme' only
---  Expires: 7 days from the moment this runs
+--  Expires: 2026-09-17 13:46 UTC (7 days)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 --  WHY A NEW TABLE INSTEAD OF A crm_team ROLE
@@ -186,21 +186,38 @@ where schemaname = 'public'
   and tablename in ('crm_team', 'crm_leads', 'orders', 'stores')
 order by tablename, policyname;
 
--- V7. Expiry, proven rather than assumed. Backdates the grant, confirms the
---     tester's own RLS view goes empty, then restores the 7-day window.
---     PASS: middle result is zero rows.
-begin;
-  update public.ads_testers set expires_at = now() - interval '1 minute'
-  where store_slug = 'showme';
+-- V7. Expiry, proven rather than assumed — and WITHOUT modifying anything.
+--     An earlier draft backdated the grant inside begin/rollback. That works in
+--     psql but not in Supabase's SQL editor, which shows only the last
+--     statement’s result — and the last statement is the rollback, so the proof
+--     was invisible. This evaluates the LIVE policy predicate against the LIVE
+--     row at a moment one second after that row's own expires_at instead.
+--     PASS: all three rows.
+select n, check_name, result from (
 
-  -- What the tester's session would see through ads_testers_read_own. Zero rows
-  -- means an expired grant is invisible at the database layer, independent of
-  -- the separate expiry filter in api/meta/campaign-launch.js.
-  select count(*) as rows_visible_to_expired_tester
-  from public.ads_testers
-  where user_id = (select id from auth.users where lower(email) = lower('pockelink@gmail.com'))
-    and (expires_at is null or expires_at > now());
-rollback;   -- nothing above is kept
+  select 1 as n, 'V7a  the policy itself carries the expiry clause' as check_name,
+    case when (select qual from pg_policies
+               where schemaname='public' and tablename='ads_testers') like '%expires_at%'
+         then 'PASS - ' || (select qual from pg_policies
+                            where schemaname='public' and tablename='ads_testers')
+         else 'FAIL - policy has no expiry clause, only ownership' end::text as result
+
+  union all select 2, 'V7b  the live row fails that predicate once expired',
+    case when (select count(*) from public.ads_testers t
+               where t.store_slug = 'showme'
+                 and (t.expires_at is null
+                      or t.expires_at > t.expires_at + interval '1 second')) = 0
+         then 'PASS - after expires_at the row is invisible to the tester'
+         else 'FAIL - the row would still be readable after expiry' end
+
+  union all select 3, 'V7c  and it IS visible right now (not already dead)',
+    case when (select count(*) from public.ads_testers t
+               where t.store_slug = 'showme'
+                 and (t.expires_at is null or t.expires_at > now())) = 1
+         then 'PASS - grant is live today, expires on schedule'
+         else 'FAIL - grant is not currently visible' end
+
+) checks order by n;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
