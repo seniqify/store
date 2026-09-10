@@ -14,7 +14,7 @@
 // spend. SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed } from './_meta.js';
+import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed, activationBlocked } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 
 // Meta permission required to create delivery objects. Checked LIVE against

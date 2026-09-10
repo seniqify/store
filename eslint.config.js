@@ -18,4 +18,11 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Server-side code: Vercel serverless functions and the Node test suite run
+    // in Node, not the browser. Without this they report `process` and `Buffer`
+    // as undefined — noise that was masking real findings in the same files.
+    files: ['api/**/*.js', 'tests/**/*.{js,mjs}', '*.config.js', 'middleware.js'],
+    languageOptions: { globals: { ...globals.node } },
+  },
 ])
