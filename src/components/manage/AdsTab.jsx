@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Megaphone, RefreshCw, AlertCircle, TrendingUp, Plus } from 'lucide-react';
+import { selectAdAccount } from '../../utils/metaCampaign';
 import { fetchAdsPerformance } from '../../utils/metaAds';
 import BoostPanel from './BoostPanel';
 
@@ -127,7 +128,7 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
       catch { d = { error: 'server' }; }
       if (!alive) return;
       setState(d?.error
-        ? { loading: false, data: null, error: d.error, message: d.message || '', code: d.code ?? null }
+        ? { loading: false, data: null, error: d.error, message: d.message || '', code: d.code ?? null, adAccounts: d.adAccounts || [] }
         : { loading: false, data: d, error: '', message: '', code: null });
     })();
     return () => { alive = false; };
@@ -136,7 +137,7 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
   const refresh   = () => { setState((s) => ({ ...s, loading: true })); setReloadKey((k) => k + 1); };
   const pickRange = (r) => { if (r === range) return; setState((s) => ({ ...s, loading: true })); setRange(r); };
 
-  const { loading, data, error, message: errMessage, code: errCode } = state;
+  const { loading, data, error, message: errMessage, code: errCode, adAccounts: errAccounts } = state;
 
   if (showBoost) return <BoostPanel config={config} pin={pin} themeColor={themeColor} onClose={() => setShowBoost(false)} />;
   const cur = data?.currency || 'INR';
@@ -213,7 +214,28 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
           </div>
         </div>
       )}
-      {!loading && error && !['reauth', 'not_connected', 'no_ad_account'].includes(error) && (
+      {/* Several ad accounts connected and none chosen. We ask rather than
+          guessing — using the first would silently pick an account the merchant
+          never selected. */}
+      {!loading && error === 'ad_account_not_selected' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-bold text-amber-900">Choose which ad account to use</p>
+          <p className="text-xs text-amber-700 mt-0.5 mb-3">
+            This Meta connection has more than one ad account. Pick the one this shop advertises from — we’ll remember it.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(errAccounts || []).map((a) => (
+              <button key={a} type="button"
+                onClick={async () => { setAdAccountId(a); await selectAdAccount(config.slug, pin, a); refresh(); }}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-amber-800 hover:bg-amber-100">
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && error && !['reauth', 'not_connected', 'no_ad_account', 'ad_account_not_selected'].includes(error) && (
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm text-gray-700 font-semibold">Couldn’t load ad performance</p>
@@ -235,8 +257,9 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488' }) {
           {Array.isArray(data.adAccounts) && data.adAccounts.length > 1 && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Ad account</span>
+              {data.selectedAdAccountId ? null : <span className="text-[11px] text-amber-600 font-semibold">choose one to save</span>}
               {data.adAccounts.map((a) => (
-                <button key={a} type="button" onClick={() => setAdAccountId(a)}
+                <button key={a} type="button" onClick={async () => { setAdAccountId(a); await selectAdAccount(config.slug, pin, a); refresh(); }}
                   className={['text-xs font-semibold px-2.5 py-1 rounded-lg border transition',
                     a === data.adAccountId ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'].join(' ')}>
                   {a}

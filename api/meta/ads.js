@@ -4,7 +4,7 @@
 // (in the meta_campaigns ledger) — reconciles Meta's reported funnel against our own
 // order/revenue truth and snapshots an outcome row (on-view capture). The token
 // never reaches the browser; this endpoint never writes to Meta or spends.
-import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey, normalizeAdAccountId } from './_meta.js';
+import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey, normalizeAdAccountId, resolveAdAccount } from './_meta.js';
 
 // Action types that count as each funnel step across Meta's variants.
 const PURCHASE = ['purchase', 'omni_purchase', 'offsite_conversion.fct_purchase', 'onsite_conversion.purchase'];
@@ -85,15 +85,19 @@ export default async function handler(req, res) {
     const acct = await getMetaAccount(slug);
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
 
-    // Ad-account selection. TENANT ISOLATION: a requested account is honoured only
-    // if it is one THIS store connected — a caller can never point the dashboard at
-    // another merchant's account. Ids are normalised so a stored 'act_123' and a
-    // requested '123' resolve to the same account.
-    const available = (acct.ad_account_ids || []).map(normalizeAdAccountId).filter(Boolean);
-    if (!available.length) { res.status(200).json({ error: 'no_ad_account' }); return; }
+    // Ad-account selection comes from the shared resolver, so reporting, preview
+    // and creation can never disagree. A per-request override is still honoured
+    // (to look at another connected account before saving a choice), but TENANT
+    // ISOLATION holds: it must be one THIS store connected, never an invented id.
     const requested = normalizeAdAccountId(body.adAccountId);
-    const adId = (requested && available.includes(requested)) ? requested : available[0];
-    if (requested && !available.includes(requested)) { res.status(403).json({ error: 'ad_account_not_connected' }); return; }
+    const picked = resolveAdAccount(acct);
+    if (requested && !picked.available.includes(requested)) { res.status(403).json({ error: 'ad_account_not_connected' }); return; }
+    if (!requested && picked.error) {
+      // Several accounts connected and none chosen → ask, never guess.
+      res.status(200).json({ error: picked.error, adAccounts: picked.available });
+      return;
+    }
+    const adId = requested || picked.adAccount;
     const token = acct.access_token;
 
     const insightFields = 'spend,impressions,reach,cpm,clicks,ctr,cpc,inline_link_clicks,inline_link_click_ctr,actions,action_values';
@@ -185,7 +189,8 @@ export default async function handler(req, res) {
     res.status(200).json({
       currency, accountName, timezone, accountActive, range, totals, campaigns, measured,
       adAccountId: adId,
-      adAccounts: available,
+      adAccounts: picked.available,
+      selectedAdAccountId: normalizeAdAccountId(acct.selected_ad_account_id) || null,
     });
   } catch {
     res.status(200).json({ error: 'server' });

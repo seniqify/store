@@ -80,6 +80,24 @@ export function normalizeAdAccountId(raw) {
   return /^\d+$/.test(digits) ? `act_${digits}` : null;
 }
 
+// ── Which ad account does this store advertise from? ──────────────────────────
+// The SINGLE resolver for reporting, preview and creation, so all three always
+// agree. Rules, in order:
+//   • an explicit, persisted selection that is still among the granted accounts
+//   • exactly one granted account → use it (nothing to choose between)
+//   • several granted accounts and no selection → ASK. Never silently pick the
+//     first: array order is incidental, and that is exactly how showme ended up
+//     pairing the PocketLink Page with the Shobha IVF ad account.
+// Returns { adAccount, available } or { error, available }.
+export function resolveAdAccount(acct) {
+  const available = (acct?.ad_account_ids || []).map(normalizeAdAccountId).filter(Boolean);
+  const selected = normalizeAdAccountId(acct?.selected_ad_account_id);
+  if (selected && available.includes(selected)) return { adAccount: selected, available };
+  if (available.length === 1) return { adAccount: available[0], available };
+  if (available.length === 0) return { error: 'no_ad_account', available };
+  return { error: 'ad_account_not_selected', available };
+}
+
 // ── Live permission check ─────────────────────────────────────────────────────
 // store_meta_accounts.scopes records what was granted AT CONNECT TIME. That is
 // not proof of current access: a user can revoke a permission, and Meta can

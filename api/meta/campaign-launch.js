@@ -14,7 +14,7 @@
 // spend. SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, normalizeAdAccountId, getGrantedPermissions, graphGet } from './_meta.js';
+import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 
 // Meta permission required to create delivery objects. Checked LIVE against
@@ -67,10 +67,15 @@ const ids = (row) => ({ campaign_id: row.campaign_id, adset_id: row.adset_id, cr
 async function doCreate(slug, launchId, input, meta) {
   const acct = await getMetaAccount(slug);
   if (!acct || acct.status !== 'connected' || !acct.access_token) return { error: 'not_connected' };
-  // Tenant isolation: the account row is looked up BY SLUG, and the ad account
-  // must be one this store actually connected — never an id supplied by the caller.
-  const adAccount = normalizeAdAccountId((acct.ad_account_ids || [])[0]);
-  if (!adAccount) return { error: 'no_ad_account' };
+  // Tenant isolation: the account row is looked up BY SLUG, and the account comes
+  // from the shared resolver — the merchant's persisted choice, never array order
+  // and never an id supplied by the caller. If several accounts are connected and
+  // none has been chosen, creation stops rather than guessing which one to spend
+  // from: picking [0] is how showme paired the PocketLink Page with the Shobha IVF
+  // ad account.
+  const picked = resolveAdAccount(acct);
+  if (picked.error) return { error: picked.error, adAccounts: picked.available };
+  const adAccount = picked.adAccount;
   const config = await getStoreConfig(slug);
   const token = acct.access_token;
 
