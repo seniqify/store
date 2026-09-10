@@ -156,3 +156,11 @@ test('getGrantedPermissions surfaces an error instead of an empty grant set', as
   assert.equal(r.granted, null);
   assert.match(r.error, /Invalid OAuth/);
 });
+
+// Meta requires this whenever the budget sits on the ad set rather than the
+// campaign; without it every campaign create fails with subcode 4834011.
+test('campaign declares ad-set budget sharing, and disables it', async () => {
+  const { out } = await build();
+  assert.equal(out.payloads.campaign.body.is_adset_budget_sharing_enabled, false,
+    'must be explicitly false — true would let ad sets share budget and break the ceiling');
+});

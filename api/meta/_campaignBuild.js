@@ -147,17 +147,28 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   if (!geo) launchBlockers.push('Your store has no usable ad location — set your city in Settings → Location.');
 
   // ── Creative (from real store data) ──
-  const link = (promote === 'product' && product) ? `${APP_ORIGIN}/${slug}/p/${product.id}` : `${APP_ORIGIN}/${slug}`;
-  const imageUrl = product?.image || cfg.coverImage || cfg.logo || null;
+  const defaultLink = (promote === 'product' && product) ? `${APP_ORIGIN}/${slug}/p/${product.id}` : `${APP_ORIGIN}/${slug}`;
+  const defaultImage = product?.image || cfg.coverImage || cfg.logo || null;
   // Pack-aware naming, and copy that matches where the ad actually lands: the
   // SHOP_NOW button opens the PocketLink product page (checkout hands off to
   // WhatsApp later), so the creative must not promise a WhatsApp destination.
   const disp = productDisplay(product);
   const shopLine = cfg.tagline || 'Order online from our shop.';
-  const headline = disp?.title || cfg.businessName || 'Shop with us';
-  const primaryText = disp
+
+  // ── Test-only creative override ─────────────────────────────────────────────
+  // Set ONLY by an explicit server-side call for an authorised backend creation
+  // test — e.g. advertising a Page that is not the PocketLink storefront.
+  // campaign-launch.js deliberately does NOT forward this field out of request
+  // bodies, so no merchant can reach it, and when it is absent every value below
+  // is exactly what it was before.
+  const ov = (input.testCreative && typeof input.testCreative === 'object') ? input.testCreative : null;
+  const link = ov?.link || defaultLink;
+  const imageUrl = ov?.imageUrl || defaultImage;
+  const ctaType = ov?.ctaType || 'SHOP_NOW';
+  const headline = ov?.headline || disp?.title || cfg.businessName || 'Shop with us';
+  const primaryText = ov?.primaryText || (disp
     ? `${disp.title}${product.price ? ` — ₹${product.price}` : ''}. ${shopLine}`
-    : `${cfg.businessName || 'Our shop'} — ${shopLine}`;
+    : `${cfg.businessName || 'Our shop'} — ${shopLine}`);
   if (!imageUrl) launchBlockers.push('Add a product photo or a store cover image to use in the ad.');
 
   // ── Payloads: lifetime_budget + end_time = Meta's true total cap ──
@@ -188,7 +199,14 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   // spend_cap only when total ≥ Meta's minimum (~$100/₹8,500). Secondary belt,
   // NOT the primary ceiling (lifetime_budget + end_time + our caps are).
   const spendCapEligible = total >= CAPS.spendCapMinRupees;
-  const campaignBody = { name, objective: objDef.campaignObjective, status: 'PAUSED', special_ad_categories: [] };
+  const campaignBody = {
+    name, objective: objDef.campaignObjective, status: 'PAUSED', special_ad_categories: [],
+    // Required by Meta whenever the budget lives on the ad set rather than the
+    // campaign (error 100 / subcode 4834011). FALSE on purpose: true lets ad sets
+    // share 20% of each other's budget, which would break the per-ad-set lifetime
+    // budget that is our actual spend ceiling.
+    is_adset_budget_sharing_enabled: false,
+  };
   if (spendCapEligible) campaignBody.spend_cap = lifetimeMinor;
   else warnings.push(`Campaign spend-cap not applied (Meta minimum ≈ ₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')}). Total is bounded by the lifetime budget + end date and our server caps.`);
 
@@ -202,7 +220,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
         name: `${name} · creative`,
         object_story_spec: {
           page_id: page ? page.id : PAGE_PLACEHOLDER,
-          link_data: { link, message: primaryText, name: headline, ...(cfg.tagline ? { description: cfg.tagline } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: 'SHOP_NOW', value: { link } } },
+          link_data: { link, message: primaryText, name: headline, ...(cfg.tagline ? { description: cfg.tagline } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: ctaType, value: { link } } },
         },
       },
       placeholders: page ? [] : ['object_story_spec.page_id'],
@@ -224,10 +242,10 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
         : `ad set lifetime budget + end date (no campaign spend cap — Meta requires ≈₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')})`,
     },
     creative: {
-      imageUrl, headline, primaryText, link, cta: 'Shop Now', ctaType: 'SHOP_NOW', promote,
+      imageUrl, headline, primaryText, link, cta: ctaType, ctaType, promote,
       productName: product?.name || null,
       packLabel: disp?.packLabel || null,
-      destinationLabel: promote === 'product' && product ? 'Your PocketLink product page' : 'Your PocketLink shop',
+      destinationLabel: ov?.link ? link : (promote === 'product' && product ? 'Your PocketLink product page' : 'Your PocketLink shop'),
     },
     targeting: { label: geoLabel, ageMin, ageMax, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
