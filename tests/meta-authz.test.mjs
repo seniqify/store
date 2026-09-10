@@ -7,7 +7,7 @@
 // store-scoped table, and these tests pin the consequences of that split.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mayCreate, mayReduce } from '../api/meta/campaign-launch.js';
+import { mayCreate, mayReduce, activeScopes } from '../api/meta/campaign-launch.js';
 
 const admin  = { uid: 'u-admin',  role: 'admin',      scopes: [] };
 const exec   = { uid: 'u-exec',   role: 'exec',       scopes: [] };
@@ -63,4 +63,55 @@ test('a tester holding several grants is confined to exactly those', () => {
   assert.equal(mayCreate(multi, 'showme'), true);
   assert.equal(mayCreate(multi, 'sankalp'), true);
   assert.equal(mayCreate(multi, 'krupa-agarbatti'), false);
+});
+
+// ── Expiry, enforced server-side ─────────────────────────────────────────────
+// The RLS policy hides an expired grant from the tester's own session, but this
+// endpoint reads with the service-role key, which bypasses RLS. So the expiry
+// has to be applied again in code, and these pin that it is.
+const T0 = Date.parse('2026-09-10T12:00:00Z');
+const at = (iso) => Date.parse(iso);
+
+test('an unexpired grant is active', () => {
+  assert.deepEqual(
+    activeScopes([{ store_slug: 'showme', expires_at: '2026-09-17T12:00:00Z' }], T0),
+    ['showme'],
+  );
+});
+
+test('an expired grant is dropped even though RLS was bypassed', () => {
+  assert.deepEqual(
+    activeScopes([{ store_slug: 'showme', expires_at: '2026-09-09T12:00:00Z' }], T0),
+    [],
+  );
+  // ...and the tester therefore cannot create anything.
+  const lapsed = { uid: 'u', role: null, scopes: activeScopes([{ store_slug: 'showme', expires_at: '2026-09-09T12:00:00Z' }], T0) };
+  assert.equal(mayCreate(lapsed, 'showme'), false);
+});
+
+test('expiry is exact at the boundary', () => {
+  const row = [{ store_slug: 'showme', expires_at: '2026-09-10T12:00:00Z' }];
+  assert.deepEqual(activeScopes(row, at('2026-09-10T11:59:59Z')), ['showme']);
+  assert.deepEqual(activeScopes(row, T0), []);               // not strictly after
+});
+
+test('a null expiry means no expiry', () => {
+  assert.deepEqual(activeScopes([{ store_slug: 'showme', expires_at: null }], T0), ['showme']);
+});
+
+test('an unparseable expiry is treated as expired — unreadable is not permission', () => {
+  assert.deepEqual(activeScopes([{ store_slug: 'showme', expires_at: 'whenever' }], T0), []);
+});
+
+test('a missing ads_testers table yields no scopes instead of throwing', () => {
+  // PostgREST answers with an error object, not an array, when the migration
+  // has not been applied yet.
+  assert.deepEqual(activeScopes({ code: '42P01', message: 'relation does not exist' }), []);
+  assert.deepEqual(activeScopes(null), []);
+  assert.deepEqual(activeScopes(undefined), []);
+});
+
+test('slugs from the database are normalised before matching', () => {
+  assert.deepEqual(activeScopes([{ store_slug: '  ShowMe  ', expires_at: null }], T0), ['showme']);
+  assert.deepEqual(activeScopes([{ store_slug: '', expires_at: null }], T0), []);
 });

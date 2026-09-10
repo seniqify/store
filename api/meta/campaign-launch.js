@@ -41,6 +41,29 @@ const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${se
 const CAN_CREATE_ANY = ['admin'];   // crm_team roles that may create for any store
 const CAN_ACTIVATE   = ['admin'];   // only the founder may ever spend
 
+// Which stores does this caller hold a LIVE ads_testers grant for?
+//
+// Expiry is enforced twice, deliberately. The RLS policy hides an expired grant
+// from the tester's own session (ads-tester-access.sql), but this endpoint reads
+// with the service-role key, which bypasses RLS — so the expiry must be applied
+// again here or a lapsed grant would still create ads. A row whose expires_at is
+// unparseable is treated as expired: unreadable is not permission.
+//
+// An absent ads_testers table (migration not yet applied) arrives as an error
+// object rather than an array; that must not 500 the endpoint — it simply means
+// nobody holds a scoped grant yet.
+export function activeScopes(rows, now = Date.now()) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((r) => {
+      if (!r?.expires_at) return true;                 // no expiry set
+      const t = Date.parse(r.expires_at);
+      return Number.isFinite(t) && t > now;
+    })
+    .map((r) => String(r.store_slug || '').trim().toLowerCase())
+    .filter(Boolean);
+}
+
 async function requireActor(req) {
   try {
     const auth = req.headers?.authorization || '';
@@ -56,14 +79,7 @@ async function requireActor(req) {
       fetch(`${SB}/rest/v1/ads_testers?user_id=eq.${uid}&select=store_slug,expires_at`, { headers: svc() }),
     ]);
     const role = (await cr.json().catch(() => []))[0]?.role || null;
-    // An absent ads_testers table (migration not yet applied) must not 500 the
-    // endpoint — it simply means nobody holds a scoped grant yet.
-    const testerRows = await tr.json().catch(() => []);
-    const now = Date.now();
-    const scopes = (Array.isArray(testerRows) ? testerRows : [])
-      .filter((r) => !r?.expires_at || Date.parse(r.expires_at) > now)
-      .map((r) => String(r.store_slug || '').toLowerCase())
-      .filter(Boolean);
+    const scopes = activeScopes(await tr.json().catch(() => []));
 
     if (!role && !scopes.length) return null;
     return { uid, role, scopes };
