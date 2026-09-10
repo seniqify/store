@@ -453,10 +453,15 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
             </button>
             {/* Truthful about what just happened: approving records YOUR choice.
                 It does not call Meta and creates no campaign, ad set or ad. */}
+            {/* State the reason that is ACTUALLY gating this session. The button is
+                hidden because the viewer holds no PocketLink ads role (see isFounder
+                above) — not because creation is impossible. Under Development Access
+                we can and do create paused objects, so blaming a pending
+                ads_management review was misleading to anyone watching. */}
             <p className="text-[11px] text-gray-400 text-center mt-2 leading-relaxed">
               Preview only — <b className="text-gray-500">nothing is created in Meta</b> and nothing is spent.
-              Creating the paused campaign needs the <code>ads_management</code> permission, which
-              PocketLink is still getting approved by Meta. Your reporting above is live and unaffected.
+              <code>ads_management</code> is not yet approved for general merchant use, so creating a
+              campaign is limited to authorised PocketLink staff. Your reporting above is live and unaffected.
             </p>
           </div>
         )}
