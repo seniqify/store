@@ -185,3 +185,32 @@ test('slugAllowed: whitespace-only env is treated as unset', () => {
   assert.equal(slugAllowed('anything'), true);
   delete process.env.META_ALLOWED_SLUGS;
 });
+
+// ── Paused-only environments ──────────────────────────────────────────────────
+// Restricting WHICH store a preview may touch does not stop spend on that store.
+// Activation must be refused outright in a test environment.
+import { activationBlocked } from '../api/meta/_meta.js';
+
+test('activationBlocked: production (no flags) allows activation', () => {
+  delete process.env.META_ALLOWED_SLUGS;
+  delete process.env.META_PAUSED_ONLY;
+  assert.equal(activationBlocked(), false);
+});
+
+test('activationBlocked: restricting stores implies a test env → activation blocked', () => {
+  process.env.META_ALLOWED_SLUGS = 'showme';
+  delete process.env.META_PAUSED_ONLY;
+  assert.equal(activationBlocked(), true, 'a store-restricted env must not be able to spend');
+  delete process.env.META_ALLOWED_SLUGS;
+});
+
+test('activationBlocked: explicit flag wins in both directions', () => {
+  delete process.env.META_ALLOWED_SLUGS;
+  process.env.META_PAUSED_ONLY = 'true';
+  assert.equal(activationBlocked(), true);
+  process.env.META_ALLOWED_SLUGS = 'showme';
+  process.env.META_PAUSED_ONLY = 'false';
+  assert.equal(activationBlocked(), false, 'explicit override must be honoured');
+  delete process.env.META_ALLOWED_SLUGS;
+  delete process.env.META_PAUSED_ONLY;
+});

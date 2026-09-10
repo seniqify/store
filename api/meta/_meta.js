@@ -97,6 +97,23 @@ export function slugAllowed(slug) {
     .includes(String(slug || '').toLowerCase());
 }
 
+// ── Paused-only environments ──────────────────────────────────────────────────
+// Restricting WHICH store a preview may touch is not the same as preventing
+// spend on that store. Activation is the only step that spends money, so a test
+// environment must refuse it outright rather than rely on nobody clicking.
+//
+// Default is deliberately deny-by-inference: any environment that restricts
+// stores (META_ALLOWED_SLUGS set) is a test environment, so activation is
+// blocked there automatically — you cannot forget to set a second flag.
+// META_PAUSED_ONLY overrides in either direction. Production sets neither, so
+// its behaviour is unchanged.
+export function activationBlocked() {
+  const explicit = String(process.env.META_PAUSED_ONLY ?? '').trim().toLowerCase();
+  if (explicit === 'true' || explicit === '1' || explicit === 'yes') return true;
+  if (explicit === 'false' || explicit === '0' || explicit === 'no') return false;
+  return Boolean((process.env.META_ALLOWED_SLUGS || '').trim());
+}
+
 // ── Which ad account does this store advertise from? ──────────────────────────
 // The SINGLE resolver for reporting, preview and creation, so all three always
 // agree. Rules, in order:

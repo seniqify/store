@@ -84,7 +84,8 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
   const [approved, setApproved] = useState(false);
   const [showAdv, setShowAdv] = useState(false);
   const [showPayloads, setShowPayloads] = useState(false);
-  const [isFounder, setIsFounder] = useState(false);
+  const [isFounder, setIsFounder] = useState(false);   // may CREATE paused objects
+  const [canActivate, setCanActivate] = useState(false); // may SPEND (admin only)
   const [launch, setLaunch] = useState(null);        // { launchId, status, ids, busy, error, step }
   const [confirmSpend, setConfirmSpend] = useState(false);
 
@@ -97,7 +98,12 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         const s = await consoleSession();
         if (!s?.user) return;
         const row = await fetchMyTeamRow(s.user.id);
-        if (alive && row?.role === 'admin') setIsFounder(true);
+        // 'ads_tester' may create paused objects so an authorised tester can
+        // record the real flow; only 'admin' may activate. The server enforces
+        // both independently — this just avoids showing a button that would 403.
+        if (!alive) return;
+        if (row?.role === 'admin' || row?.role === 'ads_tester') setIsFounder(true);
+        if (row?.role === 'admin') setCanActivate(true);
       } catch { /* owner dry-run flow */ }
     })();
     return () => { alive = false; };
@@ -436,7 +442,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         {isFounder ? (
           <FounderControls
             ready={d.launchReady} launch={launch} status={st}
-            confirmSpend={confirmSpend} setConfirmSpend={setConfirmSpend}
+            confirmSpend={confirmSpend} setConfirmSpend={setConfirmSpend} canActivate={canActivate}
             doLaunch={doLaunch} act={act} themeColor={themeColor} money={(n) => money(n, cur)} total={d.budget?.total}
           />
         ) : (
@@ -460,7 +466,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 }
 
 // Founder-only launch controls: create PAUSED → confirm → Activate → Pause/Stop.
-function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total }) {
+function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total, canActivate }) {
   const btn = 'w-full py-3 rounded-xl text-sm font-bold active:scale-[0.98] transition disabled:opacity-50';
   const busy = launch?.busy;
   if (!status) {
@@ -506,6 +512,15 @@ function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend,
           )}
         </p>
       )}
+      {/* Activation is the only spend step. A tester (role 'ads_tester') never
+          sees it, and the server refuses it for them regardless — and refuses it
+          for anyone in a paused-only environment. */}
+      {!canActivate && (
+        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-3">
+          Created paused. Activation — the only step that spends — is not available to this account.
+        </p>
+      )}
+      {canActivate && (<>
       <label className="flex items-start gap-2 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-xl p-3">
         <input type="checkbox" checked={confirmSpend} onChange={(e) => setConfirmSpend(e.target.checked)} className="mt-0.5" />
         <span>I understand activating starts real spending, up to <b>{money(total)}</b> over the run.</span>
@@ -513,6 +528,7 @@ function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend,
       <button type="button" disabled={!confirmSpend || busy} onClick={() => act(launchActivate)} className={`${btn} text-white`} style={{ background: themeColor }}>
         {busy ? 'Activating…' : 'Activate — start spending'}
       </button>
+      </>)}
       <button type="button" disabled={busy} onClick={() => act(launchStop)} className={`${btn} border border-gray-300 text-gray-600`}>Stop</button>
       {launch?.error && <p className="text-xs text-red-600">{launch.error}</p>}
     </div>

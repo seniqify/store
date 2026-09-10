@@ -24,8 +24,16 @@ const CREATE_PERMISSION = 'ads_management';
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
 
-// ── Founder gate: valid Supabase session + crm_team admin ──────────────────────
-async function requireFounder(req) {
+// ── Team gate: valid Supabase session + a crm_team role ────────────────────────
+// Returns { uid, role }; each action below decides which roles may perform it.
+//   admin      — the founder. Everything, including activation (the spend step).
+//   ads_tester — deliberately weaker: may CREATE paused objects, so an authorised
+//                tester can record the real flow, but may NEVER activate. That is
+//                enforced here on the server, not merely hidden in the UI.
+const CAN_CREATE = ['admin', 'ads_tester'];
+const CAN_ACTIVATE = ['admin'];
+
+async function requireTeam(req) {
   try {
     const auth = req.headers?.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -36,7 +44,8 @@ async function requireFounder(req) {
     if (!uid) return null;
     const cr = await fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() });
     const rows = await cr.json().catch(() => []);
-    return rows[0]?.role === 'admin' ? { uid } : null;
+    const role = rows[0]?.role;
+    return role ? { uid, role } : null;
   } catch { return null; }
 }
 
@@ -191,6 +200,9 @@ async function flip(launchId, metaStatus, newStatus, founderUid) {
   if (!row) return { error: 'not_found' };
   // Same guard on every status flip — including activate, the only spend step.
   if (!slugAllowed(row.store_slug)) return { error: 'not_allowed_in_this_environment' };
+  // Second, independent check: even if a caller somehow reached here, a
+  // paused-only environment never sets anything ACTIVE.
+  if (metaStatus === 'ACTIVE' && activationBlocked()) return { error: 'activation_disabled_in_this_environment' };
   if (!row.campaign_id) return { error: 'not_created' };
   const acct = await getMetaAccount(row.store_slug);
   const token = acct?.access_token;
@@ -211,14 +223,15 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
     if (!serviceKey()) { res.status(503).json({ error: 'not_configured' }); return; }
-    const founder = await requireFounder(req);
-    if (!founder) { res.status(403).json({ error: 'founder_only' }); return; }
+    const member = await requireTeam(req);
+    if (!member) { res.status(403).json({ error: 'team_only' }); return; }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const action = String(body.action || '');
     const launchId = String(body.launchId || '');
 
     if (action === 'create') {
+      if (!CAN_CREATE.includes(member.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
       const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
       if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
       res.status(200).json(await doCreate(slug, launchId,
@@ -227,8 +240,18 @@ export default async function handler(req, res) {
       return;
     }
     if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
-    if (action === 'activate') { res.status(200).json(await flip(launchId, 'ACTIVE', 'active', founder.uid)); return; }
-    if (action === 'resume')   { res.status(200).json(await flip(launchId, 'ACTIVE', 'active', founder.uid)); return; }
+
+    // Activation is the ONLY step that spends. Two independent gates, both
+    // server-side: the environment must permit activation at all, and the caller
+    // must hold a role that may activate. A paused-only environment refuses even
+    // for an admin — that is the point of it.
+    if (action === 'activate' || action === 'resume') {
+      if (activationBlocked()) { res.status(403).json({ error: 'activation_disabled_in_this_environment' }); return; }
+      if (!CAN_ACTIVATE.includes(member.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
+      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', member.uid));
+      return;
+    }
+    // Pausing and stopping only ever REDUCE delivery, so any team member may.
     if (action === 'pause')    { res.status(200).json(await flip(launchId, 'PAUSED', 'paused')); return; }
     if (action === 'stop')     { res.status(200).json(await flip(launchId, 'PAUSED', 'stopped')); return; }
     if (action === 'status')   { res.status(200).json({ ok: true, launch: await getLaunch(launchId) }); return; }
