@@ -152,3 +152,36 @@ test('resolveAdAccount: no accounts at all', () => {
   assert.equal(resolveAdAccount({ ad_account_ids: [] }).error, 'no_ad_account');
   assert.equal(resolveAdAccount({}).error, 'no_ad_account');
 });
+
+// ── Staging guard ─────────────────────────────────────────────────────────────
+// A preview deployment shares production's database, so Meta-connection writes
+// must be restricted to a designated test store there — and unrestricted here.
+import { slugAllowed } from '../api/meta/_meta.js';
+
+test('slugAllowed: unset env (production) allows every store', () => {
+  delete process.env.META_ALLOWED_SLUGS;
+  assert.equal(slugAllowed('royalfoodsmasale'), true);
+  assert.equal(slugAllowed('showme'), true);
+});
+
+test('slugAllowed: when set, only the listed stores may be written', () => {
+  process.env.META_ALLOWED_SLUGS = 'showme';
+  assert.equal(slugAllowed('showme'), true);
+  assert.equal(slugAllowed('royalfoodsmasale'), false, 'a real merchant must be protected on staging');
+  assert.equal(slugAllowed('sankalp'), false);
+  delete process.env.META_ALLOWED_SLUGS;
+});
+
+test('slugAllowed: comma lists, spacing and case are handled', () => {
+  process.env.META_ALLOWED_SLUGS = ' showme , PLTEST ';
+  assert.equal(slugAllowed('showme'), true);
+  assert.equal(slugAllowed('pltest'), true);
+  assert.equal(slugAllowed('sankalp'), false);
+  delete process.env.META_ALLOWED_SLUGS;
+});
+
+test('slugAllowed: whitespace-only env is treated as unset', () => {
+  process.env.META_ALLOWED_SLUGS = '   ';
+  assert.equal(slugAllowed('anything'), true);
+  delete process.env.META_ALLOWED_SLUGS;
+});

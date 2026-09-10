@@ -10,7 +10,7 @@
 //     against Meta's LIVE granted Pages (/me/accounts) before writing it to
 //     config.meta; Instagram follows the selected Page. An arbitrary/ungranted id is
 //     rejected server-side. Writes only the local page selection — no Meta writes.
-import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus } from './_meta.js';
+import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus, slugAllowed } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 import { recommend } from './_recommend.js';
 
@@ -91,6 +91,12 @@ export default async function handler(req, res) {
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
 
     const action = String(body.action || 'preview');
+    // Staging guard: a preview deployment may only WRITE selections for the store
+    // it was designated for. Previewing is read-only and stays unrestricted.
+    if ((action === 'select-page' || action === 'select-ad-account') && !slugAllowed(slug)) {
+      res.status(403).json({ error: 'not_allowed_in_this_environment' });
+      return;
+    }
     if (action === 'select-page') { await selectPage(res, slug, acct, config, body.pageId); return; }
     if (action === 'select-ad-account') { await selectAdAccount(res, slug, acct, body.adAccountId); return; }
 

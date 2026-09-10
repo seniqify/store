@@ -14,7 +14,7 @@
 // spend. SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet } from './_meta.js';
+import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 
 // Meta permission required to create delivery objects. Checked LIVE against
@@ -65,6 +65,9 @@ const ids = (row) => ({ campaign_id: row.campaign_id, adset_id: row.adset_id, cr
 
 // ── CREATE (PAUSED, idempotent, resume-forward) ────────────────────────────────
 async function doCreate(slug, launchId, input, meta) {
+  // Staging guard — a preview deployment shares production's database, so it must
+  // not create against a store it was not designated for. Unset in production.
+  if (!slugAllowed(slug)) return { error: 'not_allowed_in_this_environment' };
   const acct = await getMetaAccount(slug);
   if (!acct || acct.status !== 'connected' || !acct.access_token) return { error: 'not_connected' };
   // Tenant isolation: the account row is looked up BY SLUG, and the account comes
@@ -186,6 +189,8 @@ async function verifyPaused(row, token) {
 async function flip(launchId, metaStatus, newStatus, founderUid) {
   const row = await getLaunch(launchId);
   if (!row) return { error: 'not_found' };
+  // Same guard on every status flip — including activate, the only spend step.
+  if (!slugAllowed(row.store_slug)) return { error: 'not_allowed_in_this_environment' };
   if (!row.campaign_id) return { error: 'not_created' };
   const acct = await getMetaAccount(row.store_slug);
   const token = acct?.access_token;

@@ -80,6 +80,23 @@ export function normalizeAdAccountId(raw) {
   return /^\d+$/.test(digits) ? `act_${digits}` : null;
 }
 
+// ── Staging guard ─────────────────────────────────────────────────────────────
+// A preview deployment shares the SAME Supabase database and the SAME Meta app
+// as production, so a tester connecting Meta on preview could overwrite a real
+// merchant's stored token without anyone noticing.
+//
+// META_ALLOWED_SLUGS restricts every Meta-connection WRITE to a named set of
+// stores. Unset (production) → no restriction and behaviour is unchanged. Set on
+// the preview environment to e.g. "showme" → only that store can be connected,
+// re-selected, or launched from there. Reporting is unaffected: reads are
+// already PIN-gated per store and cannot damage anything.
+export function slugAllowed(slug) {
+  const raw = process.env.META_ALLOWED_SLUGS || '';
+  if (!raw.trim()) return true;
+  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    .includes(String(slug || '').toLowerCase());
+}
+
 // ── Which ad account does this store advertise from? ──────────────────────────
 // The SINGLE resolver for reporting, preview and creation, so all three always
 // agree. Rules, in order:
