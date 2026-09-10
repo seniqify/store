@@ -24,16 +24,24 @@ const CREATE_PERMISSION = 'ads_management';
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
 
-// ── Team gate: valid Supabase session + a crm_team role ────────────────────────
-// Returns { uid, role }; each action below decides which roles may perform it.
-//   admin      — the founder. Everything, including activation (the spend step).
-//   ads_tester — deliberately weaker: may CREATE paused objects, so an authorised
-//                tester can record the real flow, but may NEVER activate. That is
-//                enforced here on the server, not merely hidden in the UI.
-const CAN_CREATE = ['admin', 'ads_tester'];
-const CAN_ACTIVATE = ['admin'];
+// ── Authorisation: two independent sources, neither implying the other ────────
+// 1. crm_team.role — PocketLink staff. 'admin' (the founder) may do everything,
+//    including activation, for any store.
+// 2. ads_testers — a store-scoped grant for an authorised outside tester or a
+//    Meta reviewer. One row = "may create PAUSED objects for THIS one store".
+//
+// 'ads_tester' is deliberately NOT a crm_team role. Every CRM policy keys off
+// is_crm_member(), which tests membership and not role, so a crm_team row would
+// have handed a tester every merchant's orders and ALL rights on crm_leads —
+// including delete. See supabase/ads-tester-access.sql. A stale crm_team row
+// with that role therefore grants nothing here: it fails closed.
+//
+// Returns { uid, role, scopes } — scopes is the list of slugs the caller holds
+// an unexpired ads_testers grant for. Each action below decides what it needs.
+const CAN_CREATE_ANY = ['admin'];   // crm_team roles that may create for any store
+const CAN_ACTIVATE   = ['admin'];   // only the founder may ever spend
 
-async function requireTeam(req) {
+async function requireActor(req) {
   try {
     const auth = req.headers?.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -42,11 +50,36 @@ async function requireTeam(req) {
     if (!ur.ok) return null;
     const uid = (await ur.json())?.id;
     if (!uid) return null;
-    const cr = await fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() });
-    const rows = await cr.json().catch(() => []);
-    const role = rows[0]?.role;
-    return role ? { uid, role } : null;
+
+    const [cr, tr] = await Promise.all([
+      fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() }),
+      fetch(`${SB}/rest/v1/ads_testers?user_id=eq.${uid}&select=store_slug,expires_at`, { headers: svc() }),
+    ]);
+    const role = (await cr.json().catch(() => []))[0]?.role || null;
+    // An absent ads_testers table (migration not yet applied) must not 500 the
+    // endpoint — it simply means nobody holds a scoped grant yet.
+    const testerRows = await tr.json().catch(() => []);
+    const now = Date.now();
+    const scopes = (Array.isArray(testerRows) ? testerRows : [])
+      .filter((r) => !r?.expires_at || Date.parse(r.expires_at) > now)
+      .map((r) => String(r.store_slug || '').toLowerCase())
+      .filter(Boolean);
+
+    if (!role && !scopes.length) return null;
+    return { uid, role, scopes };
   } catch { return null; }
+}
+
+// May this caller CREATE paused objects for this specific store?
+export function mayCreate(actor, slug) {
+  if (CAN_CREATE_ANY.includes(actor.role)) return true;
+  return Boolean(slug) && actor.scopes.includes(slug);
+}
+// Pausing and stopping only ever REDUCE delivery, so staff may do it anywhere
+// and a scoped tester may do it for their own store.
+export function mayReduce(actor, slug) {
+  if (actor.role) return true;
+  return Boolean(slug) && actor.scopes.includes(slug);
 }
 
 // ── Supabase RPC / reads (service role) ────────────────────────────────────────
@@ -223,17 +256,19 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
     if (!serviceKey()) { res.status(503).json({ error: 'not_configured' }); return; }
-    const member = await requireTeam(req);
-    if (!member) { res.status(403).json({ error: 'team_only' }); return; }
+    const actor = await requireActor(req);
+    if (!actor) { res.status(403).json({ error: 'team_only' }); return; }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const action = String(body.action || '');
     const launchId = String(body.launchId || '');
 
     if (action === 'create') {
-      if (!CAN_CREATE.includes(member.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
       const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
       if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
+      // Authorisation is per-store: a scoped tester creating for someone else's
+      // store is refused here, not merely hidden in the UI.
+      if (!mayCreate(actor, slug)) { res.status(403).json({ error: 'not_permitted' }); return; }
       res.status(200).json(await doCreate(slug, launchId,
         { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy },
         { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
@@ -241,20 +276,28 @@ export default async function handler(req, res) {
     }
     if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
 
-    // Activation is the ONLY step that spends. Two independent gates, both
-    // server-side: the environment must permit activation at all, and the caller
-    // must hold a role that may activate. A paused-only environment refuses even
-    // for an admin — that is the point of it.
+    // Every remaining action names an existing launch, so the store it belongs
+    // to comes from the row — never from the caller. A scoped tester may act on
+    // their own store's launches and no others.
+    const target = await getLaunch(launchId);
+    if (!target) { res.status(404).json({ error: 'unknown_launch' }); return; }
+    const targetSlug = String(target.store_slug || '').toLowerCase();
+    if (!mayReduce(actor, targetSlug)) { res.status(403).json({ error: 'not_permitted' }); return; }
+
+    // Activation is the ONLY step that spends. Three independent gates, all
+    // server-side: the environment must permit activation at all, the caller
+    // must hold a crm_team role that may activate, and a store-scoped tester
+    // never qualifies — actor.role is null for them, so CAN_ACTIVATE cannot
+    // match. A paused-only environment refuses even an admin: that is the point.
     if (action === 'activate' || action === 'resume') {
       if (activationBlocked()) { res.status(403).json({ error: 'activation_disabled_in_this_environment' }); return; }
-      if (!CAN_ACTIVATE.includes(member.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
-      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', member.uid));
+      if (!CAN_ACTIVATE.includes(actor.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
+      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', actor.uid));
       return;
     }
-    // Pausing and stopping only ever REDUCE delivery, so any team member may.
     if (action === 'pause')    { res.status(200).json(await flip(launchId, 'PAUSED', 'paused')); return; }
     if (action === 'stop')     { res.status(200).json(await flip(launchId, 'PAUSED', 'stopped')); return; }
-    if (action === 'status')   { res.status(200).json({ ok: true, launch: await getLaunch(launchId) }); return; }
+    if (action === 'status')   { res.status(200).json({ ok: true, launch: target }); return; }
 
     res.status(400).json({ error: 'unknown_action' });
   } catch {

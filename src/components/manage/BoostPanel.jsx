@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { previewCampaign } from '../../utils/metaCampaign';
 import { launchCreate, launchActivate, launchPause, launchStop } from '../../utils/metaLaunch';
-import { consoleSession, fetchMyTeamRow } from '../../utils/consoleService';
+import { consoleSession, fetchMyTeamRow, fetchAdsTesterGrant } from '../../utils/consoleService';
 
 /**
  * Manage → Ads → Create campaign (Stage 2E-1).
@@ -97,17 +97,24 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
       try {
         const s = await consoleSession();
         if (!s?.user) return;
-        const row = await fetchMyTeamRow(s.user.id);
-        // 'ads_tester' may create paused objects so an authorised tester can
-        // record the real flow; only 'admin' may activate. The server enforces
-        // both independently — this just avoids showing a button that would 403.
+        // Two independent sources. A crm_team admin may create anywhere and is
+        // the only one who may activate. A store-scoped ads_testers grant may
+        // create PAUSED objects for THIS store only and can never activate —
+        // it is not CRM membership and carries no access to leads or orders.
+        // campaign-launch.js re-checks both; this only avoids rendering a
+        // button that would 403.
+        const [row, grant] = await Promise.all([
+          fetchMyTeamRow(s.user.id),
+          fetchAdsTesterGrant(s.user.id, config.slug),
+        ]);
         if (!alive) return;
-        if (row?.role === 'admin' || row?.role === 'ads_tester') setIsFounder(true);
+        if (row?.role === 'admin' || grant) setIsFounder(true);
         if (row?.role === 'admin') setCanActivate(true);
       } catch { /* owner dry-run flow */ }
     })();
     return () => { alive = false; };
-  }, []);
+    // The grant is per-store, so re-check it if the panel is reused for another.
+  }, [config.slug]);
 
   async function buildPlan(overrides) {
     const b = { ...biz, ...(overrides || {}) };
