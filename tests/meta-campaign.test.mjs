@@ -164,3 +164,38 @@ test('campaign declares ad-set budget sharing, and disables it', async () => {
   assert.equal(out.payloads.campaign.body.is_adset_budget_sharing_enabled, false,
     'must be explicitly false — true would let ad sets share budget and break the ceiling');
 });
+
+// ── Advantage+ and the upper age limit ───────────────────────────────────────
+// Meta rejects an ad set whose age_max is below 65 when Advantage+ audience is
+// on (error 100 / subcode 1870189). That rejection arrived AFTER the campaign
+// had been created, so a reasonable seller choice like "25 to 55" could never
+// launch and left a half-built campaign behind on every attempt.
+
+test('Advantage+ opens the upper age limit to 65 instead of failing', async () => {
+  const { out } = await build({ audienceStrategy: 'auto', ageMin: 25, ageMax: 55 });
+  assert.equal(out.payloads.adset.body.targeting.age_max, 65);
+  assert.equal(out.payloads.adset.body.targeting.age_min, 25, 'the lower bound is still honoured');
+  assert.ok(out.payloads.adset.body.targeting.targeting_automation, 'Advantage+ stays on');
+});
+
+test('the plan shows what is actually sent, and records what was asked for', async () => {
+  const { out } = await build({ audienceStrategy: 'auto', ageMin: 25, ageMax: 55 });
+  assert.equal(out.targeting.ageMax, 65, 'preview must equal launch');
+  assert.equal(out.targeting.ageMaxRequested, 55);
+  assert.equal(out.targeting.ageMaxRelaxed, true);
+  assert.ok(out.warnings.some((w) => w.includes('Advantage+')), 'the seller is told, not silently overridden');
+});
+
+test('manual targeting honours a narrow upper age exactly', async () => {
+  const { out } = await build({ audienceStrategy: 'manual', ageMin: 25, ageMax: 55 });
+  assert.equal(out.payloads.adset.body.targeting.age_max, 55);
+  assert.equal(out.targeting.ageMaxRelaxed, false);
+  assert.equal(out.payloads.adset.body.targeting.targeting_automation, undefined);
+});
+
+test('an already-open age range is untouched and raises no warning', async () => {
+  const { out } = await build({ audienceStrategy: 'auto', ageMin: 18, ageMax: 65 });
+  assert.equal(out.payloads.adset.body.targeting.age_max, 65);
+  assert.equal(out.targeting.ageMaxRelaxed, false);
+  assert.ok(!out.warnings.some((w) => w.includes('Advantage+')));
+});

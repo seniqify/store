@@ -95,6 +95,22 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   const audienceStrategy = input.audienceStrategy === 'manual' ? 'manual' : 'auto';
   const strategyLabel = audienceStrategy === 'auto' ? 'PocketLink finds buyers (Advantage+)' : 'Manual audience';
 
+  // Advantage+ audience requires an OPEN upper age limit: Meta rejects the ad
+  // set outright if age_max is below 65 (error 100 / subcode 1870189, "the
+  // maximum age audience control can't be set to lower than 65"). Its own
+  // guidance is that a lower maximum becomes a suggestion rather than a cut-off.
+  //
+  // Sending the seller's narrower value anyway failed every time, AFTER the
+  // campaign had been created — so a perfectly reasonable choice like "25 to 55"
+  // could never launch. Widen it here, and say so in plain words, because
+  // silently ignoring what the seller asked for is worse than explaining it.
+  const ageMaxRequested = ageMax;
+  const ageMaxRelaxed = audienceStrategy === 'auto' && ageMax < 65;
+  if (ageMaxRelaxed) {
+    ageMax = 65;
+    warnings.push(`Meta’s Advantage+ audience needs an open upper age limit, so your maximum of ${ageMaxRequested} is used as a guide rather than a hard cut-off. Switch the audience to Manual in Advanced controls to enforce it exactly.`);
+  }
+
   const promote = input.promote === 'product' ? 'product' : 'store';
   const product = promote === 'product' ? (cfg.products || []).find((p) => String(p.id) === String(input.productId)) || null : null;
 
@@ -247,7 +263,10 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
       packLabel: disp?.packLabel || null,
       destinationLabel: ov?.link ? link : (promote === 'product' && product ? 'Your PocketLink product page' : 'Your PocketLink shop'),
     },
-    targeting: { label: geoLabel, ageMin, ageMax, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
+    // ageMax is what we actually send, so the plan the seller approves is the
+    // plan that gets created. ageMaxRequested records what they asked for when
+    // Advantage+ forced it open, so the UI can explain the difference.
+    targeting: { label: geoLabel, ageMin, ageMax, ageMaxRequested, ageMaxRelaxed, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
     warnings, launchBlockers, launchReady: launchBlockers.length === 0,
     payloads, caps: CAPS,
