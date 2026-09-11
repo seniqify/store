@@ -87,7 +87,7 @@ undeclared fact likely cost the whole submission.
 >
 > - URL: https://www.pocketlink.store/showme/manage
 > - Store PIN: 2580
-> - Ads account sign-in: [TESTER EMAIL] / [PASSWORD]
+> - Ads account sign-in: pockelink@gmail.com / [PASSWORD]
 >
 > The PIN opens the seller dashboard. Creating a campaign additionally requires
 > the account sign-in above, because that action can lead to spending.
@@ -99,7 +99,13 @@ undeclared fact likely cost the whole submission.
 > is a separate, separately-authorised action and is disabled entirely in this
 > environment for the duration of your review.
 
-Fill the three bracketed placeholders before submitting. Do not claim anything
+The reviewer account is **`pockelink@gmail.com`** — that spelling is deliberate
+(no `t`), it is the real address, do not "correct" it. Verified on 2026-09-10 to
+hold no `crm_team` row, so it exercises the merchant path rather than the staff
+path. Using a `crm_team` account here would repeat the exact "not aligned with
+use case" finding.
+
+Fill the two remaining bracketed placeholders before submitting. Do not claim anything
 about the Sales / `OUTCOME_SALES` objective — it has never been validated
 end-to-end. The recording covers the **Traffic** objective only.
 
@@ -124,6 +130,14 @@ narrate what each button does.
 
 Shot 8 is what "end-to-end" means to them: proof the API call had a real
 effect. The previous submission's most likely gap after item 5.
+
+**Shot 1 must not route through `/console`.** That page is the internal founder
+console: signing in there as the tester lands on a "Founder access only" screen,
+because the account correctly holds no `crm_team` row. A reviewer watching a
+seller get rejected by a staff console would read the flow as staff-only — the
+same finding we were just rejected for. The sign-in has to appear inside the
+seller's own dashboard, framed as "creating ads needs an account because money
+is involved". That is a prerequisite for filming, not a nicety.
 
 Caption over shot 3: *"The seller grants PocketLink access to their ad account.
 This issues a system-user token; all later calls are server-to-server."*
