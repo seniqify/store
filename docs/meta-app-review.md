@@ -87,10 +87,11 @@ undeclared fact likely cost the whole submission.
 >
 > - URL: https://www.pocketlink.store/showme/manage
 > - Store PIN: 2580
-> - Ads account sign-in: pockelink@gmail.com / [PASSWORD]
 >
-> The PIN opens the seller dashboard. Creating a campaign additionally requires
-> the account sign-in above, because that action can lead to spending.
+> PocketLink sellers do not use email accounts. A seller registers with their
+> WhatsApp number, verifies it by one-time code, and thereafter opens their
+> dashboard with a 4-digit PIN. The PIN above is the complete credential — it is
+> the same gate a real seller uses every day.
 >
 > **Safety**
 >
@@ -99,13 +100,8 @@ undeclared fact likely cost the whole submission.
 > is a separate, separately-authorised action and is disabled entirely in this
 > environment for the duration of your review.
 
-The reviewer account is **`pockelink@gmail.com`** — that spelling is deliberate
-(no `t`), it is the real address, do not "correct" it. Verified on 2026-09-10 to
-hold no `crm_team` row, so it exercises the merchant path rather than the staff
-path. Using a `crm_team` account here would repeat the exact "not aligned with
-use case" finding.
-
-Fill the two remaining bracketed placeholders before submitting. Do not claim anything
+Fill the remaining bracketed placeholder (the screencast timestamp) before
+submitting. Do not claim anything
 about the Sales / `OUTCOME_SALES` objective — it has never been validated
 end-to-end. The recording covers the **Traffic** objective only.
 
@@ -118,7 +114,7 @@ narrate what each button does.
 
 | # | Shot | Covers |
 |---|------|--------|
-| 1 | Seller signs in to PocketLink and opens their store dashboard | 3 |
+| 1 | Seller opens `/showme/manage` and enters their 4-digit PIN | 3 |
 | 2 | Settings → **Connect Meta** | 1 |
 | 3 | Login for Business dialog — **hold on the permissions screen long enough to read**, then Continue | 1, 2 |
 | 4 | Back in PocketLink: choose Facebook Page, choose ad account | 3 |
@@ -131,13 +127,17 @@ narrate what each button does.
 Shot 8 is what "end-to-end" means to them: proof the API call had a real
 effect. The previous submission's most likely gap after item 5.
 
-**Shot 1 must not route through `/console`.** That page is the internal founder
-console: signing in there as the tester lands on a "Founder access only" screen,
-because the account correctly holds no `crm_team` row. A reviewer watching a
-seller get rejected by a staff console would read the flow as staff-only — the
-same finding we were just rejected for. The sign-in has to appear inside the
-seller's own dashboard, framed as "creating ads needs an account because money
-is involved". That is a prerequisite for filming, not a nicety.
+**`/console` must never appear in the recording.** It is the internal founder
+console. A reviewer who sees a staff sign-in anywhere in this flow will read the
+feature as staff-only — the same finding we were just rejected for. The entire
+recording lives inside `/showme/manage`, reached by PIN, exactly as a real
+seller reaches it.
+
+**No email sign-in appears either.** PocketLink sellers have no email accounts:
+they register with a WhatsApp number, verify by one-time code, and open Manage
+with a 4-digit PIN. Introducing an email login for the ads flow would put a
+concept in front of the reviewer that exists nowhere else in the product, and
+would look exactly like the staff path we must avoid showing.
 
 Caption over shot 3: *"The seller grants PocketLink access to their ad account.
 This issues a system-user token; all later calls are server-to-server."*
@@ -150,15 +150,59 @@ This issues a system-user token; all later calls are server-to-server."*
       impossible before it)
 - [ ] `META_PAUSED_ONLY=true` set on Production for the review window, so
       `activationBlocked()` refuses activation server-side even for an admin
-- [ ] A real merchant identity exists so shot 1 is a seller, not staff — the
-      reviewer must see the merchant path, not the `crm_team` path
-- [ ] Tester account is **not** in `crm_team` (that would demonstrate the wrong
-      flow and repeat the "not aligned with use case" finding)
+- [ ] Campaign creation is authorised by the **store PIN**, not a `crm_team`
+      session — otherwise there is no merchant path to film
+- [ ] `stores.pin` confirmed **not** readable by `anon` (see the security note
+      below) — this must be settled before the PIN authorises ad creation
+- [ ] Attempt throttling on `verify_store_pin`
+- [ ] Activation requires a fresh WhatsApp OTP to the store's registered number,
+      and is disabled outright during the review window
 - [ ] Recording is on `pocketlink.store`, never a preview URL — a reviewer has
       no Vercel account and would hit Deployment Protection
 - [ ] Sales objective absent from the recording and the notes
 
 ---
+
+---
+
+## How merchants actually authenticate — and what authorises a Meta write
+
+There is no email login anywhere in PocketLink. A seller registers with their
+WhatsApp number, proves it with a one-time code, fills in the store form, and
+from then on opens `/[store]/manage` with a 4-digit PIN.
+
+Campaign creation must therefore be authorised by that same PIN. Until now it
+was gated on `crm_team` — internal staff — purely because that was the only
+table linking a Supabase auth user to any permission. That is why no merchant
+path existed to record, and it is the root of the "not aligned with use case"
+rejection.
+
+The split that keeps this safe is blast radius, not ceremony:
+
+| Action | Gate | Worst case if the PIN leaks |
+|--------|------|------------------------------|
+| Create campaign (PAUSED) | store PIN — same as the Ads dashboard, preview and Meta connect | paused objects in the merchant's own ad account; no money moves |
+| **Activate** (the only step that spends) | fresh WhatsApp OTP to the store's registered number | blocked — the attacker would need the seller's phone |
+
+**Security prerequisites, because a 4-digit PIN is weak.** It is SHA-256 with a
+static salt (`snq1_`), ~10,000 possibilities, and there is no attempt throttle
+anywhere in the codebase. Before the PIN authorises ad creation:
+
+1. Confirm `stores.pin` is not readable by `anon`. `src/utils/storeService.js`
+   falls back to selecting the column directly, and `stores` carries a public
+   read policy — if the column is not revoked, every PIN hash is world-readable
+   and trivially cracked:
+
+   ```sql
+   select grantee, privilege_type
+   from information_schema.column_privileges
+   where table_schema = 'public' and table_name = 'stores'
+     and column_name = 'pin';
+   ```
+   Any row naming `anon` or `public` is a live vulnerability, independent of all
+   Meta work.
+
+2. Add attempt throttling to `verify_store_pin`.
 
 ## Sequence
 
