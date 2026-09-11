@@ -1,20 +1,23 @@
-// POST /api/meta/campaign-launch — Stage 2D: FOUNDER-ONLY campaign launch + control.
+// POST /api/meta/campaign-launch — Stage 2D: campaign launch + control.
 //
 // Creates the previewed campaign on Meta and controls it. Actions:
 //   create   — build (shared builder) → validate → claim (idempotency lease) →
 //              create campaign→adset→creative→ad, ALL PAUSED, resume-forward.
-//   activate — founder-only spend enable: set campaign+adset+ad ACTIVE.
+//   activate — enable spend: set campaign+adset+ad ACTIVE. Needs a step-up.
 //   pause    — set campaign PAUSED (stops spend).
-//   resume   — set campaign ACTIVE (spend-enable; founder-only like activate).
+//   resume   — set campaign ACTIVE (spend-enable; same gate as activate).
 //   stop     — set campaign PAUSED + mark stopped (kept, not deleted).
 //   status   — read the launch ledger.
 //
-// AUTH: founder-only — a valid Supabase session whose user is a crm_team admin
-// (Authorization: Bearer <supabase access token>). Store owners cannot launch or
-// spend. SAFETY: everything is created PAUSED; activation is the only spend step;
+// AUTH: the store's own 4-digit Manage PIN, the same credential that opens the
+// Ads dashboard, the preview and the Meta connection — because PocketLink
+// sellers have no email accounts. A crm_team session is accepted as an
+// alternative so staff-operated stores keep working. Activation additionally
+// requires a one-time code sent to the store's REGISTERED WhatsApp number.
+// SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed, activationBlocked } from './_meta.js';
+import { SB, ANON, serviceKey, verifyStorePin, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed, activationBlocked } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 
 // Meta permission required to create delivery objects. Checked LIVE against
@@ -24,47 +27,49 @@ const CREATE_PERMISSION = 'ads_management';
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
 
-// ── Authorisation: two independent sources, neither implying the other ────────
-// 1. crm_team.role — PocketLink staff. 'admin' (the founder) may do everything,
-//    including activation, for any store.
-// 2. ads_testers — a store-scoped grant for an authorised outside tester or a
-//    Meta reviewer. One row = "may create PAUSED objects for THIS one store".
+// ── Authorisation — merchant-first, matching how PocketLink actually works ────
 //
-// 'ads_tester' is deliberately NOT a crm_team role. Every CRM policy keys off
-// is_crm_member(), which tests membership and not role, so a crm_team row would
-// have handed a tester every merchant's orders and ALL rights on crm_leads —
-// including delete. See supabase/ads-tester-access.sql. A stale crm_team row
-// with that role therefore grants nothing here: it fails closed.
+// PocketLink sellers have no email accounts. A seller registers with a WhatsApp
+// number, proves it with a one-time code, and thereafter opens /[store]/manage
+// with a 4-digit PIN. So the PIN authorises campaign creation, exactly as it
+// already authorises the Ads dashboard, the campaign preview and the Meta
+// connection itself.
 //
-// Returns { uid, role, scopes } — scopes is the list of slugs the caller holds
-// an unexpired ads_testers grant for. Each action below decides what it needs.
-const CAN_CREATE_ANY = ['admin'];   // crm_team roles that may create for any store
-const CAN_ACTIVATE   = ['admin'];   // only the founder may ever spend
+// This endpoint previously required a crm_team session. That was never a
+// deliberate model for advertising — crm_team was simply the only table linking
+// an auth user to any permission. The cost was that no merchant could reach the
+// feature at all, which is precisely why there was no merchant journey to show
+// Meta's reviewer.
+//
+// The split between create and activate is about BLAST RADIUS, not ceremony:
+//
+//   create  — everything is made PAUSED and spends nothing. A stolen PIN yields
+//             paused objects in the merchant's own ad account. Recoverable.
+//   activate— the only step that moves money. A 4-digit secret is not enough,
+//             so it additionally demands a fresh one-time code delivered to the
+//             store's REGISTERED WhatsApp number: the same proof that resets a
+//             PIN, and the strongest identity the product has.
+//
+// crm_team admin remains valid throughout, so staff-operated stores are
+// unaffected. Nothing here weakens an existing check; it adds the merchant path
+// alongside it.
+const CAN_ACTIVATE = ['admin'];   // crm_team roles that may spend without an OTP
 
-// Which stores does this caller hold a LIVE ads_testers grant for?
-//
-// Expiry is enforced twice, deliberately. The RLS policy hides an expired grant
-// from the tester's own session (ads-tester-access.sql), but this endpoint reads
-// with the service-role key, which bypasses RLS — so the expiry must be applied
-// again here or a lapsed grant would still create ads. A row whose expires_at is
-// unparseable is treated as expired: unreadable is not permission.
-//
-// An absent ads_testers table (migration not yet applied) arrives as an error
-// object rather than an array; that must not 500 the endpoint — it simply means
-// nobody holds a scoped grant yet.
-export function activeScopes(rows, now = Date.now()) {
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .filter((r) => {
-      if (!r?.expires_at) return true;                 // no expiry set
-      const t = Date.parse(r.expires_at);
-      return Number.isFinite(t) && t > now;
-    })
-    .map((r) => String(r.store_slug || '').trim().toLowerCase())
-    .filter(Boolean);
+// May this caller enable spend? A crm_team admin may; a merchant may only after
+// proving control of the store's registered WhatsApp number. Anything else —
+// including a non-admin staff role, or a merchant who merely knows the PIN — is
+// refused. `otpVerified` must be exactly true: a truthy object from a failed
+// lookup is not a proof.
+export function activationAllowed(staffRole, otpVerified) {
+  if (CAN_ACTIVATE.includes(staffRole)) return true;
+  return otpVerified === true;
 }
 
-async function requireActor(req) {
+// ── Staff session (optional) ──────────────────────────────────────────────────
+// A crm_team session is no longer REQUIRED for anything — it is an alternative
+// to the merchant's PIN, so staff-operated stores keep working. Absent or
+// invalid simply means "not staff", never an error.
+async function staffRole(req) {
   try {
     const auth = req.headers?.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -73,29 +78,45 @@ async function requireActor(req) {
     if (!ur.ok) return null;
     const uid = (await ur.json())?.id;
     if (!uid) return null;
-
-    const [cr, tr] = await Promise.all([
-      fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() }),
-      fetch(`${SB}/rest/v1/ads_testers?user_id=eq.${uid}&select=store_slug,expires_at`, { headers: svc() }),
-    ]);
+    const cr = await fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() });
     const role = (await cr.json().catch(() => []))[0]?.role || null;
-    const scopes = activeScopes(await tr.json().catch(() => []));
-
-    if (!role && !scopes.length) return null;
-    return { uid, role, scopes };
+    return role ? { uid, role } : null;
   } catch { return null; }
 }
 
-// May this caller CREATE paused objects for this specific store?
-export function mayCreate(actor, slug) {
-  if (CAN_CREATE_ANY.includes(actor.role)) return true;
-  return Boolean(slug) && actor.scopes.includes(slug);
+// ── OTP step-up for the spend step ────────────────────────────────────────────
+// Verifies a one-time code against the store's REGISTERED WhatsApp number — the
+// number is read from the store's own config server-side and is never taken
+// from the request, so a caller cannot redirect the proof to a phone they own.
+// Codes are single-use: a successful check deletes them, exactly as the
+// send-otp edge function does.
+export function normalizePhone(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.length > 10 ? digits.slice(-10) : digits;   // compare last 10
 }
-// Pausing and stopping only ever REDUCE delivery, so staff may do it anywhere
-// and a scoped tester may do it for their own store.
-export function mayReduce(actor, slug) {
-  if (actor.role) return true;
-  return Boolean(slug) && actor.scopes.includes(slug);
+
+async function otpStepUp(slug, code) {
+  const clean = String(code ?? '').replace(/\D/g, '');
+  if (clean.length < 4) return false;
+
+  const config = await getStoreConfig(slug);
+  const want = normalizePhone(config?.whatsappNumber);
+  if (!want) return false;                       // no registered number → refuse
+
+  try {
+    const r = await fetch(
+      `${SB}/rest/v1/otp_codes?code=eq.${encodeURIComponent(clean)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,phone`,
+      { headers: svc() },
+    );
+    if (!r.ok) return false;
+    const rows = await r.json().catch(() => []);
+    const hit = (Array.isArray(rows) ? rows : []).find((x) => normalizePhone(x.phone) === want);
+    if (!hit) return false;
+    // Single use — burn it whether or not the rest of the flow succeeds.
+    await fetch(`${SB}/rest/v1/otp_codes?phone=eq.${encodeURIComponent(hit.phone)}`, { method: 'DELETE', headers: svc() });
+    return true;
+  } catch { return false; }
 }
 
 // ── Supabase RPC / reads (service role) ────────────────────────────────────────
@@ -272,43 +293,56 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
     if (!serviceKey()) { res.status(503).json({ error: 'not_configured' }); return; }
-    const actor = await requireActor(req);
-    if (!actor) { res.status(403).json({ error: 'team_only' }); return; }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const action = String(body.action || '');
     const launchId = String(body.launchId || '');
+    const hashedPin = String(body.hashedPin || '');
+
+    // A staff session is optional and resolved once. It is an ALTERNATIVE to
+    // the merchant's PIN, never a requirement.
+    const staff = await staffRole(req);
+
+    // Which store is this call about? For create the caller names it; for every
+    // other action it comes from the launch row — so a caller cannot act on
+    // someone else's launch by presenting a PIN they happen to know.
+    let slug;
+    let target = null;
+    if (action === 'create') {
+      slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
+      if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
+    } else {
+      if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
+      target = await getLaunch(launchId);
+      if (!target) { res.status(404).json({ error: 'unknown_launch' }); return; }
+      slug = String(target.store_slug || '').toLowerCase();
+    }
+
+    // The merchant proves the store with the same PIN that opens Manage; staff
+    // may act without one. Anyone else is refused before a single Graph call.
+    if (!staff?.role && !(await verifyStorePin(slug, hashedPin))) {
+      res.status(403).json({ error: 'pin' });
+      return;
+    }
 
     if (action === 'create') {
-      const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
-      if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
-      // Authorisation is per-store: a scoped tester creating for someone else's
-      // store is refused here, not merely hidden in the UI.
-      if (!mayCreate(actor, slug)) { res.status(403).json({ error: 'not_permitted' }); return; }
       res.status(200).json(await doCreate(slug, launchId,
         { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy },
         { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
       return;
     }
-    if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
 
-    // Every remaining action names an existing launch, so the store it belongs
-    // to comes from the row — never from the caller. A scoped tester may act on
-    // their own store's launches and no others.
-    const target = await getLaunch(launchId);
-    if (!target) { res.status(404).json({ error: 'unknown_launch' }); return; }
-    const targetSlug = String(target.store_slug || '').toLowerCase();
-    if (!mayReduce(actor, targetSlug)) { res.status(403).json({ error: 'not_permitted' }); return; }
-
-    // Activation is the ONLY step that spends. Three independent gates, all
-    // server-side: the environment must permit activation at all, the caller
-    // must hold a crm_team role that may activate, and a store-scoped tester
-    // never qualifies — actor.role is null for them, so CAN_ACTIVATE cannot
-    // match. A paused-only environment refuses even an admin: that is the point.
+    // Activation is the ONLY step that spends, so a 4-digit PIN is not enough.
+    // Three independent server-side gates: the environment must permit
+    // activation at all; then either a crm_team admin, or a merchant who has
+    // just proved control of the store's REGISTERED WhatsApp number with a
+    // one-time code. A paused-only environment refuses even an admin — that is
+    // the point of it.
     if (action === 'activate' || action === 'resume') {
       if (activationBlocked()) { res.status(403).json({ error: 'activation_disabled_in_this_environment' }); return; }
-      if (!CAN_ACTIVATE.includes(actor.role)) { res.status(403).json({ error: 'not_permitted' }); return; }
-      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', actor.uid));
+      const allowed = activationAllowed(staff?.role, await otpStepUp(slug, body.otpCode));
+      if (!allowed) { res.status(403).json({ error: 'otp_required' }); return; }
+      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', staff?.uid || null));
       return;
     }
     if (action === 'pause')    { res.status(200).json(await flip(launchId, 'PAUSED', 'paused')); return; }
