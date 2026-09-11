@@ -131,9 +131,16 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 
   function launchErr(r) {
     if (r.error === 'blocked') return 'Resolve the items above before launching.';
-    // Show what Meta actually said. The generic version of this line sent us
-    // guessing at a creative-step failure that the server had already captured
-    // verbatim — the message is the whole point of surfacing a partial.
+    // Creation is all-or-nothing: anything the failed attempt made has already
+    // been removed, so say so plainly and show what Meta actually objected to.
+    if (r.error === 'failed') {
+      const why = r.message ? ` Meta said: ${r.message}` : '';
+      if (r.cleanedUp === false) {
+        return `Couldn’t finish at the ${r.step} step, and we could not remove ${(r.leftovers || []).join(', ')} — check Ads Manager.${why}`;
+      }
+      return `Couldn’t create your campaign at the ${r.step} step. Nothing was left in your Meta account.${why}`;
+    }
+    // Legacy rows created before creation became all-or-nothing.
     if (r.error === 'partial') {
       const why = r.message ? ` Meta said: ${r.message}` : '';
       return `Created up to the ${r.step} step — tap Launch again to resume safely.${why}`;
@@ -158,7 +165,11 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         // Measurement snapshot (2E-2): preserve the recommendation + experiment tag.
         recommendation: data.recommendation, strategy_source: 'pocketlink_reco', experiment_id: launchId,
       });
-      if (res?.error) setLaunch({ launchId, status: res.status || '', step: res.step, error: launchErr(res) });
+      // A rolled-back failure left nothing in Meta, so the next attempt must be
+      // a genuinely new launch rather than resuming a spent lease. Dropping
+      // launchId makes the retry mint a fresh one; the error stays on screen.
+      if (res?.error === 'failed') setLaunch({ step: res.step, error: launchErr(res) });
+      else if (res?.error) setLaunch({ launchId, status: res.status || '', step: res.step, error: launchErr(res) });
       else setLaunch({ launchId, status: res.status, ids: res.ids });
     } catch (e) { setLaunch({ launchId, error: e.message || 'Launch failed.' }); }
   }

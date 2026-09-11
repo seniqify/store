@@ -72,3 +72,27 @@ test('empty or junk input yields null, never a match', () => {
 test('a short number is kept whole rather than silently padded', () => {
   assert.equal(normalizePhone('12345'), '12345');
 });
+
+// ── Creation is all-or-nothing ───────────────────────────────────────────────
+// A campaign with no ad set cannot run, cannot be repaired from PocketLink, and
+// the seller does not know it exists. The old resume-forward behaviour left one
+// behind on every failure, so a shop owner tapping through a rejected setting
+// would quietly fill their ad account with rubbish. These pin the ordering and
+// scope of the rollback that replaced it.
+import { rollbackOrder } from '../api/meta/campaign-launch.js';
+
+test('rollback deletes in reverse creation order', () => {
+  // Meta refuses to delete a parent while a child references it, so the ad must
+  // go before the ad set, and the ad set before the campaign.
+  const created = [
+    { kind: 'campaign', id: '1' },
+    { kind: 'ad set', id: '2' },
+    { kind: 'creative', id: '3' },
+    { kind: 'ad', id: '4' },
+  ];
+  assert.deepEqual(rollbackOrder(created).map((x) => x.id), ['4', '3', '2', '1']);
+});
+
+test('a failure with nothing yet created rolls back nothing', () => {
+  assert.deepEqual(rollbackOrder([]), []);
+});

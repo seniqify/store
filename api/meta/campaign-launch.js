@@ -119,6 +119,16 @@ async function otpStepUp(slug, code) {
   } catch { return false; }
 }
 
+// ── Rollback helpers ──────────────────────────────────────────────────────────
+// Meta refuses to delete a parent while a child still references it, so removal
+// runs in reverse creation order: ad → creative → ad set → campaign.
+// Only what THIS call created is ever passed in: the list is appended to as each
+// create succeeds, so objects that already existed when we started (a resumed
+// launch) are structurally absent and cannot be deleted.
+export function rollbackOrder(made) {
+  return Array.isArray(made) ? [...made].reverse() : [];
+}
+
 // ── Supabase RPC / reads (service role) ────────────────────────────────────────
 async function rpc(fn, args) {
   const r = await fetch(`${SB}/rest/v1/rpc/${fn}`, { method: 'POST', headers: svc(), body: JSON.stringify(args) });
@@ -222,30 +232,73 @@ async function doCreate(slug, launchId, input, meta) {
     if (e.error_data?.blame_field_specs) parts.push(`fields ${JSON.stringify(e.error_data.blame_field_specs)}`);
     return parts.join(' · ');
   };
-  const fail = async (step, r) => {
-    const why = describe(r);
-    await set(launchId, { status: 'partial', error: `${step}: ${why}` });
-    return { error: 'partial', step, message: why, ids: ids(await getLaunch(launchId)) };
+  // A half-built campaign is worthless: a campaign with no ad set cannot run,
+  // cannot be repaired from PocketLink, and the seller has no idea it is there.
+  // The old behaviour left one behind on every failure and told the seller to
+  // "tap Launch again to resume" — which, when Meta is rejecting a SETTING
+  // rather than hiccuping, fails identically and manufactures another one. Three
+  // attempts, three orphans, and a shop owner would never know.
+  //
+  // So creation is all-or-nothing. Whatever this attempt managed to create is
+  // deleted, in reverse order, before the error is returned. The seller ends up
+  // exactly where they started and can fix the setting and try again on a clean
+  // slate. Deleting is safe by construction: these objects are seconds old, are
+  // PAUSED, have never delivered, and were created by this very call.
+  const rollback = async (made) => {
+    const removed = [];
+    for (const { kind, id } of rollbackOrder(made)) {
+      const r = await graphPost(String(id), { _method: 'DELETE' }, token);
+      removed.push({ kind, id, ok: Boolean(r.ok && r.body?.success !== false) });
+    }
+    return removed;
   };
 
+  const created = [];
+  const fail = async (step, r) => {
+    const why = describe(r);
+    const removed = await rollback(created);
+    const leftovers = removed.filter((x) => !x.ok);
+    // Clear the ids we just deleted so the ledger never points at objects that
+    // no longer exist, and mark it failed rather than partial — there is
+    // nothing to resume.
+    await set(launchId, {
+      status: 'failed',
+      error: `${step}: ${why}`,
+      campaign_id: null, adset_id: null, creative_id: null, ad_id: null,
+    });
+    return {
+      error: 'failed',
+      step,
+      message: why,
+      cleanedUp: leftovers.length === 0,
+      leftovers: leftovers.map((x) => `${x.kind} ${x.id}`),
+    };
+  };
+
+  // `created` tracks only what THIS call made, so a rollback can never touch an
+  // object that already existed when we started.
   if (!row.campaign_id) {
     const r = await graphPost(`${adAccount}/campaigns`, P.campaign.body, token);
     if (!r.ok || !r.body?.id) return fail('campaign', r);
+    created.push({ kind: 'campaign', id: r.body.id });
     await set(launchId, { campaign_id: r.body.id }); row.campaign_id = r.body.id;
   }
   if (!row.adset_id) {
     const r = await graphPost(`${adAccount}/adsets`, { ...P.adset.body, campaign_id: row.campaign_id }, token);
     if (!r.ok || !r.body?.id) return fail('adset', r);
+    created.push({ kind: 'ad set', id: r.body.id });
     await set(launchId, { adset_id: r.body.id }); row.adset_id = r.body.id;
   }
   if (!row.creative_id) {
     const r = await graphPost(`${adAccount}/adcreatives`, P.adcreative.body, token);
     if (!r.ok || !r.body?.id) return fail('creative', r);
+    created.push({ kind: 'creative', id: r.body.id });
     await set(launchId, { creative_id: r.body.id }); row.creative_id = r.body.id;
   }
   if (!row.ad_id) {
     const r = await graphPost(`${adAccount}/ads`, { ...P.ad.body, adset_id: row.adset_id, creative: { creative_id: row.creative_id } }, token);
     if (!r.ok || !r.body?.id) return fail('ad', r);
+    created.push({ kind: 'ad', id: r.body.id });
     await set(launchId, { ad_id: r.body.id }); row.ad_id = r.body.id;
   }
   // Read the objects back from Meta and confirm they really are PAUSED. We never
