@@ -96,3 +96,31 @@ test('rollback deletes in reverse creation order', () => {
 test('a failure with nothing yet created rolls back nothing', () => {
   assert.deepEqual(rollbackOrder([]), []);
 });
+
+// ── The measurement list must reflect Meta, not our own ledger ───────────────
+// meta_campaigns records what PocketLink launched. It has no idea when a seller
+// deletes a campaign in Ads Manager, so rendering it unconditionally left
+// deleted campaigns on screen as ghosts — including half-built ones badged
+// PARTIAL. Meta's live list is the authority on what exists.
+function reconcile(ledger, liveIds) {
+  const live = new Set(liveIds.map(String));
+  return ledger.filter((L) => live.has(String(L.campaign_id)));
+}
+
+test('a campaign deleted in Ads Manager disappears from measurement', () => {
+  const ledger = [{ campaign_id: '111', status: 'created' }, { campaign_id: '222', status: 'created' }];
+  assert.deepEqual(reconcile(ledger, ['111']).map((x) => x.campaign_id), ['111']);
+});
+
+test('an emptied ad account shows nothing, whatever the ledger says', () => {
+  const ledger = [
+    { campaign_id: '111', status: 'created' },
+    { campaign_id: '222', status: 'partial' },
+    { campaign_id: '333', status: 'partial' },
+  ];
+  assert.deepEqual(reconcile(ledger, []), []);
+});
+
+test('ids are compared as strings — Meta returns them as strings', () => {
+  assert.equal(reconcile([{ campaign_id: 111 }], ['111']).length, 1);
+});

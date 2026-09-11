@@ -147,9 +147,17 @@ export default async function handler(req, res) {
       .slice(0, 25);
 
     // ── 2E-2: reconcile + snapshot outcomes for OUR launched campaigns ──
+    //
+    // Only for campaigns that STILL EXIST in Meta. The ledger is our own record
+    // of what we launched; it does not know when a seller deletes a campaign in
+    // Ads Manager. Showing every row regardless meant deleted campaigns lingered
+    // here as ghosts — including half-built ones marked PARTIAL, which is the
+    // last thing a seller (or a Meta reviewer) should be shown. Meta's live list
+    // is the authority on what exists.
+    const liveCampaignIds = new Set((camps.body?.data || []).map((c) => String(c.id)));
     const measured = [];
     try {
-      const ledger = await fetchLedger(slug);
+      const ledger = (await fetchLedger(slug)).filter((L) => liveCampaignIds.has(String(L.campaign_id)));
       if (ledger.length) {
         const maxMap = new Map();
         for (const r of (maxIns.body?.data || [])) maxMap.set(r.campaign_id, r);
