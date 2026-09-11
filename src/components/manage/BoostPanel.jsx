@@ -6,6 +6,7 @@ import {
 import { previewCampaign } from '../../utils/metaCampaign';
 import { launchCreate, launchActivate, launchPause, launchStop } from '../../utils/metaLaunch';
 import { consoleSession, fetchMyTeamRow } from '../../utils/consoleService';
+import { sendOtp } from '../../utils/otpService';
 
 /**
  * Manage → Ads → Create campaign (Stage 2E-1).
@@ -91,6 +92,22 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
   const [launch, setLaunch] = useState(null);        // { launchId, status, ids, busy, error, step }
   const [confirmSpend, setConfirmSpend] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [otp, setOtp] = useState({ sent: false, busy: false, error: '' });
+
+  // Send the confirmation code to the number this store is registered with. The
+  // field used to claim a code had been sent when nothing ever sent one — the
+  // seller was asked for something that did not exist.
+  async function sendActivationCode() {
+    const phone = String(config.whatsappNumber || '').replace(/\D/g, '');
+    if (phone.length < 10) { setOtp({ sent: false, busy: false, error: 'This store has no WhatsApp number saved. Add one in Settings.' }); return; }
+    setOtp({ sent: false, busy: true, error: '' });
+    try {
+      await sendOtp(phone.length > 10 ? phone : `91${phone}`);
+      setOtp({ sent: true, busy: false, error: '' });
+    } catch (e) {
+      setOtp({ sent: false, busy: false, error: e.message || 'Could not send the code. Try again.' });
+    }
+  }
 
   const set = (patch) => setBiz((f) => ({ ...f, ...patch }));
 
@@ -114,7 +131,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 
   async function buildPlan(overrides) {
     const b = { ...biz, ...(overrides || {}) };
-    setErr(''); setBusy(true); setLaunch(null); setConfirmSpend(false); setOtpCode('');
+    setErr(''); setBusy(true); setLaunch(null); setConfirmSpend(false); setOtpCode(''); setOtp({ sent: false, busy: false, error: '' });
     try {
       const d = await previewCampaign(config.slug, pin, {
         goal: b.goal, promote: b.promote, productId: b.productId,
@@ -467,7 +484,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         <LaunchControls
           ready={d.launchReady} launch={launch} status={st}
           confirmSpend={confirmSpend} setConfirmSpend={setConfirmSpend} canActivate={canActivate}
-          otpCode={otpCode} setOtpCode={setOtpCode}
+          otpCode={otpCode} setOtpCode={setOtpCode} otp={otp} sendActivationCode={sendActivationCode}
           doLaunch={doLaunch} act={act} themeColor={themeColor} money={(n) => money(n, cur)} total={d.budget?.total}
         />
       </div>
@@ -478,7 +495,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 // Launch controls: create PAUSED → confirm → Activate → Pause/Stop.
 // Creation is open to whoever unlocked the store; only activation spends, and
 // that asks for the one-time code sent to the store's WhatsApp number.
-function LaunchControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total, canActivate, otpCode, setOtpCode }) {
+function LaunchControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total, canActivate, otpCode, setOtpCode, otp, sendActivationCode }) {
   const btn = 'w-full py-3 rounded-xl text-sm font-bold active:scale-[0.98] transition disabled:opacity-50';
   const busy = launch?.busy;
   if (!status) {
@@ -537,14 +554,29 @@ function LaunchControls({ ready, launch, status, confirmSpend, setConfirmSpend, 
           the code cannot be redirected to someone else's phone. */}
       {!canActivate && (
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-            Code sent to your WhatsApp number
-          </label>
-          <input
-            inputMode="numeric" value={otpCode} placeholder="6-digit code"
-            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm tracking-[0.3em] text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand"
-          />
+          {!otp.sent ? (
+            <button type="button" disabled={otp.busy || !confirmSpend}
+              onClick={sendActivationCode}
+              className={`${btn} border border-gray-300 text-gray-700`}>
+              {otp.busy ? 'Sending code…' : 'Send confirmation code to my WhatsApp'}
+            </button>
+          ) : (
+            <>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Enter the code we just sent on WhatsApp
+              </label>
+              <input
+                inputMode="numeric" value={otpCode} placeholder="6-digit code"
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm tracking-[0.3em] text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+              />
+              <button type="button" onClick={sendActivationCode} disabled={otp.busy}
+                className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 mt-1.5">
+                Didn’t get it? Send again
+              </button>
+            </>
+          )}
+          {otp.error && <p className="text-xs text-red-600 mt-1.5">{otp.error}</p>}
           <p className="text-[11px] text-gray-400 mt-1.5">
             Spending money needs more than your PIN, so we confirm on the number this store is registered with.
           </p>
@@ -552,7 +584,7 @@ function LaunchControls({ ready, launch, status, confirmSpend, setConfirmSpend, 
       )}
       <button
         type="button"
-        disabled={!confirmSpend || busy || (!canActivate && otpCode.length < 4)}
+        disabled={!confirmSpend || busy || (!canActivate && (!otp.sent || otpCode.length < 4))}
         onClick={() => act(launchActivate, otpCode)}
         className={`${btn} text-white`} style={{ background: themeColor }}
       >
