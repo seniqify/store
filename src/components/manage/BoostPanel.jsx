@@ -131,7 +131,13 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
 
   function launchErr(r) {
     if (r.error === 'blocked') return 'Resolve the items above before launching.';
-    if (r.error === 'partial') return `Created up to the ${r.step} step — tap Launch again to resume safely.`;
+    // Show what Meta actually said. The generic version of this line sent us
+    // guessing at a creative-step failure that the server had already captured
+    // verbatim — the message is the whole point of surfacing a partial.
+    if (r.error === 'partial') {
+      const why = r.message ? ` Meta said: ${r.message}` : '';
+      return `Created up to the ${r.step} step — tap Launch again to resume safely.${why}`;
+    }
     if (r.error === 'in_progress') return 'This launch is already being created — wait a moment.';
     if (r.error === 'founder_only') return 'Activation is founder-only.';
     if (r.error === 'pin') return 'That PIN was not accepted. Unlock this store again and retry.';

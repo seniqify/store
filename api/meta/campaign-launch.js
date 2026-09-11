@@ -209,7 +209,24 @@ async function doCreate(slug, launchId, input, meta) {
 
   let row = await getLaunch(launchId);
   const P = built.payloads;
-  const fail = async (step, r) => { await set(launchId, { status: 'partial', error: `${step}: ${r.body?.error?.message || r.status}` }); return { error: 'partial', step, message: r.body?.error?.message || `Meta ${step} create failed`, ids: ids(await getLaunch(launchId)) }; };
+  // Meta's `message` is often just "Invalid parameter", which says nothing. The
+  // useful detail is in error_user_title / error_user_msg (written for humans)
+  // and error_subcode (precise). Recording only `message` cost us three failed
+  // launches and a round of guesswork, so keep all of it.
+  const describe = (r) => {
+    const e = r?.body?.error || {};
+    const parts = [e.message || `HTTP ${r?.status || 0}`];
+    if (e.error_subcode) parts.push(`subcode ${e.error_subcode}`);
+    const human = [e.error_user_title, e.error_user_msg].filter(Boolean).join(': ');
+    if (human) parts.push(human);
+    if (e.error_data?.blame_field_specs) parts.push(`fields ${JSON.stringify(e.error_data.blame_field_specs)}`);
+    return parts.join(' · ');
+  };
+  const fail = async (step, r) => {
+    const why = describe(r);
+    await set(launchId, { status: 'partial', error: `${step}: ${why}` });
+    return { error: 'partial', step, message: why, ids: ids(await getLaunch(launchId)) };
+  };
 
   if (!row.campaign_id) {
     const r = await graphPost(`${adAccount}/campaigns`, P.campaign.body, token);
