@@ -105,7 +105,11 @@ export async function recommend({ slug, cfg, biz }) {
       ? 'Set to optimise for orders using your live sales signal, so budget goes to people likely to buy.'
       : g.objective === 'traffic' ? 'Set to bring visitors to your store at the lowest cost per visit.'
       : 'Set to reach as many nearby people as possible.',
-    creative: `The ad is built from your ${promote === 'product' ? 'product photo and details' : 'store'} with a clear “Order on WhatsApp” button.`,
+    // Must describe the creative we ACTUALLY build. The button is SHOP_NOW and it
+    // opens the PocketLink product page; WhatsApp is where checkout hands off,
+    // one step later. Saying “Order on WhatsApp” named a button that is not on
+    // the ad — a claim a Meta reviewer reads on screen while watching the flow.
+    creative: `The ad is built from your ${promote === 'product' ? 'product photo and details' : 'store'} with a “Shop Now” button that opens your PocketLink page, where the order is placed on WhatsApp.`,
     budget: budgetMode === 'recommended'
       ? `₹${dailyBudget}/day is a sensible starting budget for this goal — enough for Meta to learn without overspending. Change it anytime.`
       : `You set ₹${dailyBudget}/day.`,

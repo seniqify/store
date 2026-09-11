@@ -3,7 +3,7 @@
 // preview is exactly what launches. Makes ONLY read-only GET calls to Meta
 // (account fields, business Pages, geo resolution). Builds the exact Marketing
 // API payloads; never POSTs/creates anything itself.
-import { graphGet } from './_meta.js';
+import { graphGet, normalizeAdAccountId } from './_meta.js';
 
 // Hard server-side caps (authoritative — the real financial gate we control).
 export const CAPS = { maxDaily: 5000, maxTotal: 25000, maxDays: 30, spendCapMinRupees: 8500 };
@@ -17,9 +17,42 @@ export const OBJECTIVES = {
   awareness:{ key: 'awareness', label: 'Awareness / Reach', campaignObjective: 'OUTCOME_AWARENESS', optimizationGoal: 'REACH', billingEvent: 'IMPRESSIONS', available: true },
 };
 
+// ── Pack-aware product display ────────────────────────────────────────────────
+// A product's headline price can belong to a MULTIPACK variant: "Bajar Amti 90 g
+// Per Packet" lists at ₹270, but that ₹270 actually buys the "3 x Packet"
+// option. Advertising "90 g Per Packet — ₹270" reads as ₹270 for one packet,
+// which is not what the shopper receives — and an ad has to be true.
+//
+// Entirely data-driven: find the variant whose price equals the headline price
+// and read the quantity out of its own name. No per-product special cases.
+// Reads only — never alters price, MRP, quantity or inventory.
+export function productDisplay(product) {
+  if (!product) return null;
+  const rawName = String(product.name || '').trim();
+  const price = Number(product.price);
+  const prettyUnit = String(product.unit || '').trim().replace(/(\d)\s*([a-zA-Z])/, '$1 $2'); // "90g" → "90 g"
+
+  const options = product?.variants?.options;
+  const match = Array.isArray(options) ? options.find((o) => Number(o?.price) === price) : null;
+  const qty = match ? parseInt(String(match.name || '').match(/(\d+)/)?.[1] ?? '', 10) : NaN;
+
+  if (!Number.isFinite(qty) || qty <= 1 || !prettyUnit) {
+    return { name: rawName, title: rawName, packLabel: null, qty: null, unit: prettyUnit || null };
+  }
+  // Strip a trailing size descriptor ("… 90 g Per Packet") ONLY because we are
+  // about to restate it more accurately on the next line.
+  const base = rawName.replace(/\s*\d+\s*(kg|gms?|grams?|g|ml|ltr|litres?|liters?|l|pcs?|pieces?)\b.*$/i, '').trim() || rawName;
+  const packLabel = `Pack of ${qty} × ${prettyUnit}`;
+  return { name: base, title: `${base} — ${packLabel}`, packLabel, qty, unit: prettyUnit };
+}
+
 // buildCampaign — validate + build. READ-ONLY. Returns the preview object with
 // the exact payloads + launchBlockers; { error } for auth/config problems.
 export async function buildCampaign({ slug, adId, token, cfg }, input) {
+  // One canonical `act_<digits>` for every Graph path and every displayed
+  // endpoint, so the preview shows exactly what the launch will POST.
+  const account = normalizeAdAccountId(adId);
+  if (!account) return { error: 'no_ad_account' };
   const meta = cfg.meta || {};
   const warnings = [];
   const launchBlockers = [];
@@ -66,7 +99,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   const product = promote === 'product' ? (cfg.products || []).find((p) => String(p.id) === String(input.productId)) || null : null;
 
   // ── Read-only: account currency + min budget + status ──
-  const accInfo = await graphGet(adId, { fields: 'currency,name,min_daily_budget,account_status', access_token: token });
+  const accInfo = await graphGet(account, { fields: 'currency,name,min_daily_budget,account_status,timezone_name', access_token: token });
   if (accInfo?.body?.error?.code === 190 || accInfo?.body?.error?.type === 'OAuthException') return { error: 'reauth' };
   const currency = accInfo.body?.currency || 'INR';
   const minRupees = Number(accInfo.body?.min_daily_budget || 0) ? Math.ceil(Number(accInfo.body.min_daily_budget) / 100) : 0;
@@ -114,12 +147,28 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   if (!geo) launchBlockers.push('Your store has no usable ad location — set your city in Settings → Location.');
 
   // ── Creative (from real store data) ──
-  const link = (promote === 'product' && product) ? `${APP_ORIGIN}/${slug}/p/${product.id}` : `${APP_ORIGIN}/${slug}`;
-  const imageUrl = product?.image || cfg.coverImage || cfg.logo || null;
-  const headline = product?.name || cfg.businessName || 'Shop with us';
-  const primaryText = product
-    ? `${product.name}${product.price ? ` — ₹${product.price}` : ''}. ${cfg.tagline || 'Order now on WhatsApp.'}`
-    : `${cfg.businessName || 'Our shop'} — ${cfg.tagline || 'Order now on WhatsApp.'}`;
+  const defaultLink = (promote === 'product' && product) ? `${APP_ORIGIN}/${slug}/p/${product.id}` : `${APP_ORIGIN}/${slug}`;
+  const defaultImage = product?.image || cfg.coverImage || cfg.logo || null;
+  // Pack-aware naming, and copy that matches where the ad actually lands: the
+  // SHOP_NOW button opens the PocketLink product page (checkout hands off to
+  // WhatsApp later), so the creative must not promise a WhatsApp destination.
+  const disp = productDisplay(product);
+  const shopLine = cfg.tagline || 'Order online from our shop.';
+
+  // ── Test-only creative override ─────────────────────────────────────────────
+  // Set ONLY by an explicit server-side call for an authorised backend creation
+  // test — e.g. advertising a Page that is not the PocketLink storefront.
+  // campaign-launch.js deliberately does NOT forward this field out of request
+  // bodies, so no merchant can reach it, and when it is absent every value below
+  // is exactly what it was before.
+  const ov = (input.testCreative && typeof input.testCreative === 'object') ? input.testCreative : null;
+  const link = ov?.link || defaultLink;
+  const imageUrl = ov?.imageUrl || defaultImage;
+  const ctaType = ov?.ctaType || 'SHOP_NOW';
+  const headline = ov?.headline || disp?.title || cfg.businessName || 'Shop with us';
+  const primaryText = ov?.primaryText || (disp
+    ? `${disp.title}${product.price ? ` — ₹${product.price}` : ''}. ${shopLine}`
+    : `${cfg.businessName || 'Our shop'} — ${shopLine}`);
   if (!imageUrl) launchBlockers.push('Add a product photo or a store cover image to use in the ad.');
 
   // ── Payloads: lifetime_budget + end_time = Meta's true total cap ──
@@ -150,33 +199,54 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   // spend_cap only when total ≥ Meta's minimum (~$100/₹8,500). Secondary belt,
   // NOT the primary ceiling (lifetime_budget + end_time + our caps are).
   const spendCapEligible = total >= CAPS.spendCapMinRupees;
-  const campaignBody = { name, objective: objDef.campaignObjective, status: 'PAUSED', special_ad_categories: [] };
+  const campaignBody = {
+    name, objective: objDef.campaignObjective, status: 'PAUSED', special_ad_categories: [],
+    // Required by Meta whenever the budget lives on the ad set rather than the
+    // campaign (error 100 / subcode 4834011). FALSE on purpose: true lets ad sets
+    // share 20% of each other's budget, which would break the per-ad-set lifetime
+    // budget that is our actual spend ceiling.
+    is_adset_budget_sharing_enabled: false,
+  };
   if (spendCapEligible) campaignBody.spend_cap = lifetimeMinor;
   else warnings.push(`Campaign spend-cap not applied (Meta minimum ≈ ₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')}). Total is bounded by the lifetime budget + end date and our server caps.`);
 
   const payloads = {
     _note: 'Dry-run — Stage 2D POSTs these in order (campaign → adset → adcreative → ad). {{…}} resolve from the previous create. Budgets in paise. All created PAUSED.',
-    campaign:   { endpoint: `POST /act_${adId}/campaigns`, body: campaignBody },
-    adset:      { endpoint: `POST /act_${adId}/adsets`, body: adset },
+    campaign:   { endpoint: `POST /${account}/campaigns`, body: campaignBody },
+    adset:      { endpoint: `POST /${account}/adsets`, body: adset },
     adcreative: {
-      endpoint: `POST /act_${adId}/adcreatives`,
+      endpoint: `POST /${account}/adcreatives`,
       body: {
         name: `${name} · creative`,
         object_story_spec: {
           page_id: page ? page.id : PAGE_PLACEHOLDER,
-          link_data: { link, message: primaryText, name: headline, ...(cfg.tagline ? { description: cfg.tagline } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: 'SHOP_NOW', value: { link } } },
+          link_data: { link, message: primaryText, name: headline, ...(cfg.tagline ? { description: cfg.tagline } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: ctaType, value: { link } } },
         },
       },
       placeholders: page ? [] : ['object_story_spec.page_id'],
     },
-    ad: { endpoint: `POST /act_${adId}/ads`, body: { name: `${name} · ad`, adset_id: '{{adset_id}}', creative: { creative_id: '{{creative_id}}' }, status: 'PAUSED' } },
+    ad: { endpoint: `POST /${account}/ads`, body: { name: `${name} · ad`, adset_id: '{{adset_id}}', creative: { creative_id: '{{creative_id}}' }, status: 'PAUSED' } },
   };
 
   return {
-    ok: true, currency, minDailyBudget: minRupees, accountActive,
+    ok: true, currency, minDailyBudget: minRupees, accountActive, adAccountId: account, timezone: accInfo.body?.timezone_name || null,
     objective: { key: objDef.key, label: objDef.label },
-    budget: { daily, days, total, currency, lifetimeMinor, spendCapApplied: spendCapEligible },
-    creative: { imageUrl, headline, primaryText, link, cta: 'Shop Now', promote, productName: product?.name || null },
+    budget: {
+      daily, days, total, currency, lifetimeMinor, spendCapApplied: spendCapEligible, endTime,
+      // Say exactly what bounds the spend. At small totals Meta will not accept a
+      // campaign spend_cap, so claiming one would be false — the real ceiling is
+      // the ad set lifetime budget plus the end date.
+      ceilingLabel: `Up to ₹${total.toLocaleString('en-IN')} total`,
+      enforcedBy: spendCapEligible
+        ? 'ad set lifetime budget + end date, plus a campaign spend cap'
+        : `ad set lifetime budget + end date (no campaign spend cap — Meta requires ≈₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')})`,
+    },
+    creative: {
+      imageUrl, headline, primaryText, link, cta: ctaType, ctaType, promote,
+      productName: product?.name || null,
+      packLabel: disp?.packLabel || null,
+      destinationLabel: ov?.link ? link : (promote === 'product' && product ? 'Your PocketLink product page' : 'Your PocketLink shop'),
+    },
     targeting: { label: geoLabel, ageMin, ageMax, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
     warnings, launchBlockers, launchReady: launchBlockers.length === 0,

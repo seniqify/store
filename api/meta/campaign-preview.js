@@ -10,7 +10,7 @@
 //     against Meta's LIVE granted Pages (/me/accounts) before writing it to
 //     config.meta; Instagram follows the selected Page. An arbitrary/ungranted id is
 //     rejected server-side. Writes only the local page selection — no Meta writes.
-import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet } from './_meta.js';
+import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus, slugAllowed } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
 import { recommend } from './_recommend.js';
 
@@ -51,6 +51,33 @@ async function selectPage(res, slug, acct, config, pageIdRaw) {
   res.status(200).json({ ok: true, pageId: chosen.id, pageName: chosen.name, ig: chosen.ig });
 }
 
+// action 'select-ad-account' — persist WHICH ad account this store advertises
+// from. Validated twice before it is written: the id must be one of the accounts
+// granted at consent (so a caller cannot point a store at someone else's
+// account), and it must still be readable from Meta right now.
+async function selectAdAccount(res, slug, acct, requestedRaw) {
+  const requested = normalizeAdAccountId(requestedRaw);
+  if (!requested) { res.status(400).json({ error: 'missing' }); return; }
+
+  const granted = (acct.ad_account_ids || []).map(normalizeAdAccountId).filter(Boolean);
+  if (!granted.includes(requested)) { res.status(403).json({ error: 'ad_account_not_connected' }); return; }
+
+  const r = await graphGet(requested, { fields: 'id,name,account_status,currency,timezone_name', access_token: acct.access_token });
+  if (r?.body?.error?.code === 190 || r?.body?.error?.type === 'OAuthException') { res.status(200).json({ error: 'reauth' }); return; }
+  if (r?.body?.error || !r?.body?.id) {
+    res.status(200).json({ error: 'ad_account_unreadable', message: r?.body?.error?.message || 'Meta could not read that ad account.' });
+    return;
+  }
+
+  const ok = await updateMetaStatus(slug, { selected_ad_account_id: requested });
+  if (!ok) { res.status(200).json({ error: 'save_failed' }); return; }
+  res.status(200).json({
+    ok: true, adAccountId: requested, name: r.body.name || null,
+    accountStatus: r.body.account_status ?? null, currency: r.body.currency || null,
+    timezone: r.body.timezone_name || null,
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
@@ -63,17 +90,24 @@ export default async function handler(req, res) {
     const [acct, config] = await Promise.all([getMetaAccount(slug), getStoreConfig(slug)]);
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
 
-    if (String(body.action || 'preview') === 'select-page') {
-      await selectPage(res, slug, acct, config, body.pageId);
+    const action = String(body.action || 'preview');
+    // Staging guard: a preview deployment may only WRITE selections for the store
+    // it was designated for. Previewing is read-only and stays unrestricted.
+    if ((action === 'select-page' || action === 'select-ad-account') && !slugAllowed(slug)) {
+      res.status(403).json({ error: 'not_allowed_in_this_environment' });
       return;
     }
+    if (action === 'select-page') { await selectPage(res, slug, acct, config, body.pageId); return; }
+    if (action === 'select-ad-account') { await selectAdAccount(res, slug, acct, body.adAccountId); return; }
 
     // ── Stage 2E preview (default): recommendation engine → shared builder ──
     // The seller sends BUSINESS decisions; recommend() turns them into the exact
     // technical config; buildCampaign() renders the dry-run. `resolved` is echoed
     // back so the launch sends the identical config (preview == launch).
-    const adId = (acct.ad_account_ids || [])[0];
-    if (!adId) { res.status(200).json({ error: 'no_ad_account' }); return; }
+    // One resolver for reporting, preview and creation — never ad_account_ids[0].
+    const picked = resolveAdAccount(acct);
+    if (picked.error) { res.status(200).json({ error: picked.error, adAccounts: picked.available }); return; }
+    const adId = picked.adAccount;
     const biz = {
       goal: body.goal, promote: body.promote, productId: body.productId,
       audienceMode: body.audienceMode, budgetMode: body.budgetMode,

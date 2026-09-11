@@ -1,29 +1,51 @@
 import { supabase } from '../lib/supabase';
+import { hashPin } from './pinHash';
 
 /**
- * Meta campaign launch (Stage 2D) — FOUNDER-ONLY client helpers. Every call
- * carries the founder's Supabase session token; the server re-checks crm_team
- * admin. Store owners cannot reach these (they only preview in Manage → Ads).
- * Creation makes everything PAUSED; only `launchActivate`/`launchResume` enable
- * spend.
+ * Meta campaign launch (Stage 2D) — merchant helpers.
+ *
+ * PocketLink sellers have no email accounts: they register with a WhatsApp
+ * number, prove it with a one-time code, and open Manage with a 4-digit PIN. So
+ * every call here carries that PIN, exactly like the Ads dashboard and the
+ * campaign preview do. The server re-verifies it against the store.
+ *
+ * A staff (crm_team) session is sent when one happens to exist, because staff
+ * may operate a store without its PIN. It is never required.
+ *
+ * Creation makes everything PAUSED. Only `launchActivate` / `launchResume`
+ * enable spend, and those need a fresh one-time code sent to the store's
+ * registered WhatsApp number.
  */
-async function callLaunch(payload) {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  if (!token) throw new Error('Founder sign-in required.');
+async function callLaunch(slug, pin, payload) {
+  const headers = { 'Content-Type': 'application/json' };
+
+  // Optional staff session — absent for an ordinary merchant, and that is fine.
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch { /* no session → PIN is the credential */ }
+
   const res = await fetch('/api/meta/campaign-launch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
+    headers,
+    body: JSON.stringify({ slug, hashedPin: await hashPin(pin), ...payload }),
   });
-  if (res.status === 403) throw new Error('Founder access only.');
   const d = await res.json().catch(() => ({ error: 'server' }));
+  if (res.status === 403 && !d?.error) return { error: 'pin' };
   return d;
 }
 
-export const launchCreate   = (slug, launchId, cfg) => callLaunch({ action: 'create', slug, launchId, ...cfg });
-export const launchActivate = (launchId) => callLaunch({ action: 'activate', launchId });
-export const launchPause    = (launchId) => callLaunch({ action: 'pause', launchId });
-export const launchResume   = (launchId) => callLaunch({ action: 'resume', launchId });
-export const launchStop     = (launchId) => callLaunch({ action: 'stop', launchId });
-export const launchStatus   = (launchId) => callLaunch({ action: 'status', launchId });
+export const launchCreate = (slug, pin, launchId, cfg) =>
+  callLaunch(slug, pin, { action: 'create', launchId, ...cfg });
+
+/** Enabling spend needs the one-time code from the store's WhatsApp number. */
+export const launchActivate = (slug, pin, launchId, otpCode) =>
+  callLaunch(slug, pin, { action: 'activate', launchId, otpCode });
+export const launchResume = (slug, pin, launchId, otpCode) =>
+  callLaunch(slug, pin, { action: 'resume', launchId, otpCode });
+
+// Pausing and stopping only ever REDUCE delivery, so the PIN alone is enough.
+export const launchPause  = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'pause', launchId });
+export const launchStop   = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'stop', launchId });
+export const launchStatus = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'status', launchId });

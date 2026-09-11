@@ -4,7 +4,7 @@
 // (in the meta_campaigns ledger) — reconciles Meta's reported funnel against our own
 // order/revenue truth and snapshots an outcome row (on-view capture). The token
 // never reaches the browser; this endpoint never writes to Meta or spends.
-import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey } from './_meta.js';
+import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey, normalizeAdAccountId, resolveAdAccount } from './_meta.js';
 
 // Action types that count as each funnel step across Meta's variants.
 const PURCHASE = ['purchase', 'omni_purchase', 'offsite_conversion.fct_purchase', 'onsite_conversion.purchase'];
@@ -30,12 +30,22 @@ function shape(row) {
   const lpv = actionVal(actions, ['landing_page_view']);
   const atc = actionVal(actions, ADD_TO_CART);
   const checkout = actionVal(actions, CHECKOUT);
-  const linkClicks = actionVal(actions, ['link_click']);
+  // inline_link_clicks is Meta's canonical link-click field; fall back to the
+  // action breakdown when it is absent.
+  const linkClicks = Number(row?.inline_link_clicks ?? 0) || actionVal(actions, ['link_click']);
   const results = purchases || lpv || linkClicks || 0;
-  const resultLabel = purchases ? 'purchases' : lpv ? 'landing views' : 'link clicks';
+  // null (not 'link clicks') when there is nothing at all — otherwise an empty
+  // dashboard renders a second card also titled "Link clicks".
+  const resultLabel = purchases ? 'purchases' : lpv ? 'landing views' : linkClicks ? 'link clicks' : null;
   return {
     spend, reach: Number(row?.reach || 0), impressions: Number(row?.impressions || 0),
-    clicks: Number(row?.clicks || 0), ctr: Number(row?.ctr || 0), cpm: Number(row?.cpm || 0), cpc: Number(row?.cpc || 0),
+    clicks: Number(row?.clicks || 0),
+    // Meta's `ctr` is ALL clicks ÷ impressions (reactions, profile taps, etc.),
+    // NOT link clicks ÷ impressions. Both are correct; they answer different
+    // questions, so both are returned and labelled separately in the UI.
+    ctr: Number(row?.ctr || 0),
+    ctrLink: Number(row?.inline_link_click_ctr || 0),
+    cpm: Number(row?.cpm || 0), cpc: Number(row?.cpc || 0),
     purchases, revenue, lpv, atc, checkout, linkClicks, results, resultLabel,
     costPerResult: results > 0 ? spend / results : null,
   };
@@ -74,26 +84,56 @@ export default async function handler(req, res) {
 
     const acct = await getMetaAccount(slug);
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
-    const adId = (acct.ad_account_ids || [])[0];
-    if (!adId) { res.status(200).json({ error: 'no_ad_account' }); return; }
+
+    // Ad-account selection comes from the shared resolver, so reporting, preview
+    // and creation can never disagree. A per-request override is still honoured
+    // (to look at another connected account before saving a choice), but TENANT
+    // ISOLATION holds: it must be one THIS store connected, never an invented id.
+    const requested = normalizeAdAccountId(body.adAccountId);
+    const picked = resolveAdAccount(acct);
+    if (requested && !picked.available.includes(requested)) { res.status(403).json({ error: 'ad_account_not_connected' }); return; }
+    if (!requested && picked.error) {
+      // Several accounts connected and none chosen → ask, never guess.
+      res.status(200).json({ error: picked.error, adAccounts: picked.available });
+      return;
+    }
+    const adId = requested || picked.adAccount;
     const token = acct.access_token;
 
-    const insightFields = 'spend,impressions,reach,cpm,clicks,ctr,cpc,actions,action_values';
+    const insightFields = 'spend,impressions,reach,cpm,clicks,ctr,cpc,inline_link_clicks,inline_link_click_ctr,actions,action_values';
     const [info, accIns, campIns, camps, maxIns] = await Promise.all([
-      graphGet(adId,                { fields: 'currency,name', access_token: token }),
+      graphGet(adId,                { fields: 'currency,name,timezone_name,account_status', access_token: token }),
       graphGet(`${adId}/insights`,  { fields: insightFields, level: 'account',  date_preset: range, access_token: token }),
       graphGet(`${adId}/insights`,  { fields: `campaign_id,campaign_name,${insightFields}`, level: 'campaign', date_preset: range, limit: '200', access_token: token }),
       graphGet(`${adId}/campaigns`, { fields: 'id,name,status,objective', limit: '100', access_token: token }),
       graphGet(`${adId}/insights`,  { fields: `campaign_id,${insightFields}`, level: 'campaign', date_preset: 'maximum', limit: '200', access_token: token }),
     ]);
 
-    const authErr = [info, accIns, campIns, camps, maxIns].some(
-      (r) => r?.body?.error?.code === 190 || r?.body?.error?.type === 'OAuthException',
-    );
+    const responses = [info, accIns, campIns, camps, maxIns];
+    const authErr = responses.some((r) => r?.body?.error?.code === 190 || r?.body?.error?.type === 'OAuthException');
     if (authErr) { res.status(200).json({ error: 'reauth' }); return; }
+
+    // Any OTHER Graph failure (permissions, rate limit, tier restriction, a bad
+    // account) used to fall through and render as a page of zeros, which is
+    // indistinguishable from "this store has no spend". Surface it instead —
+    // a reporting error must never be displayed as data.
+    const failed = responses.find((r) => r?.body?.error);
+    if (failed) {
+      const e = failed.body.error;
+      res.status(200).json({
+        error: 'meta_error',
+        message: e.message || 'Meta could not return this report.',
+        code: e.code ?? null,
+        subcode: e.error_subcode ?? null,
+        type: e.type || null,
+      });
+      return;
+    }
 
     const currency = info.body?.currency || 'INR';
     const accountName = info.body?.name || null;
+    const timezone = info.body?.timezone_name || null;
+    const accountActive = Number(info.body?.account_status) === 1;
     const totals = shape(accIns.body?.data?.[0] || {});
 
     const byCamp = new Map();
@@ -146,7 +186,12 @@ export default async function handler(req, res) {
       }
     } catch { /* measurement is best-effort — never breaks the dashboard */ }
 
-    res.status(200).json({ currency, accountName, range, totals, campaigns, measured });
+    res.status(200).json({
+      currency, accountName, timezone, accountActive, range, totals, campaigns, measured,
+      adAccountId: adId,
+      adAccounts: picked.available,
+      selectedAdAccountId: normalizeAdAccountId(acct.selected_ad_account_id) || null,
+    });
   } catch {
     res.status(200).json({ error: 'server' });
   }

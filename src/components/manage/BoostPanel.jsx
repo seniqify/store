@@ -81,12 +81,16 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [data, setData] = useState(null);            // preview response (incl. recommendation + resolved)
-  const [approved, setApproved] = useState(false);
   const [showAdv, setShowAdv] = useState(false);
   const [showPayloads, setShowPayloads] = useState(false);
-  const [isFounder, setIsFounder] = useState(false);
+  // Whoever unlocked this store with its PIN may create a campaign — the panel
+  // only renders inside an unlocked Manage, so that is already proven here and
+  // is re-verified server-side on every call. Creation makes PAUSED objects and
+  // spends nothing.
+  const [canActivate, setCanActivate] = useState(false); // may SPEND without an OTP
   const [launch, setLaunch] = useState(null);        // { launchId, status, ids, busy, error, step }
   const [confirmSpend, setConfirmSpend] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
   const set = (patch) => setBiz((f) => ({ ...f, ...patch }));
 
@@ -94,18 +98,23 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     let alive = true;
     (async () => {
       try {
+        // Staff only: a crm_team admin may enable spend without the one-time
+        // code, because they operate stores on the merchant's behalf. Everyone
+        // else confirms with a code sent to the store's WhatsApp number. The
+        // server enforces this independently — this just picks which control to
+        // render.
         const s = await consoleSession();
         if (!s?.user) return;
         const row = await fetchMyTeamRow(s.user.id);
-        if (alive && row?.role === 'admin') setIsFounder(true);
-      } catch { /* owner dry-run flow */ }
+        if (alive && row?.role === 'admin') setCanActivate(true);
+      } catch { /* not staff — the OTP path applies */ }
     })();
     return () => { alive = false; };
   }, []);
 
   async function buildPlan(overrides) {
     const b = { ...biz, ...(overrides || {}) };
-    setErr(''); setBusy(true); setApproved(false); setLaunch(null); setConfirmSpend(false);
+    setErr(''); setBusy(true); setLaunch(null); setConfirmSpend(false); setOtpCode('');
     try {
       const d = await previewCampaign(config.slug, pin, {
         goal: b.goal, promote: b.promote, productId: b.productId,
@@ -125,6 +134,9 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     if (r.error === 'partial') return `Created up to the ${r.step} step — tap Launch again to resume safely.`;
     if (r.error === 'in_progress') return 'This launch is already being created — wait a moment.';
     if (r.error === 'founder_only') return 'Activation is founder-only.';
+    if (r.error === 'pin') return 'That PIN was not accepted. Unlock this store again and retry.';
+    if (r.error === 'otp_required') return 'Enter the code we sent to your WhatsApp number to start spending.';
+    if (r.error === 'activation_disabled_in_this_environment') return 'Activation is switched off in this environment.';
     if (r.error === 'not_connected') return 'Meta isn’t connected for this store.';
     return r.message || 'Launch failed. Try again.';
   }
@@ -133,7 +145,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
     const launchId = launch?.launchId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     setLaunch({ launchId, busy: true, error: '' });
     try {
-      const res = await launchCreate(config.slug, launchId, {
+      const res = await launchCreate(config.slug, pin, launchId, {
         objective: r.objective, promote: r.promote, productId: r.productId,
         dailyBudget: r.dailyBudget, days: r.days, audienceStrategy: r.audienceStrategy,
         radiusKm: r.radiusKm, ageMin: r.ageMin, ageMax: r.ageMax, gender: r.gender,
@@ -144,11 +156,13 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
       else setLaunch({ launchId, status: res.status, ids: res.ids });
     } catch (e) { setLaunch({ launchId, error: e.message || 'Launch failed.' }); }
   }
-  async function act(fn) {
+  // Pause / stop / activate all take (slug, pin, launchId) and activation also
+  // takes the one-time code, so the extra argument is simply passed through.
+  async function act(fn, otpCode) {
     setLaunch((l) => ({ ...l, busy: true, error: '' }));
     try {
-      const res = await fn(launch.launchId);
-      setLaunch((l) => (res?.error ? { ...l, busy: false, error: res.message || res.error } : { ...l, busy: false, status: res.status }));
+      const res = await fn(config.slug, pin, launch.launchId, otpCode);
+      setLaunch((l) => (res?.error ? { ...l, busy: false, error: launchErr(res) } : { ...l, busy: false, status: res.status }));
     } catch (e) { setLaunch((l) => ({ ...l, busy: false, error: e.message })); }
   }
 
@@ -360,8 +374,15 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
         <Row k="Who we reach" v={`${d.targeting?.resolved ? d.targeting.label : 'your area'} · Age ${d.targeting?.ageMin}–${d.targeting?.ageMax}${d.targeting?.genderLabel && d.targeting.genderLabel !== 'All' ? ` · ${d.targeting.genderLabel}` : ''}`} />
         <Row k="Strategy" v={d.targeting?.strategyLabel || 'PocketLink finds buyers'} />
         <Row k="Budget" v={`${money(d.budget?.daily, cur)}/day · ${d.budget?.days} days`} />
-        <Row k="Up to" v={<b>{money(d.budget?.total, cur)}</b>} />
-        <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none — connect in Settings</span>} last />
+        {/* Say what enforces the ceiling. At small totals Meta will not accept a
+            campaign spend cap, so the limit is the ad set lifetime budget + end
+            date — claiming a spend cap there would be untrue. */}
+        <Row k="Up to" v={<span><b>{money(d.budget?.total, cur)}</b>{d.budget?.enforcedBy ? <span className="text-gray-400 font-normal"> · {d.budget.enforcedBy}</span> : null}</span>} />
+        <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none — connect in Settings</span>} />
+        <Row k="Ad account" v={d.adAccountId || '—'} />
+        {/* Where the button actually lands. SHOP_NOW opens the PocketLink product
+            page; WhatsApp comes later, at checkout. */}
+        <Row k="Button" v={`${c.cta || 'Shop Now'} → ${c.destinationLabel || 'Your PocketLink shop'}`} last />
       </div>
 
       {/* Why each choice — the seller's transparency into PocketLink's decisions */}
@@ -417,44 +438,37 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', onClos
               {busy ? 'Rebuilding…' : 'Update plan'}
             </button>
             <button type="button" onClick={() => setShowPayloads((v) => !v)} className="text-[11px] font-semibold text-gray-400 hover:text-gray-600">
-              {showPayloads ? 'Hide' : 'Show'} exact Meta payloads (dry run — not sent)
+              {showPayloads ? 'Hide' : 'Show'} exact Meta payloads (preview only — nothing sent to Meta)
             </button>
             {showPayloads && <pre className="text-[10px] bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto">{JSON.stringify(d.payloads, null, 2)}</pre>}
           </div>
         )}
       </div>
 
-      {/* Launch / approve */}
+      {/* Launch — available to whoever unlocked this store with its PIN. */}
       <div className="mt-4">
-        {isFounder ? (
-          <FounderControls
-            ready={d.launchReady} launch={launch} status={st}
-            confirmSpend={confirmSpend} setConfirmSpend={setConfirmSpend}
-            doLaunch={doLaunch} act={act} themeColor={themeColor} money={(n) => money(n, cur)} total={d.budget?.total}
-          />
-        ) : (
-          <div>
-            <button type="button" disabled={!d.launchReady || approved} onClick={() => setApproved(true)}
-              className={primaryBtn} style={{ background: themeColor }}>
-              {approved ? 'Approved ✓ (dry run — no spend)' : 'Approve (dry run — no spend)'}
-            </button>
-            <p className="text-[11px] text-gray-400 text-center mt-2">This is a preview. Going live is done by the PocketLink team.</p>
-          </div>
-        )}
+        <LaunchControls
+          ready={d.launchReady} launch={launch} status={st}
+          confirmSpend={confirmSpend} setConfirmSpend={setConfirmSpend} canActivate={canActivate}
+          otpCode={otpCode} setOtpCode={setOtpCode}
+          doLaunch={doLaunch} act={act} themeColor={themeColor} money={(n) => money(n, cur)} total={d.budget?.total}
+        />
       </div>
     </Shell>
   );
 }
 
-// Founder-only launch controls: create PAUSED → confirm → Activate → Pause/Stop.
-function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total }) {
+// Launch controls: create PAUSED → confirm → Activate → Pause/Stop.
+// Creation is open to whoever unlocked the store; only activation spends, and
+// that asks for the one-time code sent to the store's WhatsApp number.
+function LaunchControls({ ready, launch, status, confirmSpend, setConfirmSpend, doLaunch, act, themeColor, money, total, canActivate, otpCode, setOtpCode }) {
   const btn = 'w-full py-3 rounded-xl text-sm font-bold active:scale-[0.98] transition disabled:opacity-50';
   const busy = launch?.busy;
   if (!status) {
     return (
       <div>
         <button type="button" disabled={!ready || busy} onClick={doLaunch} className={`${btn} text-white`} style={{ background: themeColor }}>
-          {busy ? 'Creating (paused)…' : 'Launch — creates it paused (no spend yet)'}
+          {busy ? 'Creating paused objects in Meta…' : 'Create paused campaign in Meta'}
         </button>
         {launch?.error && <p className="text-xs text-red-600 mt-2">{launch.error}</p>}
         {!ready && <p className="text-[11px] text-gray-400 text-center mt-2">Resolve the items above to enable launch.</p>}
@@ -477,12 +491,54 @@ function FounderControls({ ready, launch, status, confirmSpend, setConfirmSpend,
   // created or paused → offer activation with an explicit spend confirmation
   return (
     <div className="space-y-2.5">
-      <p className="text-sm font-bold text-gray-800">{status === 'paused' ? 'Paused' : 'Created — paused, no spend yet ✓'}</p>
+      <p className="text-sm font-bold text-gray-800">
+        {status === 'paused' ? 'Paused'
+          : launch?.verified?.allPaused ? 'Created in Meta — verified PAUSED, no spend ✓'
+          : launch?.verified ? 'Created in Meta — could not verify all objects are paused'
+          : 'Created — paused, no spend yet'}
+      </p>
+      {launch?.ids?.campaign_id && (
+        <p className="text-[11px] text-gray-500 break-all">
+          Campaign <b>{launch.ids.campaign_id}</b>
+          {launch.ids.adset_id ? <> · Ad set <b>{launch.ids.adset_id}</b></> : null}
+          {launch.ids.ad_id ? <> · Ad <b>{launch.ids.ad_id}</b></> : null}
+          {launch.adsManagerUrl && (
+            <> · <a href={launch.adsManagerUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">Open in Ads Manager</a></>
+          )}
+        </p>
+      )}
+      {/* Activation is the only spend step. A tester (role 'ads_tester') never
+          sees it, and the server refuses it for them regardless — and refuses it
+          for anyone in a paused-only environment. */}
       <label className="flex items-start gap-2 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-xl p-3">
         <input type="checkbox" checked={confirmSpend} onChange={(e) => setConfirmSpend(e.target.checked)} className="mt-0.5" />
         <span>I understand activating starts real spending, up to <b>{money(total)}</b> over the run.</span>
       </label>
-      <button type="button" disabled={!confirmSpend || busy} onClick={() => act(launchActivate)} className={`${btn} text-white`} style={{ background: themeColor }}>
+      {/* Staff operating a store on the merchant's behalf activate directly.
+          A merchant confirms with the code sent to the store's own WhatsApp
+          number — the number is read server-side from the store's config, so
+          the code cannot be redirected to someone else's phone. */}
+      {!canActivate && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            Code sent to your WhatsApp number
+          </label>
+          <input
+            inputMode="numeric" value={otpCode} placeholder="6-digit code"
+            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm tracking-[0.3em] text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+          <p className="text-[11px] text-gray-400 mt-1.5">
+            Spending money needs more than your PIN, so we confirm on the number this store is registered with.
+          </p>
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={!confirmSpend || busy || (!canActivate && otpCode.length < 4)}
+        onClick={() => act(launchActivate, otpCode)}
+        className={`${btn} text-white`} style={{ background: themeColor }}
+      >
         {busy ? 'Activating…' : 'Activate — start spending'}
       </button>
       <button type="button" disabled={busy} onClick={() => act(launchStop)} className={`${btn} border border-gray-300 text-gray-600`}>Stop</button>

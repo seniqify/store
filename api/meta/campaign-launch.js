@@ -1,27 +1,75 @@
-// POST /api/meta/campaign-launch — Stage 2D: FOUNDER-ONLY campaign launch + control.
+// POST /api/meta/campaign-launch — Stage 2D: campaign launch + control.
 //
 // Creates the previewed campaign on Meta and controls it. Actions:
 //   create   — build (shared builder) → validate → claim (idempotency lease) →
 //              create campaign→adset→creative→ad, ALL PAUSED, resume-forward.
-//   activate — founder-only spend enable: set campaign+adset+ad ACTIVE.
+//   activate — enable spend: set campaign+adset+ad ACTIVE. Needs a step-up.
 //   pause    — set campaign PAUSED (stops spend).
-//   resume   — set campaign ACTIVE (spend-enable; founder-only like activate).
+//   resume   — set campaign ACTIVE (spend-enable; same gate as activate).
 //   stop     — set campaign PAUSED + mark stopped (kept, not deleted).
 //   status   — read the launch ledger.
 //
-// AUTH: founder-only — a valid Supabase session whose user is a crm_team admin
-// (Authorization: Bearer <supabase access token>). Store owners cannot launch or
-// spend. SAFETY: everything is created PAUSED; activation is the only spend step;
+// AUTH: the store's own 4-digit Manage PIN, the same credential that opens the
+// Ads dashboard, the preview and the Meta connection — because PocketLink
+// sellers have no email accounts. A crm_team session is accepted as an
+// alternative so staff-operated stores keep working. Activation additionally
+// requires a one-time code sent to the store's REGISTERED WhatsApp number.
+// SAFETY: everything is created PAUSED; activation is the only spend step;
 // budgets are clamped server-side (₹5000/day · ₹25000 total · 30 days) in the
 // shared builder; launch_id makes creation idempotent; a partial create resumes.
-import { SB, ANON, serviceKey, getMetaAccount, getStoreConfig } from './_meta.js';
+import { SB, ANON, serviceKey, verifyStorePin, getMetaAccount, getStoreConfig, resolveAdAccount, getGrantedPermissions, graphGet, slugAllowed, activationBlocked } from './_meta.js';
 import { buildCampaign } from './_campaignBuild.js';
+
+// Meta permission required to create delivery objects. Checked LIVE against
+// /me/permissions before any write — stored scopes are only a connect-time record.
+const CREATE_PERMISSION = 'ads_management';
 
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const svc = (extra = {}) => ({ apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json', ...extra });
 
-// ── Founder gate: valid Supabase session + crm_team admin ──────────────────────
-async function requireFounder(req) {
+// ── Authorisation — merchant-first, matching how PocketLink actually works ────
+//
+// PocketLink sellers have no email accounts. A seller registers with a WhatsApp
+// number, proves it with a one-time code, and thereafter opens /[store]/manage
+// with a 4-digit PIN. So the PIN authorises campaign creation, exactly as it
+// already authorises the Ads dashboard, the campaign preview and the Meta
+// connection itself.
+//
+// This endpoint previously required a crm_team session. That was never a
+// deliberate model for advertising — crm_team was simply the only table linking
+// an auth user to any permission. The cost was that no merchant could reach the
+// feature at all, which is precisely why there was no merchant journey to show
+// Meta's reviewer.
+//
+// The split between create and activate is about BLAST RADIUS, not ceremony:
+//
+//   create  — everything is made PAUSED and spends nothing. A stolen PIN yields
+//             paused objects in the merchant's own ad account. Recoverable.
+//   activate— the only step that moves money. A 4-digit secret is not enough,
+//             so it additionally demands a fresh one-time code delivered to the
+//             store's REGISTERED WhatsApp number: the same proof that resets a
+//             PIN, and the strongest identity the product has.
+//
+// crm_team admin remains valid throughout, so staff-operated stores are
+// unaffected. Nothing here weakens an existing check; it adds the merchant path
+// alongside it.
+const CAN_ACTIVATE = ['admin'];   // crm_team roles that may spend without an OTP
+
+// May this caller enable spend? A crm_team admin may; a merchant may only after
+// proving control of the store's registered WhatsApp number. Anything else —
+// including a non-admin staff role, or a merchant who merely knows the PIN — is
+// refused. `otpVerified` must be exactly true: a truthy object from a failed
+// lookup is not a proof.
+export function activationAllowed(staffRole, otpVerified) {
+  if (CAN_ACTIVATE.includes(staffRole)) return true;
+  return otpVerified === true;
+}
+
+// ── Staff session (optional) ──────────────────────────────────────────────────
+// A crm_team session is no longer REQUIRED for anything — it is an alternative
+// to the merchant's PIN, so staff-operated stores keep working. Absent or
+// invalid simply means "not staff", never an error.
+async function staffRole(req) {
   try {
     const auth = req.headers?.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -31,9 +79,44 @@ async function requireFounder(req) {
     const uid = (await ur.json())?.id;
     if (!uid) return null;
     const cr = await fetch(`${SB}/rest/v1/crm_team?user_id=eq.${uid}&select=role`, { headers: svc() });
-    const rows = await cr.json().catch(() => []);
-    return rows[0]?.role === 'admin' ? { uid } : null;
+    const role = (await cr.json().catch(() => []))[0]?.role || null;
+    return role ? { uid, role } : null;
   } catch { return null; }
+}
+
+// ── OTP step-up for the spend step ────────────────────────────────────────────
+// Verifies a one-time code against the store's REGISTERED WhatsApp number — the
+// number is read from the store's own config server-side and is never taken
+// from the request, so a caller cannot redirect the proof to a phone they own.
+// Codes are single-use: a successful check deletes them, exactly as the
+// send-otp edge function does.
+export function normalizePhone(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.length > 10 ? digits.slice(-10) : digits;   // compare last 10
+}
+
+async function otpStepUp(slug, code) {
+  const clean = String(code ?? '').replace(/\D/g, '');
+  if (clean.length < 4) return false;
+
+  const config = await getStoreConfig(slug);
+  const want = normalizePhone(config?.whatsappNumber);
+  if (!want) return false;                       // no registered number → refuse
+
+  try {
+    const r = await fetch(
+      `${SB}/rest/v1/otp_codes?code=eq.${encodeURIComponent(clean)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,phone`,
+      { headers: svc() },
+    );
+    if (!r.ok) return false;
+    const rows = await r.json().catch(() => []);
+    const hit = (Array.isArray(rows) ? rows : []).find((x) => normalizePhone(x.phone) === want);
+    if (!hit) return false;
+    // Single use — burn it whether or not the rest of the flow succeeds.
+    await fetch(`${SB}/rest/v1/otp_codes?phone=eq.${encodeURIComponent(hit.phone)}`, { method: 'DELETE', headers: svc() });
+    return true;
+  } catch { return false; }
 }
 
 // ── Supabase RPC / reads (service role) ────────────────────────────────────────
@@ -61,14 +144,36 @@ const ids = (row) => ({ campaign_id: row.campaign_id, adset_id: row.adset_id, cr
 
 // ── CREATE (PAUSED, idempotent, resume-forward) ────────────────────────────────
 async function doCreate(slug, launchId, input, meta) {
+  // Staging guard — a preview deployment shares production's database, so it must
+  // not create against a store it was not designated for. Unset in production.
+  if (!slugAllowed(slug)) return { error: 'not_allowed_in_this_environment' };
   const acct = await getMetaAccount(slug);
   if (!acct || acct.status !== 'connected' || !acct.access_token) return { error: 'not_connected' };
-  const adId = (acct.ad_account_ids || [])[0];
-  if (!adId) return { error: 'no_ad_account' };
+  // Tenant isolation: the account row is looked up BY SLUG, and the account comes
+  // from the shared resolver — the merchant's persisted choice, never array order
+  // and never an id supplied by the caller. If several accounts are connected and
+  // none has been chosen, creation stops rather than guessing which one to spend
+  // from: picking [0] is how showme paired the PocketLink Page with the Shobha IVF
+  // ad account.
+  const picked = resolveAdAccount(acct);
+  if (picked.error) return { error: picked.error, adAccounts: picked.available };
+  const adAccount = picked.adAccount;
   const config = await getStoreConfig(slug);
   const token = acct.access_token;
 
-  const built = await buildCampaign({ slug, adId, token, cfg: config || {} }, input);
+  // Live permission gate — before the idempotency lease, so a merchant without
+  // ads_management burns no launch attempts and gets an accurate reason.
+  const perms = await getGrantedPermissions(token);
+  if (!perms.granted) return { error: 'permission_check_failed', message: perms.error };
+  if (!perms.granted.has(CREATE_PERMISSION)) {
+    return {
+      error: 'missing_permission',
+      permission: CREATE_PERMISSION,
+      granted: [...perms.granted].sort(),
+    };
+  }
+
+  const built = await buildCampaign({ slug, adId: adAccount, token, cfg: config || {} }, input);
   if (built.error) return built;                                   // reauth, etc.
   if (!built.launchReady) return { error: 'blocked', launchBlockers: built.launchBlockers, warnings: built.warnings };
 
@@ -107,33 +212,67 @@ async function doCreate(slug, launchId, input, meta) {
   const fail = async (step, r) => { await set(launchId, { status: 'partial', error: `${step}: ${r.body?.error?.message || r.status}` }); return { error: 'partial', step, message: r.body?.error?.message || `Meta ${step} create failed`, ids: ids(await getLaunch(launchId)) }; };
 
   if (!row.campaign_id) {
-    const r = await graphPost(`act_${adId}/campaigns`, P.campaign.body, token);
+    const r = await graphPost(`${adAccount}/campaigns`, P.campaign.body, token);
     if (!r.ok || !r.body?.id) return fail('campaign', r);
     await set(launchId, { campaign_id: r.body.id }); row.campaign_id = r.body.id;
   }
   if (!row.adset_id) {
-    const r = await graphPost(`act_${adId}/adsets`, { ...P.adset.body, campaign_id: row.campaign_id }, token);
+    const r = await graphPost(`${adAccount}/adsets`, { ...P.adset.body, campaign_id: row.campaign_id }, token);
     if (!r.ok || !r.body?.id) return fail('adset', r);
     await set(launchId, { adset_id: r.body.id }); row.adset_id = r.body.id;
   }
   if (!row.creative_id) {
-    const r = await graphPost(`act_${adId}/adcreatives`, P.adcreative.body, token);
+    const r = await graphPost(`${adAccount}/adcreatives`, P.adcreative.body, token);
     if (!r.ok || !r.body?.id) return fail('creative', r);
     await set(launchId, { creative_id: r.body.id }); row.creative_id = r.body.id;
   }
   if (!row.ad_id) {
-    const r = await graphPost(`act_${adId}/ads`, { ...P.ad.body, adset_id: row.adset_id, creative: { creative_id: row.creative_id } }, token);
+    const r = await graphPost(`${adAccount}/ads`, { ...P.ad.body, adset_id: row.adset_id, creative: { creative_id: row.creative_id } }, token);
     if (!r.ok || !r.body?.id) return fail('ad', r);
     await set(launchId, { ad_id: r.body.id }); row.ad_id = r.body.id;
   }
+  // Read the objects back from Meta and confirm they really are PAUSED. We never
+  // claim "created paused" on the strength of the create call alone — the whole
+  // safety story rests on this being true, so it is verified, not assumed.
+  const verified = await verifyPaused(row, token);
   await set(launchId, { status: 'created', error: '' });
-  return { ok: true, status: 'created', launchId, ids: ids(row), page: built.page, budget: built.budget, warnings: built.warnings };
+  return {
+    ok: true, status: 'created', launchId, ids: ids(row),
+    page: built.page, budget: built.budget, warnings: built.warnings,
+    verified,
+    adsManagerUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${adAccount.replace(/^act_/, '')}&selected_campaign_ids=${row.campaign_id}`,
+  };
+}
+
+// Read back effective_status/status for each created object. Returns what Meta
+// reports, plus allPaused so the UI can state verification honestly.
+async function verifyPaused(row, token) {
+  const targets = [
+    ['campaign', row.campaign_id],
+    ['adset',    row.adset_id],
+    ['ad',       row.ad_id],
+  ].filter(([, id]) => id);
+  const statuses = {};
+  for (const [kind, id] of targets) {
+    const r = await graphGet(id, { fields: 'status,effective_status', access_token: token });
+    statuses[kind] = r?.body?.error
+      ? { error: r.body.error.message || 'read_failed' }
+      : { status: r?.body?.status || null, effectiveStatus: r?.body?.effective_status || null };
+  }
+  const read = Object.values(statuses).filter((s) => !s.error);
+  const allPaused = read.length === targets.length && read.every((s) => s.status === 'PAUSED');
+  return { statuses, allPaused };
 }
 
 // ── Status-flip actions ────────────────────────────────────────────────────────
 async function flip(launchId, metaStatus, newStatus, founderUid) {
   const row = await getLaunch(launchId);
   if (!row) return { error: 'not_found' };
+  // Same guard on every status flip — including activate, the only spend step.
+  if (!slugAllowed(row.store_slug)) return { error: 'not_allowed_in_this_environment' };
+  // Second, independent check: even if a caller somehow reached here, a
+  // paused-only environment never sets anything ACTIVE.
+  if (metaStatus === 'ACTIVE' && activationBlocked()) return { error: 'activation_disabled_in_this_environment' };
   if (!row.campaign_id) return { error: 'not_created' };
   const acct = await getMetaAccount(row.store_slug);
   const token = acct?.access_token;
@@ -154,27 +293,61 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
     if (!serviceKey()) { res.status(503).json({ error: 'not_configured' }); return; }
-    const founder = await requireFounder(req);
-    if (!founder) { res.status(403).json({ error: 'founder_only' }); return; }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const action = String(body.action || '');
     const launchId = String(body.launchId || '');
+    const hashedPin = String(body.hashedPin || '');
+
+    // A staff session is optional and resolved once. It is an ALTERNATIVE to
+    // the merchant's PIN, never a requirement.
+    const staff = await staffRole(req);
+
+    // Which store is this call about? For create the caller names it; for every
+    // other action it comes from the launch row — so a caller cannot act on
+    // someone else's launch by presenting a PIN they happen to know.
+    let slug;
+    let target = null;
+    if (action === 'create') {
+      slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
+      if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
+    } else {
+      if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
+      target = await getLaunch(launchId);
+      if (!target) { res.status(404).json({ error: 'unknown_launch' }); return; }
+      slug = String(target.store_slug || '').toLowerCase();
+    }
+
+    // The merchant proves the store with the same PIN that opens Manage; staff
+    // may act without one. Anyone else is refused before a single Graph call.
+    if (!staff?.role && !(await verifyStorePin(slug, hashedPin))) {
+      res.status(403).json({ error: 'pin' });
+      return;
+    }
 
     if (action === 'create') {
-      const slug = String(body.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
-      if (!slug || !launchId) { res.status(400).json({ error: 'missing' }); return; }
       res.status(200).json(await doCreate(slug, launchId,
         { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy },
         { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
       return;
     }
-    if (!launchId) { res.status(400).json({ error: 'missing' }); return; }
-    if (action === 'activate') { res.status(200).json(await flip(launchId, 'ACTIVE', 'active', founder.uid)); return; }
-    if (action === 'resume')   { res.status(200).json(await flip(launchId, 'ACTIVE', 'active', founder.uid)); return; }
+
+    // Activation is the ONLY step that spends, so a 4-digit PIN is not enough.
+    // Three independent server-side gates: the environment must permit
+    // activation at all; then either a crm_team admin, or a merchant who has
+    // just proved control of the store's REGISTERED WhatsApp number with a
+    // one-time code. A paused-only environment refuses even an admin — that is
+    // the point of it.
+    if (action === 'activate' || action === 'resume') {
+      if (activationBlocked()) { res.status(403).json({ error: 'activation_disabled_in_this_environment' }); return; }
+      const allowed = activationAllowed(staff?.role, await otpStepUp(slug, body.otpCode));
+      if (!allowed) { res.status(403).json({ error: 'otp_required' }); return; }
+      res.status(200).json(await flip(launchId, 'ACTIVE', 'active', staff?.uid || null));
+      return;
+    }
     if (action === 'pause')    { res.status(200).json(await flip(launchId, 'PAUSED', 'paused')); return; }
     if (action === 'stop')     { res.status(200).json(await flip(launchId, 'PAUSED', 'stopped')); return; }
-    if (action === 'status')   { res.status(200).json({ ok: true, launch: await getLaunch(launchId) }); return; }
+    if (action === 'status')   { res.status(200).json({ ok: true, launch: target }); return; }
 
     res.status(400).json({ error: 'unknown_action' });
   } catch {

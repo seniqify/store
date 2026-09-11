@@ -9,8 +9,7 @@
 import {
   APP_ID, REDIRECT_URI, APP_ORIGIN,
   appSecret, serviceKey, verifyState, graphGet,
-  upsertMetaAccount, getStoreConfig, patchStoreConfig,
-} from './_meta.js';
+  upsertMetaAccount, getStoreConfig, patchStoreConfig, slugAllowed } from './_meta.js';
 
 // Redirect back to the store's Manage page (or home if we can't trust the slug).
 function back(res, slug, params) {
@@ -28,6 +27,12 @@ export default async function handler(req, res) {
   // 1) Seller cancelled or denied on Meta's screen (state is still returned, so
   //    we can route them back to the right store's Manage page).
   if (q.error) return back(res, slug, { meta: 'error', reason: 'denied' });
+
+  // 1b) Staging guard — refuse to WRITE a Meta connection for any store outside
+  //     META_ALLOWED_SLUGS. A preview deployment shares production's database, so
+  //     without this a test connect could silently replace a real merchant's
+  //     token. Unset in production → no restriction.
+  if (!slugAllowed(slug)) return back(res, slug, { meta: 'error', reason: 'config' });
 
   // 2) Server misconfiguration — never proceed without the secrets.
   if (!appSecret() || !serviceKey()) return back(res, slug, { meta: 'error', reason: 'config' });

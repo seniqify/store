@@ -28,6 +28,35 @@ export async function consoleSignIn(email, password) {
 export async function consoleSignOut() {
   await supabase.auth.signOut();
 }
+/**
+ * The caller's store-scoped ads-test grant for `slug`, or null.
+ *
+ * Deliberately a separate table from crm_team: every CRM policy keys off
+ * is_crm_member(), which tests membership and not role, so putting a tester in
+ * crm_team would have given them every merchant's orders and full rights on
+ * crm_leads. RLS here returns only the caller's own row (supabase/ads-tester-access.sql).
+ *
+ * This only decides whether to RENDER the create button — campaign-launch.js
+ * re-checks the same grant server-side, so a forged answer here buys nothing.
+ */
+export async function fetchAdsTesterGrant(userId, slug) {
+  if (!userId || !slug) return null;
+  try {
+    const { data, error } = await supabase
+      .from('ads_testers')
+      .select('store_slug, expires_at')
+      .eq('user_id', userId)
+      .eq('store_slug', slug);
+    if (error) return null;                         // table absent / no grant
+    const row = (data || [])[0];
+    if (!row) return null;
+    if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
+
 /** The caller's crm_team row (RLS: members only; null for outsiders). */
 export async function fetchMyTeamRow(userId) {
   try {
