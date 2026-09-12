@@ -123,9 +123,19 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Store page ──
-    const slug = path.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
-    if (slug && !slug.includes('/') && !RESERVED.has(slug) && SUPABASE_URL && SUPABASE_ANON) {
+    // ── Store page, and category links ──
+    // /{slug} and /{slug}/c/{categoryId} render the same store page; the second
+    // form previews as that category. Previously only single-segment paths got
+    // here, so every deeper link fell through to the generic SPA shell and
+    // shared with no preview at all — fatal for a link whose entire purpose is
+    // being pasted into WhatsApp or an Instagram bio.
+    const clean = path.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+    const seg = clean.split('/');
+    const slug = seg[0];
+    const wantsCategory = seg.length === 3 && seg[1] === 'c' && Boolean(seg[2]);
+    const categoryId = wantsCategory ? seg[2] : null;
+
+    if (slug && (seg.length === 1 || wantsCategory) && !RESERVED.has(slug) && SUPABASE_URL && SUPABASE_ANON) {
       let config = null;
       try {
         const r = await fetch(
@@ -152,7 +162,13 @@ export default async function handler(req, res) {
           }
         } catch { /* no rating → no aggregateRating; page still renders */ }
 
-        const seo = storeSeo(config, slug, origin, rating);
+        // An unknown or deleted category id previews as the whole shop rather
+        // than as a broken page — a link on a leaflet outlives the category it
+        // pointed at, and the SPA falls back the same way.
+        const section = categoryId
+          ? (config.categories || []).find((c) => c && c.id === categoryId && c.id !== 'all') || null
+          : null;
+        const seo = storeSeo(config, slug, origin, rating, section);
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —
         // no second DB fetch, no "Loading page…" screen. (Escape </script>.)

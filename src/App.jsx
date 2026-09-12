@@ -249,6 +249,10 @@ export default function App() {
             {/* Product page — same BusinessShell element so the store + cart stay
                 mounted (the detail opens as a view inside it, driven by :productId). */}
             <Route path="/:businessSlug/p/:productId" element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
+            {/* Category link — /{slug}/c/{categoryId}. Same store page, opened with
+                one category already selected, so a seller can share "just the
+                masalas" to a broadcast, an Instagram bio, or a printed QR. */}
+            <Route path="/:businessSlug/c/:categoryId" element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="/:businessSlug"         element={<ErrorBoundary><BusinessShell /></ErrorBoundary>} />
             <Route path="*"                      element={<NotFound />} />
           </Routes>

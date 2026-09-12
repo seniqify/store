@@ -1484,6 +1484,15 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
   const [editingId,   setEditingId]   = useState(null);
   const [catError,    setCatError]    = useState('');
   const [dirty,       setDirty]       = useState(false);
+  const [copiedCat,   setCopiedCat]   = useState(null);
+
+  function copyCategoryLink(id) {
+    const url = `${window.location.origin}/${config.slug}/c/${id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedCat(id);
+      setTimeout(() => setCopiedCat((c) => (c === id ? null : c)), 2000);
+    }).catch(() => { /* clipboard blocked — the link is still shown in the hint below */ });
+  }
 
   function resetForm() { setForm(EMPTY_CAT); setEditingId(null); setCatError(''); setActiveForm(null); }
 
@@ -1594,6 +1603,17 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
                 <p className="text-sm font-semibold text-gray-900">{cat.label}</p>
                 <p className="text-xs text-gray-400">{productCount} product{productCount !== 1 ? 's' : ''}</p>
               </div>
+              {/* A link straight to this category — for an Instagram bio, a
+                  WhatsApp broadcast ("new masalas in stock"), or a printed QR
+                  on the shelf. Without a button here nobody would ever discover
+                  the URL pattern exists. */}
+              <button type="button" onClick={() => copyCategoryLink(cat.id)}
+                      title={`Copy link to ${cat.label}`}
+                      className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100">
+                {copiedCat === cat.id
+                  ? <Check size={13} className="text-emerald-600" />
+                  : <Copy size={13} />}
+              </button>
               <button type="button" onClick={() => openEdit(cat)}
                       className="p-1.5 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
                       style={isEditing ? { color: themeColor, backgroundColor: `${themeColor}1a` } : undefined}>

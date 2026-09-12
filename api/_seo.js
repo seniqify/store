@@ -40,14 +40,19 @@ const TYPE_SCHEMA = {
 // ── Store page ────────────────────────────────────────────────────────────────
 // `rating` (optional) = { avg, count } from approved reviews → drives the
 // star rich result in Google when there's at least one real review.
-export function storeSeo(config, slug, origin, rating = null) {
+// `section` is the store's own category when the URL is /{slug}/c/{id}. A link
+// whose whole purpose is being shared must preview as what it actually opens —
+// "Masalas — Royal Foods & Spices", not the generic shop card — or it reads as a
+// stray link and nobody taps it.
+export function storeSeo(config, slug, origin, rating = null, section = null) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
   const city    = config.city || '';
   const tagline = (config.tagline || `Order from ${name} on WhatsApp.`).trim();
 
   let title = name;
-  if (cat && city) title = `${name} — ${cat} in ${city}`;
+  if (section) title = `${section.label} — ${name}`;
+  else if (cat && city) title = `${name} — ${cat} in ${city}`;
   else if (city)   title = `${name} in ${city}`;
   else if (cat)    title = `${name} — ${cat}`;
   title += ' | Order on WhatsApp';
@@ -56,25 +61,39 @@ export function storeSeo(config, slug, origin, rating = null) {
   // a custom tagline (otherwise every page gets a near-identical meta description
   // → Google treats them as duplicates). Lead with the tagline when it's real,
   // else with name + category + city, then fold in a few product names.
-  const productNames = (Array.isArray(config.products) ? config.products : [])
-    .map((p) => p && p.name).filter(Boolean);
+  // For a category link, describe THAT category's products — the whole point of
+  // the link is that it is narrower than the shop.
+  const allProducts = Array.isArray(config.products) ? config.products : [];
+  const scoped = section
+    ? allProducts.filter((p) => p && p.category === section.id)
+    : allProducts;
+  const productNames = scoped.map((p) => p && p.name).filter(Boolean);
   const sample = productNames.slice(0, 4).join(', ');
   const genericTagline = !config.tagline
     || /order\s+(from|on|via).*whatsapp/i.test(config.tagline)
     || /just a message away/i.test(config.tagline);
-  const lead = genericTagline
-    ? `${name}${cat ? ` — ${cat}` : ''}${city ? ` in ${city}` : ''}.`
-    : tagline.replace(/\.?$/, '.');
+  const lead = section
+    ? `${section.label} from ${name}${city ? ` in ${city}` : ''}.`
+    : genericTagline
+      ? `${name}${cat ? ` — ${cat}` : ''}${city ? ` in ${city}` : ''}.`
+      : tagline.replace(/\.?$/, '.');
   const description = [
     lead,
     sample ? `Shop ${sample}${productNames.length > 4 ? ' & more' : ''}.` : '',
     'Order directly on WhatsApp — no app needed.',
   ].filter(Boolean).join(' ').slice(0, 300);
-  const url   = `${origin}/${slug}`;
-  // The owner's cover photo wins; otherwise a dynamic branded card (their
-  // logo/emoji + name + brand colour, rendered by /api/og) — never the generic
-  // PocketLink image, so every shared link looks shop-specific.
-  const image = absImage(config.coverImage, origin) || `${origin}/api/og?slug=${encodeURIComponent(slug)}&v=${ogToken(config)}`;
+  const url   = section ? `${origin}/${slug}/c/${section.id}` : `${origin}/${slug}`;
+  // For a category, a photo of something IN that category beats the shop cover —
+  // it shows what the link opens. Otherwise the owner's cover photo wins, and
+  // failing that a dynamic branded card (their logo/emoji + name + brand colour,
+  // rendered by /api/og) — never the generic PocketLink image, so every shared
+  // link looks shop-specific.
+  const sectionImage = section
+    ? absImage(scoped.find((p) => p && p.image)?.image, origin)
+    : null;
+  const image = sectionImage
+    || absImage(config.coverImage, origin)
+    || `${origin}/api/og?slug=${encodeURIComponent(slug)}&v=${ogToken(config)}`;
   const wa    = String(config.whatsappNumber || '').replace(/\D/g, '');
   const products = Array.isArray(config.products) ? config.products.slice(0, 40) : [];
 

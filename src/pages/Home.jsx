@@ -38,7 +38,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const [checkoutOpen,    setCheckoutOpen]    = useState(false);
   const [askOpen,         setAskOpen]         = useState(false);   // mobile search/AI overlay
   const [catsOpen,        setCatsOpen]        = useState(false);   // mobile category picker
-  const [activeCategory,  setActiveCategory]  = useState('all');   // lifted so the Categories tab can drive it
+  const [localCategory, setLocalCategory] = useState("all");   // only while a product view is open (the URL then holds the product)
   const [customerDetails, setCustomerDetails] = useState(INITIAL_CUSTOMER_DETAILS);
   useScrollLock(askOpen);
   useScrollLock(catsOpen);
@@ -60,7 +60,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
   // Product page: /{slug}/p/{id} keeps this same store page mounted (so the cart
   // survives) and opens the product as a full-screen view over the grid.
-  const { productId } = useParams();
+  // Category link: /{slug}/c/{categoryId} opens the same page with one category
+  // already selected.
+  const { productId, categoryId } = useParams();
   const navigate = useNavigate();
 
   const primary     = theme?.primary ?? '#0d9488';
@@ -134,7 +136,26 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Pick a category from the mobile Categories sheet → filter, close, jump to grid.
-  const selectCategory = (id) => { setActiveCategory(id); setCatsOpen(false); scrollToProducts(); };
+  // The URL is the source of truth for the selected category, so a shared
+  // /{slug}/c/{id} link lands on it, Back works, and the address bar always
+  // holds a link worth copying. An unknown or deleted id falls back to showing
+  // everything rather than an empty shop — a link printed on a leaflet outlives
+  // the category it pointed at.
+  const urlCategory = categoryId && (categories || []).some((c) => c.id === categoryId)
+    ? categoryId
+    : 'all';
+  const activeCategory = productId ? localCategory : urlCategory;
+
+  const selectCategory = (id) => {
+    setCatsOpen(false);
+    if (productId) { setLocalCategory(id); scrollToProducts(); return; }
+    const to = id === 'all' ? `/${config.slug}` : `/${config.slug}/c/${id}`;
+    // replace: true — browsing categories must not stack history entries
+    // between the shop and wherever the shopper came from.
+    if (config.slug && to !== window.location.pathname) navigate(to, { replace: true });
+    setLocalCategory(id);
+    scrollToProducts();
+  };
 
   // ── Hero social proof: approved-review aggregate → ★ pill next to the name ──
   const [heroRating, setHeroRating] = useState(null);
@@ -464,7 +485,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onSetQty={setQty}
               onOpenDetail={(id) => navigate(`/${config.slug}/p/${id}`)}
               activeCategory={activeCategory}
-              onCategoryChange={setActiveCategory}
+              onCategoryChange={selectCategory}
               categoryRailClassName="hidden"   /* category nav now lives in the pills above */
               showSearch={false}   /* the hero StoreSearchBar above already searches */
               salesMap={salesMap}  /* real social proof on each card */
