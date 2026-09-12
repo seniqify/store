@@ -26,6 +26,7 @@ import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } fro
 import { loadBusiness }                               from '../utils/BusinessLoader';
 import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
 import { sendOtp }                                       from '../utils/otpService';
+import { categoryLinkId }                                from '../../api/_categoryLink.js';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS, customTheme } from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
@@ -1487,7 +1488,8 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
   const [copiedCat,   setCopiedCat]   = useState(null);
 
   function copyCategoryLink(id) {
-    const url = `${window.location.origin}/${config.slug}/c/${id}`;
+    const cat = userCats.find((c) => c.id === id);
+    const url = `${window.location.origin}/${config.slug}/c/${categoryLinkId(cat)}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedCat(id);
       setTimeout(() => setCopiedCat((c) => (c === id ? null : c)), 2000);

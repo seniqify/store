@@ -1,6 +1,7 @@
 // Server-renders SEO head + crawlable content for store pages and the marketplace,
 // then lets the React SPA hydrate on top. Any failure → serve the normal SPA shell.
 import { esc, storeSeo, storeBody, marketplaceSeo, marketplaceBody } from './_seo.js';
+import { resolveCategory } from './_categoryLink.js';
 
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
@@ -166,9 +167,9 @@ export default async function handler(req, res) {
         // An unknown or deleted category id previews as the whole shop rather
         // than as a broken page — a link on a leaflet outlives the category it
         // pointed at, and the SPA falls back the same way.
-        const section = categoryId
-          ? (config.categories || []).find((c) => c && c.id === categoryId && c.id !== 'all') || null
-          : null;
+        // Accepts either the readable slug of the current label or the original
+        // id, so links survive a category being renamed.
+        const section = categoryId ? resolveCategory(config.categories, categoryId) : null;
         // Product ids are compared as strings and case-insensitively, because
         // the path was lowercased above and ids are not guaranteed to be.
         const item = productId

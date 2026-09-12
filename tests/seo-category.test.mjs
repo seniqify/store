@@ -53,8 +53,10 @@ test('a category with no product photo falls back to the shop cover', () => {
   assert.equal(seo(empty).image, 'https://img.example/cover.jpg');
 });
 
-test('the canonical url points at the category link itself', () => {
-  assert.equal(seo(MASALA).url, `${ORIGIN}/${SLUG}/c/masala`);
+test('the canonical url uses the readable label slug, not the internal id', () => {
+  // id is 'masala', label is 'Masalas' — the canonical follows the label so it
+  // stays meaningful, and /c/masala still resolves (see the rename tests below).
+  assert.equal(seo(MASALA).url, `${ORIGIN}/${SLUG}/c/masalas`);
   assert.equal(seo(null).url, `${ORIGIN}/${SLUG}`);
 });
 
@@ -115,4 +117,57 @@ test('the breadcrumb trail matches the URL shape', () => {
   assert.equal(crumbs(seoItem(withPrice)).at(-1).name, 'Chicken Masala');
   assert.equal(crumbs(seo(MASALA)).at(-1).name, 'Masalas');
   assert.equal(crumbs(seo(null)).length, 2, 'the shop page has no third crumb');
+});
+
+// ── Readable links that survive a rename ─────────────────────────────────────
+// A category id is minted from its label at creation and never changes, because
+// every product references it. Rename "Products" to "AGARBATTI PACK" and the id
+// stays `products` — so /c/products was a link nobody could read, pointing at a
+// category called something else. The URL now carries a slug of the CURRENT
+// label, and resolution accepts either form so old links keep working.
+import { slugifyCategory, categoryLinkId, resolveCategory } from '../api/_categoryLink.js';
+
+const RENAMED = [
+  { id: 'all', label: 'All Products' },
+  { id: 'products', label: 'AGARBATTI PACK' },      // created as "Products", renamed
+  { id: 'dhoopsticks', label: 'DHOOP STICKS' },
+  { id: 'pureattar', label: 'PURE ATTAR AND CAR AIR FRESHNER' },
+];
+
+test('links use a readable slug of the current label', () => {
+  assert.equal(categoryLinkId(RENAMED[1]), 'agarbatti-pack');
+  assert.equal(categoryLinkId(RENAMED[3]), 'pure-attar-and-car-air-freshner');
+});
+
+test('the new readable link resolves', () => {
+  assert.equal(resolveCategory(RENAMED, 'agarbatti-pack').id, 'products');
+});
+
+test('the old id still resolves — printed and pasted links must not break', () => {
+  assert.equal(resolveCategory(RENAMED, 'products').id, 'products');
+  assert.equal(resolveCategory(RENAMED, 'dhoopsticks').id, 'dhoopsticks');
+});
+
+test('an exact id beats another category whose label slugifies the same', () => {
+  // Otherwise renaming category B could hijack links already pointing at A.
+  const tricky = [
+    { id: 'combo', label: 'Gift Boxes' },
+    { id: 'giftboxes', label: 'Combo' },
+  ];
+  assert.equal(resolveCategory(tricky, 'combo').id, 'combo');
+});
+
+test('the no-separator form resolves too', () => {
+  assert.equal(resolveCategory(RENAMED, 'agarbattipack').id, 'products');
+});
+
+test('unknown, empty and "all" resolve to nothing', () => {
+  for (const t of ['nope', '', null, undefined, 'all']) {
+    assert.equal(resolveCategory(RENAMED, t), null);
+  }
+});
+
+test('a label with no letters falls back to the id rather than an empty link', () => {
+  assert.equal(slugifyCategory('!!!'), '');
+  assert.equal(categoryLinkId({ id: 'cat123', label: '!!!' }), 'cat123');
 });

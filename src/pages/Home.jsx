@@ -23,6 +23,7 @@ import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { fetchProductSales, proofFor } from '../utils/salesService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
+import { resolveCategory, categoryLinkId } from '../../api/_categoryLink.js';
 
 /**
  * Home — the main storefront page.
@@ -141,15 +142,16 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   // holds a link worth copying. An unknown or deleted id falls back to showing
   // everything rather than an empty shop — a link printed on a leaflet outlives
   // the category it pointed at.
-  const urlCategory = categoryId && (categories || []).some((c) => c.id === categoryId)
-    ? categoryId
-    : 'all';
+  // Resolved by readable slug OR original id, so a link written before the
+  // category was renamed still lands on it (see api/_categoryLink.js).
+  const urlCategory = categoryId ? (resolveCategory(categories, categoryId)?.id || 'all') : 'all';
   const activeCategory = productId ? localCategory : urlCategory;
 
   const selectCategory = (id) => {
     setCatsOpen(false);
     if (productId) { setLocalCategory(id); scrollToProducts(); return; }
-    const to = id === 'all' ? `/${config.slug}` : `/${config.slug}/c/${id}`;
+    const cat = (categories || []).find((c) => c.id === id);
+    const to = id === 'all' ? `/${config.slug}` : `/${config.slug}/c/${categoryLinkId(cat)}`;
     // replace: true — browsing categories must not stack history entries
     // between the shop and wherever the shopper came from.
     if (config.slug && to !== window.location.pathname) navigate(to, { replace: true });

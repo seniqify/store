@@ -1,4 +1,5 @@
 // Shared SEO helpers for the render function. Pure string/JSON builders — no I/O.
+import { categoryLinkId } from './_categoryLink.js';
 // (Underscore prefix tells Vercel this is a helper, not a routable function.)
 
 export function esc(s = '') {
@@ -95,7 +96,7 @@ export function storeSeo(config, slug, origin, rating = null, section = null, it
     'Order directly on WhatsApp — no app needed.',
   ].filter(Boolean).join(' ').slice(0, 300);
   const url = item ? `${origin}/${slug}/p/${item.id}`
-    : section ? `${origin}/${slug}/c/${section.id}`
+    : section ? `${origin}/${slug}/c/${categoryLinkId(section)}`
     : `${origin}/${slug}`;
   // For a category, a photo of something IN that category beats the shop cover —
   // it shows what the link opens. Otherwise the owner's cover photo wins, and
