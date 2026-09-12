@@ -19,6 +19,7 @@
     { "source": "/checkout/:p*", "destination": "/index.html" },
     { "source": "/demo/:p*", "destination": "/index.html" },
     { "source": "/:slug/manage", "destination": "/index.html" },
+    { "source": "/:slug/c/:categoryId", "destination": "/api/render?path=/:slug/c/:categoryId" },
     { "source": "/:slug", "destination": "/api/render?path=/:slug" },
     { "source": "/:p*", "destination": "/index.html" }
   ]
