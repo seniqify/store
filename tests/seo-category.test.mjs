@@ -64,3 +64,55 @@ test('no section behaves exactly as before', () => {
   const explicitNull = storeSeo(CFG, SLUG, ORIGIN, null, null);
   assert.deepEqual(before, explicitNull);
 });
+
+// ── Product links ────────────────────────────────────────────────────────────
+// A seller sends one item to a customer far more often than they send a whole
+// shop, and until now those links previewed as the shop — the customer saw a
+// generic card instead of the thing being sold.
+const CHICKEN = CFG.products[0];
+const withPrice = { ...CHICKEN, id: 'p1', price: 270, description: 'Ready in 10 minutes.' };
+const seoItem = (p) => storeSeo(CFG, SLUG, ORIGIN, null, null, p);
+
+test('a product link previews as the product', () => {
+  assert.match(seoItem(withPrice).title, /^Chicken Masala — Royal Foods & Spices/);
+});
+
+test('the description reads like a price tag, not a shop blurb', () => {
+  const d = seoItem(withPrice).description;
+  assert.ok(d.includes('₹270'), d);
+  assert.ok(d.includes('Ready in 10 minutes.'), d);
+  // The rest of the catalogue is noise when the reader is looking at one item.
+  assert.ok(!d.includes('Sunday Combo'), d);
+});
+
+test('a product with no description still says who sells it', () => {
+  const bare = { ...CHICKEN, id: 'p1', price: 270, description: '' };
+  assert.ok(seoItem(bare).description.includes('Royal Foods & Spices'));
+});
+
+test('the preview image is the product photo', () => {
+  assert.equal(seoItem(withPrice).image, 'https://img.example/chicken.jpg');
+});
+
+test('a product with no photo falls back to the shop cover', () => {
+  const noPic = { id: 'p2', name: 'Royal Misal Masala', price: 270 };
+  assert.equal(seoItem(noPic).image, 'https://img.example/cover.jpg');
+});
+
+test('the canonical url points at the product link', () => {
+  assert.equal(seoItem(withPrice).url, `${ORIGIN}/${SLUG}/p/p1`);
+});
+
+test('structured data describes the one product, not the catalogue', () => {
+  const products = seoItem(withPrice).ld['@graph'].filter((n) => n['@type'] === 'Product');
+  assert.equal(products.length, 1);
+  assert.equal(products[0].name, 'Chicken Masala');
+  assert.equal(products[0].offers.price, '270');
+});
+
+test('the breadcrumb trail matches the URL shape', () => {
+  const crumbs = (s) => s.ld['@graph'].find((n) => n['@type'] === 'BreadcrumbList').itemListElement;
+  assert.equal(crumbs(seoItem(withPrice)).at(-1).name, 'Chicken Masala');
+  assert.equal(crumbs(seo(MASALA)).at(-1).name, 'Masalas');
+  assert.equal(crumbs(seo(null)).length, 2, 'the shop page has no third crumb');
+});

@@ -44,14 +44,19 @@ const TYPE_SCHEMA = {
 // whose whole purpose is being shared must preview as what it actually opens —
 // "Masalas — Royal Foods & Spices", not the generic shop card — or it reads as a
 // stray link and nobody taps it.
-export function storeSeo(config, slug, origin, rating = null, section = null) {
+// `item` is a single product when the URL is /{slug}/p/{id}. Product links are
+// shared more than any other kind — a seller sends one item to a customer — and
+// until now they previewed as the whole shop, so the customer saw a generic card
+// instead of the thing being sold.
+export function storeSeo(config, slug, origin, rating = null, section = null, item = null) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
   const city    = config.city || '';
   const tagline = (config.tagline || `Order from ${name} on WhatsApp.`).trim();
 
   let title = name;
-  if (section) title = `${section.label} — ${name}`;
+  if (item) title = `${item.name} — ${name}`;
+  else if (section) title = `${section.label} — ${name}`;
   else if (cat && city) title = `${name} — ${cat} in ${city}`;
   else if (city)   title = `${name} in ${city}`;
   else if (cat)    title = `${name} — ${cat}`;
@@ -72,26 +77,37 @@ export function storeSeo(config, slug, origin, rating = null, section = null) {
   const genericTagline = !config.tagline
     || /order\s+(from|on|via).*whatsapp/i.test(config.tagline)
     || /just a message away/i.test(config.tagline);
-  const lead = section
+  // A product preview should read like a price tag, not a shop description: what
+  // it is, what it costs, who sells it.
+  const itemPrice = item && item.price != null && Number(item.price) > 0 ? Number(item.price) : null;
+  const lead = item
+    ? `${item.name}${itemPrice ? ` — ₹${itemPrice.toLocaleString('en-IN')}` : ''}. ${(item.description && String(item.description).trim()) || `From ${name}${city ? ` in ${city}` : ''}.`}`
+    : section
     ? `${section.label} from ${name}${city ? ` in ${city}` : ''}.`
     : genericTagline
       ? `${name}${cat ? ` — ${cat}` : ''}${city ? ` in ${city}` : ''}.`
       : tagline.replace(/\.?$/, '.');
   const description = [
     lead,
-    sample ? `Shop ${sample}${productNames.length > 4 ? ' & more' : ''}.` : '',
+    // On a product page the other products are noise — the reader is looking at
+    // one thing.
+    item || !sample ? '' : `Shop ${sample}${productNames.length > 4 ? ' & more' : ''}.`,
     'Order directly on WhatsApp — no app needed.',
   ].filter(Boolean).join(' ').slice(0, 300);
-  const url   = section ? `${origin}/${slug}/c/${section.id}` : `${origin}/${slug}`;
+  const url = item ? `${origin}/${slug}/p/${item.id}`
+    : section ? `${origin}/${slug}/c/${section.id}`
+    : `${origin}/${slug}`;
   // For a category, a photo of something IN that category beats the shop cover —
   // it shows what the link opens. Otherwise the owner's cover photo wins, and
   // failing that a dynamic branded card (their logo/emoji + name + brand colour,
   // rendered by /api/og) — never the generic PocketLink image, so every shared
   // link looks shop-specific.
-  const sectionImage = section
-    ? absImage(scoped.find((p) => p && p.image)?.image, origin)
-    : null;
-  const image = sectionImage
+  const focusImage = item
+    ? absImage(item.image, origin)
+    : section
+      ? absImage(scoped.find((p) => p && p.image)?.image, origin)
+      : null;
+  const image = focusImage
     || absImage(config.coverImage, origin)
     || `${origin}/api/og?slug=${encodeURIComponent(slug)}&v=${ogToken(config)}`;
   const wa    = String(config.whatsappNumber || '').replace(/\D/g, '');
@@ -177,16 +193,21 @@ export function storeSeo(config, slug, origin, rating = null, section = null) {
       offers,
     };
   }
-  const productNodes = products.slice(0, 30).map(productNode).filter(Boolean);
+  // A product page describes ONE product, a category page the products in it,
+  // and the shop page everything. Emitting the whole catalogue on a product page
+  // buries the item the URL is actually about.
+  const nodeSource = item ? [item] : section ? scoped : products;
+  const productNodes = nodeSource.slice(0, 30).map(productNode).filter(Boolean);
 
-  // Breadcrumb: Marketplace → this store (helps Google show a breadcrumb trail).
-  const breadcrumb = {
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` },
-      { '@type': 'ListItem', position: 2, name, item: url },
-    ],
-  };
+  // Breadcrumb: Marketplace → this store → (category or product), so Google can
+  // show a trail that matches the URL.
+  const trail = [
+    { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` },
+    { '@type': 'ListItem', position: 2, name, item: `${origin}/${slug}` },
+  ];
+  if (section) trail.push({ '@type': 'ListItem', position: 3, name: section.label, item: url });
+  if (item)    trail.push({ '@type': 'ListItem', position: 3, name: item.name, item: url });
+  const breadcrumb = { '@type': 'BreadcrumbList', itemListElement: trail };
 
   const ld = { '@context': 'https://schema.org', '@graph': [business, ...productNodes, breadcrumb] };
 

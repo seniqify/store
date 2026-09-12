@@ -20,6 +20,7 @@
     { "source": "/demo/:p*", "destination": "/index.html" },
     { "source": "/:slug/manage", "destination": "/index.html" },
     { "source": "/:slug/c/:categoryId", "destination": "/api/render?path=/:slug/c/:categoryId" },
+    { "source": "/:slug/p/:productId", "destination": "/api/render?path=/:slug/p/:productId" },
     { "source": "/:slug", "destination": "/api/render?path=/:slug" },
     { "source": "/:p*", "destination": "/index.html" }
   ]

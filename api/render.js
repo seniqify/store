@@ -132,10 +132,11 @@ export default async function handler(req, res) {
     const clean = path.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
     const seg = clean.split('/');
     const slug = seg[0];
-    const wantsCategory = seg.length === 3 && seg[1] === 'c' && Boolean(seg[2]);
-    const categoryId = wantsCategory ? seg[2] : null;
+    const deep = seg.length === 3 && Boolean(seg[2]);
+    const categoryId = deep && seg[1] === 'c' ? seg[2] : null;
+    const productId  = deep && seg[1] === 'p' ? seg[2] : null;
 
-    if (slug && (seg.length === 1 || wantsCategory) && !RESERVED.has(slug) && SUPABASE_URL && SUPABASE_ANON) {
+    if (slug && (seg.length === 1 || categoryId || productId) && !RESERVED.has(slug) && SUPABASE_URL && SUPABASE_ANON) {
       let config = null;
       try {
         const r = await fetch(
@@ -168,7 +169,12 @@ export default async function handler(req, res) {
         const section = categoryId
           ? (config.categories || []).find((c) => c && c.id === categoryId && c.id !== 'all') || null
           : null;
-        const seo = storeSeo(config, slug, origin, rating, section);
+        // Product ids are compared as strings and case-insensitively, because
+        // the path was lowercased above and ids are not guaranteed to be.
+        const item = productId
+          ? (config.products || []).find((p) => p && String(p.id).toLowerCase() === productId) || null
+          : null;
+        const seo = storeSeo(config, slug, origin, rating, section, item);
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —
         // no second DB fetch, no "Loading page…" screen. (Escape </script>.)
