@@ -96,7 +96,7 @@ export const STRINGS = {
 
     // Image uploader
     'img.upload': 'Click to upload or drag & drop',
-    'img.formats': 'JPG, PNG, WebP · auto-compressed to 400 px',
+    'img.formats': 'JPG, PNG, WebP · kept sharp up to 1200 px',
     'img.useUrl': 'Use image URL instead',
     'img.uploaded': '✅ Image uploaded',
     'img.urlSet': '🔗 Image URL set',
@@ -222,7 +222,7 @@ export const STRINGS = {
     'itm.navErr': 'आगे बढ़ने के लिए कम से कम एक {singular} जोड़ें।',
 
     'img.upload': 'अपलोड करने के लिए दबाएँ या खींचकर छोड़ें',
-    'img.formats': 'JPG, PNG, WebP · अपने-आप 400px तक कम',
+    'img.formats': 'JPG, PNG, WebP · 1200px तक साफ़ रहती है',
     'img.useUrl': 'इसके बजाय इमेज URL दें',
     'img.uploaded': '✅ इमेज अपलोड हो गई',
     'img.urlSet': '🔗 इमेज URL सेट',
@@ -344,7 +344,7 @@ export const STRINGS = {
     'itm.navErr': 'पुढे जाण्यासाठी किमान एक {singular} जोडा.',
 
     'img.upload': 'अपलोड करण्यासाठी दाबा किंवा ओढून सोडा',
-    'img.formats': 'JPG, PNG, WebP · आपोआप 400px पर्यंत कमी',
+    'img.formats': 'JPG, PNG, WebP · 1200px पर्यंत स्पष्ट राहते',
     'img.useUrl': 'त्याऐवजी इमेज URL द्या',
     'img.uploaded': '✅ इमेज अपलोड झाली',
     'img.urlSet': '🔗 इमेज URL सेट',

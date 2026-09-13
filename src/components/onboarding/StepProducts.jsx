@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Plus, X, ImagePlus, Link2, Pencil, Lock } from 'lucide-react';
 import { getPlanLimits, canAddProduct, canAddCategory } from '../../utils/planLimits';
 import { useI18n } from '../../i18n/I18nContext';
+import { compressImageFile, PRODUCT_MAX_DIM } from '../../utils/imageCompress';
 
 /**
  * StepProducts — Onboarding Step 2
@@ -69,31 +70,11 @@ function ImageUploader({ value, onChange }) {
   const hasImage = Boolean(value);
 
   function compressAndSet(file) {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        // 800px longest side — 400 was visibly soft on retina phone screens.
-        // Files end up in Supabase Storage (not config JSONB), so this is safe.
-        const MAX = 800;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width  = Math.round(width  * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width  = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        onChange(canvas.toDataURL('image/jpeg', 0.82));
-        setUrlMode(false);
-        setUrlInput('');
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    // Shared with Manage: stepwise high-quality downscale to 1200px. The old
+    // one-jump 800px draw at default smoothing is what made HD photos blurry.
+    compressImageFile(file, { maxDim: PRODUCT_MAX_DIM })
+      .then((dataUrl) => { onChange(dataUrl); setUrlMode(false); setUrlInput(''); })
+      .catch(() => { /* not an image — ignored, as before */ });
   }
 
   function handleDrop(e) {

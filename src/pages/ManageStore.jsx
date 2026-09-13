@@ -30,6 +30,7 @@ import { categoryLinkId }                                from '../../api/_catego
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS, customTheme } from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
+import { compressImageFile, PRODUCT_MAX_DIM, LOGO_MAX_DIM } from '../utils/imageCompress';
 import { subcategoriesForType, ICON_EMOJIS, defaultIcon } from '../utils/businessCategories';
 import { suggestProductDetails }                     from '../utils/productAi';
 import LocationPicker                                 from '../components/LocationPicker';
@@ -158,18 +159,22 @@ function Accordion({ icon: Icon, iconBg, iconColor, title, badge, subtitle, open
 // ── ImageUploader ─────────────────────────────────────────────────────────────
 // `compact` renders a small square tile (used per variant option, e.g. a photo
 // for each colour); the default is the full uploader used for product/logo/cover.
-// `maxDim` caps the longest side. 800 (default) suits product/logo shots; the
-// full-width cover banner needs 1600 or it renders blurry on desktop screens.
-// Files land in Supabase Storage (not config JSONB), so bigger is safe here.
-// `lowResWarnBelow` (px): when set, the uploader flags a cover/photo whose actual
-// width is under this — either a freshly-uploaded small source or an existing
-// low-res image already stored. Wide banners upscale small covers and look
-// blurry on desktop, so the cover uploader passes 1200 here.
-function ImageUploader({ value, onChange, compact = false, maxDim = 800, lowResWarnBelow = 0 }) {
+// `maxDim` caps the longest side. PRODUCT_MAX_DIM (1200, the default) is what the
+// product page needs on a 3x phone; logos pass LOGO_MAX_DIM; the full-width cover
+// banner passes 1600. Files land in Supabase Storage (not config JSONB), so bigger
+// is safe here. See src/utils/imageCompress.js for why photos used to come out
+// blurry — variant photos were capped at 400px and all drawn in one jump.
+// `lowResWarnBelow` (px): when set, the uploader flags a photo under this size —
+// either a freshly-uploaded small source or a low-res image already stored.
+// `lowResBy` picks what is measured: 'width' for the wide cover banner, 'long'
+// (longest side) for product photos, which can be portrait or landscape.
+// `lowResHint` replaces the default warning text.
+function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_DIM,
+                         lowResWarnBelow = 0, lowResBy = 'width', lowResHint = '' }) {
   const [dragOver, setDragOver] = useState(false);
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
-  const [lowRes,   setLowRes]   = useState(false);
+  const [lowRes,   setLowRes]   = useState(0);          // measured px when too small, else 0
   const fileRef = useRef(null);
 
   const isBase64 = value?.startsWith('data:');
@@ -177,30 +182,16 @@ function ImageUploader({ value, onChange, compact = false, maxDim = 800, lowResW
 
   // Measure the actual pixel width once the image paints; flag if it's too small
   // to fill the banner crisply. Runs for both stored and just-uploaded covers.
-  const checkRes = (e) => setLowRes(lowResWarnBelow > 0 && e.target.naturalWidth > 0 && e.target.naturalWidth < lowResWarnBelow);
+  const checkRes = (e) => {
+    const { naturalWidth: w, naturalHeight: h } = e.target;
+    const px = lowResBy === 'long' ? Math.max(w, h) : w;
+    setLowRes(lowResWarnBelow > 0 && px > 0 && px < lowResWarnBelow ? px : 0);
+  };
 
   function compressAndSet(file) {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = maxDim;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width  = Math.round(width  * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        onChange(canvas.toDataURL('image/jpeg', 0.82));
-        setUrlMode(false); setUrlInput('');
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    compressImageFile(file, { maxDim })
+      .then((dataUrl) => { onChange(dataUrl); setUrlMode(false); setUrlInput(''); })
+      .catch(() => { /* not an image — ignored, as before */ });
   }
 
   // ── Compact tile (variant option photo) ──────────────────────────────────
@@ -209,12 +200,18 @@ function ImageUploader({ value, onChange, compact = false, maxDim = 800, lowResW
       <div className="relative w-[52px] h-[52px] flex-shrink-0">
         {hasImage ? (
           <>
-            <img src={value} alt="" className="w-full h-full object-cover rounded-lg border border-gray-200" onError={() => onChange('')} />
+            <img src={value} alt="" className="w-full h-full object-cover rounded-lg border border-gray-200" onError={() => onChange('')} onLoad={checkRes} />
             <button type="button" onClick={() => fileRef.current?.click()} aria-label="Change photo" className="absolute inset-0 rounded-lg" />
             <button type="button" onClick={() => onChange('')} aria-label="Remove photo"
               className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-900 text-white flex items-center justify-center shadow">
               <X size={11} />
             </button>
+            {lowRes > 0 && (
+              <span title={`Only ${lowRes}px — looks blurry to customers. Re-upload the original photo.`}
+                className="absolute inset-x-0 bottom-0 rounded-b-lg bg-amber-500/90 text-white text-[8px] font-bold leading-[14px] text-center pointer-events-none">
+                Low-res
+              </span>
+            )}
           </>
         ) : (
           <button type="button" onClick={() => fileRef.current?.click()}
@@ -257,10 +254,10 @@ function ImageUploader({ value, onChange, compact = false, maxDim = 800, lowResW
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => compressAndSet(e.target.files?.[0])} />
         </div>
-        {lowRes && (
+        {lowRes > 0 && (
           <p className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
             <span className="flex-shrink-0">⚠️</span>
-            <span>This image is low-resolution and will look blurry across the wide banner. Upload one at least {lowResWarnBelow}px wide for a crisp cover.</span>
+            <span>{lowResHint || `This photo is only ${lowRes}px, so customers see it blurry. Tap Change and re-upload the original from your phone.`}</span>
           </p>
         )}
       </div>
@@ -1057,7 +1054,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 {/* Photo — the first thing customers see */}
                 <div>
                   <label className={FIELD_LABEL}>Product photo <span className="text-gray-400 font-normal">· the first thing customers see</span></label>
-                  <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} />
+                  <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} lowResWarnBelow={500} lowResBy="long" />
                 </div>
                 {/* Name + AI auto-fill */}
                 <div>
@@ -1221,11 +1218,11 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                 <label className={FIELD_LABEL}>More photos <span className="text-gray-400 font-normal">· optional</span></label>
                 <div className="flex flex-wrap gap-2">
                   {(form.images || []).map((img, i) => (
-                    <ImageUploader key={i} compact maxDim={800} value={img}
+                    <ImageUploader key={i} compact maxDim={PRODUCT_MAX_DIM} lowResWarnBelow={500} lowResBy="long" value={img}
                       onChange={(v) => setForm(p => ({ ...p, images: v ? p.images.map((x, idx) => (idx === i ? v : x)) : p.images.filter((_, idx) => idx !== i) }))} />
                   ))}
                   {(form.images || []).length < 5 && (
-                    <ImageUploader compact maxDim={800} value=""
+                    <ImageUploader compact maxDim={PRODUCT_MAX_DIM} value=""
                       onChange={(v) => { if (v) setForm(p => ({ ...p, images: [...(p.images || []), v] })); }} />
                   )}
                 </div>
@@ -1267,7 +1264,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                           <div className="flex gap-2.5">
                             {/* Optional per-option photo — e.g. each colour. Swaps the
                                 product image when the customer picks this option. */}
-                            <ImageUploader compact maxDim={400} value={o.image} onChange={v => setOpt({ image: v })} />
+                            <ImageUploader compact maxDim={PRODUCT_MAX_DIM} lowResWarnBelow={500} lowResBy="long" value={o.image} onChange={v => setOpt({ image: v })} />
                             <div className="flex-1 min-w-0 space-y-2">
                               <div className="flex gap-2 items-center">
                                 <input type="text" placeholder={`Option — e.g. ${['Black','White','Red','Blue'][i] || 'name'}`}
@@ -2485,11 +2482,12 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className={lCls()}>Logo Image <span className="text-gray-400 font-normal">(replaces the icon)</span></label>
-            <ImageUploader value={config.logo || ''} onChange={v => update({ logo: v })} />
+            <ImageUploader value={config.logo || ''} onChange={v => update({ logo: v })} maxDim={LOGO_MAX_DIM} />
           </div>
           <div>
             <label className={lCls()}>Cover Photo</label>
-            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} maxDim={1600} lowResWarnBelow={1200} />
+            <ImageUploader value={config.coverImage || ''} onChange={v => update({ coverImage: v })} maxDim={1600} lowResWarnBelow={1200}
+              lowResHint="This image is low-resolution and will look blurry across the wide banner. Upload one at least 1200px wide for a crisp cover." />
             <p className="text-[11px] text-gray-400 mt-1.5">Use a wide, high-resolution photo (1600px+) — it stretches across the top of your page.</p>
           </div>
         </div>
