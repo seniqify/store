@@ -5,8 +5,10 @@
 --  grant, revoke, drop, alter, set role or temporary table. No transaction.
 --  Safe to run on production before and after applying the migration.
 --
---  Run it BEFORE applying too — every row then reads FAIL, which is the point:
---  that is the current state of production.
+--  Run it BEFORE applying too. The rows this migration changes (V1, V2.1, V2.2,
+--  V3, V4.1, V4.2, V4.4) then read FAIL — that is the current state of
+--  production, and the point of running it. A few already read PASS before, such
+--  as V4.3 (the ledger is locked) and V5.2 (still SECURITY DEFINER).
 --
 --  Every row must read PASS after applying, except the rows labelled (info).
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -151,10 +153,15 @@ select 'V5', 'V5.2 every gated function is still SECURITY DEFINER',
 -- ── V6  what the ledger currently holds ─────────────────────────────────────
 union all
 select 'V6', 'V6.1 (info) failures in the last 15 minutes, by kind',
-  coalesce((select string_agg(kind || ': ' || n::text, ', ' order by kind)
-              from (select kind, count(*) as n from public.pin_attempts
-                     where not success and attempted_at > now() - interval '15 minutes'
-                     group by kind) s), 'none')
+  -- to_jsonb(p)->>'kind', never a bare `kind`: that column only exists AFTER the
+  -- migration, and naming it directly would abort the baseline run with
+  -- "column kind does not exist" before a single row came back.
+  coalesce((select string_agg(k || ': ' || n::text, ', ' order by k)
+              from (select coalesce(to_jsonb(p) ->> 'kind', 'pin (no kind column yet)') as k,
+                           count(*) as n
+                      from public.pin_attempts p
+                     where not p.success and p.attempted_at > now() - interval '15 minutes'
+                     group by 1) s), 'none')
 union all
 select 'V6', 'V6.2 (info) total rows in the ledger',
   (select count(*)::text from public.pin_attempts)

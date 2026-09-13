@@ -34,18 +34,20 @@ information. The attacker can trigger a fresh OTP whenever the window closes.
 |---|---|---|
 | `supabase/pin-bypass-closure-verify.sql` | **yes** — one SELECT, read-only | 16 checks; all FAIL before, all PASS after |
 | `supabase/pin-bypass-closure-forward.sql` | no — this is the change | replaces 13 functions, adds `pin_attempts.kind` |
+| `supabase/pin-bypass-closure-ROLLBACK-EMERGENCY.sql` | only in an emergency | puts the 13 old functions back — **restores the hole** |
 | `supabase/pin-attempt-throttle.sql` | **do not run** | historical record; re-running reverts the fix |
 | `tests/pin-sql-safety.test.mjs` | n/a | 19 checks on the SQL itself; `npm test` |
 
 ## Order of operations
 
-1. **Baseline.** Run `pin-bypass-closure-verify.sql`. Everything reads FAIL.
-   That is the current state of production; keep the output.
+1. **Baseline.** Run `pin-bypass-closure-verify.sql`. The rows this migration
+   changes read FAIL; a few (V4.3, V5.2) already read PASS. That is the current
+   state of production; keep the output.
 
-2. **Capture the rollback.** This migration deliberately ships no rollback file,
-   because reverting means restoring the bypasses. Run the query in the forward
-   file's header and save the result — those 13 function definitions *are* the
-   rollback.
+2. **Know your way back.** `pin-bypass-closure-ROLLBACK-EMERGENCY.sql` restores
+   the 13 functions exactly as they were in production on 2026-09-13 — one paste,
+   one transaction. It re-opens the hole, so it exists only for "the dashboard is
+   broken for real merchants right now". Keep it open in a tab while you apply.
 
 3. **Apply** `pin-bypass-closure-forward.sql`. One transaction, idempotent.
 

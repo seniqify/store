@@ -246,3 +246,31 @@ test('the OTP is drawn without modulo bias', () => {
   assert.match(OTPFN, /Math\.floor\(0xFFFFFFFF \/ span\) \* span/);
   assert.match(OTPFN, /while \(x >= limit\)/);
 });
+
+// ── The baseline run and the emergency undo ────────────────────────────────
+
+test('the verification file runs BEFORE the migration too', () => {
+  // pin_attempts.kind only exists after the migration. Naming it as a bare
+  // column aborts the baseline run with "column kind does not exist".
+  const code = stripToCode(read('supabase/pin-bypass-closure-verify.sql'));
+  assert.equal(/select\s+kind\b|group by kind|order by kind/i.test(code), false,
+    'reach kind through to_jsonb(row), so the file runs on the current database');
+});
+
+test('the emergency undo restores all thirteen under their live signatures', () => {
+  // Same failure as the forward migration: one drifted type creates an overload
+  // and leaves the new function in place, so the "undo" undoes nothing.
+  const RB = read('supabase/pin-bypass-closure-ROLLBACK-EMERGENCY.sql');
+  for (const [name, args] of Object.entries(SIGNATURES)) {
+    assert.equal(signature(RB, name), args, `${name} rollback signature drifted`);
+  }
+  assert.equal((RB.match(/^create or replace function/gim) || []).length, 13);
+});
+
+test('the emergency undo is one transaction and says what it costs', () => {
+  const RB = read('supabase/pin-bypass-closure-ROLLBACK-EMERGENCY.sql');
+  assert.equal((RB.match(/^begin;$/gm) || []).length, 1);
+  assert.equal((RB.match(/^commit;$/gm) || []).length, 1);
+  assert.match(RB, /THIS RESTORES THE SECURITY HOLE/);
+  assert.equal(/\bdrop\b/i.test(stripToCode(RB)), false, 'the undo must not drop anything');
+});
