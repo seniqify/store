@@ -15,7 +15,9 @@
 
 with gated as (
   -- The eleven PIN-gated functions, plus reset_store_pin which is gated by OTP.
-  select p.oid, p.proname, p.prosrc, p.provolatile, p.prosecdef,
+  -- provolatile is the one-byte "char" type; text || "char" is ambiguous, so
+  -- cast it here once and every later use is plain text.
+  select p.oid, p.proname::text as proname, p.prosrc, p.provolatile::text as provolatile, p.prosecdef,
          coalesce(array_to_string(p.proconfig, ', '), '') as cfg
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
@@ -25,7 +27,7 @@ with gated as (
                        'update_order_status','update_store_config')
 ),
 verifier as (
-  select p.oid, p.prosrc, p.provolatile,
+  select p.oid, p.prosrc, p.provolatile::text as provolatile,
          coalesce(array_to_string(p.proconfig, ', '), '') as cfg
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'verify_store_pin'

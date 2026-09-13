@@ -274,3 +274,14 @@ test('the emergency undo is one transaction and says what it costs', () => {
   assert.match(RB, /THIS RESTORES THE SECURITY HOLE/);
   assert.equal(/\bdrop\b/i.test(stripToCode(RB)), false, 'the undo must not drop anything');
 });
+
+test('the verify file never concatenates a raw "char" catalog column', () => {
+  // pg_proc.provolatile is the one-byte "char" type. `text || provolatile`
+  // aborts the whole SELECT with 42725 "operator is not unique". It must be
+  // cast to text where it is selected.
+  const code = stripToCode(VERIFY);
+  assert.match(code, /p\.provolatile::text as provolatile/);
+  assert.equal(/\|\|\s*p\.provolatile\b|\bp\.provolatile\s*\|\|/.test(code), false);
+  assert.equal((code.match(/p\.provolatile(?!::text)/g) || []).length, 0,
+    'every selected provolatile must be cast to text');
+});
