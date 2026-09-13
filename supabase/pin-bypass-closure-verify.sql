@@ -5,10 +5,10 @@
 --  grant, revoke, drop, alter, set role or temporary table. No transaction.
 --  Safe to run on production before and after applying the migration.
 --
---  Run it BEFORE applying too. The rows this migration changes (V1, V2.1, V2.2,
---  V3, V4.1, V4.2, V4.4) then read FAIL — that is the current state of
---  production, and the point of running it. A few already read PASS before, such
---  as V4.3 (the ledger is locked) and V5.2 (still SECURITY DEFINER).
+--  Run it BEFORE applying too. The rows this migration changes (V1, V2.2, V3,
+--  V4.1, V4.2, V4.4, V4.5) then read FAIL or CHECK — that is the current state
+--  of production, and the point of running it. A few already read PASS before:
+--  V2.1, V2.3, V4.3 (the ledger is locked) and V5.2 (still SECURITY DEFINER).
 --
 --  Every row must read PASS after applying, except the rows labelled (info).
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -137,6 +137,14 @@ select 'V4', 'V4.4 verify_store_pin records failures only',
                          and prosrc not ilike '%values (p_slug, v_ip, v_ok%'
                         then 'PASS - no write on the 15-second poll path'
                         else 'CHECK - it still writes a row on success' end
+              from verifier), 'FAIL - function not found')
+union all
+select 'V4', 'V4.5 a correct PIN does not wipe failed attempts',
+  -- new_orders_since polls every 15 seconds. A clear-on-success there would
+  -- reset an attacker's count four times a minute while the seller is online.
+  coalesce((select case when prosrc ilike '%delete from public.pin_attempts%not success%'
+                        then 'FAIL - a correct PIN still clears the failure count'
+                        else 'PASS' end
               from verifier), 'FAIL - function not found')
 
 -- ── V5  nothing about access changed ────────────────────────────────────────

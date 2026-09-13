@@ -37,7 +37,8 @@
 --      separate budgets. Without it, someone hammering the reset flow could
 --      lock a merchant out of PIN entry as well -- and the reset flow is what a
 --      locked-out merchant uses.
---   2. verify_store_pin records FAILURES ONLY.
+--   2. verify_store_pin records FAILURES ONLY, and a correct PIN no longer
+--      wipes them (see (b)).
 --   3. All eleven PIN-gated functions delegate to verify_store_pin.
 --   4. reset_store_pin throttles its OTP through the same ledger.
 --   5. search_path is pinned as `public, pg_temp` on all twelve.
@@ -56,9 +57,13 @@
 --  (b) new_orders_since is polled every 15 seconds by every open dashboard
 --      (src/hooks/useNewOrders.js:24). verify_store_pin currently writes a row on
 --      SUCCESS too, which on that path is ~4 writes/minute/seller forever. The
---      limit only ever counts failures (`and not success`), and the
---      clear-on-success below deletes the failures anyway, so the success rows
+--      limit only ever counts failures (`and not success`), so the success rows
 --      buy nothing. They are dropped.
+--
+--      It also DELETES the store's failures on every success. On a 15-second
+--      poll that resets an attacker's count four times a minute while the
+--      seller has the dashboard open. That clear is removed; failures expire
+--      after 15 minutes on their own.
 --
 --  WHY `public, pg_temp` AND NOT `public`
 --
@@ -157,19 +162,17 @@ begin
     where slug = p_slug and pin = p_hashed_pin
   ) into v_ok;
 
+  -- Successes are NOT recorded: the limit counts only failures, and
+  -- new_orders_since calls this every 15 seconds from every open dashboard.
+  --
+  -- A correct PIN does NOT clear earlier failures either. It used to, when only
+  -- the login screen called this. Now the 15-second poll does too, so a clear
+  -- would wipe an attacker's count four times a minute for as long as the real
+  -- seller has Manage open, and the limit would stop nothing. Failures simply
+  -- age out of the 15-minute window.
   if not v_ok then
     insert into public.pin_attempts (slug, ip, success, kind)
     values (p_slug, v_ip, false, 'pin');
-  else
-    -- A correct PIN clears the slate for that store, so an honest seller who
-    -- fumbled a few times is not left near a limit.
-    --
-    -- Successes are NOT recorded. The limit counts only failures, this DELETE
-    -- would remove the evidence anyway, and new_orders_since now calls this
-    -- every 15 seconds from every open dashboard.
-    delete from public.pin_attempts
-    where slug = p_slug and kind = 'pin' and not success
-      and attempted_at > now() - c_window;
   end if;
 
   -- Opportunistic pruning — roughly one call in a hundred pays for it, so the

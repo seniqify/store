@@ -71,10 +71,21 @@ information. The attacker can trigger a fresh OTP whenever the window closes.
 ## Three judgement calls to be aware of
 
 **`verify_store_pin` records failures only now.** The limit never counted
-successes, and the clear-on-success `DELETE` wiped the history anyway — but it
-does lose the "seller signed in at 14:32" audit line. Made because
-`new_orders_since` polls every 15 seconds per open dashboard, which would be
-~4 writes/minute/seller forever.
+successes, and it does lose the "seller signed in at 14:32" audit line. Made
+because `new_orders_since` polls every 15 seconds per open dashboard, which
+would be ~4 writes/minute/seller forever.
+
+**A correct PIN no longer clears earlier failures.** Production's verifier
+deletes the store's failures on every success. Once the 15-second poll goes
+through it, that would reset an attacker's count four times a minute while the
+seller has Manage open. Failures now expire after 15 minutes on their own. Cost:
+a seller who mistypes several times keeps those misses for 15 minutes.
+
+**The store-wide ceiling can lock a store out (known, not new).** 50 failures in
+15 minutes blocks every caller for that store, and after this change that
+includes an already-open Manage dashboard (orders list comes back empty). With a
+4-digit PIN and no login there is no setting that is both brute-force-safe and
+lockout-safe; the real fix is stronger merchant auth (pending item #8).
 
 **`search_path = public, pg_temp`, not `public`.** PostgreSQL searches the
 session's temp schema **first, ahead of `pg_catalog`, whenever `pg_temp` is not

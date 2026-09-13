@@ -186,7 +186,16 @@ test('verify_store_pin records failures only', () => {
   assert.match(body, /values \(p_slug, v_ip, false, 'pin'\)/);
   assert.equal(/values \(p_slug, v_ip, v_ok/.test(body), false,
     'new_orders_since polls this every 15s — a write per success is ~4/min/seller');
-  assert.match(body, /delete from public\.pin_attempts/, 'a correct PIN still clears the slate');
+  // The only DELETE left is the 2-day pruning. A clear-on-success would run on
+  // every 15-second poll and keep resetting an attacker's failure count.
+  const deletes = body.match(/delete from public\.pin_attempts[^;]*;/g) || [];
+  assert.equal(deletes.length, 1, 'only the pruning delete may remain');
+  assert.match(deletes[0], /interval '2 days'/);
+  assert.equal(/not success/.test(deletes[0]), false);
+});
+
+test('the verify file checks that a correct PIN does not wipe failures', () => {
+  assert.match(VERIFY, /V4\.5 a correct PIN does not wipe failed attempts/);
 });
 
 // ── The verify file writes nothing ──────────────────────────────────────────
