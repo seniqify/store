@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
---  Close the PIN-throttle bypasses  —  PREPARED FOR REVIEW, NOT APPLIED
+--  Close the PIN-throttle bypasses  —  APPLIED TO PRODUCTION 2026-09-13
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 --  WHAT IS WRONG
