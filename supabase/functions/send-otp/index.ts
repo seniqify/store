@@ -19,6 +19,32 @@ const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL')
 // Keep this in sync with both the expiry below and the template copy.
 const OTP_TTL_MIN = 10;
 
+/**
+ * A six-digit OTP from the platform CSPRNG.
+ *
+ * Was `Math.floor(100000 + Math.random() * 900000)`. Math.random() is not a
+ * cryptographic RNG — V8's xorshift128+ state can be recovered from a modest
+ * number of observed outputs, and anyone can observe outputs here by requesting
+ * codes for their own number. This code is the only thing standing between a
+ * store's public WhatsApp number and reset_store_pin, so it has to be random in
+ * the sense that matters.
+ *
+ * Rejection sampling rather than a plain modulo: 2^32 is not a multiple of
+ * 900000, so `x % 900000` would make the low ~62% of the range slightly more
+ * likely. The loop discards the short tail and almost never runs twice.
+ */
+function secureOtp(): string {
+  const span = 900000;                                   // 100000-999999
+  const limit = Math.floor(0xFFFFFFFF / span) * span;    // largest unbiased cut
+  const buf = new Uint32Array(1);
+  let x: number;
+  do {
+    crypto.getRandomValues(buf);
+    x = buf[0];
+  } while (x >= limit);
+  return String(100000 + (x % span));
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -45,7 +71,7 @@ serve(async (req: Request) => {
 
     // ── SEND ─────────────────────────────────────────────────────────────────
     if (action === 'send') {
-      const otp       = String(Math.floor(100000 + Math.random() * 900000));
+      const otp       = secureOtp();
       const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000).toISOString();
 
       // Replace any previous OTP for this phone

@@ -1,6 +1,24 @@
 -- ═══════════════════════════════════════════════════════════════════════════
---  Throttle PIN attempts  —  PREPARED FOR REVIEW, NOT APPLIED
+--  Throttle PIN attempts  —  APPLIED TO PRODUCTION.  SUPERSEDED.  DO NOT RE-RUN.
 -- ═══════════════════════════════════════════════════════════════════════════
+--
+--  STATUS, corrected 2026-09-13
+--
+--  This header used to read "PREPARED FOR REVIEW, NOT APPLIED". That was wrong:
+--  an audit of the live database found verify_store_pin deployed with exactly
+--  the body below. It has been in production for some time. Kept here as the
+--  record of that change.
+--
+--  IT IS ALSO SUPERSEDED. supabase/pin-bypass-closure-forward.sql replaces
+--  verify_store_pin with a version that records FAILURES ONLY and filters the
+--  ledger by pin_attempts.kind. Re-running THIS file after that one would
+--  silently revert both, putting a write back on a path polled every 15 seconds
+--  and merging the PIN and OTP attempt budgets again.
+--
+--  WHAT THIS FILE DID NOT DO, and why the follow-up exists: eleven other
+--  SECURITY DEFINER functions compare stores.pin inline and never call
+--  verify_store_pin at all, so the throttle below guarded a door nobody needed
+--  to use. That is what pin-bypass-closure-forward.sql closes.
 --
 --  THE PROBLEM
 --
@@ -40,7 +58,8 @@
 --  A successful entry clears that store's recent failures, so a seller who
 --  mistypes a few times and then gets it right starts clean.
 --
---  RUN: Supabase Dashboard → SQL Editor → paste → Run. Idempotent.
+--  DO NOT RUN. Historical record only. The live definition of verify_store_pin
+--  is the one in supabase/pin-bypass-closure-forward.sql.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 
