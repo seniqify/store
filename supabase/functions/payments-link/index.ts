@@ -117,7 +117,10 @@ serve(async (req) => {
     const slug = String(body?.slug || '');
     const hashedPin = String(body?.hashed_pin || '');
     if (!slug || !hashedPin) return json({ error: 'Missing store or PIN' });
-    const { data: pinOk } = await supabase.rpc('verify_store_pin', { p_slug: slug, p_hashed_pin: hashedPin });
+    const { data: pinOk, error: pinErr } = await supabase.rpc('verify_store_pin', { p_slug: slug, p_hashed_pin: hashedPin });
+    // A failed check is not a wrong PIN: say so, rather than telling a seller
+    // with the right PIN that it is wrong.
+    if (pinErr) return json({ error: 'Could not check your PIN right now. Please try again.' });
     if (pinOk !== true) return json({ error: 'Wrong PIN. Please sign in to Manage again.' });
 
     const auth = await accountAuth(supabase, slug);
