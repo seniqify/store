@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 --  Verified-purchase reviews — FORWARD MIGRATION
---  PREPARED FOR REVIEW. NOT APPLIED.
+--  APPLIED TO PRODUCTION 2026-09-14. Verified: every reviews-verified-verify.sql row PASS.
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 --  WHAT IS WRONG TODAY
