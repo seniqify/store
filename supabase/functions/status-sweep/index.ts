@@ -236,6 +236,46 @@ serve(async (req) => {
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ got.charCodeAt(i);
   if (diff !== 0) return json({ error: 'unauthorized' }, 401);
 
+  // ── Lookup: read-only Razorpay evidence for one store and time window ────
+  // Used to investigate a payment a store reports. Returns payment ids,
+  // statuses, amounts and the order id our checkout attached — never the
+  // customer's phone, email or the store's keys. Changes nothing.
+  const reqBody = await req.json().catch(() => ({}));
+  if (reqBody?.lookup) {
+    const { store, from, to, amount } = reqBody.lookup;
+    const { data: acct } = await supabase.from('store_payment_accounts')
+      .select('status, key_id, key_secret, oauth_access_token').eq('store_slug', String(store || '')).maybeSingle();
+    const auth = acct?.oauth_access_token ? `Bearer ${acct.oauth_access_token}`
+      : (acct?.key_id && acct?.key_secret) ? `Basic ${btoa(`${acct.key_id}:${acct.key_secret}`)}` : '';
+    if (!auth) return json({ lookup: 'no razorpay account for this store' });
+    const found = [];
+    for (let skip = 0; skip < 500; skip += 100) {
+      const r = await fetch(`https://api.razorpay.com/v1/payments?from=${Number(from)}&to=${Number(to)}&count=100&skip=${skip}`, { headers: { Authorization: auth } });
+      const d = await r.json().catch(() => ({}));
+      const items = Array.isArray(d?.items) ? d.items : [];
+      for (const p of items) {
+        if (amount && Number(p?.amount) !== Number(amount)) continue;
+        let rzOrder: any = null;
+        if (p?.order_id) {
+          const or = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(p.order_id)}`, { headers: { Authorization: auth } });
+          rzOrder = await or.json().catch(() => null);
+        }
+        const { data: row } = rzOrder?.notes?.order_row_id
+          ? await supabase.from('orders').select('id, status, total, paid').eq('id', String(rzOrder.notes.order_row_id)).maybeSingle()
+          : { data: null };
+        found.push({
+          payment_id: p.id, status: p.status, amount: p.amount, method: p.method, vpa_is_razorpay: /\.rzp@/.test(String(p?.vpa || '')),
+          created_at: new Date(Number(p.created_at) * 1000).toISOString(),
+          razorpay_order: p.order_id || null, razorpay_order_status: rzOrder?.status || null, receipt: rzOrder?.receipt || null,
+          our_order_id: rzOrder?.notes?.order_row_id || null,
+          our_order_saved: row ? { status: row.status, total: row.total, paid: row.paid } : false,
+        });
+      }
+      if (items.length < 100) break;
+    }
+    return json({ lookup: found });
+  }
+
   const summary = { stores: 0, courierUpdates: 0, linksPaid: 0, checkoutsPaid: 0, errors: 0 };
   // Per unconfirmed checkout: what Razorpay said. Order ids, statuses and amounts only.
   const checkouts: { store: string; order_id: string; result: string }[] = [];
