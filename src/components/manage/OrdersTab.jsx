@@ -400,6 +400,9 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   // The customer chose Pay Online and left before paying. Flagged, not hidden:
   // if money did arrive, the seller taps the chip to mark it paid.
   const payIncomplete = !leads && isPaymentIncomplete(o);
+  // The courier brought a COD parcel back (or lost it): no money is coming.
+  const codReturned = !leads && !o.paid && String(o.payment_method || '').toLowerCase() === 'cod'
+    && (o.shipment_outcome === 'returned' || o.shipment_outcome === 'lost');
 
   // Per-order profit (owner-only) — goods revenue minus this order's cost of
   // goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
@@ -587,7 +590,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
                 title={o.paid ? 'Paid — tap to mark unpaid'
                   : payIncomplete ? 'The customer left the online payment without paying. Tap if you were paid another way.'
                   : 'Tap once you’ve received payment'}>
-                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : payIncomplete ? '● Payment not completed' : '● Unpaid'}
+                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : codReturned ? '↩ Returned' : payIncomplete ? '● Payment not completed' : '● Unpaid'}
               </button>
             </>
           ) : (

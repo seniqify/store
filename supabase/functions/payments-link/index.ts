@@ -30,8 +30,8 @@ function toPaise(rupees: unknown): number {
   return Math.round(Number(rupees) * 100);
 }
 
-const ORDER_COLS = 'id, store_slug, total, paid, status, payment_method, awb, customer_name, ' +
-                   'customer_phone, confirm_token, payment_link_id, payment_link_url';
+const ORDER_COLS = 'id, store_slug, total, paid, status, payment_method, payment_ref, awb, customer_name, ' +
+                   'customer_phone, confirm_token, payment_link_id, payment_link_url, created_at';
 
 type Supa = ReturnType<typeof createClient>;
 
@@ -53,6 +53,41 @@ function linkIsPaidFor(link: any, order: any): boolean {
     && String(link?.notes?.order_row_id ?? '') === String(order.id)
     && Number(link?.amount) === toPaise(order.total)
     && Number(link?.amount_paid) >= Number(link?.amount);
+}
+
+/** True only when a checkout Razorpay order is fully paid, for this order, at this order's total. */
+function checkoutIsPaidFor(rz: any, order: any): boolean {
+  return rz?.status === 'paid'
+    && String(rz?.notes?.order_row_id ?? '') === String(order.id)
+    && Number(rz?.amount) === toPaise(order.total)
+    && Number(rz?.amount_paid) >= Number(rz?.amount);
+}
+
+/** Find the checkout payment on Razorpay (receipt = order id); record it if really paid. */
+async function settleCheckout(supabase: Supa, auth: string, order: any): Promise<string> {
+  if (order.paid === true) return 'paid';
+  const r = await fetch(`https://api.razorpay.com/v1/orders?receipt=${encodeURIComponent(order.id)}&count=10`, {
+    headers: { 'Authorization': auth },
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return 'error';
+  const items = Array.isArray(d?.items) ? d.items : [];
+  const rz = items.find((it: any) => checkoutIsPaidFor(it, order));
+  if (!rz) return items.length ? 'pending' : 'not_found';
+  const pr = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(rz.id)}/payments`, {
+    headers: { 'Authorization': auth },
+  });
+  const pd = await pr.json().catch(() => ({}));
+  const captured = (Array.isArray(pd?.items) ? pd.items : []).find((p: any) => p?.status === 'captured');
+  if (!captured) return 'pending';
+  await supabase
+    .from('orders')
+    .update({ paid: true, paid_at: new Date().toISOString(), paid_via: 'razorpay',
+              payment_ref: String(captured.id), payment_provider: 'razorpay' })
+    .eq('id', order.id)
+    .eq('store_slug', order.store_slug)
+    .eq('paid', false);
+  return 'paid';
 }
 
 /** Look the order's link up on Razorpay; record the payment if it is really paid. */
@@ -135,6 +170,20 @@ serve(async (req) => {
       const results = [];
       for (const order of orders || []) {
         results.push({ order_id: order.id, status: await settleFromRazorpay(supabase, auth, order) });
+      }
+      return json({ results });
+    }
+
+    // ── reconcile: online checkouts paid on Razorpay but never confirmed ────
+    if (action === 'reconcile') {
+      const since = new Date(Date.now() - 7 * 86400000).toISOString();
+      const { data: orders } = await supabase.from('orders').select(ORDER_COLS)
+        .eq('store_slug', slug).eq('paid', false).eq('payment_method', 'online')
+        .is('payment_ref', null).not('status', 'in', '(cancelled,abandoned)')
+        .gte('created_at', since).limit(30);
+      const results = [];
+      for (const order of orders || []) {
+        results.push({ order_id: order.id, status: await settleCheckout(supabase, auth, order) });
       }
       return json({ results });
     }

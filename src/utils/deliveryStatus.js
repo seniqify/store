@@ -29,6 +29,8 @@ export const BUCKET_META = {
 export function classifyBucket(order) {
   const raw = String(order?.shipment_status || '').toLowerCase().trim();
   if (/cancel/.test(raw)) return 'cancelled';
+  // A return that also says "delivered" (Delhivery "RTO Delivered") is a return.
+  if (/rto|rts|return|\blost\b/.test(raw)) return 'attention';
   // "delivered" but never "undelivered" (\b stops the match inside undelivered)
   if (/\bdelivered\b/.test(raw)) return 'delivered';
   // NDR / exception / return — anything that needs the owner to act

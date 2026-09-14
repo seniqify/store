@@ -40,7 +40,8 @@ test('an order becomes paid only when Razorpay reports the link paid for this or
   const check = FN.indexOf('if (linkIsPaidFor(link, order))');
   const update = FN.indexOf("paid_via: 'payment_link'");
   assert.ok(check > -1 && update > check);
-  assert.equal((FN.match(/paid: true,\s*\n\s*paid_at:/g) || []).length, 1, 'one place marks an order paid');
+  assert.equal((FN.match(/paid: true,\s*\n\s*paid_at:/g) || []).length, 1, 'one place marks a link order paid');
+  assert.match(FN, /paid_via: 'razorpay',\s*\n\s*payment_ref: String\(captured\.id\)/);
 });
 
 test('a link payment makes the order prepaid and never overwrites a paid order', () => {

@@ -3195,7 +3195,8 @@ export default function ManageStore() {
         ) : tab === 'payments' ? (
           <div className="animate-pl-fade-up">
             <PaymentsTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
-                         razorpayConnected={Boolean(config.payments?.razorpay)} />
+                         razorpayConnected={Boolean(config.payments?.razorpay)}
+                         hasCourier={Boolean(config.shipping?.delhivery || config.shipping?.shadowfax)} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

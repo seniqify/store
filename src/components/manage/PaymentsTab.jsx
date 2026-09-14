@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, Wallet, Clock, MessageCircle, Check, Link2 } from 'lucide-react';
-import { fetchOrders, setOrderPaid } from '../../utils/orderService';
+import { RefreshCw, Wallet, Clock, MessageCircle, Link2, BadgeCheck } from 'lucide-react';
+import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildPayments, KIND_LABEL } from '../../utils/paymentsLedger';
-import { createPaymentLink, checkPaymentLinks, paymentLinkMessage } from '../../utils/paymentLinks';
+import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, paymentLinkMessage } from '../../utils/paymentLinks';
+import { syncDeliveryStatuses } from '../../utils/shippingConnect';
+import { prettyStatus } from '../../utils/deliveryStatus';
 
 const RANGES = [{ days: 1, label: 'Today' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }];
 
 const REASON = {
-  link_pending:  { label: 'Payment link sent, not paid yet', cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-  incomplete:    { label: 'Payment not completed',           cls: 'bg-rose-50 text-rose-700 border-rose-100' },
-  cod_delivered: { label: 'Delivered, COD not marked collected', cls: 'bg-amber-50 text-amber-800 border-amber-100' },
+  link_pending:   { label: 'Payment link sent, not paid yet', cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+  incomplete:     { label: 'Payment not completed',           cls: 'bg-rose-50 text-rose-700 border-rose-100' },
+  delivery_issue: { label: 'Delivery problem',                cls: 'bg-amber-50 text-amber-800 border-amber-100' },
 };
 
 const KIND_CHIP = {
@@ -49,45 +51,52 @@ function Tile({ label, value, sub, tone = 'text-gray-900' }) {
 }
 
 /**
- * PaymentsTab — the store's money, separate from order status.
- * What came in (online and COD) per day, what COD is still out, and the orders
- * whose payment needs the seller: unfinished online payments, open payment
- * links, and delivered COD not yet marked collected.
+ * PaymentsTab — the store's money, separate from order status, kept up to date
+ * automatically. Opening the tab refreshes courier statuses and asks Razorpay
+ * about unconfirmed payments; a scheduled sweep does the same every 30 minutes
+ * (status-sweep). COD becomes collected on delivery and returned when it comes
+ * back, without anyone marking it.
  */
-export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false }) {
-  const [orders, setOrders] = useState(null);   // null = loading
-  const [range, setRange]   = useState(1);
-  const [busy, setBusy]     = useState('');     // order id, or 'all'
-  const [note, setNote]     = useState('');
+export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false }) {
+  const [orders, setOrders]   = useState(null);   // null = loading
+  const [range, setRange]     = useState(1);
+  const [busy, setBusy]       = useState('');     // order id being actioned
+  const [note, setNote]       = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [checkedAt, setCheckedAt] = useState(null);
 
   const load = useCallback(async () => { setOrders(await fetchOrders(slug, pin)); }, [slug, pin]);
 
-  // Customers may have paid a link since the last visit: ask Razorpay once on open.
+  // Show what we have at once, then refresh from couriers and Razorpay and re-read.
+  const refresh = useCallback(async (alive = () => true) => {
+    const first = await fetchOrders(slug, pin);
+    if (!alive()) return;
+    setOrders(first);
+    const jobs = [];
+    if (hasCourier) jobs.push(syncDeliveryStatuses(slug, pin));
+    if (razorpayConnected) {
+      const openLinks = first.filter((o) => !o.paid && o.payment_link_id).map((o) => o.id);
+      if (openLinks.length) jobs.push(checkPaymentLinks(slug, pin, openLinks).catch(() => []));
+      if (first.some((o) => !o.paid && String(o.payment_method).toLowerCase() === 'online' && !o.payment_ref)) {
+        jobs.push(reconcileOnlinePayments(slug, pin).catch(() => []));
+      }
+    }
+    if (!jobs.length) { setCheckedAt(new Date()); return; }
+    setSyncing(true);
+    await Promise.allSettled(jobs);
+    if (!alive()) return;
+    setOrders(await fetchOrders(slug, pin));
+    setSyncing(false);
+    setCheckedAt(new Date());
+  }, [slug, pin, hasCourier, razorpayConnected]);
+
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const first = await fetchOrders(slug, pin);
-      if (!alive) return;
-      setOrders(first);
-      const open = first.filter((o) => !o.paid && o.payment_link_id).map((o) => o.id);
-      if (!razorpayConnected || !open.length) return;
-      try {
-        const results = await checkPaymentLinks(slug, pin, open);
-        if (alive && results.some((r) => r.status === 'paid')) setOrders(await fetchOrders(slug, pin));
-      } catch { /* the list is still correct as of the last check */ }
-    })();
-    return () => { alive = false; };
-  }, [slug, pin, razorpayConnected]);
+    let live = true;
+    refresh(() => live);
+    return () => { live = false; };
+  }, [refresh]);
 
   const p = useMemo(() => (orders ? buildPayments(orders, { days: range }) : null), [orders, range]);
-
-  async function markCollected(o) {
-    setBusy(o.id); setNote('');
-    await setOrderPaid(slug, pin, o.id, true);
-    await load();
-    setBusy('');
-    setNote(`Marked ${formatINR(o.total)} from ${o.customer_name || 'the customer'} as collected.`);
-  }
 
   async function sendLink(o) {
     setBusy(o.id); setNote('');
@@ -115,20 +124,6 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     }
   }
 
-  async function checkLinks(list) {
-    setBusy(list.length === 1 ? list[0].id : 'all'); setNote('');
-    try {
-      const results = await checkPaymentLinks(slug, pin, list.map((o) => o.id));
-      const paid = results.filter((r) => r.status === 'paid').length;
-      setNote(paid ? `${paid} payment${paid === 1 ? '' : 's'} confirmed by Razorpay.` : 'Not paid yet.');
-      await load();
-    } catch (e) {
-      setNote(e.message || 'Could not check with Razorpay.');
-    } finally {
-      setBusy('');
-    }
-  }
-
   if (!p) {
     return (
       <div className="space-y-3">
@@ -141,7 +136,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
   }
 
   const rangeLabel = RANGES.find((r) => r.days === range)?.label.toLowerCase();
-  const openLinks = p.attention.filter((a) => a.reason === 'link_pending').map((a) => a.order);
+  const inWords = rangeLabel === 'today' ? 'today' : `in ${rangeLabel}`;
 
   return (
     <div className="space-y-4">
@@ -150,10 +145,16 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
           <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
             <Wallet size={18} style={{ color: themeColor }} /> Payments
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5">Money received, separate from order status</p>
+          <p className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1" role="status">
+            {syncing ? (
+              <><RefreshCw size={11} className="animate-spin" /> Updating from {[hasCourier && 'courier', razorpayConnected && 'Razorpay'].filter(Boolean).join(' and ')}…</>
+            ) : checkedAt ? (
+              <><BadgeCheck size={12} className="text-emerald-600" /> Up to date · {checkedAt.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</>
+            ) : 'Money received, updated automatically'}
+          </p>
         </div>
-        <button type="button" onClick={load}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition">
+        <button type="button" onClick={() => refresh()} disabled={syncing}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition disabled:opacity-50">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -173,64 +174,51 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Tile label={`Received ${rangeLabel === 'today' ? 'today' : `in ${rangeLabel}`}`} value={formatINR(Math.round(p.received.total))}
+        <Tile label={`Received ${inWords}`} value={formatINR(Math.round(p.received.total))}
               sub={`${formatINR(Math.round(p.received.online))} online · ${formatINR(Math.round(p.received.cod))} COD`} tone="text-emerald-700" />
         <Tile label="COD still to collect" value={formatINR(Math.round(p.codDue.amount))}
-              sub={`${p.codDue.count} order${p.codDue.count === 1 ? '' : 's'}, all dates`} tone="text-amber-700" />
-        <Tile label="Online (Razorpay)" value={formatINR(Math.round(p.received.online))}
-              sub={`${p.received.onlineCount} payment${p.received.onlineCount === 1 ? '' : 's'}`} />
-        <Tile label="COD collected" value={formatINR(Math.round(p.received.cod))}
-              sub={p.received.otherCount ? `+ ${formatINR(Math.round(p.received.other))} marked paid by you` : `${p.received.codCount} order${p.received.codCount === 1 ? '' : 's'}`} />
+              sub={`${p.codDue.count} order${p.codDue.count === 1 ? '' : 's'} on the way`} tone="text-amber-700" />
+        <Tile label={`COD collected ${inWords}`} value={formatINR(Math.round(p.received.cod))}
+              sub={`${p.received.codCount} delivered · automatic`} />
+        <Tile label={`Returned ${inWords}`} value={formatINR(Math.round(p.returned.amount))}
+              sub={`${p.returned.count} COD order${p.returned.count === 1 ? '' : 's'} not collected`}
+              tone={p.returned.count ? 'text-rose-700' : 'text-gray-900'} />
       </div>
 
       {note && (
         <p className="text-xs font-semibold text-gray-700 bg-white border border-gray-100 rounded-xl px-3 py-2.5" role="status">{note}</p>
       )}
 
-      {/* Needs attention */}
+      {/* Needs attention: only what a system cannot finish on its own */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-extrabold text-gray-900">Needs attention {p.attention.length > 0 && <span className="text-gray-400">({p.attention.length})</span>}</p>
-          {razorpayConnected && openLinks.length > 1 && (
-            <button type="button" disabled={busy === 'all'} onClick={() => checkLinks(openLinks)}
-                    className="text-[11px] font-bold text-indigo-700 hover:underline disabled:opacity-50">
-              {busy === 'all' ? 'Checking…' : 'Check all links'}
-            </button>
-          )}
-        </div>
+        <p className="px-4 py-3 text-sm font-extrabold text-gray-900 border-b border-gray-100">
+          Needs attention {p.attention.length > 0 && <span className="text-gray-400">({p.attention.length})</span>}
+        </p>
         {p.attention.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-gray-400">Nothing to chase. Every open order is COD in transit or paid.</p>
+          <p className="px-4 py-6 text-center text-sm text-gray-400">Nothing to chase. Payments and deliveries are on track.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
             {p.attention.map(({ order: o, reason, amount }) => {
               const r = REASON[reason];
               const phone = String(o.customer_phone || '').replace(/\D/g, '').slice(-10);
-              const canLink = razorpayConnected && !o.awb && reason !== 'cod_delivered';
+              const canLink = razorpayConnected && !o.awb && reason !== 'delivery_issue';
               return (
-                <li key={o.id} className="px-4 py-3">
+                <li key={`${o.id}-${reason}`} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-bold text-gray-900 truncate">{o.customer_name || 'Customer'}</p>
                     <p className="text-sm font-extrabold text-gray-900 tabular-nums flex-shrink-0">{formatINR(amount)}</p>
                   </div>
-                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${r.cls}`}>{r.label}</span>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${r.cls}`}>{r.label}</span>
+                    {reason === 'delivery_issue' && (
+                      <span className="text-[11px] text-gray-500">Courier: {prettyStatus(o.shipment_status)}</span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2 mt-2.5">
-                    {reason === 'cod_delivered' && (
-                      <button type="button" disabled={busy === o.id} onClick={() => markCollected(o)}
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50"
-                              style={{ backgroundColor: themeColor }}>
-                        <Check size={13} /> {busy === o.id ? 'Saving…' : 'Mark collected'}
-                      </button>
-                    )}
-                    {reason === 'link_pending' && razorpayConnected && (
-                      <button type="button" disabled={busy === o.id} onClick={() => checkLinks([o])}
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-50">
-                        <RefreshCw size={12} /> {busy === o.id ? 'Checking…' : 'Check payment'}
-                      </button>
-                    )}
                     {canLink && (
                       <button type="button" disabled={busy === o.id} onClick={() => sendLink(o)}
                               className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 disabled:opacity-50">
-                        <Link2 size={12} /> {reason === 'link_pending' ? 'Resend link' : 'Send payment link'}
+                        <Link2 size={12} /> {busy === o.id ? 'Creating…' : reason === 'link_pending' ? 'Resend link' : 'Send payment link'}
                       </button>
                     )}
                     {phone && (
@@ -244,11 +232,6 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
               );
             })}
           </ul>
-        )}
-        {!razorpayConnected && (
-          <p className="px-4 py-2.5 text-[11px] text-gray-500 bg-gray-50 border-t border-gray-100">
-            Connect Razorpay in Settings to send COD customers a link to pay online.
-          </p>
         )}
       </div>
 
@@ -279,14 +262,14 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         </div>
         {p.received.other > 0 && (
           <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
-            Totals include {formatINR(Math.round(p.received.other))} you marked paid without a method (UPI, bank transfer).
+            Totals include {formatINR(Math.round(p.received.other))} you marked paid by UPI or bank transfer.
           </p>
         )}
       </div>
 
       {/* Recent payments */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        <p className="px-4 py-3 text-sm font-extrabold text-gray-900 border-b border-gray-100">Payments received {rangeLabel === 'today' ? 'today' : `in ${rangeLabel}`}</p>
+        <p className="px-4 py-3 text-sm font-extrabold text-gray-900 border-b border-gray-100">Payments received {inWords}</p>
         {p.recent.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">No payments in this period yet.</p>
         ) : (
@@ -305,6 +288,9 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
             ))}
           </ul>
         )}
+        <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
+          COD is counted as collected when the courier or your delivery marks it delivered, and as returned when it comes back. Nothing to mark.
+        </p>
       </div>
     </div>
   );

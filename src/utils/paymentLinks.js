@@ -25,6 +25,12 @@ export async function checkPaymentLinks(slug, pin, orderIds = []) {
   return r.results || [];
 }
 
+/** Seller: confirm online checkouts from the last 7 days that Razorpay shows as paid. */
+export async function reconcileOnlinePayments(slug, pin) {
+  const r = await call({ action: 'reconcile', slug, hashed_pin: await hashPin(pin) });
+  return r.results || [];
+}
+
 /** Customer's order page, after Razorpay redirects back. Never throws. */
 export async function confirmPaymentLinkByToken(token) {
   try {

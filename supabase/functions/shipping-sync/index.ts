@@ -10,7 +10,18 @@ function json(body: unknown) {
 }
 const DLV_BASE = 'https://track.delhivery.com';
 
-const isTerminal = (s: string) => /deliver|cancel|\brto\b|returned/i.test(String(s || ''));
+/** A shipment whose courier status will not change any more. */
+function isTerminal(s: string): boolean {
+  const t = String(s || '');
+  return /cancel|rto|rts|return|\blost\b/i.test(t) || (/\bdelivered\b/i.test(t) && !/undeliver|not deliver/i.test(t));
+}
+
+/** Delhivery reports a return as StatusType "RT"; keep that in the saved text. */
+function delhiveryStatusText(status: any): string {
+  const raw = String(status?.Status || '');
+  if (!raw) return '';
+  return status?.StatusType === 'RT' && !/rto|return/i.test(raw) ? `RTO ${raw}` : raw;
+}
 
 async function inChunks<T>(items: T[], size: number, fn: (x: T) => Promise<void>) {
   for (let i = 0; i < items.length; i += size) {
@@ -86,7 +97,7 @@ serve(async (req) => {
           const byAwb: Record<string, string> = {};
           for (const s of (d?.ShipmentData || [])) {
             const awb = String(s?.Shipment?.AWB || '');
-            const st  = s?.Shipment?.Status?.Status;
+            const st  = delhiveryStatusText(s?.Shipment?.Status);
             if (awb && st) byAwb[awb] = st;
           }
           chunk.forEach((o: any) => {

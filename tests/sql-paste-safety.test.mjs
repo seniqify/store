@@ -19,6 +19,9 @@ const CHANGES_THE_DATABASE = [
   'supabase/reviews-verified-rollback.sql',
   'supabase/payments-tracking.sql',
   'supabase/payments-tracking-rollback.sql',
+  'supabase/payments-automation.sql',
+  'supabase/payments-automation-rollback.sql',
+  'supabase/payments-automation-schedule.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {

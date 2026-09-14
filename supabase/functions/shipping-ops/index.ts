@@ -14,6 +14,13 @@ const BASE = 'https://track.delhivery.com';
 //   label  → return the packing-slip PDF link (print)
 //   track  → current Delhivery status
 //   cancel → cancel the shipment and clear the AWB
+/** Delhivery reports a return as StatusType "RT"; keep that in the saved text. */
+function delhiveryStatusText(status: any): string {
+  const raw = String(status?.Status || '');
+  if (!raw) return '';
+  return status?.StatusType === 'RT' && !/rto|return/i.test(raw) ? `RTO ${raw}` : raw;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -132,7 +139,7 @@ serve(async (req) => {
       const r = await fetch(`${BASE}/api/v1/packages/json/?waybill=${awb}`, { headers });
       const d = await r.json().catch(() => ({}));
       const shp  = d?.ShipmentData?.[0]?.Shipment || {};
-      const st   = shp?.Status?.Status || null;
+      const st   = delhiveryStatusText(shp?.Status) || null;
       const inst = shp?.Status?.Instructions || '';
       const scans = Array.isArray(shp?.Scans) ? shp.Scans : [];
       const timeline = scans.map((s: any) => {
