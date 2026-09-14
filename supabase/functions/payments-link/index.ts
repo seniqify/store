@@ -223,7 +223,7 @@ serve(async (req) => {
     // before) is attached so the seller can see who paid and for what.
     if (action === 'orphans') {
       const to = Math.floor(Date.now() / 1000);
-      const from = to - 30 * 86400;   // 30 days: stays visible until the seller has dealt with it
+      const from = to - 30 * 86400;   // 30 days, so a missed payment does not drop out within the week
       const captured: any[] = [];
       for (let skip = 0; skip < 500; skip += 100) {
         const r = await fetch(`https://api.razorpay.com/v1/payments?from=${from}&to=${to}&count=100&skip=${skip}`, { headers: { 'Authorization': auth } });
