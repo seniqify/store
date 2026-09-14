@@ -19,18 +19,25 @@ function loadRazorpayScript() {
  *
  * Money settles to the merchant's Razorpay; PocketLink never touches it.
  *
+ * The browser does NOT say how much to charge. payments-create-order reads the
+ * total from the saved order row (orderRowId), and payments-verify only marks
+ * that row paid when Razorpay confirms the payment was for it, at that amount.
+ * `amount` is accepted for older callers and ignored.
+ *
  * Resolves:
  *   { paid: true, paymentId }        — captured & verified
  *   { paid: true, unverified: true } — captured, but our verify hiccuped (reconcile later)
  *   { paid: false, reason }          — customer closed the sheet
  * Throws on setup errors (SDK/order creation) so the caller can fall back.
  */
+// eslint-disable-next-line no-unused-vars
 export async function payOnline({ slug, amount, orderRowId, customer = {}, storeName, themeColor }) {
+  if (!orderRowId) throw new Error('Could not start the payment. Please try again.');
   const loaded = await loadRazorpayScript();
   if (!loaded) throw new Error('Could not load the payment screen. Check your connection.');
 
   const { data: order } = await supabase.functions.invoke('payments-create-order', {
-    body: { slug, amount, notes: { order_row_id: orderRowId || '' } },
+    body: { slug, order_row_id: orderRowId },
   });
   if (order?.error || !order?.order_id) {
     throw new Error(order?.error || 'Could not start the payment.');
