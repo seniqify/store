@@ -134,14 +134,35 @@ async function settleLink(supabase: Supa, auth: string, order: any): Promise<boo
   return true;
 }
 
+/** The checkout's Razorpay order: by receipt (checkouts from 2026-09-14), else by notes.order_row_id near the order time. */
+async function findCheckoutRazorpayOrder(auth: string, order: any): Promise<any | null> {
+  const list = async (url: string) => {
+    const r = await fetch(url, { headers: { 'Authorization': auth } });
+    const d = await r.json().catch(() => ({}));
+    return r.ok && Array.isArray(d?.items) ? d.items : null;
+  };
+  const mine = (it: any) => String(it?.notes?.order_row_id ?? '') === String(order.id);
+  const byReceipt = await list(`https://api.razorpay.com/v1/orders?receipt=${encodeURIComponent(order.id)}&count=10`);
+  const hit = (byReceipt || []).find(mine);
+  if (hit) return hit;
+  // Older checkouts sent no receipt, only notes.order_row_id: search around the time the order was placed.
+  const placed = Math.floor(new Date(order.created_at).getTime() / 1000);
+  if (!Number.isFinite(placed)) return null;
+  const from = placed - 2 * 3600;
+  const to = placed + 2 * 86400;
+  for (let skip = 0; skip < 500; skip += 100) {
+    const page = await list(`https://api.razorpay.com/v1/orders?from=${from}&to=${to}&count=100&skip=${skip}`);
+    if (!page) return null;
+    const found = page.find(mine);
+    if (found) return found;
+    if (page.length < 100) return null;
+  }
+  return null;
+}
+
 async function settleCheckout(supabase: Supa, auth: string, order: any): Promise<boolean> {
-  const r = await fetch(`https://api.razorpay.com/v1/orders?receipt=${encodeURIComponent(order.id)}&count=10`, {
-    headers: { 'Authorization': auth },
-  });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) return false;
-  const rz = (Array.isArray(d?.items) ? d.items : []).find((it: any) => checkoutIsPaidFor(it, order));
-  if (!rz) return false;
+  const rz = await findCheckoutRazorpayOrder(auth, order);
+  if (!rz || !checkoutIsPaidFor(rz, order)) return false;
   const pr = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(rz.id)}/payments`, {
     headers: { 'Authorization': auth },
   });
@@ -171,7 +192,7 @@ serve(async (req) => {
 
   const summary = { stores: 0, courierUpdates: 0, linksPaid: 0, checkoutsPaid: 0, errors: 0 };
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-  const since7  = new Date(Date.now() - 7 * 86400000).toISOString();
+  const since60 = new Date(Date.now() - 60 * 86400000).toISOString();
 
   // ── 1. Couriers ──────────────────────────────────────────────────────────
   const { data: shipAccts } = await supabase
@@ -199,10 +220,10 @@ serve(async (req) => {
       for (const o of links || []) if (await settleLink(supabase, auth, o)) summary.linksPaid++;
 
       const { data: online } = await supabase.from('orders')
-        .select('id, store_slug, total, paid, status')
+        .select('id, store_slug, total, paid, status, created_at')
         .eq('store_slug', acct.store_slug).eq('paid', false).eq('payment_method', 'online')
         .is('payment_ref', null).not('status', 'in', '(cancelled,abandoned)')
-        .gte('created_at', since7).limit(30);
+        .gte('created_at', since60).limit(30);
       for (const o of online || []) if (await settleCheckout(supabase, auth, o)) summary.checkoutsPaid++;
     } catch { summary.errors++; }
   }

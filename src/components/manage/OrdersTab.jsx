@@ -6,7 +6,7 @@ import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
-import { isPaymentIncomplete } from '../../utils/orderState';
+import { isPaymentIncomplete, isPaymentUnconfirmed } from '../../utils/orderState';
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
@@ -400,6 +400,9 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   // The customer chose Pay Online and left before paying. Flagged, not hidden:
   // if money did arrive, the seller taps the chip to mark it paid.
   const payIncomplete = !leads && isPaymentIncomplete(o);
+  // Shipped or delivered online order that Razorpay has not confirmed yet: money
+  // most likely arrived; the automatic Razorpay check confirms it.
+  const payUnconfirmed = !leads && isPaymentUnconfirmed(o);
   // The courier brought a COD parcel back (or lost it): no money is coming.
   const codReturned = !leads && !o.paid && String(o.payment_method || '').toLowerCase() === 'cod'
     && (o.shipment_outcome === 'returned' || o.shipment_outcome === 'lost');
@@ -590,7 +593,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
                 title={o.paid ? 'Paid — tap to mark unpaid'
                   : payIncomplete ? 'The customer left the online payment without paying. Tap if you were paid another way.'
                   : 'Tap once you’ve received payment'}>
-                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : codReturned ? '↩ Returned' : payIncomplete ? '● Payment not completed' : '● Unpaid'}
+                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : codReturned ? '↩ Returned' : payIncomplete ? '● Payment not completed' : payUnconfirmed ? '● Payment not confirmed' : '● Unpaid'}
               </button>
             </>
           ) : (

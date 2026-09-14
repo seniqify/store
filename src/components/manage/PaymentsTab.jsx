@@ -12,6 +12,7 @@ const RANGES = [{ days: 1, label: 'Today' }, { days: 7, label: '7 days' }, { day
 const REASON = {
   link_pending:   { label: 'Payment link sent, not paid yet', cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
   incomplete:     { label: 'Payment not completed',           cls: 'bg-rose-50 text-rose-700 border-rose-100' },
+  unconfirmed:    { label: 'Shipped, Razorpay payment not confirmed yet', cls: 'bg-amber-50 text-amber-800 border-amber-100' },
   delivery_issue: { label: 'Delivery problem',                cls: 'bg-amber-50 text-amber-800 border-amber-100' },
 };
 

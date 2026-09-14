@@ -1,4 +1,4 @@
-import { isPaymentIncomplete } from './orderState.js';
+import { isPaymentIncomplete, isPaymentUnconfirmed } from './orderState.js';
 import { classifyBucket } from './deliveryStatus.js';
 
 /**
@@ -31,6 +31,7 @@ export const KIND_LABEL = {
   cod_due:       'COD to collect',
   cod_returned:  'Returned · not collected',
   incomplete:    'Payment not completed',
+  unconfirmed:   'Payment not confirmed yet',
   unpaid:        'Unpaid',
   void:          'Cancelled',
 };
@@ -53,6 +54,7 @@ export function paymentKind(o) {
     return 'marked';
   }
   if (method === 'cod' && isReturned(o)) return 'cod_returned';
+  if (isPaymentUnconfirmed(o)) return 'unconfirmed';
   if (isPaymentIncomplete(o)) return 'incomplete';
   if (method === 'cod') return 'cod_due';
   return 'unpaid';
@@ -118,6 +120,8 @@ export function buildPayments(orders = [], { days = 1, now = Date.now() } = {}) 
       attention.push({ order: o, reason: 'link_pending', amount: total });
     } else if (kind === 'incomplete') {
       attention.push({ order: o, reason: 'incomplete', amount: total });
+    } else if (kind === 'unconfirmed') {
+      attention.push({ order: o, reason: 'unconfirmed', amount: total });
     }
   }
 
