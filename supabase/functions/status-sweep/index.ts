@@ -142,30 +142,69 @@ async function findCheckoutRazorpayOrder(auth: string, order: any): Promise<any 
     return r.ok && Array.isArray(d?.items) ? d.items : null;
   };
   const mine = (it: any) => String(it?.notes?.order_row_id ?? '') === String(order.id);
+  // Several Razorpay orders can carry one checkout (a retry): a paid one wins.
+  const pick = (items: any[]) => {
+    const matches = items.filter(mine);
+    return matches.find((it: any) => it?.status === 'paid') || matches[0] || null;
+  };
   const byReceipt = await list(`https://api.razorpay.com/v1/orders?receipt=${encodeURIComponent(order.id)}&count=10`);
-  const hit = (byReceipt || []).find(mine);
-  if (hit) return hit;
+  let best = pick(byReceipt || []);
+  if (best?.status === 'paid') return best;
   // Older checkouts sent no receipt, only notes.order_row_id: search around the time the order was placed.
   const placed = Math.floor(new Date(order.created_at).getTime() / 1000);
-  if (!Number.isFinite(placed)) return null;
+  if (!Number.isFinite(placed)) return best;
   const from = placed - 2 * 3600;
   const to = placed + 2 * 86400;
   for (let skip = 0; skip < 500; skip += 100) {
     const page = await list(`https://api.razorpay.com/v1/orders?from=${from}&to=${to}&count=100&skip=${skip}`);
-    if (!page) return null;
-    const found = page.find(mine);
-    if (found) return found;
-    if (page.length < 100) return null;
+    if (!page) break;
+    const found = pick(page);
+    if (found?.status === 'paid') return found;
+    best = best || found;
+    if (page.length < 100) break;
   }
-  return null;
+  return best;
+}
+
+/**
+ * Why a checkout is not confirmed, from Razorpay's own records: the payments on
+ * its Razorpay order, and any payment of the same amount from the same phone
+ * around the order time (a customer who paid through another route). Payment
+ * ids and statuses only — never the phone number or keys.
+ */
+async function paymentEvidence(auth: string, order: any, rz: any): Promise<string> {
+  const get = async (url: string) => {
+    const r = await fetch(url, { headers: { 'Authorization': auth } });
+    const d = await r.json().catch(() => ({}));
+    return r.ok && Array.isArray(d?.items) ? d.items : [];
+  };
+  const onOrder = rz?.id ? await get(`https://api.razorpay.com/v1/orders/${encodeURIComponent(rz.id)}/payments`) : [];
+  const phone = String(order.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const placed = Math.floor(new Date(order.created_at).getTime() / 1000);
+  const nearby = [];
+  if (phone.length === 10 && Number.isFinite(placed)) {
+    for (let skip = 0; skip < 300; skip += 100) {
+      const page = await get(`https://api.razorpay.com/v1/payments?from=${placed - 2 * 3600}&to=${placed + 3 * 86400}&count=100&skip=${skip}`);
+      for (const p of page) {
+        const same = Number(p?.amount) === toPaise(order.total)
+          && String(p?.contact || '').replace(/\D/g, '').slice(-10) === phone;
+        if (same) nearby.push(`${p.id} ${p.status}${p.order_id && p.order_id !== rz?.id ? ' (other Razorpay order)' : ''}`);
+      }
+      if (page.length < 100) break;
+    }
+  }
+  const list = (a: string[]) => (a.length ? a.join(', ') : 'none');
+  return `payments on its Razorpay order: ${list(onOrder.map((p: any) => `${p.id} ${p.status}`))}; ` +
+    `same amount from the same phone nearby: ${list(nearby)}`;
 }
 
 /** Confirm one checkout with Razorpay. Returns "paid" or why not, so a run can be read back. */
 async function settleCheckout(supabase: Supa, auth: string, order: any): Promise<string> {
   const rz = await findCheckoutRazorpayOrder(auth, order);
-  if (!rz) return "no_razorpay_order";
+  if (!rz) return `no_razorpay_order; ${await paymentEvidence(auth, order, null)}`;
   if (!checkoutIsPaidFor(rz, order)) {
-    return `not_paid: razorpay status ${rz.status}, amount ${rz.amount} paise, paid ${rz.amount_paid}, order total ${toPaise(order.total)} paise`;
+    return `not_paid: razorpay order ${rz.id} status ${rz.status}, amount ${rz.amount} paise, order total ${toPaise(order.total)} paise; ` +
+      await paymentEvidence(auth, order, rz);
   }
   const pr = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(rz.id)}/payments`, {
     headers: { 'Authorization': auth },
@@ -229,7 +268,7 @@ serve(async (req) => {
       for (const o of links || []) if (await settleLink(supabase, auth, o)) summary.linksPaid++;
 
       const { data: online } = await supabase.from('orders')
-        .select('id, store_slug, total, paid, status, created_at')
+        .select('id, store_slug, total, paid, status, created_at, customer_phone')
         .eq('store_slug', acct.store_slug).eq('paid', false).eq('payment_method', 'online')
         .is('payment_ref', null).not('status', 'in', '(cancelled,abandoned)')
         .gte('created_at', since60).limit(30);

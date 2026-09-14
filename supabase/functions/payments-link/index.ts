@@ -71,22 +71,28 @@ async function findCheckoutRazorpayOrder(auth: string, order: any): Promise<any 
     return r.ok && Array.isArray(d?.items) ? d.items : null;
   };
   const mine = (it: any) => String(it?.notes?.order_row_id ?? '') === String(order.id);
+  // Several Razorpay orders can carry one checkout (a retry): a paid one wins.
+  const pick = (items: any[]) => {
+    const matches = items.filter(mine);
+    return matches.find((it: any) => it?.status === 'paid') || matches[0] || null;
+  };
   const byReceipt = await list(`https://api.razorpay.com/v1/orders?receipt=${encodeURIComponent(order.id)}&count=10`);
-  const hit = (byReceipt || []).find(mine);
-  if (hit) return hit;
+  let best = pick(byReceipt || []);
+  if (best?.status === 'paid') return best;
   // Older checkouts sent no receipt, only notes.order_row_id: search around the time the order was placed.
   const placed = Math.floor(new Date(order.created_at).getTime() / 1000);
-  if (!Number.isFinite(placed)) return null;
+  if (!Number.isFinite(placed)) return best;
   const from = placed - 2 * 3600;
   const to = placed + 2 * 86400;
   for (let skip = 0; skip < 500; skip += 100) {
     const page = await list(`https://api.razorpay.com/v1/orders?from=${from}&to=${to}&count=100&skip=${skip}`);
-    if (!page) return null;
-    const found = page.find(mine);
-    if (found) return found;
-    if (page.length < 100) return null;
+    if (!page) break;
+    const found = pick(page);
+    if (found?.status === 'paid') return found;
+    best = best || found;
+    if (page.length < 100) break;
   }
-  return null;
+  return best;
 }
 
 /** Find the checkout payment on Razorpay; record it if really paid. */
