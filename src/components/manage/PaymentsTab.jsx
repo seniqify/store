@@ -3,7 +3,7 @@ import { RefreshCw, Wallet, Clock, MessageCircle, Link2, BadgeCheck } from 'luci
 import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildPayments, KIND_LABEL } from '../../utils/paymentsLedger';
-import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, paymentLinkMessage } from '../../utils/paymentLinks';
+import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, findPaymentOrphans, paymentLinkMessage } from '../../utils/paymentLinks';
 import { syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { prettyStatus } from '../../utils/deliveryStatus';
 
@@ -65,6 +65,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
   const [note, setNote]       = useState('');
   const [syncing, setSyncing] = useState(false);
   const [checkedAt, setCheckedAt] = useState(null);
+  const [orphans, setOrphans] = useState([]);   // paid on Razorpay, order never saved
 
   const load = useCallback(async () => { setOrders(await fetchOrders(slug, pin)); }, [slug, pin]);
 
@@ -81,6 +82,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       if (first.some((o) => !o.paid && String(o.payment_method).toLowerCase() === 'online' && !o.payment_ref)) {
         jobs.push(reconcileOnlinePayments(slug, pin).catch(() => []));
       }
+      jobs.push(findPaymentOrphans(slug, pin).then((list) => { if (alive()) setOrphans(list); }));
     }
     if (!jobs.length) { setCheckedAt(new Date()); return; }
     setSyncing(true);
@@ -188,6 +190,41 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
 
       {note && (
         <p className="text-xs font-semibold text-gray-700 bg-white border border-gray-100 rounded-xl px-3 py-2.5" role="status">{note}</p>
+      )}
+
+      {/* Money without an order: paid on Razorpay, but the order never saved */}
+      {orphans.length > 0 && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 shadow-sm overflow-hidden" role="alert">
+          <p className="px-4 py-3 text-sm font-extrabold text-rose-800 border-b border-rose-100">
+            Paid on Razorpay, but the order didn’t save ({orphans.length})
+          </p>
+          <ul className="divide-y divide-rose-100">
+            {orphans.map((x) => {
+              const phone = String(x.cart?.customer_phone || '').replace(/\D/g, '').slice(-10);
+              return (
+                <li key={x.payment_id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-bold text-gray-900 truncate">{x.cart?.customer_name || 'Customer'}</p>
+                    <p className="text-sm font-extrabold text-gray-900 tabular-nums flex-shrink-0">{formatINR(x.amount)}</p>
+                  </div>
+                  <p className="text-[11px] text-rose-800 mt-0.5">
+                    {fmtWhen(new Date(x.paid_at).getTime(), true)} · Razorpay {x.payment_id}
+                  </p>
+                  <p className="text-xs text-gray-700 mt-1 leading-relaxed">
+                    {x.cart ? <>Cart: {x.cart.items}</> : 'No matching cart found. Check the payment in your Razorpay dashboard.'}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-1">The customer’s money arrived. Contact them to confirm their order and address.</p>
+                  {phone && (
+                    <a href={`https://wa.me/91${phone}`} target="_blank" rel="noopener noreferrer"
+                       className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-200 bg-white px-3 py-1.5 rounded-lg hover:bg-emerald-50 active:scale-95">
+                      <MessageCircle size={12} /> Chat
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {/* Needs attention: only what a system cannot finish on its own */}

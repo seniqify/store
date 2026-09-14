@@ -31,6 +31,16 @@ export async function reconcileOnlinePayments(slug, pin) {
   return r.results || [];
 }
 
+/** Seller: Razorpay payments from the last 7 days whose order never saved. Never throws. */
+export async function findPaymentOrphans(slug, pin) {
+  try {
+    const r = await call({ action: 'orphans', slug, hashed_pin: await hashPin(pin) });
+    return Array.isArray(r.orphans) ? r.orphans : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Customer's order page, after Razorpay redirects back. Never throws. */
 export async function confirmPaymentLinkByToken(token) {
   try {

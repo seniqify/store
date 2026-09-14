@@ -191,7 +191,10 @@ serve(async (req: Request) => {
       // Never blocks or fails the notification.
       if (order && typeof order === 'object' && order.id && order.store_slug) {
         try {
-          await supabase.from('orders').upsert(order, { onConflict: 'id', ignoreDuplicates: true });
+          // supabase-js returns errors instead of throwing: check it, or a refused
+          // save is silent (how a paid order was lost on 2026-09-09).
+          const { error: saveErr } = await supabase.from('orders').upsert(order, { onConflict: 'id', ignoreDuplicates: true });
+          if (saveErr) console.error('order-notify save refused:', order.id, saveErr.message);
         } catch (e) {
           console.error('order-notify save error:', (e as Error)?.message);
         }

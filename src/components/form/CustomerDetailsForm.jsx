@@ -285,7 +285,17 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // RLS lets a customer INSERT an order but never SELECT it back.
     const confirmToken = retry ? retry.confirmToken : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
     const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
-    if (!retry) await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+    if (!retry) {
+      const saved = await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+      // A payment is bound to the saved order. If the order didn't save, don't take
+      // the customer's money for it. (COD still goes ahead: the notification below
+      // re-saves the order on the server.)
+      if (!saved && formData.paymentMethod === 'online') {
+        setPlacing(false);
+        setPayError('We couldn’t save your order, so no payment was taken. Check your internet and tap Pay again, or choose Cash on Delivery.');
+        return;
+      }
+    }
     const orderRowId = orderId;
 
     // ── Online payment ────────────────────────────────────────────────────────

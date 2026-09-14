@@ -43,7 +43,7 @@ test('the order card never offers Accept for an unpaid online order', () => {
 test('Pay again reuses the order saved on the first attempt', () => {
   const f = read('src/components/form/CustomerDetailsForm.jsx');
   assert.match(f, /const retry = formData\.paymentMethod === 'online' && pendingPay\.current\?\.key === buyKey/);
-  assert.match(f, /if \(!retry\) await saveOrder\(/);
+  assert.match(f, /if \(!retry\) \{\s*const saved = await saveOrder\(/);
   assert.equal(/Your order is saved — tap Pay again/.test(f), false, 'the customer must not be told a failed payment placed the order');
   assert.match(f, /pendingPay\.current = null;/);
 });

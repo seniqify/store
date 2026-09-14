@@ -216,6 +216,62 @@ serve(async (req) => {
       return json({ results });
     }
 
+    // ── orphans: paid on Razorpay, but the PocketLink order never saved ─────
+    // Read-only. Looks at the last 7 days of captured payments on the store's own
+    // Razorpay account; any whose checkout order id is not in orders is money
+    // without an order. The closest abandoned cart (same amount, placed shortly
+    // before) is attached so the seller can see who paid and for what.
+    if (action === 'orphans') {
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - 7 * 86400;
+      const captured: any[] = [];
+      for (let skip = 0; skip < 500; skip += 100) {
+        const r = await fetch(`https://api.razorpay.com/v1/payments?from=${from}&to=${to}&count=100&skip=${skip}`, { headers: { 'Authorization': auth } });
+        const d = await r.json().catch(() => ({}));
+        const items = Array.isArray(d?.items) ? d.items : [];
+        captured.push(...items.filter((p: any) => p?.status === 'captured' && p?.order_id));
+        if (items.length < 100) break;
+      }
+      // Payments already recorded on an order need no Razorpay round trip.
+      const ids = captured.map((p: any) => String(p.id));
+      const known = new Set<string>();
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data: rows } = await supabase.from('orders').select('payment_ref')
+          .eq('store_slug', slug).in('payment_ref', ids.slice(i, i + 100));
+        for (const r of rows || []) known.add(String(r.payment_ref));
+      }
+      const orphans = [];
+      for (const p of captured.filter((x: any) => !known.has(String(x.id))).slice(0, 40)) {
+        const or = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(p.order_id)}`, { headers: { 'Authorization': auth } });
+        const rz = await or.json().catch(() => ({}));
+        const ourId = String(rz?.notes?.order_row_id || '');
+        // Payment links carry their own order id too; only checkout orders matter here.
+        if (!/^[0-9a-f-]{36}$/i.test(ourId)) continue;
+        const { data: saved } = await supabase.from('orders').select('id').eq('id', ourId).maybeSingle();
+        if (saved) continue;
+        const paidAt = new Date(Number(p.created_at) * 1000);
+        const { data: carts } = await supabase.from('orders')
+          .select('id, customer_name, customer_phone, total, items, created_at')
+          .eq('store_slug', slug).eq('status', 'abandoned').eq('total', Number(p.amount) / 100)
+          .gte('created_at', new Date(paidAt.getTime() - 3 * 3600e3).toISOString())
+          .lte('created_at', paidAt.toISOString())
+          .order('created_at', { ascending: false }).limit(1);
+        const cart = carts?.[0] || null;
+        orphans.push({
+          payment_id: p.id,
+          amount: Number(p.amount) / 100,
+          paid_at: paidAt.toISOString(),
+          method: p.method || null,
+          cart: cart ? {
+            customer_name: cart.customer_name || '',
+            customer_phone: String(cart.customer_phone || ''),
+            items: (Array.isArray(cart.items) ? cart.items : []).map((i: any) => `${i?.qty || 1}x ${i?.name || 'item'}`).join(', '),
+          } : null,
+        });
+      }
+      return json({ orphans });
+    }
+
     // ── create: make (or reuse) the link ──────────────────────────────────
     if (action === 'create') {
       const orderId = String(body?.order_id || '');

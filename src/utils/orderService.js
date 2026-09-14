@@ -63,16 +63,21 @@ export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coup
 export async function saveOrder(customerDetails = {}, cart = [], config = {}, coupon = null, id, confirmToken) {
   // Skip demo stores (slug stripped) and empty carts.
   if (!config?.slug || !Array.isArray(cart) || cart.length === 0) return null;
-  try {
-    const rowId = id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
-    await supabase.from('orders').insert(buildOrderRow(customerDetails, cart, config, coupon, rowId, confirmToken));
-    return rowId || null;
-  } catch (err) {
-    // Best-effort — a failed save must never break the customer's order — but log
-    // it (was fully silent) so a lost order leaves a trace to diagnose.
-    console.error('saveOrder failed:', err?.message || err);
-    return null;
+  const rowId = id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
+  const row = buildOrderRow(customerDetails, cart, config, coupon, rowId, confirmToken);
+  // supabase-js reports a refused insert in `error`; it does not throw. Unchecked,
+  // a failed save looked like success and a customer paid for an order that was
+  // never recorded (2026-09-09). One retry covers a dropped mobile connection.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { error } = await supabase.from('orders').insert(row);
+      if (!error || error.code === '23505') return rowId || null;   // 23505: the first try did land
+      console.error('saveOrder refused:', error.message);
+    } catch (err) {
+      console.error('saveOrder failed:', err?.message || err);
+    }
   }
+  return null;
 }
 
 /** Best-effort: record a service quote request as a lead — an order row with
