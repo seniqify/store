@@ -7,6 +7,7 @@ import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
 import { isPaymentIncomplete } from '../../utils/orderState';
+import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
 
@@ -394,6 +395,8 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
   const [moreOpen, setMoreOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkMsg, setLinkMsg]   = useState('');
   // The customer chose Pay Online and left before paying. Flagged, not hidden:
   // if money did arrive, the seller taps the chip to mark it paid.
   const payIncomplete = !leads && isPaymentIncomplete(o);
@@ -513,7 +516,30 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const canRequestPay = Boolean(payMsg) && Boolean(phone) && o.status !== 'cancelled';
   const canDispatch   = !leads && o.status !== 'cancelled' && o.status !== 'delivered';
   const canCancel     = o.status === 'new' || o.status === 'confirmed' || o.status === 'dispatched';
-  const hasMore       = canRequestPay || canDispatch || canCancel || o.status === 'cancelled';
+  // A Razorpay link for this order's exact amount: turns COD (or an unfinished
+  // online payment) into prepaid. Not once a courier has it booked as COD.
+  const canPayLink    = !leads && !o.paid && Boolean(store.payments?.razorpay) && Boolean(phone)
+                        && !o.awb && Number(o.total) > 0 && o.status !== 'cancelled';
+  const hasMore       = canRequestPay || canPayLink || canDispatch || canCancel || o.status === 'cancelled';
+
+  async function sendPayLink() {
+    setMoreOpen(false); setLinkMsg(''); setLinkBusy(true);
+    // Open the tab inside the tap: browsers block window.open after an await.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
+    try {
+      const r = await createPaymentLink(slug, pin, o.id);
+      if (r.paid) { if (win) win.close(); setLinkMsg('This order is already paid — tap Refresh.'); return; }
+      const text = paymentLinkMessage({ customerName: o.customer_name, storeName, total: o.total, url: r.url });
+      const wa = `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
+      if (win) win.location.href = wa; else window.location.href = wa;
+    } catch (e) {
+      if (win) win.close();
+      setLinkMsg(e.message || 'Could not create the payment link.');
+    } finally {
+      setLinkBusy(false);
+    }
+  }
 
   // Status progress (New → … → Delivered/Won). Cancelled sits off the path.
   const accent     = STATUS_COLOR[o.status] || STATUS_COLOR.new;
@@ -662,6 +688,10 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
         )}
       </div>
 
+      {(linkBusy || linkMsg) && (
+        <p className="px-4 pt-2 text-[11px] font-semibold text-gray-600" role="status">{linkBusy ? 'Creating payment link…' : linkMsg}</p>
+      )}
+
       {/* Tool row — Chat · Call · Slip · More (secondary tools live under More) */}
       <div className="px-4 py-3 mt-2.5 border-t border-gray-100">
         <div className="flex items-stretch gap-2">
@@ -698,6 +728,13 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
                          title="Opens WhatsApp with your payment details + amount prefilled">
                         <span className="text-sm">💰</span> Request payment · {totalStr}
                       </a>
+                    )}
+                    {canPayLink && (
+                      <button type="button" disabled={linkBusy} onClick={sendPayLink}
+                        className={`${moreItem} text-gray-700 disabled:opacity-50`}
+                        title="Sends a Razorpay link for this order's exact amount. The order turns Paid when Razorpay confirms it.">
+                        <span className="text-sm">💳</span> {o.payment_link_url ? 'Resend payment link' : 'Send payment link'}
+                      </button>
                     )}
                     {canDispatch && (dispatchRiders.length > 1
                       ? dispatchRiders.map((r) => (

@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { formatINR } from '../utils/currency';
 import { buildTimeline, heroStyle, courierName } from '../utils/orderTimeline';
+import { confirmPaymentLinkByToken } from '../utils/paymentLinks';
 
 /**
  * OrderTracking — the buyer's page for one order, served at two routes:
@@ -108,6 +109,12 @@ export default function OrderTracking() {
           try {
             await supabase.rpc('confirm_order_by_token', { p_token: token });
           } catch { /* a failed confirm must not stop the order rendering */ }
+        }
+        // Back from a Razorpay payment link: ask the server to confirm with
+        // Razorpay before reading the order, so the page already shows Paid.
+        if (typeof window !== 'undefined'
+            && new URLSearchParams(window.location.search).has('razorpay_payment_link_id')) {
+          await confirmPaymentLinkByToken(token);
         }
         const d = await load();
         if (!alive) return;

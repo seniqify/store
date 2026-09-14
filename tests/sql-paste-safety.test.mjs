@@ -17,6 +17,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/pin-whatsapp-mask-fix.sql',
   'supabase/reviews-verified-forward.sql',
   'supabase/reviews-verified-rollback.sql',
+  'supabase/payments-tracking.sql',
+  'supabase/payments-tracking-rollback.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {

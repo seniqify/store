@@ -18,7 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
-  Bell, Volume2, VolumeX, Layers, Megaphone,
+  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -48,6 +48,7 @@ import AdsTab                                            from '../components/man
 import OverviewTab                                       from '../components/manage/OverviewTab';
 import AssistantTab                                      from '../components/manage/AssistantTab';
 import PaymentsConnect                                    from '../components/manage/PaymentsConnect';
+import PaymentsTab                                        from '../components/manage/PaymentsTab';
 import MetaConnect                                        from '../components/manage/MetaConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
@@ -2750,7 +2751,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 // Grouped navigation shared by the mobile drawer AND the desktop sidebar.
 // Groups only render the tabs that exist for this store (service/restaurant vary).
 const NAV_GROUPS = [
-  { title: 'Run',        keys: ['home', 'orders', 'products', 'delivery'] },
+  { title: 'Run',        keys: ['home', 'orders', 'payments', 'products', 'delivery'] },
   { title: 'Grow',       keys: ['customers', 'reviews', 'offers', 'ads', 'abandoned'] },
   { title: 'Understand', keys: ['analytics', 'insights', 'assistant'] },
   { title: 'Set up',     keys: ['settings'] },
@@ -2961,6 +2962,7 @@ export default function ManageStore() {
     { key: 'home',       label: 'Home',        icon: LayoutDashboard },
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
+    ...(isService ? [] : [{ key: 'payments', label: 'Payments', icon: Wallet }]),
     ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned', icon: ShoppingCart }]),
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
@@ -3187,7 +3189,13 @@ export default function ManageStore() {
                        store={{ slug: businessSlug, businessName: config.businessName, logo: config.logo,
                                 logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
                                 whatsappNumber: config.whatsappNumber, theme: config.theme,
-                                shipping: config.shipping, products: config.products, cart: config.cart }} />
+                                shipping: config.shipping, products: config.products, cart: config.cart,
+                                payments: config.payments }} />
+          </div>
+        ) : tab === 'payments' ? (
+          <div className="animate-pl-fade-up">
+            <PaymentsTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
+                         razorpayConnected={Boolean(config.payments?.razorpay)} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">

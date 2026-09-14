@@ -98,7 +98,7 @@ serve(async (req) => {
     // Signature valid, and the payment is for this order at its full amount.
     await supabase
       .from('orders')
-      .update({ paid: true, payment_ref: razorpay_payment_id, payment_provider: 'razorpay' })
+      .update({ paid: true, paid_at: new Date().toISOString(), paid_via: 'razorpay', payment_ref: razorpay_payment_id, payment_provider: 'razorpay' })
       .eq('id', order.id)
       .eq('store_slug', slug);
 
