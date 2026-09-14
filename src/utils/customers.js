@@ -1,3 +1,4 @@
+import { isPaymentIncomplete } from './orderState';
 /**
  * Customer intelligence — derives a per-customer view from saved orders.
  *
@@ -43,7 +44,9 @@ export function buildCustomers(orders = [], now = Date.now()) {
     const phone = String(o.customer_phone || '').replace(/\D/g, '').slice(-10);
     if (phone.length !== 10) continue;            // unusable number → can't be a contact
     const t = ts(o.created_at);
-    const cancelled = o.status === 'cancelled';
+    // An unpaid online order is kept in history but, like a cancelled one, adds
+    // nothing to the customer's value or recency.
+    const cancelled = o.status === 'cancelled' || isPaymentIncomplete(o);
 
     let c = byPhone.get(phone);
     if (!c) {

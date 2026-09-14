@@ -6,6 +6,7 @@ import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
+import { isPaymentIncomplete } from '../../utils/orderState';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
 
@@ -393,6 +394,9 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
   const [moreOpen, setMoreOpen] = useState(false);
+  // The customer chose Pay Online and left before paying. Flagged, not hidden:
+  // if money did arrive, the seller taps the chip to mark it paid.
+  const payIncomplete = !leads && isPaymentIncomplete(o);
 
   // Per-order profit (owner-only) — goods revenue minus this order's cost of
   // goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
@@ -550,10 +554,14 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
               <button type="button" onClick={() => onPaid(o.id, !o.paid)} disabled={busy}
                 className={[
                   'mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full active:scale-95 disabled:opacity-50 transition',
-                  o.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700 border border-amber-200',
+                  o.paid ? 'bg-emerald-100 text-emerald-700'
+                    : payIncomplete ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200',
                 ].join(' ')}
-                title={o.paid ? 'Paid — tap to mark unpaid' : 'Tap once you’ve received payment'}>
-                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : '● Unpaid'}
+                title={o.paid ? 'Paid — tap to mark unpaid'
+                  : payIncomplete ? 'The customer left the online payment without paying. Tap if you were paid another way.'
+                  : 'Tap once you’ve received payment'}>
+                {o.paid ? <><Check size={10} strokeWidth={3} /> Paid</> : payIncomplete ? '● Payment not completed' : '● Unpaid'}
               </button>
             </>
           ) : (
@@ -626,7 +634,12 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
           </>
         ) : (
           <>
-            {o.status === 'new' && (<Advance to="confirmed" label="✅ Accept order" full style={{ backgroundColor: themeColor }} />)}
+            {o.status === 'new' && !payIncomplete && (<Advance to="confirmed" label="✅ Accept order" full style={{ backgroundColor: themeColor }} />)}
+            {o.status === 'new' && payIncomplete && (
+              <p className="text-xs text-rose-800 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2.5 leading-relaxed">
+                The customer chose <b>Pay Online</b> but didn’t finish paying, so this isn’t a sale yet. Chat with them to help them pay, or cancel it from More.
+              </p>
+            )}
             {o.status === 'confirmed' && (<Advance to="dispatched" label="🛵 Out for delivery" full className="bg-indigo-600 hover:bg-indigo-700" />)}
             {o.status === 'dispatched' && (<Advance to="delivered" label="📦 Mark delivered" full className="bg-blue-600 hover:bg-blue-700" />)}
           </>

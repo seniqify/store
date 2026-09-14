@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Truck, Package, Wallet, Check, Star, PackageSearch } from 'lucide-react';
 import FormField from './FormField';
 import { validateCustomerDetails } from '../../utils/validators';
@@ -109,6 +109,9 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [submitted,   setSubmitted]   = useState(false);
   const [placing,     setPlacing]     = useState(false);   // submit in flight
   const [payError,    setPayError]    = useState('');      // online-payment error, if any
+  // The order saved for an online payment that was not completed, so Pay again
+  // pays for that same order instead of saving another one.
+  const pendingPay = useRef(null);
   const [autoNotified, setAutoNotified] = useState(false); // PocketLink WhatsApp'd both sides
   const [orderSummary, setOrderSummary] = useState(null);  // snapshot for the confirmation screen
 
@@ -270,13 +273,19 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // direct insert is ever blocked (ad-blocker / privacy browser / stale cache /
     // flaky network), the order-notify edge function re-saves this exact row with the
     // service role — so an order can't be lost as long as the notification is sent.
-    const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
+    // Retrying an online payment reuses the order saved on the first attempt, so
+    // Pay again never leaves duplicate unpaid orders behind. Only when nothing about
+    // the order changed: same method, cart, total, coupon and customer.
+    const buyKey = JSON.stringify([formData.paymentMethod, finalTotal, sendData.mobile, sendData.partyName,
+      cart.map((i) => [i.id, i.qty, i.price]), appliedCoupon?.code || '']);
+    const retry = formData.paymentMethod === 'online' && pendingPay.current?.key === buyKey ? pendingPay.current : null;
+    const orderId = retry ? retry.orderId : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
     // Minted here too (not left to the DB default) so both writes carry the SAME
     // token and we can hand the buyer their tracking link on the screen below —
     // RLS lets a customer INSERT an order but never SELECT it back.
-    const confirmToken = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined;
+    const confirmToken = retry ? retry.confirmToken : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
     const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
-    await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+    if (!retry) await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
     const orderRowId = orderId;
 
     // ── Online payment ────────────────────────────────────────────────────────
@@ -293,8 +302,9 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
           themeColor: primary,
         });
         if (!result?.paid) {
+          pendingPay.current = { key: buyKey, orderId, confirmToken };
           setPlacing(false);
-          setPayError('Payment wasn’t completed. Your order is saved — tap Pay again, or pick another method.');
+          setPayError('Payment wasn’t completed, so your order isn’t placed yet. Tap Pay again to finish, or choose Cash on Delivery.');
           return;
         }
         // Paid. payments-verify already flips the client-inserted row to paid, but
@@ -307,6 +317,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
           orderRow.payment_provider = 'razorpay';
         }
       } catch (e) {
+        pendingPay.current = { key: buyKey, orderId, confirmToken };
         setPlacing(false);
         setPayError(e?.message || 'Couldn’t start the payment. Try again, or choose another method.');
         return;
@@ -350,6 +361,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       estimate:  isPickup ? null : deliveryEstimate,
       track:     confirmToken ? `/order/${confirmToken}` : null,
     });
+    pendingPay.current = null;
     setPlacing(false);
     setSubmitted(true);
     // Remember this customer on their device so the next order is one tap.

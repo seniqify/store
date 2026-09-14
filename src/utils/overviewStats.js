@@ -1,3 +1,4 @@
+import { countsAsSale } from './orderState';
 /**
  * Manage → Home dashboard stats.
  * ────────────────────────────────────────────────────────────────────────────
@@ -15,7 +16,8 @@ function num(v)  { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); }
 
 export function buildOverview(orders = [], config = {}, reviews = [], now = Date.now()) {
-  const real      = orders.filter((o) => o.status !== 'abandoned' && o.status !== 'cancelled');
+  // An online order the customer never paid for is not a sale (utils/orderState).
+  const real      = orders.filter(countsAsSale);
   const abandoned = orders.filter((o) => o.status === 'abandoned');
   const todayStart = startOfDay(now);
 

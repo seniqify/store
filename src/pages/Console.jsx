@@ -11,6 +11,7 @@ import {
   fetchReviewReports, resolveReviewReport,
 } from '../utils/consoleService';
 import { formatINR } from '../utils/currency';
+import { isPaymentIncomplete } from '../utils/orderState';
 
 /**
  * PocketLink Console — founder mission-control (hidden route /console).
@@ -490,7 +491,7 @@ export default function Console() {
   }, [stores]);
 
   const ordersView = useMemo(() => {
-    const active = orders.filter((o) => o.status !== 'cancelled');
+    const active = orders.filter((o) => o.status !== 'cancelled' && !isPaymentIncomplete(o));
     return {
       gmv: active.reduce((s, o) => s + (Number(o.total) || 0), 0),
       codDue: active.filter((o) => o.payment_method === 'cod' && !o.paid).reduce((s, o) => s + (Number(o.total) || 0), 0),

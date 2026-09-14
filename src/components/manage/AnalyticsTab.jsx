@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isPaymentIncomplete } from '../../utils/orderState';
 import { TrendingUp, TrendingDown, Lock, Sparkles, Clock, Wallet } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { fetchViewStats } from '../../utils/viewService';
@@ -58,7 +59,8 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   }
 
   // ── Compute metrics ──
-  const valid   = orders.filter((o) => o.status !== 'cancelled');
+  // Unpaid online orders (customer left the payment screen) are not revenue.
+  const valid   = orders.filter((o) => o.status !== 'cancelled' && !isPaymentIncomplete(o));
   const revenue = valid.reduce((s, o) => s + (Number(o.total) || 0), 0);
   const count   = valid.length;
   const aov     = count ? revenue / count : 0;
