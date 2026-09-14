@@ -6,6 +6,7 @@ import Footer           from './components/layout/Footer';
 import TemplateRenderer from './templates/TemplateRenderer';
 import StoreStatus      from './components/store/StoreStatus';
 import StoreReviews     from './components/store/StoreReviews';
+import ReviewInvite     from './pages/ReviewInvite';
 import ErrorBoundary    from './components/ErrorBoundary';
 import { BusinessProvider, useBusinessConfig } from './contexts/BusinessContext';
 import { loadBusiness, refreshBusiness, listBusinesses } from './utils/BusinessLoader';
@@ -242,6 +243,7 @@ export default function App() {
                 page); /order is the same page, read-only. */}
             <Route path="/confirm/:token"        element={<OrderTracking />} />
             <Route path="/order/:token"          element={<OrderTracking />} />
+            <Route path="/review/:token"         element={<ReviewInvite />} />
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/console"               element={<Console />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />

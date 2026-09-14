@@ -8,6 +8,7 @@ import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
   fetchMyTeamRow, fetchStoresConsole, fetchConsoleOrders, fetchTeam,
   consoleUpdateStore, askAssistant, manageTeam, yearsFromNowIso,
+  fetchReviewReports, resolveReviewReport,
 } from '../utils/consoleService';
 import { formatINR } from '../utils/currency';
 
@@ -259,6 +260,7 @@ export default function Console() {
   const [stores, setStores]   = useState([]);
   const [orders, setOrders]   = useState([]);
   const [team, setTeam]       = useState([]);
+  const [reports, setReports] = useState([]);   // reported reviews awaiting a decision
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState('overview');
   const [query, setQuery]     = useState('');
@@ -283,17 +285,33 @@ export default function Console() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [st, od, tm] = await Promise.all([
+    const [st, od, tm, rv] = await Promise.all([
       fetchStoresConsole(),
       fetchConsoleOrders(new Date(Date.now() - 7 * DAY).toISOString()),
       fetchTeam(),
+      fetchReviewReports(),
     ]);
-    setStores(st); setOrders(od); setTeam(tm); setLoading(false);
+    setStores(st); setOrders(od); setTeam(tm); setReports(rv); setLoading(false);
   }, []);
   useEffect(() => { if (isAdmin) loadAll(); }, [isAdmin, loadAll]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 3200); return () => clearTimeout(t); }, [toast]);
 
   // ── writes ──
+  async function decideReport(r, decision) {
+    let note = '';
+    if (decision === 'removed') {
+      note = window.prompt('Why remove this review? The seller sees this reason.') || '';
+      if (!note.trim()) return;
+    }
+    try {
+      await resolveReviewReport(r.report_id, decision, note.trim());
+      setReports((list) => list.filter((x) => x.report_id !== r.report_id));
+      setToast(decision === 'removed' ? 'Review removed' : 'Review kept');
+    } catch (e) {
+      setToast(e.message || 'Could not save the decision');
+    }
+  }
+
   async function applyPatch(slug, patch, action) {
     setBusySlug(slug);
     try {
@@ -505,6 +523,7 @@ export default function Console() {
     { id: 'renewals', label: 'Renewals', icon: CalendarClock, count: renewals.list.length || undefined },
     { id: 'billing',  label: 'Billing',  icon: Wallet },
     { id: 'orders',   label: 'Orders',   icon: Box, count: orders.length || undefined },
+    { id: 'reviews',  label: 'Reviews',  icon: ShieldAlert, count: reports.length || undefined },
     { id: 'assistant',label: 'Assistant',icon: Sparkles },
     { id: 'access',   label: 'Access',   icon: Users, count: team.length || undefined },
   ];
@@ -756,6 +775,35 @@ export default function Console() {
                           <td className={`px-3 py-2.5 text-[12px] ${DIM} capitalize`}>{o.status || '—'}</td>
                           <td className={`px-3 py-2.5 text-right text-[11px] ${FAINT} tabular-nums whitespace-nowrap`}>{timeAgo(o.created_at)}</td>
                         </tr>))}</tbody></table></div>}
+              </Panel>
+            </div>
+          )}
+
+          {/* REVIEWS — sellers can report a review but never remove it; you decide */}
+          {tab === 'reviews' && (
+            <div className="space-y-5">
+              <Panel title="Reported reviews" icon={ShieldAlert} count={reports.length} right="stays public until you decide">
+                {reports.length === 0 ? <div className={`p-6 text-center text-sm ${FAINT}`}>No reviews waiting for a decision.</div>
+                  : <div>{reports.map((r) => (
+                      <div key={r.report_id} className={`p-4 space-y-2 border-t ${LINE} first:border-t-0`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className={`font-mono text-[11px] ${DIM} truncate`}>{r.store_slug}</span>
+                          <span className={`text-[11px] ${FAINT} whitespace-nowrap`}>reported {timeAgo(r.reported_at)}</span>
+                        </div>
+                        <p className={`text-sm ${INK}`}>
+                          <span className="text-amber-300">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                          {' '}· {r.display_name}{r.item_name ? ` · ${r.item_name}` : ''}{r.verified_purchase ? ' · verified purchase' : ''}
+                        </p>
+                        {r.body && <p className={`text-sm ${BODY}`}>{r.body}</p>}
+                        {r.merchant_reply && <p className={`text-[12px] ${DIM}`}>Seller reply: {r.merchant_reply}</p>}
+                        <p className="text-[12px] text-amber-300">Seller’s reason: {r.reason}</p>
+                        <div className="flex gap-2 pt-1">
+                          <button type="button" onClick={() => decideReport(r, 'kept')}
+                            className={`text-[12px] font-bold px-3 py-1.5 rounded-lg bg-white/[0.06] ${INK} hover:bg-white/[0.1]`}>Keep it</button>
+                          <button type="button" onClick={() => decideReport(r, 'removed')}
+                            className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25">Remove…</button>
+                        </div>
+                      </div>))}</div>}
               </Panel>
             </div>
           )}

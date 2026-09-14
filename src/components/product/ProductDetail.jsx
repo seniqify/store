@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown, Truck, ShieldCheck, Wallet, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown, Truck, ShieldCheck, Wallet, MessageCircle, BadgeCheck } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
 import { variantExtrasOf, resolveSelection, buildCartItem } from '../../utils/variants';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { pixelTrack } from '../../utils/metaPixel';
+import { fetchProductReviews, reviewStats } from '../../utils/reviewService';
 
 /**
  * ProductDetail — full-screen product page (opened from a card at /{slug}/p/{id}).
@@ -35,6 +36,17 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
       currency:     'INR',
     });
   }, [product?.id]);
+
+  // Reviews of THIS product. They can only be written from a delivered order's
+  // review link, so every one is a verified purchase.
+  const [productReviews, setProductReviews] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    if (!config?.slug || product?.id == null) { setProductReviews([]); return undefined; }
+    fetchProductReviews(config.slug, product.id).then((r) => { if (alive) setProductReviews(r); });
+    return () => { alive = false; };
+  }, [config?.slug, product?.id]);
+  const productRating = reviewStats(productReviews);
 
   const variants    = product.variants;
   const hasVariants = !!(variants && variants.options && variants.options.length);
@@ -248,6 +260,43 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Reviews of this product — verified purchases only */}
+            {productRating.count > 0 && (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Reviews</p>
+                  <span className="text-xs font-bold text-gray-700 inline-flex items-center gap-1">
+                    <Star size={12} className="text-amber-400 fill-amber-400" /> {productRating.avg.toFixed(1)}
+                    <span className="text-gray-400 font-semibold">({productRating.count})</span>
+                  </span>
+                </div>
+                {productReviews.slice(0, 5).map((r) => (
+                  <div key={r.id} className="border border-gray-100 rounded-2xl px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-bold text-gray-900 truncate">{r.customer_name}</span>
+                      <div className="flex gap-0.5 flex-shrink-0" role="img" aria-label={`${r.rating} out of 5 stars`}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} size={12} className={n <= r.rating ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 font-semibold mt-0.5 inline-flex items-center gap-1">
+                      <BadgeCheck size={12} /> Verified purchase{r.variant ? ` · ${r.variant}` : ''}
+                    </p>
+                    {r.comment && <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{r.comment}</p>}
+                    {r.reply && (
+                      <p className="text-xs text-gray-500 mt-2 bg-gray-50 rounded-xl px-3 py-2">
+                        <span className="font-semibold text-gray-700">Store reply:</span> {r.reply}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {productRating.count > 5 && (
+                  <p className="text-[11px] text-gray-400">Showing 5 of {productRating.count}. See all reviews on the store page.</p>
+                )}
               </div>
             )}
 

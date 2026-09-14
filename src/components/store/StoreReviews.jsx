@@ -1,29 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Star, CheckCircle2, MessageSquarePlus } from 'lucide-react';
+import { Star, BadgeCheck } from 'lucide-react';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
-import { fetchReviews, submitReview, reviewStats } from '../../utils/reviewService';
+import { fetchReviews, reviewStats } from '../../utils/reviewService';
 
-/** Static / interactive star row. */
-function Stars({ value = 0, size = 14, onPick }) {
+/** Static star row. */
+function Stars({ value = 0, size = 14 }) {
   return (
-    <div className="flex items-center">
-      {[1, 2, 3, 4, 5].map((n) => {
-        const filled = n <= Math.round(value);
-        const star = (
-          <Star
-            size={size}
-            className={filled ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-300'}
-          />
-        );
-        return onPick ? (
-          <button key={n} type="button" onClick={() => onPick(n)}
-                  className="p-0.5 hover:scale-110 transition-transform" aria-label={`${n} star${n > 1 ? 's' : ''}`}>
-            {star}
-          </button>
-        ) : (
-          <span key={n}>{star}</span>
-        );
-      })}
+    <div className="flex items-center" role="img" aria-label={`${value} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} size={size}
+              className={n <= Math.round(value) ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-300'} />
+      ))}
     </div>
   );
 }
@@ -37,8 +24,12 @@ function fmtDate(iso) {
 }
 
 /**
- * StoreReviews — customer ratings & reviews for the storefront.
+ * StoreReviews — verified-purchase reviews on the storefront.
  * Rendered in the shared store shell, so it appears under every template.
+ *
+ * Read-only on purpose. There is no "Write a review" form: a review can only be
+ * written from the link a seller sends for a DELIVERED order (/review/<token>),
+ * so every review here is tied to a real order and to what was bought.
  * Self-gates: renders nothing for demo stores (no slug).
  */
 export default function StoreReviews() {
@@ -47,14 +38,9 @@ export default function StoreReviews() {
   const primary = config.theme?.primary ?? '#0d9488';
 
   const [reviews, setReviews] = useState(null);   // null = loading
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-  const [expanded, setExpanded] = useState(false);   // reviews are capped until asked for
+  const [expanded, setExpanded] = useState(false);
+  // Old "?review=1" links (sent before reviews needed an order) still land here.
+  const [oldLink, setOldLink] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -63,15 +49,10 @@ export default function StoreReviews() {
     return () => { alive = false; };
   }, [slug]);
 
-  // Deep link (?review=1, shared by the owner via Manage → Reviews) — jump
-  // straight to the write-review form instead of landing on the store top.
   useEffect(() => {
-    if (!slug) return;
-    if (typeof window === 'undefined') return;
-    const wantsReview = new URLSearchParams(window.location.search).get('review') === '1';
-    if (!wantsReview) return;
-    setShowForm(true);
-    // Wait a tick for layout (hero/reviews section) to settle before scrolling.
+    if (!slug || typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('review') !== '1') return;
+    setOldLink(true);
     const t = setTimeout(() => {
       document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 150);
@@ -82,34 +63,13 @@ export default function StoreReviews() {
 
   const list = reviews || [];
   const { avg, count } = reviewStats(list);
-
-  // Rating spread (5→1). Lets a shopper judge the store at a glance WITHOUT
-  // scrolling every review — the whole point of capping the list below.
   const dist = [5, 4, 3, 2, 1].map((n) => ({
     n,
     c: list.filter((r) => Math.round(Number(r.rating)) === n).length,
   }));
-  const PREVIEW = 3;                       // reviews shown before "Show all"
+  const PREVIEW = 3;
   const shown   = expanded ? list : list.slice(0, PREVIEW);
   const hidden  = Math.max(0, list.length - PREVIEW);
-
-  async function handleSubmit() {
-    setError('');
-    if (!name.trim())      { setError('Please add your name.'); return; }
-    if (rating < 1)        { setError('Please tap a star rating.'); return; }
-    setSubmitting(true);
-    const ok = await submitReview(slug, { name, rating, comment });
-    setSubmitting(false);
-    if (!ok) { setError('Could not submit — please try again.'); return; }
-    // Optimistically show it at the top.
-    setReviews((prev) => [
-      { id: `local-${Date.now()}`, customer_name: name.trim(), rating, comment: comment.trim(), created_at: new Date().toISOString() },
-      ...(prev || []),
-    ]);
-    setDone(true);
-    setName(''); setRating(0); setComment('');
-    setTimeout(() => { setShowForm(false); setDone(false); }, 2200);
-  }
 
   return (
     <section id="reviews" className="w-full max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-10 scroll-mt-20">
@@ -117,32 +77,23 @@ export default function StoreReviews() {
 
         {/* Header — aggregate score + rating spread */}
         <div className="px-5 sm:px-6 py-5 border-b border-gray-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-extrabold text-gray-900">Reviews</h2>
-              {count > 0 ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-3xl font-extrabold text-gray-900 tabular-nums leading-none">{avg.toFixed(1)}</span>
-                  <div>
-                    <Stars value={avg} size={14} />
-                    <p className="text-[11px] text-gray-400 mt-0.5">{count} review{count === 1 ? '' : 's'}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 mt-1">No reviews yet — be the first!</p>
-              )}
+          <h2 className="text-lg font-extrabold text-gray-900">Reviews</h2>
+          {count > 0 ? (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900 tabular-nums leading-none">{avg.toFixed(1)}</span>
+              <div>
+                <Stars value={avg} size={14} />
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {count} verified review{count === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
-            {!showForm && (
-              <button type="button" onClick={() => setShowForm(true)}
-                      className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-white px-3.5 py-2.5 rounded-xl active:scale-95 transition-transform shadow-sm"
-                      style={{ backgroundColor: primary }}>
-                <MessageSquarePlus size={14} /> Write a review
-              </button>
-            )}
-          </div>
+          ) : (
+            <p className="text-sm text-gray-400 mt-1">
+              {reviews === null ? 'Loading reviews…' : 'No reviews yet.'}
+            </p>
+          )}
 
-          {/* Rating spread — lets a shopper judge the store at a glance instead
-              of scrolling every review. */}
           {count > 0 && (
             <div className="mt-4 flex flex-col gap-1 max-w-xs">
               {dist.map(({ n, c }) => (
@@ -156,71 +107,31 @@ export default function StoreReviews() {
               ))}
             </div>
           )}
+
+          <p className="text-[11px] text-gray-400 mt-3 inline-flex items-start gap-1.5">
+            <BadgeCheck size={13} className="text-emerald-600 flex-shrink-0 mt-px" />
+            Only customers who received an order can review. The store can reply, but can’t edit or delete reviews.
+          </p>
+          {oldLink && (
+            <p className="mt-3 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+              Got this link to leave a review? Reviews are now written from the link the store sends after your order is delivered.
+            </p>
+          )}
         </div>
 
-        {/* Write-a-review form */}
-        {showForm && (
-          <div className="px-5 sm:px-6 py-5 border-b border-gray-100 bg-gray-50/60">
-            {done ? (
-              <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm py-2">
-                <CheckCircle2 size={18} /> Thanks for your review!
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-xs font-semibold text-gray-600">Your rating</span>
-                  <Stars value={rating} size={26} onPick={setRating} />
-                </div>
-                <input
-                  type="text" placeholder="Your name" maxLength={60}
-                  value={name} onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
-                />
-                <textarea
-                  rows={3} maxLength={400} placeholder="Tell others about your experience (optional)"
-                  value={comment} onChange={(e) => setComment(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
-                />
-                {error && <p className="text-xs text-red-500">{error}</p>}
-                <div className="flex gap-2">
-                  <button type="button" onClick={handleSubmit} disabled={submitting}
-                          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-                          style={{ backgroundColor: primary }}>
-                    {submitting ? <><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Submitting…</> : 'Submit review'}
-                  </button>
-                  <button type="button" onClick={() => { setShowForm(false); setError(''); }}
-                          className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-gray-700">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Review list */}
-        <div className="px-5 sm:px-6 py-2">
-          {reviews === null ? (
-            <div className="py-8 space-y-3">
-              {[0, 1].map((i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-3 w-24 bg-gray-200 rounded mb-2" />
-                  <div className="h-3 w-2/3 bg-gray-100 rounded" />
-                </div>
-              ))}
-            </div>
-          ) : list.length === 0 ? (
-            !showForm && (
-              <p className="text-center text-sm text-gray-400 py-8">
-                Ordered from here? Share your experience to help others.
-              </p>
-            )
-          ) : (
-            <>
-              {/* Capped by default. When expanded the list scrolls INSIDE a fixed
-                  max-height, so the page itself never grows without end no matter
-                  how many reviews a store collects. */}
-              <ul className={['divide-y divide-gray-100', expanded ? 'max-h-[26rem] overflow-y-auto' : ''].join(' ')}>
+        {reviews === null ? (
+          <div className="px-5 sm:px-6 py-8 space-y-3">
+            {[0, 1].map((i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-3 w-24 bg-gray-200 rounded mb-2" />
+                <div className="h-3 w-2/3 bg-gray-100 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : list.length > 0 && (
+          <div className="px-5 sm:px-6 py-2">
+            <ul className={['divide-y divide-gray-100', expanded ? 'max-h-[26rem] overflow-y-auto' : ''].join(' ')}>
               {shown.map((r) => (
                 <li key={r.id} className="py-4">
                   <div className="flex items-center justify-between gap-3">
@@ -229,26 +140,44 @@ export default function StoreReviews() {
                             style={{ backgroundColor: primary }}>
                         {r.customer_name?.[0]?.toUpperCase() || '🙂'}
                       </span>
-                      <span className="text-sm font-bold text-gray-900 truncate">{r.customer_name}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">{r.customer_name}</p>
+                        {r.verified && (
+                          <p className="text-[10px] font-bold text-emerald-700 inline-flex items-center gap-1">
+                            <BadgeCheck size={11} /> Verified purchase
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{fmtDate(r.created_at)}</span>
                   </div>
                   <div className="mt-1.5 ml-10">
                     <Stars value={r.rating} size={13} />
+                    {r.itemName && (
+                      <p className="text-[11px] text-gray-400 mt-1 truncate">
+                        Bought: {r.itemName}{r.variant ? ` (${r.variant})` : ''}
+                      </p>
+                    )}
                     {r.comment && <p className="text-sm text-gray-600 mt-1.5 leading-relaxed line-clamp-3">{r.comment}</p>}
+                    {r.edited && <p className="text-[10px] text-gray-400 mt-1">Edited</p>}
+                    {r.reply && (
+                      <div className="mt-2 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
+                        <p className="text-[11px] font-bold text-gray-700">Reply from {config.businessName || 'the store'}</p>
+                        <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{r.reply}</p>
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
-              </ul>
-              {hidden > 0 && (
-                <button type="button" onClick={() => setExpanded((v) => !v)}
-                        className="w-full py-3 text-xs font-bold border-t border-gray-100 text-gray-500 hover:text-gray-800 transition-colors">
-                  {expanded ? 'Show less' : `Show all ${list.length} reviews`}
-                </button>
-              )}
-            </>
-          )}
-        </div>
+            </ul>
+            {hidden > 0 && (
+              <button type="button" onClick={() => setExpanded((v) => !v)}
+                      className="w-full py-3 text-xs font-bold border-t border-gray-100 text-gray-500 hover:text-gray-800 transition-colors">
+                {expanded ? 'Show less' : `Show all ${list.length} reviews`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

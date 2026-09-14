@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X } from 'lucide-react';
+import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
+import { createReviewInvite } from '../../utils/reviewService';
+import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
 
 // Two vocabularies over the same rows: product stores see Orders (delivery
 // lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
@@ -345,6 +347,47 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
+// "Ask for a review" — creates a one-order review link on the server (PIN-gated,
+// delivered orders only) and opens WhatsApp with it prefilled. Each tap makes a
+// fresh link and retires the previous one, so a lost or forwarded link can be
+// replaced.
+function AskReviewButton({ o, slug, pin, storeName, phone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState('');
+
+  async function ask() {
+    setErr('');
+    setBusy(true);
+    // Open the tab inside the tap: browsers block window.open after an await.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
+    try {
+      const token = await createReviewInvite(slug, pin, o.id);
+      const text = reviewInviteMessage({
+        customerName: o.customer_name, storeName, link: reviewLink(window.location.origin, token),
+      });
+      const url = `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
+      if (win) win.location.href = url; else window.location.href = url;
+    } catch (e) {
+      if (win) win.close();
+      setErr(e.message || 'Could not create the review link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={ask} disabled={busy}
+        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-800 border border-amber-200 bg-amber-50 py-2 rounded-xl hover:bg-amber-100 active:scale-95 disabled:opacity-60"
+        title="Sends the customer a review link for this order only — nothing sends until you press send in WhatsApp">
+        <Star size={13} /> {busy ? 'Creating link…' : 'Ask for a review'}
+      </button>
+      {err && <p className="text-[11px] text-red-500 mt-1" role="alert">{err}</p>}
+    </div>
+  );
+}
+
 function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
@@ -595,6 +638,10 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
              title="Opens WhatsApp with a ready-made message — nothing sends until you press send">
             <MessageCircle size={13} /> {sendUpdateLabel(o.status)}
           </a>
+        )}
+
+        {!leads && o.status === 'delivered' && phone && Number(o.total) > 0 && (
+          <AskReviewButton o={o} slug={slug} pin={pin} storeName={storeName} phone={phone} />
         )}
 
         {!leads && (store.shipping?.delhivery || store.shipping?.shadowfax) && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (

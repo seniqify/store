@@ -41,7 +41,12 @@ resetter as (
 
 -- ── V1  every gated function now goes through the throttle ──────────────────
 select 'V1' as grp, 'V1.1 all eleven delegate to verify_store_pin' as check_name,
-  case when (select count(*) from gated) <> 11
+  -- 11 before reviews-verified-forward.sql; 8 after it retires get_store_reviews,
+  -- set_review_status and delete_review (their replacements are checked by
+  -- reviews-verified-verify.sql).
+  case when (select count(*) from gated) not in (8, 11)
+         or ((select count(*) from gated) = 8
+             and to_regprocedure('public.get_owner_reviews(text,text)') is null)
        then 'CHECK - found ' || (select count(*) from gated)::text || ' of 11, not the expected set'
        when not exists (select 1 from gated where prosrc not ilike '%verify_store_pin%')
        then 'PASS'

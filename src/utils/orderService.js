@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { calcCartTotals } from './currency';
 import { couponDiscountFor } from './offers';
 import { hashPin } from './pinHash';
+import { lineProductId } from './reviewShape';
 import { getMetaMatchData } from './metaPixel';
 
 /**
@@ -46,7 +47,7 @@ export function buildOrderRow(customerDetails = {}, cart = [], config = {}, coup
     pincode:        String(customerDetails.pincode || '').replace(/\D/g, '').slice(0, 6),
     payment_method: customerDetails.paymentMethod || '',
     notes:          [customerDetails.notes || '', couponNote].filter(Boolean).join(' · '),
-    items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
+    items:          cart.map((i) => ({ productId: lineProductId(i), name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
     item_count:     cart.reduce((s, i) => s + i.qty, 0),
     subtotal, tax, shipping, packaging, cod_fee: codFee, total: netTotal,
     status:         'new',
@@ -116,7 +117,7 @@ export async function saveAbandonedCheckout(customerDetails = {}, cart = [], con
       destination:    customerDetails.destination || '',
       payment_method: '',
       notes:          '🛒 abandoned checkout',
-      items:          cart.map((i) => ({ name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
+      items:          cart.map((i) => ({ productId: lineProductId(i), name: i.name, price: i.price, qty: i.qty, variant: i.variant || null, size: i.size || null, unit: i.unit || null })),
       item_count:     cart.reduce((s, i) => s + i.qty, 0),
       subtotal, tax, shipping, total,
       status:         'abandoned',

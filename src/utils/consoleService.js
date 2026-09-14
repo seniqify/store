@@ -164,6 +164,25 @@ export async function manageTeam(payload) {
 
 // ── Small shared helpers ──────────────────────────────────────────────────────
 /** ISO timestamp for `days` days ago. */
+/** Reported reviews waiting for a decision (crm_team admin only). [] if unavailable. */
+export async function fetchReviewReports() {
+  try {
+    const { data, error } = await supabase.rpc('admin_list_review_reports');
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+/** Keep or remove a reported review. Removing needs a reason; both are audited. */
+export async function resolveReviewReport(reportId, decision, note = '') {
+  const { error } = await supabase.rpc('admin_resolve_review_report', {
+    p_report_id: reportId, p_decision: decision, p_note: note,
+  });
+  if (error) throw new Error(error.message || 'Could not save the decision.');
+}
+
 export function daysAgoIso(days) {
   return new Date(Date.now() - days * 86400000).toISOString();
 }

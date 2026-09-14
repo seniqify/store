@@ -148,11 +148,11 @@ export default async function handler(req, res) {
       } catch { /* fall through to SPA */ }
 
       if (config && config.businessName) {
-        // Approved-review aggregate → star rich result (best-effort, never blocks).
+        // Published verified-review aggregate → star rich result (best-effort, never blocks).
         let rating = null;
         try {
           const rr = await fetch(
-            `${SUPABASE_URL}/rest/v1/reviews?store_slug=eq.${encodeURIComponent(slug)}&status=eq.approved&select=rating`,
+            `${SUPABASE_URL}/rest/v1/product_reviews?store_slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=rating`,
             { headers: dbHeaders },
           );
           if (rr.ok) {

@@ -1,128 +1,153 @@
 import { supabase } from '../lib/supabase';
 import { hashPin } from './pinHash';
+import { toPublicReview, reviewStats, ratingsByStore } from './reviewShape';
 
 /**
- * Customer reviews & ratings.
- *  • submitReview      — public (anon) insert when a customer leaves a review.
- *  • fetchReviews      — public read of *approved* reviews (RLS-restricted).
- *  • fetchAllReviews   — owner-only read of every review, gated by the store PIN.
- *  • setReviewStatus   — owner-only hide / re-approve, gated by the store PIN.
- *  • removeReview      — owner-only permanent delete, gated by the store PIN.
+ * Verified-purchase reviews (supabase/reviews-verified-forward.sql).
  *
- * Reviews auto-publish (status 'approved') for instant social proof; the owner
- * can hide or delete abusive ones from the Reviews tab. Every call is wrapped so
- * a missing table / network blip degrades gracefully instead of throwing.
+ *  Public (storefront)
+ *   • fetchReviews / fetchProductReviews / fetchAllRatings — published reviews only.
+ *  Customer (holds a review link)
+ *   • getReviewInvite / submitInviteReview — the ONLY way a review is written.
+ *  Seller (holds the store PIN)
+ *   • createReviewInvite — makes the link for one delivered order.
+ *   • fetchOwnerReviews / replyToReview / reportReview.
+ *     There is no delete and no hide: a reported review stays up until
+ *     PocketLink decides.
+ *
+ * Public reads never throw (a network blip shows no reviews). Writes throw an
+ * Error carrying the server's message, which is written to be shown as-is.
  */
 
-const MAX_COMMENT = 400;
+export { reviewStats };
 
-/** Public: leave a review. Returns true on success, false otherwise. */
-export async function submitReview(slug, { name, rating, comment } = {}) {
-  if (!slug) return false;
-  const stars = Math.round(Number(rating));
-  const cleanName = String(name || '').trim().slice(0, 60);
-  if (!cleanName || !(stars >= 1 && stars <= 5)) return false;
-  try {
-    const { error } = await supabase.from('reviews').insert({
-      store_slug:    slug,
-      customer_name: cleanName,
-      rating:        stars,
-      comment:       String(comment || '').trim().slice(0, MAX_COMMENT),
-      status:        'approved',
-    });
-    return !error;
-  } catch {
-    return false;
-  }
+// Only these columns are granted to the browser; asking for any other fails.
+const PUBLIC_COLUMNS =
+  'id, product_id, item_name, variant, display_name, rating, body, verified_purchase, ' +
+  'merchant_reply, merchant_replied_at, submitted_at, edit_count';
+
+function fail(error, fallback) {
+  return new Error(error?.message || fallback);
 }
 
-/** Public: list approved reviews for a store (newest first). Never throws. */
+/** Public: a store's published reviews, newest first. Never throws. */
 export async function fetchReviews(slug) {
   if (!slug) return [];
   try {
     const { data, error } = await supabase
-      .from('reviews')
-      .select('id, customer_name, rating, comment, created_at')
+      .from('product_reviews')
+      .select(PUBLIC_COLUMNS)
       .eq('store_slug', slug)
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false });
+      .eq('status', 'published')
+      .order('submitted_at', { ascending: false })
+      .limit(500);
     if (error) return [];
-    return data || [];
+    return (data || []).map(toPublicReview);
   } catch {
     return [];
   }
 }
 
-/** Owner-only: list every review (any status), PIN-checked server-side. */
-export async function fetchAllReviews(slug, pin) {
+/** Public: published reviews of one product. Never throws. */
+export async function fetchProductReviews(slug, productId) {
+  if (!slug || productId === undefined || productId === null || productId === '') return [];
   try {
-    const hashed = await hashPin(pin);
-    const { data, error } = await supabase.rpc('get_store_reviews', { p_slug: slug, p_hashed_pin: hashed });
+    const { data, error } = await supabase
+      .from('product_reviews')
+      .select(PUBLIC_COLUMNS)
+      .eq('store_slug', slug)
+      .eq('product_id', String(productId))
+      .eq('status', 'published')
+      .order('submitted_at', { ascending: false })
+      .limit(100);
     if (error) return [];
-    return data || [];
+    return (data || []).map(toPublicReview);
   } catch {
     return [];
   }
 }
 
-/** Owner-only: hide ('hidden') or re-publish ('approved') a review. */
-export async function setReviewStatus(slug, pin, reviewId, status) {
-  try {
-    const hashed = await hashPin(pin);
-    await supabase.rpc('set_review_status', {
-      p_slug: slug, p_hashed_pin: hashed, p_review_id: reviewId, p_status: status,
-    });
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Owner-only: permanently delete a review. */
-export async function removeReview(slug, pin, reviewId) {
-  try {
-    const hashed = await hashPin(pin);
-    await supabase.rpc('delete_review', { p_slug: slug, p_hashed_pin: hashed, p_review_id: reviewId });
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Aggregate { avg, count } from a list of reviews. avg rounded to 1 dp. */
-export function reviewStats(reviews = []) {
-  const count = reviews.length;
-  if (!count) return { avg: 0, count: 0 };
-  const sum = reviews.reduce((s, r) => s + (Number(r.rating) || 0), 0);
-  return { avg: Math.round((sum / count) * 10) / 10, count };
-}
-
-/**
- * Public: one bulk query of approved ratings for the marketplace —
- * returns { [store_slug]: { avg, count } }. Rows are just (slug, rating), so
- * this stays small for a long while; move to a SQL aggregate RPC if reviews
- * ever reach tens of thousands.
- */
+/** Public: { [store_slug]: { avg, count } } for the marketplace. Never throws. */
 export async function fetchAllRatings() {
   try {
     const { data, error } = await supabase
-      .from('reviews')
+      .from('product_reviews')
       .select('store_slug, rating')
-      .eq('status', 'approved')
+      .eq('status', 'published')
       .limit(5000);
     if (error || !data) return {};
-    const acc = {};
-    for (const r of data) {
-      const k = r.store_slug;
-      if (!k) continue;
-      (acc[k] ??= { sum: 0, count: 0 });
-      acc[k].sum += Number(r.rating) || 0;
-      acc[k].count += 1;
-    }
-    const out = {};
-    for (const [k, v] of Object.entries(acc)) {
-      out[k] = { avg: Math.round((v.sum / v.count) * 10) / 10, count: v.count };
-    }
-    return out;
+    return ratingsByStore(data);
   } catch {
     return {};
   }
+}
+
+// ── Customer ───────────────────────────────────────────────────────────────
+
+/** What the review page shows for a link. `state` is 'ok' or why it cannot be used. */
+export async function getReviewInvite(token) {
+  try {
+    const { data, error } = await supabase.rpc('get_review_invite', { p_token: String(token || '') });
+    if (error || !data) return { state: 'error' };
+    return data;
+  } catch {
+    return { state: 'error' };
+  }
+}
+
+/** Write or edit the review of one item. Throws with the server's reason. */
+export async function submitInviteReview(token, { itemIndex, rating, body, displayName, consentAdvertising = false }) {
+  const { data, error } = await supabase.rpc('submit_review', {
+    p_token:               String(token || ''),
+    p_item_index:          itemIndex,
+    p_rating:              Math.round(Number(rating)),
+    p_body:                String(body || ''),
+    p_display_name:        String(displayName || ''),
+    p_consent_advertising: Boolean(consentAdvertising),
+  });
+  if (error) throw fail(error, 'Could not save your review. Try again.');
+  return data;
+}
+
+// ── Seller ─────────────────────────────────────────────────────────────────
+
+/** Make (or remake) the review link for a delivered order. Returns the raw token. */
+export async function createReviewInvite(slug, pin, orderId) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('issue_review_invite', {
+    p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId,
+  });
+  if (error) throw fail(error, 'Could not create the review link.');
+  if (!data) throw new Error('Could not create the review link.');
+  return data;
+}
+
+/** Every review of the store, any status. `{ rows, error }` so the tab can say why it is empty. */
+export async function fetchOwnerReviews(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('get_owner_reviews', { p_slug: slug, p_hashed_pin: hashed });
+    if (error) return { rows: [], error: error.message || 'Could not load reviews.' };
+    return { rows: data || [], error: '' };
+  } catch (e) {
+    return { rows: [], error: e?.message || 'Could not load reviews.' };
+  }
+}
+
+/** Public reply under a review. An empty reply removes it. */
+export async function replyToReview(slug, pin, reviewId, reply) {
+  const hashed = await hashPin(pin);
+  const { error } = await supabase.rpc('reply_to_review', {
+    p_slug: slug, p_hashed_pin: hashed, p_review_id: reviewId, p_reply: String(reply || ''),
+  });
+  if (error) throw fail(error, 'Could not save your reply.');
+}
+
+/** Ask PocketLink to check a review. It stays visible until they decide. */
+export async function reportReview(slug, pin, reviewId, reason) {
+  const hashed = await hashPin(pin);
+  const { error } = await supabase.rpc('report_review', {
+    p_slug: slug, p_hashed_pin: hashed, p_review_id: reviewId, p_reason: String(reason || ''),
+  });
+  if (error) throw fail(error, 'Could not send the report.');
 }
