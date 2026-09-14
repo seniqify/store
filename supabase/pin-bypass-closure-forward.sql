@@ -307,7 +307,7 @@ begin
       (w.template_url is not null and w.template_url <> '') as configured,
       coalesce(w.template_url, '') as template_url,
       case when w.api_key is null or w.api_key = '' then ''
-           else '••••' || right(w.api_key, 4) end as api_key_masked,
+           else repeat(chr(8226), 4) || right(w.api_key, 4) end as api_key_masked,  -- four bullets, ASCII-safe to paste
       coalesce(w.var_templates, '["{name}"]'::jsonb) as var_templates
     from public.store_whatsapp w
     where w.store_slug = p_slug;
