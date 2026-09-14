@@ -33,10 +33,11 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // PIN check — the store's hashed PIN must match.
-    const { data: store } = await supabase
-      .from('stores').select('pin').eq('slug', slug).maybeSingle();
-    if (!store || store.pin !== hashedPin) return json({ error: 'Unauthorized.' }, 403);
+    // PIN gate through the throttled verifier (pin-bypass-closure-forward.sql). A
+    // direct stores.pin comparison here let anyone guess a PIN without limit.
+    const { data: pinOk, error: pinErr } = await supabase.rpc('verify_store_pin', { p_slug: slug, p_hashed_pin: hashedPin });
+    if (pinErr) return json({ error: 'Could not check your PIN right now. Please try again.' });
+    if (pinOk !== true) return json({ error: 'Unauthorized.' }, 403);
 
     // Owner's saved WhatsApp credentials. The template URL is the credential;
     // a Bearer key is optional (some Seniqify templates need one, some don't).

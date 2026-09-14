@@ -28,9 +28,13 @@ serve(async (req) => {
     );
 
     // PIN gate: the stored pin is the sha256 hash; compare against what the client sends.
-    const { data: store } = await supabase.from('stores').select('pin, config').eq('slug', slug).maybeSingle();
+    // PIN gate through the throttled verifier (pin-bypass-closure-forward.sql). A
+    // direct stores.pin comparison here let anyone guess a PIN without limit.
+    const { data: pinOk, error: pinErr } = await supabase.rpc('verify_store_pin', { p_slug: slug, p_hashed_pin: hashedPin });
+    if (pinErr) return json({ error: 'Could not check your PIN right now. Please try again.' });
+    if (pinOk !== true) return json({ error: 'Incorrect PIN' });
+    const { data: store } = await supabase.from('stores').select('config').eq('slug', slug).maybeSingle();
     if (!store) return json({ error: 'Store not found' });
-    if (store.pin !== hashedPin) return json({ error: 'Incorrect PIN' });
 
     const config = store.config || {};
     const now = new Date().toISOString();

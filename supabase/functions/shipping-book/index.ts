@@ -65,9 +65,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const { data: store } = await supabase.from('stores').select('pin, config').eq('slug', slug).maybeSingle();
+    // PIN gate through the throttled verifier (pin-bypass-closure-forward.sql). A
+    // direct stores.pin comparison here let anyone guess a PIN without limit.
+    const { data: pinOk, error: pinErr } = await supabase.rpc('verify_store_pin', { p_slug: slug, p_hashed_pin: hashedPin });
+    if (pinErr) return json({ error: 'Could not check your PIN right now. Please try again.' });
+    if (pinOk !== true) return json({ error: 'Incorrect PIN' });
+    const { data: store } = await supabase.from('stores').select('config').eq('slug', slug).maybeSingle();
     if (!store) return json({ error: 'Store not found' });
-    if (store.pin !== hashedPin) return json({ error: 'Incorrect PIN' });
 
     // The store's active default courier (owner-selected in Settings).
     const shipCfg = store.config?.shipping || {};
