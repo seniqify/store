@@ -66,7 +66,10 @@ test('both Razorpay checks find older checkouts by order id near the order time,
   assert.match(a, /String\(it\?\.notes\?\.order_row_id \?\? ''\) === String\(order\.id\)/);
   // Found is not paid: the amount and status binding still decides.
   assert.match(link, /const rz = await findCheckoutRazorpayOrder\(auth, order\);\n  if \(!rz\) return 'not_found';\n  if \(!checkoutIsPaidFor\(rz, order\)\) return 'pending';/);
-  assert.match(sweep, /if \(!rz \|\| !checkoutIsPaidFor\(rz, order\)\) return false;/);
+  assert.match(sweep, /if \(!rz\) return "no_razorpay_order";\n  if \(!checkoutIsPaidFor\(rz, order\)\) \{/);
+  // The run reports what Razorpay said per order, without keys.
+  assert.match(sweep, /checkouts\.push\(\{ store: acct\.store_slug, order_id: o\.id, result \}\);/);
+  assert.equal(/key_secret[^\n]*checkouts|checkouts[^\n]*key_secret/.test(sweep), false);
 });
 
 test('both checks look back 60 days, so a delivered order paid weeks ago is confirmed', () => {

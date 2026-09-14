@@ -160,20 +160,24 @@ async function findCheckoutRazorpayOrder(auth: string, order: any): Promise<any 
   return null;
 }
 
-async function settleCheckout(supabase: Supa, auth: string, order: any): Promise<boolean> {
+/** Confirm one checkout with Razorpay. Returns "paid" or why not, so a run can be read back. */
+async function settleCheckout(supabase: Supa, auth: string, order: any): Promise<string> {
   const rz = await findCheckoutRazorpayOrder(auth, order);
-  if (!rz || !checkoutIsPaidFor(rz, order)) return false;
+  if (!rz) return "no_razorpay_order";
+  if (!checkoutIsPaidFor(rz, order)) {
+    return `not_paid: razorpay status ${rz.status}, amount ${rz.amount} paise, paid ${rz.amount_paid}, order total ${toPaise(order.total)} paise`;
+  }
   const pr = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(rz.id)}/payments`, {
     headers: { 'Authorization': auth },
   });
   const pd = await pr.json().catch(() => ({}));
   const captured = (Array.isArray(pd?.items) ? pd.items : []).find((p: any) => p?.status === 'captured');
-  if (!captured) return false;
+  if (!captured) return "no_captured_payment";
   await supabase.from('orders')
     .update({ paid: true, paid_at: new Date().toISOString(), paid_via: 'razorpay',
               payment_ref: String(captured.id), payment_provider: 'razorpay' })
     .eq('id', order.id).eq('store_slug', order.store_slug).eq('paid', false);
-  return true;
+  return "paid";
 }
 
 serve(async (req) => {
@@ -182,7 +186,10 @@ serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
   // ── Secret gate: nothing runs without it ─────────────────────────────────
-  const { data: cfg } = await supabase.from('automation_secrets').select('secret').eq('name', 'status-sweep').maybeSingle();
+  const { data: cfg, error: cfgErr } = await supabase.from('automation_secrets').select('secret').eq('name', 'status-sweep').maybeSingle();
+  // Not being able to READ the secret is a server problem, not a bad caller:
+  // report it as such so a failing schedule is diagnosable from its response.
+  if (cfgErr) return json({ error: 'secret_unavailable', detail: String(cfgErr.message || '').slice(0, 160) }, 500);
   const expected = String(cfg?.secret || '');
   const got = req.headers.get('x-sweep-secret') || '';
   if (expected.length < 48 || got.length !== expected.length) return json({ error: 'unauthorized' }, 401);
@@ -191,6 +198,8 @@ serve(async (req) => {
   if (diff !== 0) return json({ error: 'unauthorized' }, 401);
 
   const summary = { stores: 0, courierUpdates: 0, linksPaid: 0, checkoutsPaid: 0, errors: 0 };
+  // Per unconfirmed checkout: what Razorpay said. Order ids, statuses and amounts only.
+  const checkouts: { store: string; order_id: string; result: string }[] = [];
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
   const since60 = new Date(Date.now() - 60 * 86400000).toISOString();
 
@@ -224,9 +233,13 @@ serve(async (req) => {
         .eq('store_slug', acct.store_slug).eq('paid', false).eq('payment_method', 'online')
         .is('payment_ref', null).not('status', 'in', '(cancelled,abandoned)')
         .gte('created_at', since60).limit(30);
-      for (const o of online || []) if (await settleCheckout(supabase, auth, o)) summary.checkoutsPaid++;
+      for (const o of online || []) {
+        const result = await settleCheckout(supabase, auth, o);
+        if (result === "paid") summary.checkoutsPaid++;
+        checkouts.push({ store: acct.store_slug, order_id: o.id, result });
+      }
     } catch { summary.errors++; }
   }
 
-  return json({ ok: true, ...summary });
+  return json({ ok: true, ...summary, checkouts });
 });
