@@ -217,13 +217,13 @@ serve(async (req) => {
     }
 
     // ── orphans: paid on Razorpay, but the PocketLink order never saved ─────
-    // Read-only. Looks at the last 7 days of captured payments on the store's own
+    // Read-only. Looks at the last 30 days of captured payments on the store's own
     // Razorpay account; any whose checkout order id is not in orders is money
     // without an order. The closest abandoned cart (same amount, placed shortly
     // before) is attached so the seller can see who paid and for what.
     if (action === 'orphans') {
       const to = Math.floor(Date.now() / 1000);
-      const from = to - 7 * 86400;
+      const from = to - 30 * 86400;   // 30 days: stays visible until the seller has dealt with it
       const captured: any[] = [];
       for (let skip = 0; skip < 500; skip += 100) {
         const r = await fetch(`https://api.razorpay.com/v1/payments?from=${from}&to=${to}&count=100&skip=${skip}`, { headers: { 'Authorization': auth } });
