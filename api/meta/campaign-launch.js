@@ -337,9 +337,19 @@ async function createWithMcp({ slug, launchId, built, session, adAccount, token,
     const removedIds = new Set(removed.filter((x) => x.ok).map((x) => x.id));
     const leftovers = result.made.filter((m) => !removedIds.has(m.id));
     const clear = Object.fromEntries(result.made.filter((m) => removedIds.has(m.id)).map((m) => [ID_KEY[m.kind], null]));
-    await set(launchId, { status: leftovers.length ? 'partial' : 'failed', error: message, ...clear });
-    await audit(slug, launchId, 'create', 'mcp', false, { errorCode: result.error?.code, detail: { step: result.step, leftovers, subcode, message: result.error?.message?.slice(0, 300) || null } });
+    const category = String(result.detail?.error_category || '').toUpperCase();
+    // A problem on Meta's side of the automation (not a rejected plan), with
+    // everything it made confirmed gone: the Marketing API makes the same paused
+    // campaign, and nothing can be duplicated.
+    const fallBack = hasWrite && leftovers.length === 0 && (category === 'INTERNAL' || category === 'TRANSIENT'
+      || (!category && /internal error|try again later/i.test(result.error?.message || '')));
+    await audit(slug, launchId, 'create', 'mcp', false, { errorCode: result.error?.code, detail: { step: result.step, leftovers, subcode, category: category || null, message: result.error?.message?.slice(0, 300) || null, ...(fallBack ? { fellBackTo: 'graph' } : {}) } });
     if (removed.length) await audit(slug, launchId, 'rollback', 'graph', leftovers.length === 0, { detail: { removed } });
+    if (fallBack) {
+      await set(launchId, { ...clear, engine: 'graph', error: '', config: { ...(row?.config || {}), engine: 'graph', engineFallback: `automation_${(category || 'internal').toLowerCase()}` } });
+      return createWithGraph({ slug, launchId, built, adAccount, token, budgetType });
+    }
+    await set(launchId, { status: leftovers.length ? 'partial' : 'failed', error: message, ...clear });
     return {
       error: 'failed', step: result.step, code: result.error?.code || null, message: result.error?.message || '',
       mode: 'automated', cleanedUp: leftovers.length === 0, leftovers: leftovers.map((x) => `${x.kind} ${x.id}`),

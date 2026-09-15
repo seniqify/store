@@ -4,7 +4,7 @@ import {
   ShoppingBag, Users, Sparkles, Megaphone, Info,
 } from 'lucide-react';
 import { previewCampaign } from '../../utils/metaCampaign';
-import { fetchAdCopy } from '../../utils/metaConnect';
+import { fetchAdCopy, setupOrderTracking } from '../../utils/metaConnect';
 import { launchCreate, launchActivate, launchPause, launchStop } from '../../utils/metaLaunch';
 import { consoleSession, fetchMyTeamRow } from '../../utils/consoleService';
 import { sendOtp } from '../../utils/otpService';
@@ -27,6 +27,14 @@ const ERR = {
   no_ad_account: 'No ad account connected — reconnect Meta and share an ad account.',
   ad_account_not_selected: 'Choose your ad account on the Ads page first.',
   reauth: 'Your Meta connection expired — reconnect on the Ads page.',
+};
+
+const TRACKING_ERR = {
+  choose_pixel: 'Your ad account has more than one tracking pixel. Choose the one that tracks your orders under Order tracking on the Ads page.',
+  writes_disabled: 'Setting up order tracking from PocketLink isn’t switched on for your store yet.',
+  pixels_unreadable: 'Meta couldn’t show this ad account’s tracking right now. Try again shortly.',
+  reauth: 'Your Meta connection expired — reconnect on the Ads page.',
+  not_connected: 'Connect Meta on the Ads page first.',
 };
 
 const COPY_ERR = {
@@ -191,6 +199,16 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', writes
   function chooseWords(source, index = -1) {
     setPick({ source, index }); setEdit(null);
     buildPlan({ words: source === 'ai' ? copy.variants[index] : null });
+  }
+
+  // The plan is blocked because Meta can't see this store's orders in the ad
+  // account: connect them, then rebuild the same plan.
+  async function fixOrderTracking() {
+    setErr(''); setBusy(true);
+    let r;
+    try { r = await setupOrderTracking(config.slug, pin); } finally { setBusy(false); }
+    if (r?.ok) { await buildPlan({}); return; }
+    setErr(TRACKING_ERR[r?.error] || (r?.message ? `Order tracking could not be set up. Meta said: ${r.message}` : 'Order tracking could not be set up. Try again.'));
   }
 
   function launchErr(r) {
@@ -553,6 +571,12 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', writes
         <div className="rounded-xl border border-red-200 bg-red-50 p-3.5 mt-3">
           <p className="text-sm font-bold text-red-700 flex items-center gap-1.5"><AlertTriangle size={15} /> Fix before this can run</p>
           <ul className="mt-1.5 space-y-1 text-xs text-red-700/90 list-disc pl-4">{blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
+          {d.needsOrderTracking && (
+            <button type="button" disabled={busy} onClick={fixOrderTracking}
+              className="mt-2.5 text-xs font-bold text-white px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: themeColor }}>
+              {busy ? 'Setting up…' : 'Set up order tracking'}
+            </button>
+          )}
         </div>
       )}
       {warnings.length > 0 && (

@@ -95,6 +95,14 @@ export async function selectMetaInstagram(slug, pin, igId) {
   return data;
 }
 
+/** Connect the store's orders to its ad account so ads can find buyers: keeps or
+ *  uses a pixel the ad account has (`pixelId` picks one of several), or creates one. */
+export async function setupOrderTracking(slug, pin, pixelId) {
+  const data = await adsAction(slug, pin, { action: 'setup-order-tracking', ...(pixelId ? { pixelId } : {}) });
+  if (data?.ok) clearCachedStore(slug);
+  return data;
+}
+
 /** Owner-only: disconnect the store's Meta connection. */
 export async function disconnectMeta(slug, pin) {
   const hashedPin = await hashPin(pin);

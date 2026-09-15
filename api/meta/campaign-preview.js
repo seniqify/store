@@ -24,12 +24,19 @@
 //     /me/businesses.
 //   action 'select-instagram' — which Instagram account, which must be the one
 //     linked to the selected Page; an empty id means Facebook only.
+//   action 'setup-order-tracking' — connect the store's orders to its ad account so
+//     an orders campaign can optimise on them: keep the store's pixel if the ad
+//     account can use it, use the ad account's pixel (the merchant picks one of
+//     several), or create one in the ad account. Saves config.meta.pixelId, which
+//     campaigns and server Purchase events use. Never touches campaigns or spend.
 import Anthropic from '@anthropic-ai/sdk';
 import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus, slugAllowed } from './_meta.js';
 import { buildCampaign, productDisplay } from './_campaignBuild.js';
 import { recommend } from './_recommend.js';
 import { buildConnection, liveBusinesses, matchBusiness, matchInstagram, logAdAction } from './_connection.js';
 import { generateAdCopy, copyFacts } from './_adCopy.js';
+import { ensureOrderPixel, storefrontPixelIsPocketLinks } from './_orderTracking.js';
+import { merchantWritesAllowed } from './_capabilities.js';
 
 const mapPage = (p) => ({
   id: String(p.id),
@@ -39,7 +46,7 @@ const mapPage = (p) => ({
     : null,
 });
 
-const SELECT_ACTIONS = ['select-page', 'select-ad-account', 'select-business', 'select-instagram'];
+const SELECT_ACTIONS = ['select-page', 'select-ad-account', 'select-business', 'select-instagram', 'setup-order-tracking'];
 
 // Any active paid plan may use AI writing (same rule as product auto-fill).
 function isPaid(config) {
@@ -151,6 +158,28 @@ async function adCopy(res, config, body) {
   res.status(200).json(await generateAdCopy({ client: new Anthropic({ apiKey }), facts }));
 }
 
+// action 'setup-order-tracking' — see the header. It can create a pixel in the
+// merchant's ad account, so it follows the same pilot switch as creating campaigns.
+async function setupOrderTracking(res, slug, acct, config, requestedPixelId) {
+  if (!merchantWritesAllowed(slug)) { res.status(403).json({ error: 'writes_disabled' }); return; }
+  if (!config) { res.status(200).json({ error: 'no_store' }); return; }
+  const picked = resolveAdAccount(acct);
+  if (picked.error) { res.status(200).json({ error: picked.error }); return; }
+
+  const r = await ensureOrderPixel({ adAccount: picked.adAccount, token: acct.access_token, config, pixelId: requestedPixelId });
+  if (!r.ok) { res.status(200).json(r); return; }
+
+  const patch = { ...config, meta: { ...(config.meta || {}), pixelId: r.pixel.id } };
+  // The storefront's own pixel field is filled when empty or when it held
+  // PocketLink's previous ads pixel. A pixel the owner added themselves stays, and
+  // the storefront sends to both.
+  if (storefrontPixelIsPocketLinks(config)) patch.metaPixelId = r.pixel.id;
+  if (!(await patchStoreConfig(slug, patch))) { res.status(200).json({ error: 'save_failed' }); return; }
+
+  await logAdAction({ store_slug: slug, action: 'select', ok: true, actor: 'merchant', target_id: r.pixel.id, detail: { kind: 'pixel', created: r.created } });
+  res.status(200).json({ ok: true, pixel: r.pixel, created: r.created, pixelId: r.pixel.id, metaPixelId: patch.metaPixelId ?? config.metaPixelId ?? null });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
@@ -183,6 +212,7 @@ export default async function handler(req, res) {
     if (action === 'select-ad-account') { await selectAdAccount(res, slug, acct, body.adAccountId); return; }
     if (action === 'select-business') { await selectBusiness(res, slug, acct, config, body.businessId); return; }
     if (action === 'select-instagram') { await selectInstagram(res, slug, acct, config, body.igId); return; }
+    if (action === 'setup-order-tracking') { await setupOrderTracking(res, slug, acct, config, body.pixelId); return; }
 
     // ── Stage 2E preview (default): recommendation engine → shared builder ──
     // The seller sends BUSINESS decisions; recommend() turns them into the exact

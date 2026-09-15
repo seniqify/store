@@ -20,7 +20,7 @@ const CONFIG = {
 
 function world({
   slug = 'showme', scopes = AUTOMATION, automation = true, mcpInit = 200, mcpFail = {}, launches = [],
-  otp = null, entityStatus = 'PAUSED', graphFail = {}, deleteSticks = true,
+  otp = null, entityStatus = 'PAUSED', graphFail = {}, deleteSticks = true, mcpFailCategory = 'VALIDATION',
 } = {}) {
   const log = { tools: [], graphPosts: [], graphDeletes: [], deleted: new Set(), ledger: new Map(launches.map((r) => [r.launch_id, { ...r }])), audits: [], otpDeleted: false };
   const acct = {
@@ -45,7 +45,10 @@ function world({
       log.tools.push({ name, args });
       const ok = (data) => reply({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify(data) }] } });
       // The failure shape in Meta's tool output schema: error_category / error_message / error_subcode.
-      if (mcpFail[name]) return reply({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error_category: 'VALIDATION', error_message: mcpFail[name], error_subcode: '1885272', is_retryable: false }) }] } });
+      if (mcpFail[name]) {
+        const validation = mcpFailCategory === 'VALIDATION';
+        return reply({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error_category: mcpFailCategory, error_message: mcpFail[name], ...(validation ? { error_subcode: '1885272' } : {}), is_retryable: mcpFailCategory === 'TRANSIENT' }) }] } });
+      }
       if (name === 'ads_create_campaign') return ok({ campaign_id: '101' });
       if (name === 'ads_create_ad_set') return ok({ ad_set_id: '202' });
       if (name === 'ads_create_creative') return ok({ creative_id: '303' });
@@ -242,6 +245,35 @@ test('a delete Meta accepts but does not carry out is reported as left behind', 
   assert.deepEqual(r.body.leftovers, ['campaign 101']);
   const row = log.ledger.get(CREATE.launchId);
   assert.deepEqual([row.status, row.campaign_id], ['partial', '101'], 'the ledger keeps the id so the campaign is not lost');
+});
+
+test('a server-side problem in Meta\'s automation falls back to the Marketing API once cleanup is confirmed', async () => {
+  const log = world({ mcpFail: { ads_create_ad_set: 'An internal error occurred. Please try again later.' }, mcpFailCategory: 'INTERNAL' });
+  const r = await call(CREATE);
+  assert.equal(r.body.ok, true, JSON.stringify(r.body));
+  assert.equal(r.body.mode, 'standard');
+  assert.deepEqual(log.graphDeletes, ['101'], 'the automation campaign is removed first');
+  assert.equal(log.graphPosts.filter((p) => /\/(campaigns|adsets|adcreatives|ads)$/.test(p.url)).length, 4);
+  const row = log.ledger.get(CREATE.launchId);
+  assert.deepEqual([row.status, row.engine, row.config.engineFallback], ['created', 'graph', 'automation_internal']);
+  const failed = log.audits.find((a) => a.action === 'create' && a.ok === false);
+  assert.deepEqual([failed.detail.category, failed.detail.fellBackTo], ['INTERNAL', 'graph']);
+});
+
+test('no fallback when the automation campaign could not be confirmed deleted', async () => {
+  const log = world({ mcpFail: { ads_create_ad_set: 'An internal error occurred. Please try again later.' }, mcpFailCategory: 'INTERNAL', deleteSticks: false });
+  const r = await call(CREATE);
+  assert.equal(r.body.error, 'failed');
+  assert.equal(log.graphPosts.filter((p) => /\/(campaigns|adsets|adcreatives|ads)$/.test(p.url)).length, 0, 'nothing is created twice');
+  const row = log.ledger.get(CREATE.launchId);
+  assert.deepEqual([row.status, row.campaign_id], ['partial', '101']);
+});
+
+test('a rejected plan (validation) never falls back', async () => {
+  const log = world({ mcpFail: { ads_create_ad_set: 'Campaign Schedule Is Too Short' } });
+  const r = await call(CREATE);
+  assert.equal(r.body.error, 'failed');
+  assert.equal(log.graphPosts.filter((p) => /\/(campaigns|adsets|adcreatives|ads)$/.test(p.url)).length, 0);
 });
 
 test('a plan with blockers never reaches Meta', async () => {

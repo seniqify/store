@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Megaphone, ShieldCheck, RefreshCw, Check } from 'lucide-react';
-import { startMetaConnect, selectMetaPage, selectMetaBusiness, selectMetaInstagram } from '../../utils/metaConnect';
+import { startMetaConnect, selectMetaPage, selectMetaBusiness, selectMetaInstagram, setupOrderTracking } from '../../utils/metaConnect';
 import { selectAdAccount } from '../../utils/metaCampaign';
 
 /**
@@ -23,7 +23,16 @@ const CHOICE_ERRORS = {
   save_failed: 'That choice could not be saved. Try again.',
   pin: 'Incorrect PIN. Unlock the store again.',
   network: 'Check your internet connection and try again.',
+  writes_disabled: 'Setting up order tracking from PocketLink isn’t switched on for your store yet.',
+  choose_pixel: 'Your ad account has more than one tracking pixel. Choose the one that tracks your orders.',
+  pixel_not_on_account: 'That pixel isn’t in this ad account any more. Choose another.',
+  pixels_unreadable: 'Meta couldn’t show this ad account’s tracking right now. Try again shortly.',
+  pixel_create_failed: 'Meta couldn’t add order tracking to this ad account.',
+  no_ad_account: 'No ad account is connected. Reconnect and include your ad account.',
+  ad_account_not_selected: 'Choose your ad account first.',
 };
+
+const TRACKING_LABEL = { ready: 'Ready', not_on_account: 'Not set up', no_pixel: 'Not set up', unknown: 'Couldn’t check' };
 
 const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); } catch { return ''; }
@@ -81,6 +90,7 @@ export default function AdsConnection({ config, pin, themeColor = '#0d9488', con
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState(false);
+  const [pixelChoices, setPixelChoices] = useState(null);   // several pixels → the merchant picks
 
   async function connect() {
     setErr(''); setBusy('connect');
@@ -107,6 +117,20 @@ export default function AdsConnection({ config, pin, themeColor = '#0d9488', con
       }
       if (r?.ok) await onRefresh?.();
       else setErr(r?.message || CHOICE_ERRORS[r?.error] || 'That choice could not be saved. Try again.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Connect this store's orders to the ad account, so ads can find people who order.
+  async function setupTracking(pixelId) {
+    setErr(''); setBusy('tracking');
+    try {
+      const r = await setupOrderTracking(config.slug, pin, pixelId);
+      if (r?.ok) { setPixelChoices(null); await onRefresh?.(); return; }
+      if (r?.error === 'choose_pixel' || r?.error === 'pixel_not_on_account') setPixelChoices(r.accountPixels || []);
+      const text = CHOICE_ERRORS[r?.error] || 'Order tracking could not be set up. Try again.';
+      setErr(r?.message ? `${text} Meta said: ${r.message}` : text);
     } finally {
       setBusy('');
     }
@@ -175,12 +199,15 @@ export default function AdsConnection({ config, pin, themeColor = '#0d9488', con
   const missingChoice = conn.needsAdAccountChoice || !selectedPage;
   const showPickers = editing || missingChoice;
   const reconnectNeeded = conn.state === 'reconnect';
+  const tracking = conn.orderTracking || null;
+  const needsTracking = Boolean(tracking && (tracking.status === 'no_pixel' || tracking.status === 'not_on_account'));
 
   const summary = [
     ['Business', selectedBusiness?.name || config.meta?.businessName || '—'],
     ['Facebook Page', selectedPage?.name || 'Not chosen'],
     ['Instagram', conn.selected?.instagramId && selectedPage?.instagram ? `@${selectedPage.instagram.username}` : 'Facebook only'],
     ['Ad account', selectedAccount ? (selectedAccount.name || selectedAccount.id) : 'Not chosen'],
+    ...(tracking ? [['Order tracking', TRACKING_LABEL[tracking.status] || '—']] : []),
   ];
 
   return (
@@ -210,6 +237,29 @@ export default function AdsConnection({ config, pin, themeColor = '#0d9488', con
                 <span className="text-sm text-gray-900 text-right truncate">{v}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {!reconnectNeeded && !showPickers && needsTracking && (
+          <div className={`rounded-xl border px-3 py-2.5 ${TONE.amber}`}>
+            <p className="text-sm font-bold">Set up order tracking</p>
+            <p className="text-xs mt-0.5 opacity-90 leading-relaxed">
+              Meta can only show your ads to people likely to order once it can see your orders.
+              {tracking.status === 'no_pixel' ? ' PocketLink will add order tracking to your ad account.' : ' PocketLink will connect your store’s orders to this ad account.'}
+            </p>
+            {pixelChoices?.length > 0 ? (
+              <div className="mt-2">
+                <Picker id="ads-pixel" label="Which pixel tracks your orders?" value="" saving={busy === 'tracking'} placeholder="Choose a pixel"
+                  options={pixelChoices.map((p) => ({ value: p.id, label: `${p.name} · ${p.id}` }))} onPick={(v) => setupTracking(v)} />
+              </div>
+            ) : conn.writesEnabled ? (
+              <button type="button" onClick={() => setupTracking()} disabled={busy === 'tracking'}
+                className="mt-2 text-xs font-bold text-white px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: themeColor }}>
+                {busy === 'tracking' ? 'Setting up…' : 'Set up order tracking'}
+              </button>
+            ) : (
+              <p className="text-[11px] mt-1.5 opacity-80">Setting this up from PocketLink is opening for your store soon.</p>
+            )}
           </div>
         )}
 

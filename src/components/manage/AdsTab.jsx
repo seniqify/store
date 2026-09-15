@@ -350,8 +350,15 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488', onConfig }
       pageName: page?.name || null,
       igId: d.selected.instagramId || null,
       igUsername: d.selected.instagramId && page?.instagram ? page.instagram.username : null,
+      ...(d.orderTracking?.pixelId ? { pixelId: d.orderTracking.pixelId } : {}),
     };
-    if (['businessId', 'pageId', 'igId'].some((k) => (current[k] || null) !== (next[k] || null))) onConfig({ meta: next });
+    // Keep the in-memory store config in step with what the server saved, so a later
+    // Settings save cannot put back an old pixel.
+    const storefrontPixel = d.orderTracking ? d.orderTracking.storefrontPixelId || null : undefined;
+    const pixelChanged = storefrontPixel !== undefined && (config.metaPixelId || null) !== storefrontPixel;
+    if (pixelChanged || ['businessId', 'pageId', 'igId', 'pixelId'].some((k) => (current[k] || null) !== (next[k] || null))) {
+      onConfig({ meta: next, ...(pixelChanged ? { metaPixelId: storefrontPixel || '' } : {}) });
+    }
   }
 
   if (showBoost) {

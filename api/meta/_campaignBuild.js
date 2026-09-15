@@ -5,6 +5,7 @@
 // API payloads; never POSTs/creates anything itself.
 import { graphGet, normalizeAdAccountId } from './_meta.js';
 import { cleanCopy, copyFacts } from './_adCopy.js';
+import { accountPixels } from './_orderTracking.js';
 
 // Hard server-side caps (authoritative — the real financial gate we control).
 export const CAPS = { maxDaily: 5000, maxTotal: 25000, maxDays: 30, spendCapMinRupees: 8500 };
@@ -61,9 +62,16 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   const objDef = OBJECTIVES[String(input.objective || 'traffic')] || OBJECTIVES.traffic;
   if (!objDef.available) launchBlockers.push('That objective is not available yet.');
 
-  // Sales (purchase-optimised) needs a Pixel to optimise toward Purchase events.
+  // Orders (purchase-optimised) need a pixel that receives this store's orders and
+  // that the ad account can use (checked against Meta below). Either gap is fixed
+  // with one tap: "Set up order tracking".
   const pixelId = meta.pixelId || cfg.metaPixelId || null;
-  if (objDef.usesPixelPurchase && !pixelId) launchBlockers.push('Connect your Meta Pixel to run a Sales (purchase-optimised) campaign — or choose the Website visits goal.');
+  const ORDER_TRACKING_BLOCKER = 'Meta can’t see this store’s orders in your ad account yet, so it can’t find people who order. Tap “Set up order tracking” to connect them.';
+  let needsOrderTracking = false;
+  if (objDef.usesPixelPurchase && !pixelId) {
+    needsOrderTracking = true;
+    launchBlockers.push(ORDER_TRACKING_BLOCKER);
+  }
 
   // Clamp to hard caps (server-authoritative — never trust the client).
   let days = Math.floor(Number(input.days) || 7);
@@ -129,10 +137,10 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   // ad set unless this ad account can use that pixel. Only a complete, successful
   // read blocks; otherwise Meta decides at creation.
   if (objDef.usesPixelPurchase && pixelId) {
-    const px = await graphGet(`${account}/adspixels`, { fields: 'id', limit: '100', access_token: token });
-    const listed = Array.isArray(px?.body?.data) && !px.body.paging?.next ? px.body.data : null;
-    if (listed && !listed.some((p) => String(p.id) === String(pixelId))) {
-      launchBlockers.push('Your Meta pixel isn’t connected to this ad account, so the ad can’t be set to find orders. Choose “Get more store visitors”, or connect the pixel to this ad account in Meta Business Settings.');
+    const listed = await accountPixels(account, token);
+    if (!listed.error && !listed.pixels.some((p) => p.id === String(pixelId).replace(/\D/g, ''))) {
+      needsOrderTracking = true;
+      launchBlockers.push(ORDER_TRACKING_BLOCKER);
     }
   }
 
@@ -220,8 +228,12 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   // ── Payloads: lifetime_budget + end_time = Meta's true total cap ──
   const name = `PocketLink · ${cfg.businessName || slug}`;
   const lifetimeMinor = Math.round(total * 100);   // paise
-  const startTime = new Date(Date.now() + 5 * 60000).toISOString();
-  const endTime = new Date(Date.now() + days * 86400000).toISOString();
+  // The run is measured from the scheduled start, plus a minute of margin: Meta
+  // rejects a daily-budget ad set scheduled for under 24 hours (subcode 1487793),
+  // and ending `days` after "now" left a 1-day run 5 minutes short.
+  const startMs = Date.now() + 5 * 60000;
+  const startTime = new Date(startMs).toISOString();
+  const endTime = new Date(startMs + days * 86400000 + 60000).toISOString();
 
   const adset = {
     name: `${name} · ad set`,
@@ -300,7 +312,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     // Advantage+ forced it open, so the UI can explain the difference.
     targeting: { label: geoLabel, ageMin, ageMax, ageMaxRequested, ageMaxRelaxed, genderLabel, strategy: audienceStrategy, strategyLabel, resolved: !!geo },
     page: page ? { id: page.id, name: page.name } : null,
-    warnings, launchBlockers, launchReady: launchBlockers.length === 0,
+    warnings, launchBlockers, launchReady: launchBlockers.length === 0, needsOrderTracking,
     payloads, caps: CAPS,
   };
 }

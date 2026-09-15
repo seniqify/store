@@ -14,6 +14,7 @@
 //     failure keeps the last known snapshot
 import { graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus, serviceKey, SB } from './_meta.js';
 import { fetchAutomationAccounts, resolveEngine, tokenStatus, merchantWritesAllowed, SCOPES } from './_capabilities.js';
+import { accountPixels, trackingStatus } from './_orderTracking.js';
 
 export const SNAPSHOT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
@@ -184,6 +185,8 @@ export async function buildConnection({ slug, acct, config, refresh = false, env
     adAccounts: r.accounts.map(publicAccount),
     eligibilityCheckedAt: r.checkedAt,
     needsAdAccountChoice: r.picked.error === 'ad_account_not_selected',
+    // Whether an orders campaign can optimise on this store's orders in the chosen ad account.
+    orderTracking: r.picked.adAccount && !r.expired ? trackingStatus(config, await accountPixels(r.picked.adAccount, acct.access_token)) : null,
     selected: {
       businessId: meta.businessId || acct.business_id || null,
       pageId: meta.pageId || null,

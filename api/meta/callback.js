@@ -16,6 +16,7 @@ import {
   upsertMetaAccount, updateMetaStatus, getStoreConfig, patchStoreConfig, slugAllowed } from './_meta.js';
 import { refreshEligibility, logAdAction } from './_connection.js';
 import { tokenStatus, SCOPES } from './_capabilities.js';
+import { pixelForConnect, storefrontPixelIsPocketLinks } from './_orderTracking.js';
 
 // Redirect back to the store's Manage page (or home if we can't trust the slug).
 function back(res, slug, params) {
@@ -86,14 +87,16 @@ export default async function handler(req, res) {
       if (b?.id) business = { id: b.id, name: b.name };
     }
 
-    // Find the Pixel the seller shared so we can auto-fill their storefront Meta
-    // Pixel ID. Login-for-Business pixels usually live on the business (owned or
-    // client), sometimes on the ad account — try each, take the first found.
+    // The store's ads pixel. First choice: one the ad account this store advertises
+    // from can use, keeping the current one when it qualifies, because an orders
+    // campaign is rejected otherwise. Failing that, the Pixel the seller shared:
+    // Login-for-Business pixels usually live on the business (owned or client),
+    // sometimes on the ad account — try each, take the first found.
     // (Pixel IDs are public, used client-side by the storefront — safe in config.)
-    let pixelId = null;
+    let pixelId = await pixelForConnect({ slug, token, adAccountIds });
     const pixelSources = [];
-    if (business?.id) pixelSources.push(`${business.id}/owned_pixels`, `${business.id}/client_pixels`);
-    if (firstAd)      pixelSources.push(`${firstAd}/adspixels`);
+    if (!pixelId && business?.id) pixelSources.push(`${business.id}/owned_pixels`, `${business.id}/client_pixels`);
+    if (!pixelId && firstAd)      pixelSources.push(`${firstAd}/adspixels`);
     for (const src of pixelSources) {
       const r = await graphGet(src, { fields: 'id,name', access_token: token });
       const id = r.body?.data?.[0]?.id;
@@ -173,7 +176,7 @@ export default async function handler(req, res) {
           expiresAt,
         },
       };
-      if (pixelId) patch.metaPixelId = pixelId;   // fills the Meta Pixel ID input
+      if (pixelId && storefrontPixelIsPocketLinks(config)) patch.metaPixelId = pixelId;   // fills the Meta Pixel ID input
       await patchStoreConfig(slug, patch);
     }
 

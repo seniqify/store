@@ -235,12 +235,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   }, [externalCartOpen, onExternalCartClose]);
 
   // Load the store's Meta Pixel (paid plans) so their Facebook/Instagram ads can
-  // track conversions. No-op when the owner hasn't set one.
+  // track conversions: the pixel the owner added and, when different, the one
+  // their PocketLink ads optimise on. A store with neither clears the last store's.
   useEffect(() => {
-    if (config?.metaPixelId && hasFeature(effectivePlan(config), 'metaPixel')) {
-      initMetaPixel(config.metaPixelId);
-    }
-  }, [config?.metaPixelId, config?.plan]);
+    initMetaPixel(config && hasFeature(effectivePlan(config), 'metaPixel') ? [config.metaPixelId, config.meta?.pixelId] : []);
+  }, [config?.metaPixelId, config?.meta?.pixelId, config?.plan]);
 
   // Add to cart + report it to the store's Meta Pixel (no-op without a pixel).
   function handleAddToCart(item, qty = 1) {

@@ -3,7 +3,9 @@
  * ads. The owner pastes their Pixel ID in Manage; we load Meta's fbevents.js once
  * and fire the standard events so their ads can optimise for buyers + retarget.
  *
- * Uses `trackSingle` so events go ONLY to the active store's pixel — never leaks
+ * A store sends to two pixels when they differ: the one its owner added and the
+ * one its PocketLink ads optimise on (config.meta.pixelId). Uses `trackSingle` so
+ * events go ONLY to the active store's pixels — never leaks
  * between two stores a shopper might visit in one session. All tracking is a
  * no-op until a valid pixel is initialised, so callers can fire events freely.
  *
@@ -12,13 +14,17 @@
  * optimisation. A server-side Conversions API "Purchase" (from the order record)
  * is the more reliable follow-up.
  */
-let activeId = null;
+let activeIds = [];
 
-/** Load the pixel (once) for this store and fire the initial PageView. */
-export function initMetaPixel(pixelId) {
-  const id = String(pixelId || '').trim();
-  if (!id || typeof window === 'undefined') return;
-  if (activeId === id) return;                       // already running for this store
+/** Load the store's pixel(s) (once) and fire the initial PageView to each. A store
+ *  without a pixel clears the previous store's, so nothing leaks between stores. */
+export function initMetaPixel(pixelIds) {
+  const ids = [...new Set((Array.isArray(pixelIds) ? pixelIds : [pixelIds])
+    .map((v) => String(v ?? '').trim())
+    .filter((v) => /^\d{5,20}$/.test(v)))];
+  if (typeof window === 'undefined') return;
+  if (!ids.length) { activeIds = []; return; }
+  if (ids.join(',') === activeIds.join(',')) return;                       // already running for this store
 
   if (!window.fbq) {
     /* eslint-disable */
@@ -33,18 +39,22 @@ export function initMetaPixel(pixelId) {
     /* eslint-enable */
   }
 
-  window.fbq('init', id);
-  window.fbq('trackSingle', id, 'PageView');
-  activeId = id;
+  for (const id of ids) {
+    window.fbq('init', id);
+    window.fbq('trackSingle', id, 'PageView');
+  }
+  activeIds = ids;
 }
 
-/** Fire a standard event to the active store's pixel — no-op if none is set.
+/** Fire a standard event to the active store's pixels — no-op if none is set.
  *  Pass `eventID` (e.g. the order id) so a matching server-side CAPI event with
  *  the same id is de-duplicated by Meta. */
 export function pixelTrack(event, data, eventID) {
-  if (typeof window === 'undefined' || typeof window.fbq !== 'function' || !activeId) return;
-  if (eventID) window.fbq('trackSingle', activeId, event, data || {}, { eventID: String(eventID) });
-  else window.fbq('trackSingle', activeId, event, data || {});
+  if (typeof window === 'undefined' || typeof window.fbq !== 'function' || !activeIds.length) return;
+  for (const id of activeIds) {
+    if (eventID) window.fbq('trackSingle', id, event, data || {}, { eventID: String(eventID) });
+    else window.fbq('trackSingle', id, event, data || {});
+  }
 }
 
 /** Read the Meta match signals the browser Pixel sets (_fbp / _fbc cookies) plus
