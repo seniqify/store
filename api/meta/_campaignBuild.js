@@ -125,6 +125,17 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   if (daily <= 0) launchBlockers.push('Set a daily budget.');
   else if (minRupees && daily < minRupees) launchBlockers.push(`Daily budget must be at least ₹${minRupees} for this ad account.`);
 
+  // ── Read-only: an orders goal optimises on the store's pixel, and Meta rejects the
+  // ad set unless this ad account can use that pixel. Only a complete, successful
+  // read blocks; otherwise Meta decides at creation.
+  if (objDef.usesPixelPurchase && pixelId) {
+    const px = await graphGet(`${account}/adspixels`, { fields: 'id', limit: '100', access_token: token });
+    const listed = Array.isArray(px?.body?.data) && !px.body.paging?.next ? px.body.data : null;
+    if (listed && !listed.some((p) => String(p.id) === String(pixelId))) {
+      launchBlockers.push('Your Meta pixel isn’t connected to this ad account, so the ad can’t be set to find orders. Choose “Get more store visitors”, or connect the pixel to this ad account in Meta Business Settings.');
+    }
+  }
+
   // ── Read-only: the Facebook Page = ONLY the explicitly selected + still-accessible
   // one. config.meta.pageId is chosen in Settings → Connect Meta and validated
   // server-side by select-page.js; it is the single source of truth for 2C/2D. We

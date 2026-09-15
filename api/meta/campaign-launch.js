@@ -171,11 +171,28 @@ async function graphPost(path, params, token) {
   } catch (e) { return { ok: false, status: 0, body: { error: { message: (e).message } } }; }
 }
 
+// A real HTTP DELETE, then a read-back: an object counts as removed only when Meta
+// confirms the delete AND no longer serves it as a live object. (A POST carrying a
+// method-override field is taken as an empty update: Meta answers
+// {"success": true} and deletes nothing.)
+async function graphDelete(id, token) {
+  try {
+    const r = await fetch(`${GRAPH}/${id}?access_token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+    const body = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, body };
+  } catch (e) { return { ok: false, status: 0, body: { error: { message: (e).message } } }; }
+}
+
 async function deleteObjects(made, token) {
   const removed = [];
   for (const { kind, id } of rollbackOrder(made)) {
-    const r = await graphPost(String(id), { _method: 'DELETE' }, token);
-    removed.push({ kind, id, ok: Boolean(r.ok && r.body?.success !== false) });
+    const del = await graphDelete(String(id), token);
+    let ok = Boolean(del.ok && del.body?.success === true);
+    if (ok) {
+      const back = await graphGet(String(id), { fields: 'status', access_token: token });
+      ok = back.body?.status === 'DELETED' || Number(back.body?.error?.code) === 100;
+    }
+    removed.push({ kind, id, ok });
   }
   return removed;
 }
@@ -305,7 +322,8 @@ async function createWithMcp({ slug, launchId, built, session, adAccount, token,
   });
 
   if (!result.ok) {
-    const message = `${result.step}: ${result.error?.code || 'meta_error'} ${result.error?.message || ''}`.trim().slice(0, 500);
+    const subcode = result.detail?.error_subcode ? String(result.detail.error_subcode) : null;
+    const message = `${result.step}: ${result.error?.code || 'meta_error'} ${result.error?.message || ''}${subcode ? ` (subcode ${subcode})` : ''}`.trim().slice(0, 500);
     if (result.uncertain) {
       // Meta may have created the object without telling us. Never retry blindly:
       // leave everything paused, record it, and let the merchant check.
@@ -320,7 +338,7 @@ async function createWithMcp({ slug, launchId, built, session, adAccount, token,
     const leftovers = result.made.filter((m) => !removedIds.has(m.id));
     const clear = Object.fromEntries(result.made.filter((m) => removedIds.has(m.id)).map((m) => [ID_KEY[m.kind], null]));
     await set(launchId, { status: leftovers.length ? 'partial' : 'failed', error: message, ...clear });
-    await audit(slug, launchId, 'create', 'mcp', false, { errorCode: result.error?.code, detail: { step: result.step, leftovers } });
+    await audit(slug, launchId, 'create', 'mcp', false, { errorCode: result.error?.code, detail: { step: result.step, leftovers, subcode, message: result.error?.message?.slice(0, 300) || null } });
     if (removed.length) await audit(slug, launchId, 'rollback', 'graph', leftovers.length === 0, { detail: { removed } });
     return {
       error: 'failed', step: result.step, code: result.error?.code || null, message: result.error?.message || '',

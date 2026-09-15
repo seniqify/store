@@ -397,8 +397,8 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', writes
   const suggestionDiffers = suggestion && (Number(suggestion.ageMin) !== Number(biz.ageMin) || Number(suggestion.ageMax) !== Number(biz.ageMax) || suggestion.gender !== biz.gender);
   const budgetText = d.budget
     ? (data?.resolved?.budgetType === 'lifetime'
-      ? `${money(d.budget.total, cur)} over ${d.budget.days} days`
-      : `${money(d.budget.daily, cur)}/day · ${d.budget.days} days`)
+      ? `${money(d.budget.total, cur)} over ${d.budget.days} ${Number(d.budget.days) === 1 ? 'day' : 'days'}`
+      : `${money(d.budget.daily, cur)}/day · ${d.budget.days} ${Number(d.budget.days) === 1 ? 'day' : 'days'}`)
     : '—';
 
   return (

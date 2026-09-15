@@ -20,9 +20,9 @@ const CONFIG = {
 
 function world({
   slug = 'showme', scopes = AUTOMATION, automation = true, mcpInit = 200, mcpFail = {}, launches = [],
-  otp = null, entityStatus = 'PAUSED', graphFail = {},
+  otp = null, entityStatus = 'PAUSED', graphFail = {}, deleteSticks = true,
 } = {}) {
-  const log = { tools: [], graphPosts: [], ledger: new Map(launches.map((r) => [r.launch_id, { ...r }])), audits: [], otpDeleted: false };
+  const log = { tools: [], graphPosts: [], graphDeletes: [], deleted: new Set(), ledger: new Map(launches.map((r) => [r.launch_id, { ...r }])), audits: [], otpDeleted: false };
   const acct = {
     store_slug: slug, status: 'connected', access_token: 'STORE-TOKEN', expires_at: new Date(Date.now() + 40 * 86400000).toISOString(),
     ad_account_ids: ['act_962613363265198'], selected_ad_account_id: 'act_962613363265198', scopes,
@@ -44,7 +44,8 @@ function world({
       const { name, arguments: args } = body.params;
       log.tools.push({ name, args });
       const ok = (data) => reply({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify(data) }] } });
-      if (mcpFail[name]) return reply({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ message: mcpFail[name], error_category: 'VALIDATION' }) }] } });
+      // The failure shape in Meta's tool output schema: error_category / error_message / error_subcode.
+      if (mcpFail[name]) return reply({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error_category: 'VALIDATION', error_message: mcpFail[name], error_subcode: '1885272', is_retryable: false }) }] } });
       if (name === 'ads_create_campaign') return ok({ campaign_id: '101' });
       if (name === 'ads_create_ad_set') return ok({ ad_set_id: '202' });
       if (name === 'ads_create_creative') return ok({ creative_id: '303' });
@@ -87,6 +88,12 @@ function world({
     if (u.includes('/me/permissions')) return reply({ data: scopes.map((p) => ({ permission: p, status: 'granted' })) });
     if (u.includes('/me/businesses')) return reply({ data: [] });
     if (u.includes('/search?')) return reply({ data: [{ key: '1010461', name: 'Solapur', region: 'Maharashtra' }] });
+    if (method === 'DELETE' && u.startsWith('https://graph.facebook.com')) {
+      const id = u.match(/\/v\d+\.\d+\/(\d+)\?/)?.[1];
+      log.graphDeletes.push(id);
+      if (deleteSticks) log.deleted.add(id);
+      return reply({ success: true });
+    }
     if (method === 'POST' && u.startsWith('https://graph.facebook.com')) {
       log.graphPosts.push({ url: u, body });
       const path = u.replace(/^https:\/\/graph\.facebook\.com\/v\d+\.\d+\//, '');
@@ -96,6 +103,8 @@ function world({
     }
     if (u.includes('/act_962613363265198?')) return reply({ currency: 'INR', name: 'PocketLink', min_daily_budget: 9491, account_status: 1, timezone_name: 'Asia/Kolkata' });
     if (u.includes('/1124874604040958?')) return reply({ id: '1124874604040958', name: 'PocketLink' });
+    const readId = u.match(/\/v\d+\.\d+\/(\d+)\?/)?.[1];
+    if (readId && log.deleted.has(readId)) return reply({ error: { code: 100, error_subcode: 33, message: 'Unsupported get request.' } }, 400);
     if (u.startsWith('https://graph.facebook.com')) return reply({ status: 'PAUSED', effective_status: 'PAUSED' });
     return reply({});
   };
@@ -210,11 +219,29 @@ test('a failed automation create is rolled back through the Marketing API', asyn
   assert.equal(r.body.error, 'failed');
   assert.equal(r.body.step, 'ad_set');
   assert.equal(r.body.cleanedUp, true);
-  const del = log.graphPosts.find((p) => p.body._method === 'DELETE');
-  assert.ok(del.url.endsWith('/101'), 'the campaign this call made is deleted');
+  assert.deepEqual(log.graphDeletes, ['101'], 'the campaign this call made is deleted with a real DELETE');
+  assert.equal(log.graphPosts.some((p) => p.body?._method), false, 'never a POST with a method override');
   const row = log.ledger.get(CREATE.launchId);
   assert.deepEqual([row.status, row.campaign_id], ['failed', null]);
   assert.ok(log.audits.some((a) => a.action === 'rollback'));
+});
+
+test('Meta\'s own reason for a rejected step reaches the merchant and the ledger', async () => {
+  const log = world({ mcpFail: { ads_create_ad_set: 'The pixel is not available to this ad account.' } });
+  const r = await call(CREATE);
+  assert.equal(r.body.message, 'The pixel is not available to this ad account.');
+  assert.match(log.ledger.get(CREATE.launchId).error, /^ad_set: invalid The pixel is not available to this ad account\. \(subcode 1885272\)$/);
+  const failed = log.audits.find((a) => a.action === 'create' && a.ok === false);
+  assert.deepEqual([failed.detail.subcode, failed.detail.message], ['1885272', 'The pixel is not available to this ad account.']);
+});
+
+test('a delete Meta accepts but does not carry out is reported as left behind', async () => {
+  const log = world({ mcpFail: { ads_create_ad_set: 'Invalid targeting spec' }, deleteSticks: false });
+  const r = await call(CREATE);
+  assert.equal(r.body.cleanedUp, false);
+  assert.deepEqual(r.body.leftovers, ['campaign 101']);
+  const row = log.ledger.get(CREATE.launchId);
+  assert.deepEqual([row.status, row.campaign_id], ['partial', '101'], 'the ledger keeps the id so the campaign is not lost');
 });
 
 test('a plan with blockers never reaches Meta', async () => {

@@ -112,7 +112,8 @@ export function decodeToolResult(result) {
 function errorText(source) {
   if (!source) return '';
   if (typeof source === 'string') return source;
-  return String(source.message || source.error?.message || source.error_user_msg || source.detail || source.text || '');
+  // Meta's tools report failures as { error_category, error_message, error_subcode }.
+  return String(source.error_message || source.message || source.error?.message || source.error_user_msg || source.detail || source.text || '');
 }
 
 /**

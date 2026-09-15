@@ -90,6 +90,11 @@ test('errors map to codes the product can act on', () => {
   assert.equal(mapMcpError({ rpcError: { code: -32602, message: 'bad field', data: { error_category: 'VALIDATION' } } }).code, 'invalid');
   assert.equal(mapMcpError({ toolError: { error: { code: 190, message: 'Error validating access token' } } }).code, 'reauth');
   assert.equal(mapMcpError({ toolError: { message: 'something odd' } }).code, 'meta_error');
+  // Meta's tools fail with { error_category, error_message, error_subcode }; keep the words.
+  assert.deepEqual(
+    mapMcpError({ toolError: { error_category: 'VALIDATION', error_message: 'Your budget is too low.', error_subcode: '1885272', is_retryable: false } }),
+    { code: 'invalid', message: 'Your budget is too low.' },
+  );
 });
 
 // ── session ──────────────────────────────────────────────────────────────────
