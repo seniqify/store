@@ -78,6 +78,9 @@ export const fetchMetaConnection = (slug, pin) => adsAction(slug, pin, { action:
 /** Same, after asking Meta again which ad accounts are enabled for automation. */
 export const refreshMetaEligibility = (slug, pin) => adsAction(slug, pin, { action: 'refresh-eligibility' });
 
+/** AI-written ad words and an audience suggestion for one product ('' = the whole store). */
+export const fetchAdCopy = (slug, pin, productId) => adsAction(slug, pin, { action: 'ad-copy', productId: productId || '' });
+
 /** Choose the business portfolio (one the connection can still see). */
 export async function selectMetaBusiness(slug, pin, businessId) {
   const data = await adsAction(slug, pin, { action: 'select-business', businessId });

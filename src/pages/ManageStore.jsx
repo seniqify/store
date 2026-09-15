@@ -2990,7 +2990,7 @@ export default function ManageStore() {
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
-    ...(config.meta?.connected ? [{ key: 'ads', label: 'Ads', icon: Megaphone }] : []),
+    ...(isService ? [] : [{ key: 'ads', label: 'Ads', icon: Megaphone }]),
     { key: 'reviews',    label: 'Reviews',     icon: Star      },
     { key: 'products',   label: isRestaurant ? 'Menu' : 'Products', icon: Package  },
     { key: 'offers',     label: 'Offers',      icon: Percent  },
@@ -3246,7 +3246,7 @@ export default function ManageStore() {
           </div>
         ) : tab === 'ads' ? (
           <div className="animate-pl-fade-up">
-            <AdsTab config={config} pin={storePin} themeColor={themeColor} />
+            <AdsTab config={config} pin={storePin} themeColor={themeColor} onConfig={handleChange} />
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
