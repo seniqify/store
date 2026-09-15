@@ -49,3 +49,22 @@ export const launchResume = (slug, pin, launchId, otpCode) =>
 export const launchPause  = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'pause', launchId });
 export const launchStop   = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'stop', launchId });
 export const launchStatus = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'status', launchId });
+
+/** This store's campaigns created from PocketLink. */
+export const launchList = (slug, pin) => callLaunch(slug, pin, { action: 'list' });
+
+/** Delivery-blocking problems for one campaign. */
+export const launchErrors = (slug, pin, launchId) => callLaunch(slug, pin, { action: 'errors', launchId });
+
+// Raising the budget of a running campaign needs the WhatsApp code, like
+// activation; lowering it, or changing a paused campaign, needs only the PIN.
+export const launchUpdateBudget = (slug, pin, launchId, { budgetType, amount, otpCode }) =>
+  callLaunch(slug, pin, { action: 'update-budget', launchId, budgetType, amount, otpCode });
+
+/** Who sees the ad: { ageMin, ageMax, gender, radiusKm, audienceStrategy }. */
+export const launchUpdateTargeting = (slug, pin, launchId, targeting) =>
+  callLaunch(slug, pin, { action: 'update-targeting', launchId, ...targeting });
+
+/** Add an image or video (public https URL) to the ad account; returns an image hash when one is made. */
+export const launchUploadMedia = (slug, pin, { url, type = 'IMAGE', name = '' }) =>
+  callLaunch(slug, pin, { action: 'upload-media', url, type, name });

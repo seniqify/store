@@ -4,7 +4,15 @@
 // (in the meta_campaigns ledger) — reconciles Meta's reported funnel against our own
 // order/revenue truth and snapshots an outcome row (on-view capture). The token
 // never reaches the browser; this endpoint never writes to Meta or spends.
-import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey, normalizeAdAccountId, resolveAdAccount } from './_meta.js';
+//
+// Numbers come from the Marketing API: Meta's automation server returns metrics as
+// localised display text ("₹1,234.56 INR"), which is only used as a fallback when
+// the Marketing API cannot answer for an account that automation can read.
+import { SB, verifyStorePin, getMetaAccount, graphGet, serviceKey, normalizeAdAccountId, resolveAdAccount, updateMetaStatus } from './_meta.js';
+import { resolveEngine, tokenStatus } from './_capabilities.js';
+import { mergeAdAccounts } from './_connection.js';
+import { openMcpSession } from './_mcp.js';
+import { reportViaMcp } from './_mcpAds.js';
 
 // Action types that count as each funnel step across Meta's variants.
 const PURCHASE = ['purchase', 'omni_purchase', 'offsite_conversion.fct_purchase', 'onsite_conversion.purchase'];
@@ -20,8 +28,16 @@ function actionVal(actions, types) {
   return 0;
 }
 
+// purchase_roas is a list of { action_type, value }; prefer the omni figure.
+function roasOf(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const pick = list.find((x) => x?.action_type === 'omni_purchase') || list[0];
+  const v = Number(pick?.value);
+  return Number.isFinite(v) ? v : null;
+}
+
 // Reduce one insights row → the full funnel the dashboard + measurement need.
-function shape(row) {
+export function shape(row) {
   const spend = Number(row?.spend || 0);
   const actions = row?.actions;
   const values = row?.action_values;
@@ -48,6 +64,27 @@ function shape(row) {
     cpm: Number(row?.cpm || 0), cpc: Number(row?.cpc || 0),
     purchases, revenue, lpv, atc, checkout, linkClicks, results, resultLabel,
     costPerResult: results > 0 ? spend / results : null,
+    // Meta's purchase ROAS when it has one; revenue ÷ spend otherwise.
+    roas: roasOf(row?.purchase_roas) ?? (spend > 0 && revenue > 0 ? revenue / spend : null),
+  };
+}
+
+// Automation-server metrics (already parsed to numbers) → the same shape.
+export function shapeFromAutomation(m) {
+  const indicator = String(m?.resultIndicator || '');
+  const results = Number(m?.results || 0);
+  const spend = Number(m?.spend || 0);
+  const label = /purchase/i.test(indicator) ? 'purchases'
+    : /landing_page_view/i.test(indicator) ? 'landing views'
+    : /link_click/i.test(indicator) ? 'link clicks' : 'results';
+  return {
+    spend, reach: Number(m?.reach || 0), impressions: Number(m?.impressions || 0), clicks: Number(m?.clicks || 0),
+    ctr: Number(m?.ctr || 0), ctrLink: 0, cpm: Number(m?.cpm || 0), cpc: Number(m?.cpc || 0),
+    purchases: /purchase/i.test(indicator) ? results : 0, revenue: 0, lpv: /landing_page_view/i.test(indicator) ? results : 0,
+    atc: 0, checkout: 0, linkClicks: /link_click/i.test(indicator) ? results : 0,
+    results, resultLabel: results ? label : null,
+    costPerResult: m?.costPerResult ?? (results > 0 ? spend / results : null),
+    roas: m?.roas ?? null,
   };
 }
 
@@ -84,6 +121,7 @@ export default async function handler(req, res) {
 
     const acct = await getMetaAccount(slug);
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
+    if (tokenStatus(acct.expires_at) === 'expired') { res.status(200).json({ error: 'reauth' }); return; }
 
     // Ad-account selection comes from the shared resolver, so reporting, preview
     // and creation can never disagree. A per-request override is still honoured
@@ -100,7 +138,18 @@ export default async function handler(req, res) {
     const adId = requested || picked.adAccount;
     const token = acct.access_token;
 
-    const insightFields = 'spend,impressions,reach,cpm,clicks,ctr,cpc,inline_link_clicks,inline_link_click_ctr,actions,action_values';
+    // Mode for this account from what is stored (no extra Meta calls here).
+    const account = mergeAdAccounts(acct.ad_account_ids, acct.ad_accounts).find((a) => a.id === adId) || null;
+    const decision = resolveEngine({
+      connected: true, scopes: acct.scopes || [], account, mcpReachable: acct.mcp_error !== 'unauthorized',
+    });
+    const status = {
+      mode: decision.engine === 'mcp' ? 'automated' : decision.engine === 'graph' ? 'standard' : null,
+      automation: decision.automation,
+      tokenStatus: tokenStatus(acct.expires_at),
+    };
+
+    const insightFields = 'spend,impressions,reach,cpm,clicks,ctr,cpc,inline_link_clicks,inline_link_click_ctr,actions,action_values,purchase_roas';
     const [info, accIns, campIns, camps, maxIns] = await Promise.all([
       graphGet(adId,                { fields: 'currency,name,timezone_name,account_status', access_token: token }),
       graphGet(`${adId}/insights`,  { fields: insightFields, level: 'account',  date_preset: range, access_token: token }),
@@ -111,14 +160,40 @@ export default async function handler(req, res) {
 
     const responses = [info, accIns, campIns, camps, maxIns];
     const authErr = responses.some((r) => r?.body?.error?.code === 190 || r?.body?.error?.type === 'OAuthException');
-    if (authErr) { res.status(200).json({ error: 'reauth' }); return; }
+    if (authErr) {
+      await updateMetaStatus(slug, { token_status: 'expired' });
+      res.status(200).json({ error: 'reauth' });
+      return;
+    }
 
     // Any OTHER Graph failure (permissions, rate limit, tier restriction, a bad
     // account) used to fall through and render as a page of zeros, which is
     // indistinguishable from "this store has no spend". Surface it instead —
-    // a reporting error must never be displayed as data.
+    // a reporting error must never be displayed as data. When automation can
+    // read this account, use its figures rather than showing nothing.
     const failed = responses.find((r) => r?.body?.error);
     if (failed) {
+      if (decision.engine === 'mcp') {
+        const session = await openMcpSession(token);
+        const report = session.error ? null : await reportViaMcp(session, adId, { datePreset: range });
+        if (report?.ok) {
+          res.status(200).json({
+            currency: account?.currency || 'INR', accountName: account?.name || null, timezone: null,
+            accountActive: account?.status === 'ACTIVE', range,
+            totals: shapeFromAutomation(report.totals),
+            campaigns: report.campaigns
+              .map((c) => ({ id: c.id, name: c.name, status: c.status, objective: c.objective, ...shapeFromAutomation(c) }))
+              .filter((c) => c.status === 'ACTIVE' || c.status === 'PAUSED' || c.spend > 0)
+              .sort((a, b) => b.spend - a.spend)
+              .slice(0, 25),
+            measured: [],
+            adAccountId: adId, adAccounts: picked.available,
+            selectedAdAccountId: normalizeAdAccountId(acct.selected_ad_account_id) || null,
+            source: 'automation', ...status,
+          });
+          return;
+        }
+      }
       const e = failed.body.error;
       res.status(200).json({
         error: 'meta_error',
@@ -126,6 +201,7 @@ export default async function handler(req, res) {
         code: e.code ?? null,
         subcode: e.error_subcode ?? null,
         type: e.type || null,
+        ...status,
       });
       return;
     }
@@ -150,10 +226,7 @@ export default async function handler(req, res) {
     //
     // Only for campaigns that STILL EXIST in Meta. The ledger is our own record
     // of what we launched; it does not know when a seller deletes a campaign in
-    // Ads Manager. Showing every row regardless meant deleted campaigns lingered
-    // here as ghosts — including half-built ones marked PARTIAL, which is the
-    // last thing a seller (or a Meta reviewer) should be shown. Meta's live list
-    // is the authority on what exists.
+    // Ads Manager. Meta's live list is the authority on what exists.
     const liveCampaignIds = new Set((camps.body?.data || []).map((c) => String(c.id)));
     const measured = [];
     try {
@@ -179,14 +252,14 @@ export default async function handler(req, res) {
             currency, captured_at: nowIso,
           });
           measured.push({
-            campaignId: L.campaign_id, name: byName.get(L.campaign_id) || '', status: L.status,
+            campaignId: L.campaign_id, launchId: L.launch_id, name: byName.get(L.campaign_id) || '', status: L.status,
             strategySource: L.strategy_source, experimentId: L.experiment_id, snapshot: L.config || null,
-            meta: { spend: m.spend, reach: m.reach, impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, cpm: m.cpm, cpc: m.cpc, lpv: m.lpv, atc: m.atc, checkout: m.checkout, purchases: m.purchases, revenue: m.revenue },
+            meta: { spend: m.spend, reach: m.reach, impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, cpm: m.cpm, cpc: m.cpc, lpv: m.lpv, atc: m.atc, checkout: m.checkout, purchases: m.purchases, revenue: m.revenue, roas: m.roas },
             pl,
             derived: {
               cppMeta: m.purchases > 0 ? m.spend / m.purchases : null,
               cppPl: pl.orders > 0 ? m.spend / pl.orders : null,
-              roasMeta: m.spend > 0 ? m.revenue / m.spend : null,
+              roasMeta: m.roas ?? (m.spend > 0 ? m.revenue / m.spend : null),
               roasPl: m.spend > 0 ? pl.revenue / m.spend : null,
             },
           });
@@ -199,6 +272,7 @@ export default async function handler(req, res) {
       adAccountId: adId,
       adAccounts: picked.available,
       selectedAdAccountId: normalizeAdAccountId(acct.selected_ad_account_id) || null,
+      source: 'meta', ...status,
     });
   } catch {
     res.status(200).json({ error: 'server' });
