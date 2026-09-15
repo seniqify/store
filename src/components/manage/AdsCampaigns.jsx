@@ -144,7 +144,7 @@ function LaunchCard({ launch, config, pin, themeColor, canWrite, onChanged }) {
             <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${chip}`}>{label}</span>
           </div>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            {budgetLabel}{launch.days ? ` · ${launch.days} days` : ''}{launch.targeting?.location ? ` · ${launch.targeting.location}` : ''}
+            {budgetLabel}{launch.days ? ` · ${launch.days} ${Number(launch.days) === 1 ? 'day' : 'days'}` : ''}{launch.targeting?.location ? ` · ${launch.targeting.location}` : ''}
           </p>
         </div>
       </div>
@@ -273,7 +273,10 @@ export default function AdsCampaigns({ config, pin, themeColor = '#0d9488', canW
       let r;
       try { r = await launchList(config.slug, pin); } catch { r = { error: 'server' }; }
       if (!alive) return;
-      setState({ loading: false, launches: Array.isArray(r?.launches) ? r.launches : [], error: r?.error ? errText(r) : '' });
+      // A campaign deleted in Meta is left out; the server says so only when it is sure.
+      const all = Array.isArray(r?.launches) ? r.launches : [];
+      const launches = all.filter((l) => l.inMeta !== false);
+      setState({ loading: false, launches, removed: all.length - launches.length, error: r?.error ? errText(r) : '' });
     })();
     return () => { alive = false; };
   }, [config.slug, pin, refreshKey, reload]);
@@ -304,6 +307,11 @@ export default function AdsCampaigns({ config, pin, themeColor = '#0d9488', canW
             <LaunchCard key={l.launchId} launch={l} config={config} pin={pin} themeColor={themeColor} canWrite={canWrite} onChanged={refresh} />
           ))}
         </div>
+      )}
+      {!state.loading && state.removed > 0 && (
+        <p className="text-[11px] text-gray-400 mt-2">
+          {state.removed === 1 ? '1 older campaign was deleted in Meta, so it isn’t shown here.' : `${state.removed} older campaigns were deleted in Meta, so they aren’t shown here.`}
+        </p>
       )}
       {!canWrite && state.launches.length > 0 && (
         <p className="text-[11px] text-gray-400 mt-2">You can pause your ads here. Starting and editing ads from PocketLink is opening for your store soon.</p>

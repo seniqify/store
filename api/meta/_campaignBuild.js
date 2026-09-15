@@ -242,8 +242,9 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
     // budget that is our actual spend ceiling.
     is_adset_budget_sharing_enabled: false,
   };
+  // No merchant warning when the cap can't be set: budget.enforcedBy records what
+  // bounds spend, and the plan already shows the ceiling.
   if (spendCapEligible) campaignBody.spend_cap = lifetimeMinor;
-  else warnings.push(`Campaign spend-cap not applied (Meta minimum ≈ ₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')}). Total is bounded by the lifetime budget + end date and our server caps.`);
 
   const payloads = {
     _note: 'Dry-run — Stage 2D POSTs these in order (campaign → adset → adcreative → ad). {{…}} resolve from the previous create. Budgets in paise. All created PAUSED.',

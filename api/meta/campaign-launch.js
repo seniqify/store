@@ -14,7 +14,8 @@
 //   update-targeting — age / gender / radius / audience strategy on the ad set.
 //   upload-media     — image or video from a public https URL into the ad account.
 //   errors           — delivery-blocking problems for a launch.
-//   status / list    — the ledger: one launch, or this store's launches.
+//   status / list    — the ledger: one launch, or this store's launches. The list
+//                      adds what Meta says about each campaign (exists / running).
 //
 // AUTH: the store's own 4-digit Manage PIN, the same credential that opens the
 // Ads dashboard, the preview and the Meta connection — because PocketLink
@@ -584,16 +585,76 @@ async function launchErrors(row) {
   return { ok: true, errors: [...issues, ...review], effectiveStatus: g.body?.effective_status || null, mode: modeOf(engine) };
 }
 
+/**
+ * The status to show for a launch, given the campaign status Meta reports. Meta
+ * decides running vs paused, so a campaign started or paused in Ads Manager gets
+ * the right button here. Reading never changes the ledger.
+ */
+export function liveStatus(ledger, metaStatus) {
+  if (metaStatus === 'ACTIVE' && ['created', 'paused', 'stopped'].includes(ledger)) return 'active';
+  if (metaStatus === 'PAUSED' && ledger === 'active') return 'paused';
+  return ledger;
+}
+
+// Every campaign in one ad account, id → status: the list the Ads report already
+// treats as the authority on what exists. null unless it was read in full.
+async function accountCampaigns(account, token) {
+  const found = new Map();
+  let after = null;
+  for (let page = 0; page < 5; page++) {
+    const r = await graphGet(`${account}/campaigns`, { fields: 'id,status', limit: '200', ...(after ? { after } : {}), access_token: token });
+    if (!r.ok || r.body?.error || !Array.isArray(r.body?.data)) return null;
+    for (const c of r.body.data) found.set(String(c.id), c.status || null);
+    after = r.body.paging?.next ? r.body.paging?.cursors?.after : null;
+    if (!after) return found;
+  }
+  return null;
+}
+
+/**
+ * This store's launches, each with inMeta: true (its campaign exists), false (the
+ * campaign was deleted in Meta) or null (unknown). false only when that is certain:
+ * the account's campaign list was read in full, the launch went through the
+ * Marketing API (automation can stage objects in an Ads Manager draft, which that
+ * list does not show), and the account is the one the launch was made in — or the
+ * launch never spent, so leaving out a stray one costs nothing.
+ */
+async function listWithMetaState(slug) {
+  const rows = await listLaunches(slug);
+  const acct = rows.length ? await getMetaAccount(slug) : null;
+  const token = acct?.status === 'connected' ? acct.access_token : null;
+  const lists = new Map();
+  const out = [];
+  for (const row of rows) {
+    const account = token ? launchAdAccount(row, acct) : null;
+    let live = null;
+    if (account) {
+      if (!lists.has(account)) lists.set(account, await accountCampaigns(account, token));
+      const found = lists.get(account);
+      const id = String(row.campaign_id);
+      if (found?.has(id)) live = { exists: true, status: found.get(id) };
+      else if (found) {
+        const certain = engineOfRow(row) !== 'mcp' && (normalizeAdAccountId(row.config?.adAccountId) === account || !row.activated_at);
+        live = { exists: certain ? false : null, status: null };
+      }
+    }
+    out.push(publicLaunch(row, live));
+  }
+  return out;
+}
+
 /** Ledger row → what the browser may see (no engine names, no raw config). */
-export function publicLaunch(row) {
+export function publicLaunch(row, live = null) {
+  const meta = live && typeof live === 'object' ? live : null;   // Array.map passes an index here
   return {
-    launchId: row.launch_id, status: row.status, ids: ids(row), mode: modeOf(engineOfRow(row)),
+    launchId: row.launch_id, status: liveStatus(row.status, meta?.status), ids: ids(row), mode: modeOf(engineOfRow(row)),
     objective: row.objective || null, budgetType: row.budget_type || row.config?.budget?.type || 'lifetime',
     dailyBudget: row.daily_budget ?? null, lifetimeBudget: row.lifetime_minor != null ? Number(row.lifetime_minor) / 100 : null,
     days: row.days ?? null, currency: row.currency || null,
     product: row.config?.product || null, headline: row.config?.creative?.headline || null, imageUrl: row.config?.creative?.imageUrl || null,
     targeting: row.config ? { location: row.config.location?.label || null, age: row.config.age || null, gender: row.config.gender || null, strategy: row.config.audienceStrategy || null } : null,
     error: row.error || null, createdAt: row.created_at || null, activatedAt: row.activated_at || null,
+    inMeta: meta ? meta.exists : null,
   };
 }
 
@@ -644,7 +705,7 @@ export default async function handler(req, res) {
         { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
       return;
     }
-    if (action === 'list') { res.status(200).json({ ok: true, launches: (await listLaunches(slug)).map(publicLaunch) }); return; }
+    if (action === 'list') { res.status(200).json({ ok: true, launches: await listWithMetaState(slug) }); return; }
     if (action === 'upload-media') { res.status(200).json(await uploadMedia(slug, body)); return; }
 
     // Activation is the ONLY step that spends, so a 4-digit PIN is not enough.

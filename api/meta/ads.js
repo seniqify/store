@@ -215,6 +215,7 @@ export default async function handler(req, res) {
     const byCamp = new Map();
     for (const row of (campIns.body?.data || [])) byCamp.set(row.campaign_id, row);
     const byName = new Map((camps.body?.data || []).map((c) => [c.id, c.name]));
+    const byStatus = new Map((camps.body?.data || []).map((c) => [String(c.id), c.status]));
 
     const campaigns = (camps.body?.data || [])
       .map((c) => ({ id: c.id, name: c.name, status: c.status, objective: c.objective, ...shape(byCamp.get(c.id) || {}) }))
@@ -252,7 +253,7 @@ export default async function handler(req, res) {
             currency, captured_at: nowIso,
           });
           measured.push({
-            campaignId: L.campaign_id, launchId: L.launch_id, name: byName.get(L.campaign_id) || '', status: L.status,
+            campaignId: L.campaign_id, launchId: L.launch_id, name: byName.get(L.campaign_id) || '', status: byStatus.get(String(L.campaign_id)) || L.status,
             strategySource: L.strategy_source, experimentId: L.experiment_id, snapshot: L.config || null,
             meta: { spend: m.spend, reach: m.reach, impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, cpm: m.cpm, cpc: m.cpc, lpv: m.lpv, atc: m.atc, checkout: m.checkout, purchases: m.purchases, revenue: m.revenue, roas: m.roas },
             pl,

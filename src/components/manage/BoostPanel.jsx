@@ -538,7 +538,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', writes
         <Row k="Budget" v={budgetText} />
         {/* Say what enforces the ceiling. A daily budget is an average, so the
             total can vary a little; a total budget stops at the end date. */}
-        <Row k="Up to" v={<span><b>{money(d.budget?.total, cur)}</b><span className="text-gray-400 font-normal"> · {data?.resolved?.budgetType === 'lifetime' ? (d.budget?.enforcedBy || 'total budget + end date') : 'daily budgets vary a little day to day'}</span></span>} />
+        <Row k="Up to" v={<span><b>{money(d.budget?.total, cur)}</b><span className="text-gray-400 font-normal"> · {data?.resolved?.budgetType === 'lifetime' ? 'stops at this total or on the end date' : 'daily budgets vary a little day to day'}</span></span>} />
         <Row k="Facebook Page" v={d.page ? d.page.name : <span className="text-amber-600">none — choose one on the Ads page</span>} />
         <Row k="Button" v={`${String(c.cta || 'SHOP_NOW').replace(/_/g, ' ').toLowerCase()} → ${c.destinationLabel || 'Your PocketLink shop'}`} last />
       </div>
