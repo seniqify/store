@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
-  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter,
+  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter, Search,
 } from 'lucide-react';
 import { fetchOrders } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { formatINR } from '../../utils/currency';
-import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo } from '../../utils/deliveryStatus';
+import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
 
 const BUCKET_ICON = { attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check };
@@ -52,6 +52,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const [courierMenu, setCourierMenu] = useState(false);   // courier dropdown open
   const [statusMenu, setStatusMenu]   = useState(false);   // status dropdown open
   const [active, setActive]           = useState(null);    // order open in the drawer
+  const [query, setQuery]             = useState('');      // search: name, number or AWB
   const ddRef = useRef(null);
   const sdRef = useRef(null);
 
@@ -113,6 +114,9 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const total = pool.length;
   // if the active status filter emptied out under this courier, fall back to All
   const effFilter = (filter === 'all' || count(filter)) ? filter : 'all';
+  // Search narrows the list only; the tiles and counts above still cover the whole board.
+  const shown = (b) => (groups[b] || []).filter((o) => matchesShipmentSearch(o, query));
+  const shownTotal = BUCKETS.reduce((n, b) => n + ((effFilter === 'all' || effFilter === b) ? shown(b).length : 0), 0);
 
   const codToCollect = pool
     .filter((o) => o.payment_method === 'cod' && !['delivered', 'cancelled'].includes(classifyBucket(o)))
@@ -213,6 +217,21 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       )}
 
+      {/* search */}
+      {total > 0 && (
+        <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 py-2 mb-3">
+          <Search size={15} className="text-gray-400 flex-shrink-0" />
+          <input id="delivery-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                 placeholder="Search name, number or AWB…" aria-label="Search shipments"
+                 className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none" />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="p-0.5 text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* status filter (dropdown) + refresh */}
       <div className="flex items-center gap-2 mb-3">
         <div className="relative" ref={sdRef}>
@@ -269,19 +288,31 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
           <p className="text-sm font-bold text-gray-800 mt-3">No shipments yet</p>
           <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from any order (Orders tab → Book) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
         </div>
+      ) : shownTotal === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+          <Search size={26} className="mx-auto text-gray-300" />
+          <p className="text-sm font-bold text-gray-800 mt-3">No shipment matches “{query.trim()}”</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {effFilter === 'all' ? 'Check the spelling, or search by phone number or AWB.' : `Only “${BUCKET_META[effFilter].label}” is showing. Try All statuses.`}
+          </p>
+          <button type="button" onClick={() => setQuery('')}
+            className="mt-3 text-xs font-bold text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
+            Clear search
+          </button>
+        </div>
       ) : (
         <div className="space-y-5">
-          {BUCKETS.filter((b) => count(b) && (effFilter === 'all' || effFilter === b)).map((b) => {
+          {BUCKETS.filter((b) => shown(b).length && (effFilter === 'all' || effFilter === b)).map((b) => {
             const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
             return (
               <section key={b}>
                 <div className="flex items-center gap-2 px-0.5 mb-2">
                   <span className={`w-5 h-5 rounded-md grid place-items-center ${M.chip}`}><Ic size={12} /></span>
                   <h3 className={`text-[12.5px] font-extrabold ${M.tone === 'red' ? 'text-red-700' : 'text-gray-700'}`}>{M.label}</h3>
-                  <span className="text-[11px] font-bold text-gray-400 tabular-nums">{count(b)}</span>
+                  <span className="text-[11px] font-bold text-gray-400 tabular-nums">{shown(b).length}</span>
                 </div>
                 <div className="space-y-2.5">
-                  {groups[b].map((o) => (
+                  {shown(b).map((o) => (
                     <OrderCard key={o.id} o={o} bucket={b} themeColor={themeColor} onOpen={() => setActive(o)} />
                   ))}
                 </div>

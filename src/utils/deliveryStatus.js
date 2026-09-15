@@ -72,3 +72,15 @@ export function courierInfo(courier) {
   if (c === 'local')     return { key: 'local',     name: 'Delivery boy', chip: 'bg-emerald-100 text-emerald-700' };
   return { key: 'delhivery', name: 'Delhivery', chip: 'bg-indigo-100 text-indigo-700' };
 }
+
+// Delivery board search: part of the customer's name, the AWB, or (when the query
+// is a number) part of their phone number.
+export function matchesShipmentSearch(order, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  if (String(order?.customer_name || '').toLowerCase().includes(q)) return true;
+  if (String(order?.awb || '').toLowerCase().includes(q)) return true;
+  const qd = q.replace(/\D/g, '');
+  return qd.length >= 3 && qd.length === q.replace(/[\s+-]/g, '').length
+    && String(order?.customer_phone || '').replace(/\D/g, '').includes(qd);
+}

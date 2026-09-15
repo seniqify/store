@@ -171,8 +171,10 @@ function Accordion({ icon: Icon, iconBg, iconColor, title, badge, subtitle, open
 // (longest side) for product photos, which can be portrait or landscape.
 // `lowResHint` replaces the default warning text.
 function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_DIM,
-                         lowResWarnBelow = 0, lowResBy = 'width', lowResHint = '' }) {
+                         lowResWarnBelow = 0, lowResBy = 'width', lowResHint = '',
+                         multiple = 1, onAddMany }) {
   const [dragOver, setDragOver] = useState(false);
+  const [adding,   setAdding]   = useState(false);      // compressing a multi-photo pick
   const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [lowRes,   setLowRes]   = useState(0);          // measured px when too small, else 0
@@ -195,6 +197,23 @@ function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_
       .catch(() => { /* not an image — ignored, as before */ });
   }
 
+  // `multiple` > 1 (the gallery's empty tile): take up to that many photos from one
+  // pick and hand them over together. Compressed one at a time: several full-size
+  // phone photos decoded at once can run a phone out of memory.
+  async function addFiles(input) {
+    const files = [...(input.files || [])];
+    input.value = '';   // so picking the same photos again still fires onChange
+    if (!(multiple > 1 && onAddMany)) { compressAndSet(files[0]); return; }
+    if (!files.length) return;
+    setAdding(true);
+    const urls = [];
+    for (const f of files.slice(0, multiple)) {
+      try { urls.push(await compressImageFile(f, { maxDim })); } catch { /* not an image — skipped */ }
+    }
+    setAdding(false);
+    if (urls.length) onAddMany(urls);
+  }
+
   // ── Compact tile (variant option photo) ──────────────────────────────────
   if (compact) {
     return (
@@ -215,15 +234,18 @@ function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_
             )}
           </>
         ) : (
-          <button type="button" onClick={() => fileRef.current?.click()}
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={adding}
+            aria-label={multiple > 1 ? `Add up to ${multiple} photos` : 'Add photo'}
             className="w-full h-full rounded-lg border-2 border-dashed border-gray-200 bg-white hover:border-gray-300
                        flex flex-col items-center justify-center gap-0.5 text-gray-400 transition-colors">
-            <ImagePlus size={15} />
-            <span className="text-[9px] font-semibold leading-none">Photo</span>
+            {adding
+              ? <div className="w-3.5 h-3.5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+              : <ImagePlus size={15} />}
+            <span className="text-[9px] font-semibold leading-none">{adding ? 'Adding' : multiple > 1 ? 'Photos' : 'Photo'}</span>
           </button>
         )}
-        <input ref={fileRef} type="file" accept="image/*" className="hidden"
-               onChange={(e) => compressAndSet(e.target.files?.[0])} />
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" multiple={multiple > 1}
+               onChange={(e) => addFiles(e.target)} />
       </div>
     );
   }
@@ -1223,11 +1245,12 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
                       onChange={(v) => setForm(p => ({ ...p, images: v ? p.images.map((x, idx) => (idx === i ? v : x)) : p.images.filter((_, idx) => idx !== i) }))} />
                   ))}
                   {(form.images || []).length < 5 && (
-                    <ImageUploader compact maxDim={PRODUCT_MAX_DIM} value=""
-                      onChange={(v) => { if (v) setForm(p => ({ ...p, images: [...(p.images || []), v] })); }} />
+                    <ImageUploader compact maxDim={PRODUCT_MAX_DIM} value="" multiple={5 - (form.images || []).length}
+                      onChange={(v) => { if (v) setForm(p => ({ ...p, images: [...(p.images || []), v] })); }}
+                      onAddMany={(urls) => setForm(p => ({ ...p, images: [...(p.images || []), ...urls].slice(0, 5) }))} />
                   )}
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Shown as a swipeable gallery on the product page — add the back-of-pack, close-ups, or the product in use.</p>
+                <p className="mt-1 text-xs text-gray-400">Shown as a swipeable gallery on the product page — add the back-of-pack, close-ups, or the product in use. Select several photos at once, up to 5.</p>
               </div>
             </Accordion>
 
