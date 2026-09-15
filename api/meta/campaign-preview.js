@@ -6,6 +6,10 @@
 //   action 'preview' (default) — Stage 2C DRY-RUN campaign builder. Delegates to the
 //     shared _campaignBuild builder so the preview is byte-for-byte what Stage 2D
 //     launches. HARD INVARIANT: read-only wrt Meta — never creates, never spends.
+//     Merchant-approved ad words (`copy`) and a store photo (`imageUrl`) are
+//     screened by the builder and echoed back in `resolved` for the launch.
+//   action 'ad-copy' — AI-written ad words + an audience suggestion for a product,
+//     from the store's real facts only, screened before they are returned.
 //   action 'connection' — the Ads screen's state for this store (connected or not):
 //     mode, what the merchant may do, businesses / Pages / Instagram / ad accounts,
 //     current selections, per-account automation eligibility. Never a token.
@@ -20,10 +24,12 @@
 //     /me/businesses.
 //   action 'select-instagram' — which Instagram account, which must be the one
 //     linked to the selected Page; an empty id means Facebook only.
+import Anthropic from '@anthropic-ai/sdk';
 import { verifyStorePin, getMetaAccount, getStoreConfig, patchStoreConfig, graphGet, normalizeAdAccountId, resolveAdAccount, updateMetaStatus, slugAllowed } from './_meta.js';
-import { buildCampaign } from './_campaignBuild.js';
+import { buildCampaign, productDisplay } from './_campaignBuild.js';
 import { recommend } from './_recommend.js';
 import { buildConnection, liveBusinesses, matchBusiness, matchInstagram, logAdAction } from './_connection.js';
+import { generateAdCopy, copyFacts } from './_adCopy.js';
 
 const mapPage = (p) => ({
   id: String(p.id),
@@ -34,6 +40,14 @@ const mapPage = (p) => ({
 });
 
 const SELECT_ACTIONS = ['select-page', 'select-ad-account', 'select-business', 'select-instagram'];
+
+// Any active paid plan may use AI writing (same rule as product auto-fill).
+function isPaid(config) {
+  const plan = config?.plan;
+  if (!plan || plan === 'free') return false;
+  const exp = config?.planExpiresAt;
+  return exp ? new Date(exp).getTime() > Date.now() : true;
+}
 
 // action 'select-page' — validate against Meta's live grant, then persist selection.
 async function selectPage(res, slug, acct, config, pageIdRaw) {
@@ -123,6 +137,20 @@ async function selectInstagram(res, slug, acct, config, igIdRaw) {
   res.status(200).json({ ok: true, instagram: ig });
 }
 
+// action 'ad-copy' — AI-written ad words for one product (or the whole store).
+async function adCopy(res, config, body) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { res.status(200).json({ error: 'copy_not_configured' }); return; }
+  if (!config) { res.status(200).json({ error: 'no_store' }); return; }
+  if (!isPaid(config)) { res.status(200).json({ error: 'paid_plan_required' }); return; }
+  const product = body.productId
+    ? (Array.isArray(config.products) ? config.products : []).find((p) => String(p.id) === String(body.productId)) || null
+    : null;
+  if (body.productId && !product) { res.status(200).json({ error: 'no_product' }); return; }
+  const facts = copyFacts(config, product, { packLabel: productDisplay(product)?.packLabel || null });
+  res.status(200).json(await generateAdCopy({ client: new Anthropic({ apiKey }), facts }));
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   try {
@@ -140,6 +168,8 @@ export default async function handler(req, res) {
       res.status(200).json(await buildConnection({ slug, acct, config, refresh: action === 'refresh-eligibility' }));
       return;
     }
+    // Writing ad words needs no Meta connection.
+    if (action === 'ad-copy') { await adCopy(res, config, body); return; }
 
     if (!acct || acct.status !== 'connected' || !acct.access_token) { res.status(200).json({ error: 'not_connected' }); return; }
 
@@ -169,8 +199,22 @@ export default async function handler(req, res) {
       radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, gender: body.gender,
     };
     const rec = await recommend({ slug, cfg: config || {}, biz });
-    const out = await buildCampaign({ slug, adId, token: acct.access_token, cfg: config || {} }, rec.input);
-    res.status(200).json({ ...out, recommendation: rec.recommendation, resolved: rec.resolved });
+    const budgetType = body.budgetType === 'daily' ? 'daily' : 'lifetime';
+    const out = await buildCampaign({ slug, adId, token: acct.access_token, cfg: config || {} },
+      { ...rec.input, copy: body.copy || null, imageUrl: body.imageUrl || null });
+    const c = out.creative || {};
+    res.status(200).json({
+      ...out,
+      recommendation: rec.recommendation,
+      // Exactly what the launch must send: the screened words and the accepted
+      // photo, not what the browser proposed.
+      resolved: {
+        ...rec.resolved,
+        budgetType,
+        copy: c.copySource === 'merchant' ? { headline: c.headline, primaryText: c.primaryText, description: c.description, cta: c.cta } : null,
+        imageUrl: body.imageUrl && c.imageUrl === body.imageUrl ? body.imageUrl : null,
+      },
+    });
   } catch {
     res.status(200).json({ error: 'server' });
   }

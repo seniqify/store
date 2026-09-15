@@ -640,7 +640,7 @@ export default async function handler(req, res) {
 
     if (action === 'create') {
       res.status(200).json(await doCreate(slug, launchId,
-        { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, budgetType: body.budgetType, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy, imageHash: body.imageHash },
+        { objective: body.objective, days: body.days, dailyBudget: body.dailyBudget, budgetType: body.budgetType, promote: body.promote, productId: body.productId, gender: body.gender, radiusKm: body.radiusKm, ageMin: body.ageMin, ageMax: body.ageMax, audienceStrategy: body.audienceStrategy, imageHash: body.imageHash, copy: body.copy, imageUrl: body.imageUrl },
         { recommendation: body.recommendation, strategy_source: body.strategy_source, experiment_id: body.experiment_id }));
       return;
     }

@@ -4,6 +4,7 @@
 // (account fields, business Pages, geo resolution). Builds the exact Marketing
 // API payloads; never POSTs/creates anything itself.
 import { graphGet, normalizeAdAccountId } from './_meta.js';
+import { cleanCopy, copyFacts } from './_adCopy.js';
 
 // Hard server-side caps (authoritative — the real financial gate we control).
 export const CAPS = { maxDaily: 5000, maxTotal: 25000, maxDays: 30, spendCapMinRupees: 8500 };
@@ -178,13 +179,31 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
   // bodies, so no merchant can reach it, and when it is absent every value below
   // is exactly what it was before.
   const ov = (input.testCreative && typeof input.testCreative === 'object') ? input.testCreative : null;
+
+  // Merchant-approved ad words: an AI suggestion the merchant kept or edited. Only
+  // the words. The same screening that applies to AI output (lengths, no links or
+  // phone numbers, no invented prices or offers) applies to what the merchant typed.
+  const copy = input.copy ? cleanCopy(input.copy, copyFacts(cfg, product)) : null;
+  if (input.copy && !copy) {
+    warnings.push('Your ad words could not be used as written (too short, or a price or offer your store details do not show), so PocketLink used your product details instead.');
+  }
+
+  // A merchant-picked photo must be one of this store's own images.
+  const storeImages = new Set([
+    ...(Array.isArray(cfg.products) ? cfg.products : []).flatMap((p) => [p?.image, ...(Array.isArray(p?.images) ? p.images : [])]),
+    cfg.coverImage, cfg.logo,
+  ].filter((u) => /^https:\/\//i.test(String(u || ''))).map(String));
+  const chosenImage = input.imageUrl && storeImages.has(String(input.imageUrl)) ? String(input.imageUrl) : null;
+  if (input.imageUrl && !chosenImage) warnings.push('That photo is not one of your store images, so PocketLink used your product photo.');
+
   const link = ov?.link || defaultLink;
-  const imageUrl = ov?.imageUrl || defaultImage;
-  const ctaType = ov?.ctaType || 'SHOP_NOW';
-  const headline = ov?.headline || disp?.title || cfg.businessName || 'Shop with us';
-  const primaryText = ov?.primaryText || (disp
+  const imageUrl = ov?.imageUrl || chosenImage || defaultImage;
+  const ctaType = ov?.ctaType || copy?.cta || 'SHOP_NOW';
+  const headline = ov?.headline || copy?.headline || disp?.title || cfg.businessName || 'Shop with us';
+  const primaryText = ov?.primaryText || copy?.primaryText || (disp
     ? `${disp.title}${product.price ? ` — ₹${product.price}` : ''}. ${shopLine}`
     : `${cfg.businessName || 'Our shop'} — ${shopLine}`);
+  const description = copy?.description || cfg.tagline || '';
   if (!imageUrl) launchBlockers.push('Add a product photo or a store cover image to use in the ad.');
 
   // ── Payloads: lifetime_budget + end_time = Meta's true total cap ──
@@ -236,7 +255,7 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
         name: `${name} · creative`,
         object_story_spec: {
           page_id: page ? page.id : PAGE_PLACEHOLDER,
-          link_data: { link, message: primaryText, name: headline, ...(cfg.tagline ? { description: cfg.tagline } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: ctaType, value: { link } } },
+          link_data: { link, message: primaryText, name: headline, ...(description ? { description } : {}), ...(imageUrl ? { picture: imageUrl } : {}), call_to_action: { type: ctaType, value: { link } } },
         },
       },
       placeholders: page ? [] : ['object_story_spec.page_id'],
@@ -258,7 +277,8 @@ export async function buildCampaign({ slug, adId, token, cfg }, input) {
         : `ad set lifetime budget + end date (no campaign spend cap — Meta requires ≈₹${CAPS.spendCapMinRupees.toLocaleString('en-IN')})`,
     },
     creative: {
-      imageUrl, headline, primaryText, link, cta: ctaType, ctaType, promote,
+      imageUrl, headline, primaryText, description, link, cta: ctaType, ctaType, promote,
+      copySource: copy ? 'merchant' : 'store',
       productName: product?.name || null,
       packLabel: disp?.packLabel || null,
       destinationLabel: ov?.link ? link : (promote === 'product' && product ? 'Your PocketLink product page' : 'Your PocketLink shop'),
