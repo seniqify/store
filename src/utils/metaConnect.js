@@ -54,6 +54,44 @@ export async function selectMetaPage(slug, pin, pageId) {
   return data;
 }
 
+// The Ads screen's other calls to the preview function. Returns the server's JSON
+// (an `error` code on failure) and never throws, so screens can branch on codes.
+async function adsAction(slug, pin, payload) {
+  try {
+    const hashedPin = await hashPin(pin);
+    const res = await fetch('/api/meta/campaign-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, hashedPin, ...payload }),
+    });
+    const data = await res.json().catch(() => ({ error: 'server' }));
+    if (res.status === 403 && !data?.error) return { error: 'pin' };
+    return data;
+  } catch {
+    return { error: 'network' };
+  }
+}
+
+/** The Ads screen's state: connected or not, mode, choices, selections, eligibility. */
+export const fetchMetaConnection = (slug, pin) => adsAction(slug, pin, { action: 'connection' });
+
+/** Same, after asking Meta again which ad accounts are enabled for automation. */
+export const refreshMetaEligibility = (slug, pin) => adsAction(slug, pin, { action: 'refresh-eligibility' });
+
+/** Choose the business portfolio (one the connection can still see). */
+export async function selectMetaBusiness(slug, pin, businessId) {
+  const data = await adsAction(slug, pin, { action: 'select-business', businessId });
+  if (data?.ok) clearCachedStore(slug);
+  return data;
+}
+
+/** Choose the Instagram account linked to the selected Page ('' = Facebook only). */
+export async function selectMetaInstagram(slug, pin, igId) {
+  const data = await adsAction(slug, pin, { action: 'select-instagram', igId });
+  if (data?.ok) clearCachedStore(slug);
+  return data;
+}
+
 /** Owner-only: disconnect the store's Meta connection. */
 export async function disconnectMeta(slug, pin) {
   const hashedPin = await hashPin(pin);

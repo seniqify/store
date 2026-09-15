@@ -6,10 +6,16 @@
 // summary onto stores.config.meta (never the token), and redirects the seller
 // back to Manage with a result flag. The App Secret and access token never reach
 // the browser.
+//
+// After the connection is saved it also records token health and, when the
+// login granted ads_mcp_management, which ad accounts Meta has enabled for ads
+// automation. Both are best effort: neither can fail a connection.
 import {
   APP_ID, REDIRECT_URI, APP_ORIGIN,
   appSecret, serviceKey, verifyState, graphGet,
-  upsertMetaAccount, getStoreConfig, patchStoreConfig, slugAllowed } from './_meta.js';
+  upsertMetaAccount, updateMetaStatus, getStoreConfig, patchStoreConfig, slugAllowed } from './_meta.js';
+import { refreshEligibility, logAdAction } from './_connection.js';
+import { tokenStatus, SCOPES } from './_capabilities.js';
 
 // Redirect back to the store's Manage page (or home if we can't trust the slug).
 function back(res, slug, params) {
@@ -121,6 +127,21 @@ export default async function handler(req, res) {
       status: 'connected', connected_at: now, updated_at: now,
     });
     if (!stored) return back(res, slug, { meta: 'error', reason: 'store' });
+
+    // 7b) Token health + ads automation eligibility per ad account. Separate,
+    //     best-effort writes: the connection above is already saved, and these
+    //     columns may not exist until the migration has run.
+    await updateMetaStatus(slug, { token_status: tokenStatus(expiresAt), last_error: null });
+    const automationGranted = scopes.includes(SCOPES.mcp);
+    let eligibilityError = null;
+    if (automationGranted) {
+      const r = await refreshEligibility(slug, { access_token: token, ad_account_ids: adAccountIds }).catch(() => ({ error: 'meta_error' }));
+      eligibilityError = r?.error || null;
+    }
+    await logAdAction({
+      store_slug: slug, action: 'connect', ok: true, actor: 'merchant',
+      detail: { adAccounts: adAccountIds.length, automationGranted, eligibilityError },
+    });
 
     // 8) Public-safe mirror onto the store config (NEVER the token). When the
     //    seller shared a Pixel, auto-fill the existing Meta Pixel ID field so

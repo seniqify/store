@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "api/meta/callback.js": { "maxDuration": 30 },
+    "api/meta/campaign-preview.js": { "maxDuration": 30 },
+    "api/meta/ads.js": { "maxDuration": 30 },
+    "api/meta/campaign-launch.js": { "maxDuration": 60 }
+  },
   "headers": [
     { "source": "/version.json", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }] }
   ],
