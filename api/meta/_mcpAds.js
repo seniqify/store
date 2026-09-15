@@ -242,6 +242,19 @@ export function pauseViaMcp(session, adAccount, campaignId, { request = '' } = {
 }
 
 /**
+ * Move a paused launch's end date before its first start: the campaign stop time
+ * first (an ad set cannot end after its campaign), then the ad set end time.
+ * Spends nothing. → { ok, pending } | { ok: false, step, error }
+ */
+export async function rescheduleViaMcp(session, adAccount, ids, endTime, { request = '' } = {}) {
+  const campaign = await updateEntity(session, adAccount, 'campaign', ids?.campaign_id, { stop_time: endTime }, request);
+  if (!campaign.ok) return { ok: false, step: 'campaign', error: campaign.error };
+  const adSet = await updateEntity(session, adAccount, 'ad_set', ids?.adset_id, { end_time: endTime }, request);
+  if (!adSet.ok) return { ok: false, step: 'ad_set', error: adSet.error };
+  return { ok: true, pending: campaign.pending || adSet.pending };
+}
+
+/**
  * Budget update fields in minor units, refusing anything outside PocketLink's
  * server caps. → { fields } or { error }
  */

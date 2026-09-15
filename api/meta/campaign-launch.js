@@ -35,7 +35,7 @@ import { openMcpSession } from './_mcp.js';
 import { merchantWritesAllowed, SCOPES } from './_capabilities.js';
 import { resolveConnection, logAdAction } from './_connection.js';
 import {
-  mcpCreateArgs, createPausedViaMcp, readStatusesViaMcp, activateViaMcp, resumeViaMcp, pauseViaMcp,
+  mcpCreateArgs, createPausedViaMcp, readStatusesViaMcp, activateViaMcp, resumeViaMcp, pauseViaMcp, rescheduleViaMcp,
   updateBudgetViaMcp, updateTargetingViaMcp, uploadMediaViaMcp, errorsViaMcp, budgetFields,
 } from './_mcpAds.js';
 
@@ -448,6 +448,28 @@ async function verifyPaused(row, token) {
 }
 
 // ── Control: activate / resume / pause / stop ─────────────────────────────────
+/**
+ * A launch's end date is set when it is created, paused. Started days later, the
+ * planned run would be cut short or already over, so a FIRST start moves the end
+ * to the planned number of days from now, never earlier than planned. A start
+ * soon after creation leaves the dates alone. → ISO end time, or null (no change)
+ */
+export function refreshedEnd(row, now = Date.now()) {
+  const days = Number(row?.days || row?.config?.budget?.days || 0);
+  if (!(days >= 1)) return null;
+  const wanted = now + days * 86400000 + 2 * 60000;
+  const planned = Date.parse(row?.config?.budget?.endTime || '');
+  if (Number.isFinite(planned) && planned >= wanted - 3600000) return null;
+  return new Date(wanted).toISOString();
+}
+
+// Nothing is started when Meta refuses the new dates.
+async function scheduleFailed(row, engine, message) {
+  await set(row.launch_id, { error: `schedule: ${message}`.slice(0, 500) });
+  await audit(row.store_slug, row.launch_id, 'activate', engine, false, { targetId: row.campaign_id, errorCode: 'schedule_failed', detail: { message: String(message).slice(0, 300) } });
+  return { error: 'schedule_failed', message, mode: modeOf(engine) };
+}
+
 async function control(row, action, staffUid) {
   if (!slugAllowed(row.store_slug)) return { error: 'not_allowed_in_this_environment' };
   const spends = action === 'activate' || action === 'resume';
@@ -458,12 +480,18 @@ async function control(row, action, staffUid) {
   if (!token) return { error: 'not_connected' };
   const engine = engineOfRow(row);
   const newStatus = { activate: 'active', resume: 'active', pause: 'paused', stop: 'stopped' }[action];
+  // A first start gets the whole planned run from now (see refreshedEnd).
+  const newEnd = action === 'activate' ? refreshedEnd(row) : null;
 
   if (engine === 'mcp') {
     const session = await openMcpSession(token);
     if (session.error) return { error: 'automation_unavailable_now', code: session.error.code };
     const adAccount = launchAdAccount(row, acct);
     const request = `The merchant chose to ${action} campaign ${row.campaign_id} in PocketLink.`;
+    if (newEnd) {
+      const s = await rescheduleViaMcp(session, adAccount, ids(row), newEnd, { request });
+      if (!s.ok) return scheduleFailed(row, engine, s.error?.message || '');
+    }
     const r = action === 'activate' ? await activateViaMcp(session, adAccount, ids(row), { request })
       : action === 'resume' ? await resumeViaMcp(session, adAccount, row.campaign_id, { request })
       : await pauseViaMcp(session, adAccount, row.campaign_id, { request });
@@ -473,6 +501,10 @@ async function control(row, action, staffUid) {
       return { error: `${action}_failed`, code: r.error?.code || null, message: r.error?.message || 'Meta rejected the change', mode: 'automated' };
     }
   } else {
+    if (newEnd && row.adset_id) {
+      const s = await graphPost(`${row.adset_id}`, { end_time: newEnd }, token);
+      if (!s.ok) return scheduleFailed(row, engine, s.body?.error?.error_user_msg || s.body?.error?.message || '');
+    }
     const targets = [row.campaign_id, ...(spends ? [row.adset_id, row.ad_id] : [])].filter(Boolean);
     for (const id of targets) {
       const r = await graphPost(`${id}`, { status: spends ? 'ACTIVE' : 'PAUSED' }, token);
@@ -486,7 +518,7 @@ async function control(row, action, staffUid) {
   const patch = { status: newStatus, error: '' };
   if (spends) { patch.activated_by = staffUid || 'merchant'; patch.activated_at = 'now'; }
   await set(row.launch_id, patch);
-  await audit(row.store_slug, row.launch_id, action, engine, true, { targetId: row.campaign_id, actor: staffUid ? 'staff' : 'merchant' });
+  await audit(row.store_slug, row.launch_id, action, engine, true, { targetId: row.campaign_id, actor: staffUid ? 'staff' : 'merchant', detail: newEnd ? { endTime: newEnd } : null });
   return { ok: true, status: newStatus, mode: modeOf(engine) };
 }
 

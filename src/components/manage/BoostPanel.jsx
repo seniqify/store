@@ -227,6 +227,7 @@ export default function BoostPanel({ config, pin, themeColor = '#0d9488', writes
     if (r.error === 'automation_unavailable_now') return 'Meta didn’t respond. Try again in a minute.';
     if (r.error === 'pin') return 'That PIN was not accepted. Unlock this store again and retry.';
     if (r.error === 'otp_required') return 'Enter the code we sent to your WhatsApp number to start spending.';
+    if (r.error === 'schedule_failed') return `Meta didn’t accept the new dates for this ad, so it wasn’t started.${r.message ? ` Meta said: ${r.message}` : ''}`;
     if (r.error === 'activation_disabled_in_this_environment') return 'Starting ads is switched off in this environment.';
     if (r.error === 'not_connected') return 'Meta isn’t connected for this store.';
     return r.message || 'That didn’t work. Try again.';

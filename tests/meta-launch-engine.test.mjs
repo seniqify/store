@@ -3,7 +3,7 @@
 // at globalThis.fetch. No network; no Meta object is created; nothing spends.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import launchHandler, { raisesBudget, publicLaunch } from '../api/meta/campaign-launch.js';
+import launchHandler, { raisesBudget, publicLaunch, refreshedEnd } from '../api/meta/campaign-launch.js';
 
 const realFetch = globalThis.fetch;
 const ENV = ['SUPABASE_SERVICE_ROLE_KEY', 'META_ADS_PILOT_SLUGS', 'META_ADS_MERCHANT_WRITES', 'META_PAUSED_ONLY', 'META_ALLOWED_SLUGS'];
@@ -317,6 +317,58 @@ test('a non-pilot store cannot activate even with a valid code', async () => {
   const r = await call({ action: 'activate', launchId: row.launch_id, otpCode: '123456' });
   assert.equal(r.body.error, 'writes_disabled');
   assert.equal(log.tools.length, 0);
+});
+
+// ── a late first start keeps the whole planned run ───────────────────────────
+const LATE = (over = {}) => MCP_ROW({ days: 7, config: { ...MCP_ROW().config, budget: { days: 7, endTime: new Date(Date.now() + 2 * 86400000).toISOString() } }, ...over });
+const near = (iso, ms) => Math.abs(Date.parse(iso) - ms) < 10 * 60000;
+
+test('a late first start moves the end date so the planned days run from now (automation)', async () => {
+  const log = world({ launches: [LATE()], otp: '123456' });
+  const r = await call({ action: 'activate', launchId: LATE().launch_id, otpCode: '123456' });
+  assert.equal(r.body.ok, true, JSON.stringify(r.body));
+  assert.deepEqual(log.tools.map((t) => `${t.name}:${t.args.entity_type}`),
+    ['ads_update_entity:campaign', 'ads_update_entity:ad_set', 'ads_activate_entity:ad', 'ads_activate_entity:ad_set', 'ads_activate_entity:campaign']);
+  const stop = JSON.parse(log.tools[0].args.fields).stop_time;
+  const end = JSON.parse(log.tools[1].args.fields).end_time;
+  assert.equal(stop, end, 'the campaign stops when the ad set ends');
+  assert.ok(near(end, Date.now() + 7 * 86400000), end);
+  assert.equal(log.audits.find((a) => a.action === 'activate' && a.ok).detail.endTime, end);
+});
+
+test('a start soon after creation leaves the dates alone', async () => {
+  const fresh = MCP_ROW({ days: 7, config: { ...MCP_ROW().config, budget: { days: 7, endTime: new Date(Date.now() + 7 * 86400000).toISOString() } } });
+  const log = world({ launches: [fresh], otp: '123456' });
+  const r = await call({ action: 'activate', launchId: fresh.launch_id, otpCode: '123456' });
+  assert.equal(r.body.ok, true, JSON.stringify(r.body));
+  assert.equal(log.tools.some((t) => t.name === 'ads_update_entity'), false);
+});
+
+test('if Meta refuses the new dates, nothing is started', async () => {
+  const log = world({ launches: [LATE()], otp: '123456', mcpFail: { ads_update_entity: 'End time is invalid' } });
+  const r = await call({ action: 'activate', launchId: LATE().launch_id, otpCode: '123456' });
+  assert.deepEqual([r.body.error, r.body.message], ['schedule_failed', 'End time is invalid']);
+  assert.equal(log.tools.some((t) => t.name === 'ads_activate_entity'), false);
+  assert.equal(log.ledger.get(LATE().launch_id).status, 'created');
+});
+
+test('a late first start of a standard launch moves the ad set end before starting', async () => {
+  const row = LATE({ engine: 'graph' });
+  const log = world({ launches: [row], otp: '123456' });
+  const r = await call({ action: 'activate', launchId: row.launch_id, otpCode: '123456' });
+  assert.equal(r.body.ok, true, JSON.stringify(r.body));
+  assert.ok(log.graphPosts[0].url.endsWith('/202'));
+  assert.ok(near(log.graphPosts[0].body.end_time, Date.now() + 7 * 86400000));
+  assert.deepEqual(log.graphPosts.slice(1).map((p) => [p.url.split('/').pop(), p.body.status]), [['101', 'ACTIVE'], ['202', 'ACTIVE'], ['404', 'ACTIVE']]);
+});
+
+test('refreshedEnd: only when the planned run would be cut short, never earlier', () => {
+  const now = Date.parse('2026-09-20T09:00:00Z');
+  const plan = (endTime, days = 7) => ({ days, config: { budget: { days, endTime } } });
+  assert.equal(refreshedEnd({ config: {} }, now), null, 'no planned days, no change');
+  assert.equal(refreshedEnd(plan(new Date(now + 7 * 86400000).toISOString()), now), null, 'a start on time');
+  assert.equal(refreshedEnd(plan('2026-09-22T09:02:45Z'), now), new Date(now + 7 * 86400000 + 120000).toISOString());
+  assert.equal(refreshedEnd(plan('2026-09-01T00:00:00Z', 1), now), new Date(now + 86400000 + 120000).toISOString(), 'a run already over gets its day back');
 });
 
 test('pausing is always allowed and only edits the status', async () => {

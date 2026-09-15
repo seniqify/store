@@ -34,6 +34,7 @@ const ERR = {
   automation_unavailable_now: 'Meta didn’t respond. Try again in a minute.',
   no_location: 'Set your city in Settings so PocketLink knows where to show your ad.',
   not_created: 'This campaign was not fully created.',
+  schedule_failed: 'Meta didn’t accept the new dates for this ad, so it wasn’t started. Try again.',
   pin: 'That PIN was not accepted. Unlock the store again.',
 };
 const errText = (r) => ERR[r?.error] || r?.message || 'Something went wrong. Try again.';
