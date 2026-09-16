@@ -29,6 +29,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/orders-authenticated-insert-forward.sql',
   'supabase/orders-authenticated-insert-ROLLBACK.sql',
   'supabase/orders-authenticated-insert-PROOF.sql',
+  'supabase/order-integrity-phase2-forward.sql',
+  'supabase/order-integrity-phase2-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
