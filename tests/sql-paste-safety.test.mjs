@@ -26,6 +26,9 @@ const CHANGES_THE_DATABASE = [
   'supabase/meta-ads-mcp-rollback.sql',
   'supabase/security-phase-1-forward.sql',
   'supabase/security-phase-1-ROLLBACK.sql',
+  'supabase/orders-authenticated-insert-forward.sql',
+  'supabase/orders-authenticated-insert-ROLLBACK.sql',
+  'supabase/orders-authenticated-insert-PROOF.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
