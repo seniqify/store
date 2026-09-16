@@ -17,6 +17,13 @@ with guard as (
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'otp_guard'
 ),
+consumer as (
+  select p.oid, p.prosrc, p.prosecdef,
+         coalesce(array_to_string(p.proconfig, ', '), '') as cfg,
+         coalesce(array_to_string(p.proacl, ' '), 'default(public)') as acl
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'otp_consume'
+),
 ins_guard as (
   select p.oid, p.prosrc, p.prosecdef,
          coalesce(array_to_string(p.proconfig, ', '), '') as cfg
@@ -98,6 +105,34 @@ select 'V2', 'V2.6 every limit is still in the body',
                       and prosrc like '%c_fail_subject%'
                       and prosrc like '%c_fail_ip%')
        then 'PASS' else 'FAIL - a limit was removed' end
+
+-- -- V2b  a one-time code is used once ----------------------------------------
+union all
+select 'V2b', 'V2b.1 otp_consume exists, SECURITY DEFINER, pinned',
+  case when exists (select 1 from consumer where prosecdef
+                      and cfg = 'search_path=public, pg_temp')
+       then 'PASS' else 'FAIL - missing or unpinned' end
+union all
+select 'V2b', 'V2b.2 the code is consumed in one statement, not read then deleted',
+  -- A DELETE ... RETURNING holds the row lock, so a second caller finds nothing
+  -- left to take. A SELECT first would let two requests spend the same code.
+  case when exists (select 1 from consumer
+                     where prosrc like '%delete from public.otp_codes%'
+                       and prosrc like '%returning 1%'
+                       and prosrc like '%expires_at > now()%'
+                       and prosrc not like '%select%from public.otp_codes%where%')
+       then 'PASS' else 'FAIL - consumption is not atomic' end
+union all
+select 'V2b', 'V2b.3 only the service role may call otp_consume',
+  case when not exists (select 1 from consumer) then 'FAIL - not found'
+       when (select acl from consumer) = 'default(public)'
+         or (select acl from consumer) like '%anon=X%'
+         or (select acl from consumer) like '%authenticated=X%'
+         or (select acl from consumer) like '=X/%'
+         or (select acl from consumer) like '% =X/%'
+       then 'FAIL - reachable from the browser: ' || (select acl from consumer)
+       when (select acl from consumer) like '%service_role=X%' then 'PASS'
+       else 'FAIL - service_role cannot call it: ' || (select acl from consumer) end
 
 -- -- V3  an order INSERT cannot claim payment --------------------------------
 union all

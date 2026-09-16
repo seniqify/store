@@ -17,7 +17,12 @@
 --                 function, so no new place stores raw phone numbers
 --       slug    = '' (the column is NOT NULL and there is no store here)
 --
---  2. An order INSERT may not claim payment (orders_insert_guard)
+--  2. A one-time code is used once (otp_consume)
+--     Verifying a code reads it and then deletes it in a separate request, so
+--     two requests carrying the same code can both be told yes. Consumption
+--     becomes one statement, where the row lock decides the winner.
+--
+--  3. An order INSERT may not claim payment (orders_insert_guard)
 --     An order row is written from the customer's device, so nothing it says
 --     about payment is evidence of payment. This forces the payment columns to
 --     their unpaid values on every INSERT, whatever role does it, and clamps
@@ -28,7 +33,7 @@
 --     and none of them are touched. No existing INSERT path sets these columns
 --     except the client one this closes.
 --
---  3. anon and authenticated lose DELETE and TRUNCATE on stores and orders
+--  4. anon and authenticated lose DELETE and TRUNCATE on stores and orders
 --     Nothing uses them. RLS already blocks DELETE (no policy allows it) but
 --     TRUNCATE is not subject to RLS, so the grant is worth removing.
 --
@@ -215,7 +220,61 @@ grant execute on function public.otp_guard(text, text, text) to service_role;
 
 
 -- ---------------------------------------------------------------------------
--- 2. An order INSERT may not claim payment
+-- 2. A one-time code is used once (otp_consume)
+-- ---------------------------------------------------------------------------
+-- Checking a code and then deleting it are two round trips today, so two
+-- requests carrying the same valid code can both pass the check before either
+-- delete lands, and a "one-time" code is spendable twice.
+--
+-- One statement settles it. DELETE takes the row lock, so a second caller
+-- aiming at the same row waits, re-reads it after the first commits, finds
+-- nothing there and deletes nothing. Exactly one caller can ever be told yes.
+-- No advisory lock is needed -- the row itself is the lock.
+--
+-- The attempt guard above is untouched and still runs first: this decides
+-- whether a code is right, not whether another guess is allowed.
+create or replace function public.otp_consume(p_phone text, p_code text)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  v_ok boolean := false;
+begin
+  if coalesce(btrim(p_phone), '') = '' or coalesce(btrim(p_code), '') = '' then
+    return false;
+  end if;
+
+  with taken as (
+    delete from public.otp_codes
+     where phone = p_phone
+       and code = p_code
+       and expires_at > now()
+    returning 1
+  )
+  select exists (select 1 from taken) into v_ok;
+
+  -- The winner also spends any other code still outstanding for this number,
+  -- which is what the edge function did after a successful check.
+  if v_ok then
+    delete from public.otp_codes where phone = p_phone;
+  end if;
+
+  return v_ok;
+end;
+$function$;
+
+-- Service role only, like the guard: from the browser this would hand anyone a
+-- way to burn a merchant's codes.
+revoke all on function public.otp_consume(text, text) from public;
+revoke all on function public.otp_consume(text, text) from anon, authenticated;
+grant execute on function public.otp_consume(text, text) to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 3. An order INSERT may not claim payment
 -- ---------------------------------------------------------------------------
 -- Runs for every role, not only anon: the order-notify safety net writes a
 -- client-supplied object with the service role, so a role test here would leave
@@ -256,7 +315,7 @@ create trigger orders_insert_guard
 
 
 -- ---------------------------------------------------------------------------
--- 3. Remove unused destructive grants
+-- 4. Remove unused destructive grants
 -- ---------------------------------------------------------------------------
 -- RLS already blocks anon DELETE (no policy allows it) and PostgREST exposes no
 -- TRUNCATE verb -- but TRUNCATE ignores RLS, so the grant should not exist.

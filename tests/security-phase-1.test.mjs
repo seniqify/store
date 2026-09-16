@@ -114,12 +114,12 @@ test('send asks the guard before it sends, and refuses with 429', () => {
   assert.match(send.slice(guard, guard + 200), /429/);
 });
 
-test('verify asks the guard before the lookup, and clears on success', () => {
+test('verify asks the guard before the code is checked, and clears on success', () => {
   const v = OTPFN.slice(OTPFN.indexOf("if (action === 'verify')"),
                         OTPFN.indexOf("if (action === 'welcome')"));
-  assert.ok(v.indexOf("otpGuard(supabase, 'verify'") < v.indexOf("from('otp_codes')"),
-    'the limit is checked before the code is looked up');
-  assert.match(v, /delete\(\)\.eq\('phone', phone\);\s*\n\s*await otpGuard\(supabase, 'clear'/);
+  assert.ok(v.indexOf("otpGuard(supabase, 'verify'") < v.indexOf("rpc('otp_consume'"),
+    'the limit is checked before the code is');
+  assert.match(v, /await otpGuard\(supabase, 'clear', subject, ip\);\s*\n\s*return json\(\{ success: true \}\);/);
   assert.match(v, /429/);
 });
 
@@ -201,6 +201,66 @@ test('a guess is spent when it is allowed, not reported after it fails', () => {
 test('a correct code gives the guesses back', () => {
   const clear = GUARD.slice(GUARD.indexOf("if p_action = 'clear' then"));
   assert.match(clear, /delete from public\.pin_attempts\s*\n\s*where kind = 'otp_verify' and not success and subject = v_subject;/);
+});
+
+// ── P1-2  a one-time code is used once ───────────────────────────────────────
+// Reading the code and then deleting it are two round trips: two requests
+// carrying the same valid code both read it before either delete lands, and the
+// code is spent twice. One statement settles it — the row lock picks a winner.
+
+const CONSUME = FWD.slice(FWD.indexOf('create or replace function public.otp_consume'),
+                          FWD.indexOf('revoke all on function public.otp_consume'));
+
+test('the code is taken in a single statement, never read and then deleted', () => {
+  assert.ok(CONSUME.length > 0, 'otp_consume must exist');
+  assert.match(CONSUME, /with taken as \(\s*\n\s*delete from public\.otp_codes/,
+    'the delete is what selects the row');
+  assert.match(CONSUME, /returning 1/);
+  assert.match(CONSUME, /select exists \(select 1 from taken\) into v_ok;/);
+  // A SELECT of the table before the DELETE is the bug this replaces.
+  const upToDelete = CONSUME.slice(0, CONSUME.indexOf('delete from public.otp_codes'));
+  assert.equal(/from public\.otp_codes/.test(upToDelete), false,
+    'nothing may read otp_codes before the delete claims it');
+});
+
+test('consumption still checks the phone, the code and the expiry', () => {
+  const claim = CONSUME.slice(CONSUME.indexOf('with taken as'),
+                              CONSUME.indexOf('returning 1'));
+  assert.match(claim, /where phone = p_phone/);
+  assert.match(claim, /and code = p_code/);
+  assert.match(claim, /and expires_at > now\(\)/);
+});
+
+test('only the winner spends the phone\'s other codes, and an empty call is refused', () => {
+  assert.match(CONSUME, /if v_ok then\s*\n\s*delete from public\.otp_codes where phone = p_phone;/);
+  assert.match(CONSUME, /if coalesce\(btrim\(p_phone\), ''\) = '' or coalesce\(btrim\(p_code\), ''\) = '' then\s*\n\s*return false;/);
+});
+
+test('otp_consume is SECURITY DEFINER, pinned, and service-role only', () => {
+  const code = stripToCode(FWD);
+  assert.match(FWD, /create or replace function public\.otp_consume\(p_phone text, p_code text\)[\s\S]{0,200}security definer[\s\S]{0,80}set search_path = public, pg_temp/);
+  assert.match(code, /revoke all on function public\.otp_consume\(text, text\) from public;/);
+  assert.match(code, /revoke all on function public\.otp_consume\(text, text\) from anon, authenticated;/);
+  assert.match(code, /grant execute on function public\.otp_consume\(text, text\) to service_role;/);
+  assert.equal(/grant execute on function public\.otp_consume[^;]*to [^;]*anon/.test(code), false);
+});
+
+test('the edge function consumes through the RPC and never reads the code itself', () => {
+  const v = OTPFN.slice(OTPFN.indexOf("if (action === 'verify')"),
+                        OTPFN.indexOf("if (action === 'welcome')"));
+  assert.match(v, /supabase\.rpc\('otp_consume', \{\s*\n?\s*p_phone: String\(phone\), p_code: String\(code\),/);
+  assert.equal(/from\('otp_codes'\)/.test(v), false,
+    'verify must not touch the table directly any more');
+  assert.match(v, /if \(consumed !== true\)/, 'only an explicit true is a valid code');
+  // Order: the attempt guard still runs first, and clear only after a win.
+  assert.ok(v.indexOf("otpGuard(supabase, 'verify'") < v.indexOf("rpc('otp_consume'"));
+  assert.ok(v.indexOf("rpc('otp_consume'") < v.indexOf("otpGuard(supabase, 'clear'"));
+});
+
+test('a failed consume call cannot pass for a valid code', () => {
+  const v = OTPFN.slice(OTPFN.indexOf("if (action === 'verify')"),
+                        OTPFN.indexOf("if (action === 'welcome')"));
+  assert.match(v, /if \(consumeErr\) throw new Error\(consumeErr\.message\);/);
 });
 
 test('the guard is SECURITY DEFINER, pinned, and callable only by the service role', () => {

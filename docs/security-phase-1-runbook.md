@@ -106,6 +106,11 @@ writes its row inside that same transaction. A guess is spent when it is
 allowed, not reported after it fails — otherwise requests fired together would
 all pass the check before any of them was counted.
 
+**A one-time code really is one-time.** Verification used to read the code and
+then delete it in a second request, so two requests carrying the same valid code
+could both be told yes. `public.otp_consume` does it in one statement: the row
+lock picks a single winner and every other caller is told no.
+
 **A failed PIN check is a refusal.** `verifyPin` no longer falls back to reading
 `stores.pin` and comparing in the browser.
 

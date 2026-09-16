@@ -245,23 +245,21 @@ serve(async (req: Request) => {
         return json({ error: 'Too many incorrect codes. Please wait a few minutes and try again.' }, 429);
       }
 
-      const { data, error: fetchErr } = await supabase
-        .from('otp_codes')
-        .select('*')
-        .eq('phone', phone)
-        .eq('code',  String(code))
-        .gt('expires_at', new Date().toISOString())
-        .maybeSingle();
+      // Checking the code and deleting it used to be two round trips, which made
+      // a "one-time" code spendable twice: both requests read the row before
+      // either delete landed. public.otp_consume does it in one statement, where
+      // the row lock picks a single winner — see the migration for why.
+      const { data: consumed, error: consumeErr } = await supabase.rpc('otp_consume', {
+        p_phone: String(phone), p_code: String(code),
+      });
 
-      if (fetchErr) throw new Error(fetchErr.message);
+      if (consumeErr) throw new Error(consumeErr.message);
 
-      if (!data) {
+      if (consumed !== true) {
         // The guess is already on the ledger, spent by the 'verify' call above.
         return json({ error: 'Invalid or expired OTP. Please try again.' }, 400);
       }
 
-      // One-time use — delete after successful verify
-      await supabase.from('otp_codes').delete().eq('phone', phone);
       await otpGuard(supabase, 'clear', subject, ip);
       return json({ success: true });
     }
