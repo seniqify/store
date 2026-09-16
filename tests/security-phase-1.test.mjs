@@ -385,6 +385,18 @@ test('the forward migration is one transaction and idempotent', () => {
     'nothing destructive in the forward file');
 });
 
+test('the production check for atomic consumption cannot report a false negative', () => {
+  // The first version asked for `prosrc not like '%select%from public.otp_codes%where%'`,
+  // which also matches the later line that burns the phone's remaining codes —
+  // so a correct function read as FAIL against production. The check has to look
+  // at the text BEFORE the claiming delete and require the table is absent there.
+  const v2b = VERIFY.slice(VERIFY.indexOf('V2b.2'), VERIFY.indexOf('V2b.3'));
+  assert.match(v2b, /strpos\(prosrc, 'delete from public\.otp_codes'\)/);
+  assert.match(v2b, /strpos\(left\(prosrc, strpos\(prosrc, 'delete from public\.otp_codes'\) - 1\),\s*\n?\s*'otp_codes'\)/);
+  assert.equal(/not like '%select%from public\.otp_codes%where%'/.test(VERIFY), false,
+    'the pattern that produced the false negative must not come back');
+});
+
 test('the verify file is read-only: one SELECT, no DDL', () => {
   const code = stripToCode(VERIFY);
   assert.equal(/\b(insert|update|delete|alter|drop|create|grant|revoke|truncate|begin|commit)\b/i.test(code), false,

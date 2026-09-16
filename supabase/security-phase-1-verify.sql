@@ -115,13 +115,22 @@ select 'V2b', 'V2b.1 otp_consume exists, SECURITY DEFINER, pinned',
 union all
 select 'V2b', 'V2b.2 the code is consumed in one statement, not read then deleted',
   -- A DELETE ... RETURNING holds the row lock, so a second caller finds nothing
-  -- left to take. A SELECT first would let two requests spend the same code.
-  case when exists (select 1 from consumer
-                     where prosrc like '%delete from public.otp_codes%'
-                       and prosrc like '%returning 1%'
-                       and prosrc like '%expires_at > now()%'
-                       and prosrc not like '%select%from public.otp_codes%where%')
-       then 'PASS' else 'FAIL - consumption is not atomic' end
+  -- left to take. What must not exist is a READ of otp_codes before that
+  -- delete: that is the check-then-delete shape, and it lets two requests spend
+  -- one code. So look at the text BEFORE the claiming delete and require that
+  -- the table is not mentioned in it. (A '%select%from public.otp_codes%where%'
+  -- pattern cannot express this: it also matches the later line that burns the
+  -- phone's remaining codes, and reports a correct function as broken.)
+  case when not exists (select 1 from consumer) then 'FAIL - not found'
+       when (select strpos(prosrc, 'delete from public.otp_codes') from consumer) = 0
+       then 'FAIL - no claiming delete'
+       when (select strpos(left(prosrc, strpos(prosrc, 'delete from public.otp_codes') - 1),
+                           'otp_codes') from consumer) <> 0
+       then 'FAIL - otp_codes is read before the delete claims it'
+       when not exists (select 1 from consumer where prosrc like '%returning 1%'
+                          and prosrc like '%expires_at > now()%')
+       then 'FAIL - the claim does not return a row, or skips the expiry'
+       else 'PASS' end
 union all
 select 'V2b', 'V2b.3 only the service role may call otp_consume',
   case when not exists (select 1 from consumer) then 'FAIL - not found'
