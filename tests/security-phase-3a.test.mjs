@@ -200,8 +200,22 @@ test('the subscription id still reaches onboarding — publish needs it', () => 
   assert.match(FWD, /returns table \(plan text, plan_expires_at timestamptz, subscription_id text\)/);
   assert.match(STORESVC, /rpc\('get_pending_signup', \{ p_phone: last10 \}\)/);
   assert.match(STORESVC, /subscriptionId: row\.subscription_id \|\| null/);
-  assert.equal(/from\('pending_signups'\)[\s\S]{0,80}\.select\(/.test(STORESVC), false,
-    'the client must not read the table directly any more');
+});
+
+test('the lookup falls back to the old path only while the RPC is missing', () => {
+  // Either deploy order leaves a window otherwise: the site alone has no RPC to
+  // call, and the SQL alone leaves cached bundles reading a table they may no
+  // longer read. Both ends of that window told a paid merchant they had no plan.
+  const fn = STORESVC.slice(STORESVC.indexOf('export async function getPendingSignup'),
+                            STORESVC.indexOf('/** Clear a pending signup'));
+  assert.match(fn, /const \{ data, error \} = await supabase\.rpc\('get_pending_signup'/);
+  assert.match(fn, /if \(error\) \{/, 'the fallback is reached only on an RPC error');
+  assert.match(fn, /TEMPORARY, and delete it once security-phase-3a-forward\.sql is applied/);
+  // It reads the table, which the migration makes unreadable — so it expires by
+  // itself rather than lingering as a way around the new rule.
+  assert.match(fn, /\.from\('pending_signups'\)/);
+  assert.ok(fn.indexOf("rpc('get_pending_signup'") < fn.indexOf(".from('pending_signups')"),
+    'the RPC is always tried first');
 });
 
 test('the client still writes and clears signups exactly as before', () => {
