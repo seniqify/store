@@ -5,8 +5,25 @@
 --  grant, revoke, drop, alter, set role or temporary table. No transaction.
 --  Safe to run on production before and after applying the migration.
 --
---  Before applying, the V1-V4 rows read FAIL -- nothing exists yet. After
---  applying, every row must read PASS except the rows labelled (info).
+--  Before applying, the V1-V4 rows read FAIL or "N/A - Phase 2 not installed"
+--  -- nothing exists yet. After applying, every row must read PASS except the
+--  rows labelled (info).
+--
+--  RUNNING BEFORE INSTALL IS THE POINT, AND IT USED TO CRASH
+--
+--  PostgreSQL resolves relation and function names while PARSING, before any
+--  row is evaluated, so a statement mentioning public.order_integrity fails
+--  outright when that table does not exist yet -- even inside a CASE branch
+--  that would never be taken. Four rows did exactly that and took the whole
+--  file down with 42P01 before the migration could be baselined.
+--
+--  They now reach those objects in the only two ways that survive parsing:
+--    to_regclass / to_regprocedure  -- a lookup that returns NULL, not an error
+--    query_to_xml('<sql text>')     -- the query is a STRING, so nothing in it
+--                                      is parsed until the row is evaluated,
+--                                      and it is only evaluated when the guard
+--                                      above says the object exists
+--  Both are read-only; query_to_xml is only ever handed a SELECT.
 --
 --  V5 is the one to read most carefully AFTER applying: it proves the migration
 --  changed nothing that is live. The old insert policy and the old stock trigger
@@ -56,9 +73,13 @@ select 'V1', 'V1.3 no grant to anon or authenticated',
        else 'PASS' end
 union all
 select 'V1', 'V1.4 order_integrity cannot be orphaned (ON DELETE RESTRICT)',
-  case when exists (
+  -- to_regclass, never a ::regclass cast: the cast throws when the table is
+  -- absent, which is precisely the state this file has to survive.
+  case when to_regclass('public.order_integrity') is null
+       then 'N/A - Phase 2 not installed'
+       when exists (
          select 1 from pg_constraint
-          where conrelid = 'public.order_integrity'::regclass
+          where conrelid = to_regclass('public.order_integrity')
             and contype = 'f' and confdeltype = 'r')
        then 'PASS' else 'FAIL - missing or wrong delete rule' end
 
@@ -86,10 +107,24 @@ select 'V2', 'V2.2 it binds prices, fees and coupons but not cost or stock',
         and (select prosrc from fn where name = 'store_pricing_fingerprint') like '%variantExtras%'
        then 'PASS' else 'FAIL - a pricing input is not bound' end
 union all
-select 'V2', 'V2.3 (info) fingerprint of a live store is stable across two reads',
-  case when (select public.store_pricing_fingerprint(slug) from public.stores order by slug limit 1)
-          = (select public.store_pricing_fingerprint(slug) from public.stores order by slug limit 1)
-       then 'stable' else 'UNSTABLE - not deterministic' end
+select 'V2', 'V2.3 (info) the fingerprint computes for a live store',
+  -- A direct call would be resolved at parse time and fail before the function
+  -- exists, so it goes through query_to_xml, whose argument is a string. The
+  -- old wording claimed to prove determinism "across two reads"; two reads in
+  -- one statement prove nothing of the sort, because the function is STABLE and
+  -- may legitimately be evaluated once. What is worth reporting is that it runs
+  -- and returns a full md5, which is what this now says.
+  case when to_regprocedure('public.store_pricing_fingerprint(text)') is null
+       then 'N/A - Phase 2 not installed'
+       else coalesce(
+         (select case when length(v) = 32 then 'ok - ' || length(v)::text || ' hex chars'
+                      when v is null or v = '' then 'FAIL - returned nothing'
+                      else 'CHECK - unexpected length ' || length(v)::text end
+            from (select (xpath('/row/f/text()', query_to_xml(
+                    'select public.store_pricing_fingerprint(s.slug) as f'
+                    || ' from public.stores s order by s.slug limit 1',
+                    false, true, '')))[1]::text as v) q),
+         'N/A - no stores') end
 
 -- -- V3  the writer ------------------------------------------------------------
 union all
@@ -112,27 +147,40 @@ select 'V3', 'V3.2 only the service role may call it',
        then 'PASS' else 'FAIL - service_role cannot call it' end
 union all
 select 'V3', 'V3.3 it takes no parameter for paid, status or payment reference',
-  case when not exists (select 1 from fn where name = 'create_order_secure') then 'FAIL - not found'
-       when pg_get_function_arguments(
-              (select oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                where n.nspname = 'public' and p.proname = 'create_order_secure'))
+  -- p.oid, not a bare oid: pg_proc and pg_namespace both have one, and the
+  -- ambiguity is an error rather than a wrong answer. And when the function is
+  -- absent the subquery is NULL, the regex yields NULL, and the old CASE fell
+  -- through to its ELSE and reported PASS for a function that did not exist --
+  -- so the absent case is now named explicitly instead of passing by accident.
+  case when to_regprocedure('public.create_order_secure(text, text, text, text,'
+                            || ' text, jsonb, text, text, jsonb, jsonb, jsonb, text)') is null
+       then 'N/A - Phase 2 not installed'
+       when coalesce((select pg_get_function_arguments(p.oid)
+                        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                       where n.nspname = 'public' and p.proname = 'create_order_secure'), '')
             ~* '(p_paid|p_status|p_payment_ref|p_payment_provider|p_paid_at|p_paid_via)'
        then 'FAIL - a trusted field is a parameter'
        else 'PASS' end
 union all
 select 'V3', 'V3.4 it locks the store row and checks the fingerprint',
-  case when (select prosrc from fn where name = 'create_order_secure') like '%for update%'
+  case when not exists (select 1 from fn where name = 'create_order_secure')
+       then 'N/A - Phase 2 not installed'
+       when (select prosrc from fn where name = 'create_order_secure') like '%for update%'
         and (select prosrc from fn where name = 'create_order_secure') like '%config_changed%'
         and (select prosrc from fn where name = 'create_order_secure') like '%store_pricing_fingerprint%'
        then 'PASS' else 'FAIL - missing lock or fingerprint check' end
 union all
 select 'V3', 'V3.5 it decrements stock by product id, never by name',
-  case when (select prosrc from fn where name = 'create_order_secure') like '%dec.pid = prod->>''id''%'
+  case when not exists (select 1 from fn where name = 'create_order_secure')
+       then 'N/A - Phase 2 not installed'
+       when (select prosrc from fn where name = 'create_order_secure') like '%dec.pid = prod->>''id''%'
         and (select prosrc from fn where name = 'create_order_secure') not like '%dec.name = prod->>''name''%'
        then 'PASS' else 'FAIL - matching by name' end
 union all
 select 'V3', 'V3.6 out of stock is raised before any write',
-  case when (select prosrc from fn where name = 'create_order_secure') like '%out_of_stock%'
+  case when not exists (select 1 from fn where name = 'create_order_secure')
+       then 'N/A - Phase 2 not installed'
+       when (select prosrc from fn where name = 'create_order_secure') like '%out_of_stock%'
         and position('out_of_stock' in (select prosrc from fn where name = 'create_order_secure'))
           < position('insert into public.orders' in (select prosrc from fn where name = 'create_order_secure'))
        then 'PASS' else 'FAIL - availability is checked too late' end
@@ -169,9 +217,19 @@ select 'V5', 'V5.3 the phase-1 payment guard is still in place',
        then 'PASS' else 'FAIL - phase 1 was disturbed' end
 union all
 select 'V5', 'V5.4 (info) orders written through the new writer so far',
-  (select count(*)::text from public.order_integrity)
+  -- A static FROM public.order_integrity is resolved at parse time; wrapping it
+  -- in CASE does not help. The table name travels as text instead.
+  case when to_regclass('public.order_integrity') is null
+       then 'N/A - Phase 2 not installed'
+       else coalesce((xpath('/row/c/text()', query_to_xml(
+              'select count(*) as c from public.order_integrity',
+              false, true, '')))[1]::text, '0') end
 union all
 select 'V5', 'V5.5 (info) shadow observations recorded',
-  (select count(*)::text from public.order_pricing_shadow)
+  case when to_regclass('public.order_pricing_shadow') is null
+       then 'N/A - Phase 2 not installed'
+       else coalesce((xpath('/row/c/text()', query_to_xml(
+              'select count(*) as c from public.order_pricing_shadow',
+              false, true, '')))[1]::text, '0') end
 
 order by 1, 2;
