@@ -22,11 +22,18 @@ const ROLLBACK = read('supabase/orders-authenticated-insert-ROLLBACK.sql');
 const VERIFY   = read('supabase/orders-authenticated-insert-verify.sql');
 const PROOF    = read('supabase/orders-authenticated-insert-PROOF.sql');
 
-/** Strip -- comments and '...' literals, leaving executable SQL. */
+/** Strip -- comments, $tag$...$tag$ blocks and '...' literals, leaving the
+ *  top-level statements. A DO block counts as one statement, not as the
+ *  semicolons inside it. */
 function stripToCode(sql) {
   let out = '';
   for (let i = 0; i < sql.length; i++) {
-    if (sql[i] === '-' && sql[i + 1] === '-') {
+    const tag = sql.slice(i).match(/^\$[a-z_]*\$/);
+    if (tag) {
+      const end = sql.indexOf(tag[0], i + tag[0].length);
+      i = end === -1 ? sql.length : end + tag[0].length - 1;
+      out += ' $BLOCK$ ';
+    } else if (sql[i] === '-' && sql[i + 1] === '-') {
       while (i < sql.length && sql[i] !== '\n') i++;
       out += '\n';
     } else if (sql[i] === "'") {
@@ -49,7 +56,59 @@ test('the forward migration alters exactly one policy, to both roles', () => {
   assert.match(FWD_CODE, /alter policy orders_anon_insert on public\.orders to anon, authenticated;/);
   const statements = FWD_CODE.split(';').map((s) => s.trim()).filter(Boolean);
   assert.deepEqual(statements.map((s) => s.split(/\s+/)[0].toLowerCase()),
-    ['begin', 'alter', 'commit'], 'begin, one alter, commit — nothing else');
+    ['begin', 'do', 'alter', 'commit'],
+    'begin, the precondition, one alter, commit — nothing else');
+});
+
+// ── the guard is a precondition, and the file enforces it ────────────────────
+// The widening is safe only because orders_insert_guard strips payment claims
+// for every role. That guard ships on another branch, so the repository cannot
+// promise it is live — the database is asked, and the answer is binding.
+
+const PRECONDITION = FWD.slice(FWD.indexOf('do $precondition$'), FWD.indexOf('$precondition$;'));
+
+test('the forward migration refuses to run without the payment guard', () => {
+  assert.ok(PRECONDITION.length > 0, 'a precondition block must exist');
+  assert.match(PRECONDITION, /raise exception/);
+  assert.ok(FWD.indexOf('do $precondition$') < FWD.indexOf('alter policy'),
+    'it must run before the policy is touched');
+  assert.ok(FWD.indexOf('begin;') < FWD.indexOf('do $precondition$'),
+    'and inside the transaction, so a failure changes nothing');
+});
+
+test('the precondition checks the trigger is the real one, enabled, BEFORE INSERT', () => {
+  assert.match(PRECONDITION, /t\.tgname = 'orders_insert_guard'/);
+  assert.match(PRECONDITION, /p\.proname = 'orders_insert_guard'/);
+  assert.match(PRECONDITION, /\(t\.tgtype & 1\) <> 0/, 'FOR EACH ROW');
+  assert.match(PRECONDITION, /\(t\.tgtype & 2\) <> 0/, 'BEFORE');
+  assert.match(PRECONDITION, /\(t\.tgtype & 4\) <> 0/, 'INSERT');
+  assert.match(PRECONDITION, /t\.tgenabled = 'O'/, 'enabled, not replica-only');
+  assert.match(PRECONDITION, /not t\.tgisinternal/);
+});
+
+test('the precondition checks the guard still strips every payment column', () => {
+  // A same-named stub that no longer clears the columns must not pass.
+  for (const col of ['NEW.paid ', 'NEW.paid_at', 'NEW.paid_via', 'NEW.payment_ref', 'NEW.payment_provider']) {
+    assert.ok(PRECONDITION.includes(col), col);
+  }
+  assert.match(PRECONDITION, /not in \(''new'', ''abandoned''\)/, 'and still clamps status');
+});
+
+test('the precondition only reads the catalog', () => {
+  // Compare executable SQL only: the words INSERT and ALTER appear legitimately
+  // in its comments and in the hint it raises.
+  const code = PRECONDITION
+    .replace(/--.*$/gm, '')
+    .replace(/'[^']*'/g, "'LITERAL'");
+  assert.equal(/\b(insert|update|delete|alter|drop|create|grant|revoke|truncate)\b/i.test(code), false,
+    'it inspects and raises — it must not change anything');
+  assert.match(code, /select exists/, 'and what it does is a catalog read');
+});
+
+test('its failure message tells the operator what to do', () => {
+  assert.match(PRECONDITION, /using hint =/);
+  assert.match(PRECONDITION, /security-phase-1-forward\.sql/, 'name the file that installs the guard');
+  assert.match(PRECONDITION, /Nothing has been changed/);
 });
 
 test('it does not touch the policy command or its check', () => {
@@ -73,7 +132,13 @@ test('it does not widen any other command', () => {
 });
 
 test('it leaves the payment guard, payments and ads alone', () => {
-  for (const name of ['orders_insert_guard', 'payments', 'razorpay', 'meta_', 'campaign']) {
+  // orders_insert_guard is named in the precondition, which only reads the
+  // catalog. What must not appear is any attempt to define or move it.
+  for (const bad of [/create\s+(or\s+replace\s+)?function/i, /create\s+trigger/i,
+                     /drop\s+trigger/i, /alter\s+table/i]) {
+    assert.equal(bad.test(FWD_CODE), false, String(bad));
+  }
+  for (const name of ['payments', 'razorpay', 'meta_', 'campaign']) {
     assert.equal(FWD_CODE.toLowerCase().includes(name), false, `${name} must not appear in the change`);
   }
 });
@@ -145,6 +210,49 @@ test('the proof checks what actually landed, and says PASS or FAIL', () => {
   assert.match(check, /o\.status = 'new'/);
   assert.match(check, /PASS - the payment claim was stripped/);
   assert.match(check, /FAIL - a payment claim survived the insert/);
+});
+
+// ── the proof cannot emit anything, even while its rows briefly exist ────────
+// ROLLBACK only promises the rows do not persist. Triggers still FIRE, and one
+// of them can make an outbound HTTP call, so each is accounted for.
+
+test('the proof aborts if the INSERT triggers on orders are not the known set', () => {
+  const preflight = PROOF.slice(PROOF.indexOf('do $preflight$'), PROOF.indexOf('$preflight$;'));
+  assert.ok(preflight.length > 0, 'a preflight block must exist');
+  assert.match(preflight, /orders_insert_guard, orders_payment_automation, trg_decrement_stock, trg_meta_capi/,
+    'the expected set is named, so a new trigger cannot slip in unreviewed');
+  assert.match(preflight, /\(t\.tgtype & 4\) <> 0/, 'only INSERT triggers matter here');
+  assert.match(preflight, /t\.tgenabled <> 'D'/, 'a disabled trigger does not fire');
+  assert.match(preflight, /raise exception/);
+  assert.ok(PROOF.indexOf('do $preflight$') < PROOF.indexOf('insert into public.orders'),
+    'it runs before anything is inserted');
+});
+
+test('the proof rows cannot reach the Meta CAPI trigger', () => {
+  // meta_capi_notify returns at `coalesce(NEW.total, 0) <= 0`, so zero amounts
+  // stop it before it evaluates anything else. Belt and braces on top of the
+  // guard having already forced paid = false and status = 'new'.
+  const rows = PROOF.match(/'\[\]'::jsonb, 0, 0, 0, 'delivered'/g) || [];
+  assert.equal(rows.length, 2, 'both rows carry empty items and zero amounts');
+  assert.match(PROOF, /coalesce\(NEW\.total, 0\) <= 0/, 'the header states why zero matters');
+});
+
+test('the proof documents each trigger and why it is inert', () => {
+  const header = PROOF.slice(0, PROOF.indexOf('begin;'));
+  for (const trg of ['orders_insert_guard', 'orders_payment_automation',
+                     'trg_decrement_stock', 'trg_meta_capi']) {
+    assert.ok(header.includes(trg), `${trg} must be accounted for in the header`);
+  }
+  assert.match(header, /net\.http_request_queue/,
+    'and why a queued request would not survive the rollback');
+  assert.match(header, /IMMUTABLE|immutable/, 'shipment_outcome_of is pure');
+});
+
+test('the proof does not disable triggers to make itself safe', () => {
+  // Disabling trg_meta_capi would need ACCESS EXCLUSIVE on orders and would
+  // block live checkout for the length of the transaction; disabling the guard
+  // would void the thing being proved.
+  assert.equal(/disable\s+trigger|session_replication_role/i.test(PROOF), false);
 });
 
 test('the proof uses a store_slug no merchant can see', () => {

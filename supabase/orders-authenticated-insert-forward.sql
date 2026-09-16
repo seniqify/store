@@ -40,6 +40,20 @@
 --  payment_ref and payment_provider to their unpaid values for EVERY role, and
 --  clamps status. That trigger is not touched here.
 --
+--  THE GUARD IS A PRECONDITION, AND IT IS ENFORCED
+--
+--  That last paragraph is the whole safety argument, so this file refuses to
+--  run without it. The guard ships on a different branch (PR #2, already
+--  applied to production) and this file is based on main, so the repository
+--  history cannot promise it is there -- the database has to be asked.
+--
+--  The check below raises, inside this transaction, unless public.orders
+--  carries an ENABLED BEFORE INSERT ... FOR EACH ROW trigger named
+--  orders_insert_guard, running public.orders_insert_guard(), whose body still
+--  clears all five payment columns and clamps status. Anything else and the
+--  policy is left alone: widening INSERT to authenticated while orders can be
+--  born "paid" is the one combination that must not exist.
+--
 --  Deliberately NOT done: no SELECT, UPDATE or DELETE policy for authenticated,
 --  no new grants, no change to the anon path, nothing in payments or ads.
 --
@@ -51,6 +65,52 @@
 -- ===========================================================================
 
 begin;
+
+-- ---------------------------------------------------------------------------
+-- Precondition: the payment guard must be live. Read-only -- it inspects the
+-- catalog and either raises or does nothing.
+-- ---------------------------------------------------------------------------
+do $precondition$
+declare
+  v_guard_ok boolean;
+begin
+  select exists (
+    select 1
+      from pg_trigger t
+      join pg_class c on c.oid = t.tgrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_proc p on p.oid = t.tgfoid
+      join pg_namespace fn on fn.oid = p.pronamespace
+     where n.nspname = 'public'
+       and c.relname = 'orders'
+       and t.tgname = 'orders_insert_guard'
+       and not t.tgisinternal
+       and (t.tgtype & 1) <> 0          -- FOR EACH ROW
+       and (t.tgtype & 2) <> 0          -- BEFORE
+       and (t.tgtype & 4) <> 0          -- INSERT
+       and t.tgenabled = 'O'            -- enabled, not disabled or replica-only
+       and fn.nspname = 'public'
+       and p.proname = 'orders_insert_guard'
+       and p.prosrc like '%NEW.paid %'
+       and p.prosrc like '%NEW.paid_at%'
+       and p.prosrc like '%NEW.paid_via%'
+       and p.prosrc like '%NEW.payment_ref%'
+       and p.prosrc like '%NEW.payment_provider%'
+       and p.prosrc like '%not in (''new'', ''abandoned'')%'
+  ) into v_guard_ok;
+
+  if not v_guard_ok then
+    raise exception
+      'refusing to widen the orders INSERT policy: the payment guard is not live'
+      using hint =
+        'public.orders needs an enabled BEFORE INSERT FOR EACH ROW trigger '
+        'orders_insert_guard running public.orders_insert_guard(), which clears '
+        'paid, paid_at, paid_via, payment_ref and payment_provider and clamps '
+        'status. Apply supabase/security-phase-1-forward.sql first, then re-run '
+        'this file. Nothing has been changed.';
+  end if;
+end;
+$precondition$;
 
 alter policy orders_anon_insert on public.orders to anon, authenticated;
 
