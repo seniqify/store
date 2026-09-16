@@ -86,7 +86,10 @@ undeclared fact likely cost the whole submission.
 > **Test credentials**
 >
 > - URL: https://www.pocketlink.store/showme/manage
-> - Store PIN: 2580
+> - Store PIN: supplied in the App Review submission's test-credentials field
+>
+> (The PIN is a live credential for that store and this repository is public, so
+> it is given to Meta in the submission form only — never written down here.)
 >
 > PocketLink sellers do not use email accounts. A seller registers with their
 > WhatsApp number, verifies it by one-time code, and thereafter opens their

@@ -81,26 +81,25 @@ export async function upgradePlan(slug, plan, planExpiresAt = null, subscription
 }
 
 /**
- * Verify PIN via Supabase RPC (server-side comparison — PIN never sent raw).
- * Falls back to direct query if RPC function isn't deployed yet.
+ * Verify PIN via verify_store_pin — the one throttled check (10 wrong tries per
+ * address per store per 15 minutes, 50 store-wide).
+ *
+ * There is deliberately no fallback. This used to read stores.pin and compare in
+ * the browser when the RPC errored, which is a 4-digit guess with no limit and
+ * no record; it survived only because anon cannot read that column. An RPC error
+ * means "could not check", and that is not a reason to let somebody in.
  */
 export async function verifyPin(slug, pin) {
   const hashedPin = await hashPin(pin);
 
-  // Use the secure RPC function (security definer bypasses column restrictions)
   const { data, error } = await supabase.rpc('verify_store_pin', {
     p_slug:       slug,
     p_hashed_pin: hashedPin,
   });
 
   if (error) {
-    // Fallback: direct compare (works if RPC function not yet created)
-    const { data: row } = await supabase
-      .from('stores')
-      .select('pin')
-      .eq('slug', slug)
-      .single();
-    return row?.pin === hashedPin;
+    console.error('verifyPin failed:', error.message);
+    return false;
   }
 
   return Boolean(data);
