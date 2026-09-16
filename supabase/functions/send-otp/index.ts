@@ -6,12 +6,17 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// WhatsApp template that sends the OTP. To swap templates later, just change
-// TEMPLATE_ID (or set the SENIQIFY_TEMPLATE_URL secret to override without a
-// redeploy). Current: PocketLink template "opt" (sender 8482840808).
-const TEMPLATE_ID  = 'z0vm5t48dw';
-const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL')
-  ?? `https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/${TEMPLATE_ID}/process`;
+// WhatsApp template URLs. A Seniqify /process URL IS the credential — anyone
+// holding one can send WhatsApp messages as PocketLink — so it lives only in a
+// Supabase secret and never in this repository, which is public. No fallback:
+// a missing secret fails closed with a 503 rather than sending from a URL that
+// strangers can read. Set these before deploying (docs/security-phase-1-runbook.md):
+//   SENIQIFY_TEMPLATE_URL                OTP code
+//   SENIQIFY_WELCOME_TEMPLATE_URL        store-registration welcome
+//   SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL  COD "Confirm my order"
+//   SENIQIFY_ORDER_SELLER_TEMPLATE_URL   seller new-order alert
+//   SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL buyer thank-you
+const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL') ?? '';
 
 // How long the OTP is valid. The live template now has a SECOND variable {{2}}
 // (validity in minutes) — sending only {{1}} makes the provider reject the send
@@ -52,6 +57,96 @@ function json(body: unknown, status = 200) {
   });
 }
 
+/** The caller's address, as far as the edge runtime can tell. Absent simply
+ *  means the per-address limit cannot apply; the per-phone one still does. */
+function callerIp(req: Request): string | null {
+  const fwd = req.headers.get('x-forwarded-for') ?? '';
+  return fwd.split(',')[0].trim() || null;
+}
+
+/** Ledger key for a phone: SHA-256 hex of its digits, so the rate-limit table
+ *  never holds a raw number. Same phone, same key, on every call. */
+async function phoneKey(phone: unknown): Promise<string> {
+  const digits = String(phone ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(digits));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The OTP rate limit (public.otp_guard, applied by
+ * supabase/security-phase-1-forward.sql).
+ *
+ *   send    may a code go out now?   Records the send when it may.
+ *   verify  may a guess be made now?
+ *   fail    record one wrong guess.
+ *   clear   a correct code was used: drop that phone's failures.
+ *
+ * Fails CLOSED for send and verify: if the guard is missing or the call errors,
+ * the answer is no. An unlimited OTP endpoint is how a store's WhatsApp number
+ * gets flooded and how a six-digit code gets guessed. `fail` and `clear` are
+ * book-keeping, so a failure there is logged and ignored.
+ */
+async function otpGuard(
+  supabase: ReturnType<typeof createClient>,
+  action: 'send' | 'verify' | 'fail' | 'clear',
+  subject: string,
+  ip: string | null,
+): Promise<boolean> {
+  if (!subject) return action === 'fail' || action === 'clear';
+  try {
+    const { data, error } = await supabase.rpc('otp_guard', {
+      p_action: action, p_subject: subject, p_ip: ip,
+    });
+    if (error) {
+      console.error(`otp_guard ${action} failed:`, error.message);
+      return action === 'fail' || action === 'clear';
+    }
+    return data === true;
+  } catch (e) {
+    console.error(`otp_guard ${action} error:`, (e as Error)?.message);
+    return action === 'fail' || action === 'clear';
+  }
+}
+
+const TOO_MANY = 'Too many code requests. Please wait a few minutes and try again.';
+
+/**
+ * The order-notify safety net writes whatever the caller sent, with the SERVICE
+ * ROLE — so this endpoint, not the browser, is the widest way into the orders
+ * table. Everything a checkout legitimately fills is copied; everything else is
+ * dropped, and the payment columns are forced to "not paid".
+ *
+ * Payment is recorded by payments-verify / the Razorpay webhook AFTER Razorpay
+ * confirms it, never by a request body. The cost: when a customer's own insert
+ * was blocked AND their online payment went through, this row lands unpaid with
+ * no payment_ref — the seller's Payments tab lists it under orders to reconcile
+ * (Razorpay carries the order id in its notes), instead of the row being taken
+ * at its word. public.orders_insert_guard enforces the same thing at the
+ * database, for every role; this is the near half of the same rule.
+ */
+const ORDER_COLUMNS = [
+  'id', 'confirm_token', 'store_slug', 'customer_name', 'customer_phone',
+  'destination', 'pincode', 'payment_method', 'notes', 'items', 'item_count',
+  'subtotal', 'tax', 'shipping', 'packaging', 'cod_fee', 'total',
+  'fbp', 'fbc', 'client_ua',
+] as const;
+
+function safeOrderRow(order: Record<string, unknown>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const key of ORDER_COLUMNS) {
+    if (order[key] !== undefined) row[key] = order[key];
+  }
+  // A checkout writes exactly two statuses; anything else starts as a new order.
+  row.status = order.status === 'abandoned' ? 'abandoned' : 'new';
+  row.paid = false;
+  row.paid_at = null;
+  row.paid_via = null;
+  row.payment_ref = null;
+  row.payment_provider = null;
+  return row;
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -71,6 +166,18 @@ serve(async (req: Request) => {
 
     // ── SEND ─────────────────────────────────────────────────────────────────
     if (action === 'send') {
+      // The credential first: refuse before a code is minted, so a misconfigured
+      // deploy cannot leave unusable codes lying in otp_codes.
+      if (!SENIQIFY_URL) {
+        console.error('send-otp: SENIQIFY_TEMPLATE_URL is not set — refusing to send');
+        return json({ error: 'OTP sending is not configured. Please try again later.' }, 503);
+      }
+
+      const subject = await phoneKey(phone);
+      if (!(await otpGuard(supabase, 'send', subject, callerIp(req)))) {
+        return json({ error: TOO_MANY }, 429);
+      }
+
       const otp       = secureOtp();
       const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000).toISOString();
 
@@ -123,6 +230,15 @@ serve(async (req: Request) => {
     if (action === 'verify') {
       if (!code) return json({ error: 'code is required' }, 400);
 
+      // A six-digit code is 900,000 values and lives for ten minutes. Without a
+      // cap on guesses that is a few minutes of scripted requests, so the count
+      // of wrong guesses is what actually protects it.
+      const subject = await phoneKey(phone);
+      const ip      = callerIp(req);
+      if (!(await otpGuard(supabase, 'verify', subject, ip))) {
+        return json({ error: 'Too many incorrect codes. Please wait a few minutes and try again.' }, 429);
+      }
+
       const { data, error: fetchErr } = await supabase
         .from('otp_codes')
         .select('*')
@@ -134,11 +250,13 @@ serve(async (req: Request) => {
       if (fetchErr) throw new Error(fetchErr.message);
 
       if (!data) {
+        await otpGuard(supabase, 'fail', subject, ip);
         return json({ error: 'Invalid or expired OTP. Please try again.' }, 400);
       }
 
       // One-time use — delete after successful verify
       await supabase.from('otp_codes').delete().eq('phone', phone);
+      await otpGuard(supabase, 'clear', subject, ip);
       return json({ success: true });
     }
 
@@ -147,8 +265,13 @@ serve(async (req: Request) => {
       if (!slug) return json({ error: 'slug is required' }, 400);
 
       const SITE = 'https://www.pocketlink.store';
-      const WELCOME_URL = Deno.env.get('SENIQIFY_WELCOME_TEMPLATE_URL')
-        ?? 'https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/6q73jsblu0/process';
+      // Credential, not configuration — secret only, no fallback. See the note
+      // at the top of this file.
+      const WELCOME_URL = Deno.env.get('SENIQIFY_WELCOME_TEMPLATE_URL') ?? '';
+      if (!WELCOME_URL) {
+        console.error('send-otp: SENIQIFY_WELCOME_TEMPLATE_URL is not set — welcome not sent');
+        return json({ error: 'Welcome messages are not configured.' }, 503);
+      }
 
       const receiver = String(phone).replace(/\D/g, '');
       const apiKey   = Deno.env.get('SENIQIFY_API_KEY');
@@ -193,7 +316,9 @@ serve(async (req: Request) => {
         try {
           // supabase-js returns errors instead of throwing: check it, or a refused
           // save is silent (how a paid order was lost on 2026-09-09).
-          const { error: saveErr } = await supabase.from('orders').upsert(order, { onConflict: 'id', ignoreDuplicates: true });
+          const { error: saveErr } = await supabase
+            .from('orders')
+            .upsert(safeOrderRow(order), { onConflict: 'id', ignoreDuplicates: true });
           if (saveErr) console.error('order-notify save refused:', order.id, saveErr.message);
         } catch (e) {
           console.error('order-notify save error:', (e as Error)?.message);
@@ -205,10 +330,11 @@ serve(async (req: Request) => {
       const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');
       // "order confirm" — the buyer's thank-you PLUS a "Confirm my order" button.
       // Only COD orders get it: that's where RTO and fake orders come from, and a
-      // prepaid buyer has already committed. Same idiom as the OTP/welcome sends —
-      // the /process URL is the credential, overridable by secret without a deploy.
-      const confirmUrl  = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL')
-        ?? 'https://campaignadmin.backendprod.com/webhook/template/ae2d3f2a-5e9d-4104-9ed2-da40792890f0/process';
+      // prepaid buyer has already committed. The /process URL is the credential,
+      // so it is secret-only with no fallback. Unset degrades to the plain
+      // thank-you below; it never blocks the order or the seller's alert.
+      const confirmUrl  = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL') ?? '';
+      if (!confirmUrl) console.error('send-otp: SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL is not set — COD buyers get the plain thank-you');
       const isCod = String(order?.payment_method || '').toLowerCase() === 'cod';
 
       // Not set up yet → tell the client to fall back to wa.me. The seller alert
