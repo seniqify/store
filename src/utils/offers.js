@@ -1,3 +1,9 @@
+import { isCouponLiveLocal, couponDiscountValue } from '../../shared/pricing.mjs';
+
+// Coupon expiry and discount maths come from the shared pricing engine.
+// isCouponLiveLocal keeps the storefront's historical browser-local rule;
+// the server uses couponOutcome(), which pins the zone instead.
+
 // Shared offers logic — used by the Manage "Offers" tab today and by the
 // storefront (strikethrough prices, countdown, coupon at checkout) next.
 //
@@ -99,18 +105,14 @@ export function describeCoupon(c) {
 
 // Is a coupon currently usable (active + not past its expiry day)?
 export function isCouponLive(c, now = new Date()) {
-  if (!c || c.active === false) return false;
-  if (c.expiresAt && now > endOfDay(c.expiresAt)) return false;
-  return true;
+  return isCouponLiveLocal(c, now);
 }
 
 // The rupee discount a coupon gives on a subtotal (0 if not usable / under min).
 export function couponDiscountFor(coupon, subtotal, now = new Date()) {
   if (!coupon || !isCouponLive(coupon, now)) return 0;
   if (coupon.minOrder && subtotal < Number(coupon.minOrder)) return 0;
-  const v = Number(coupon.discountValue) || 0;
-  const d = coupon.discountType === 'flat' ? v : Math.round((subtotal * v) / 100);
-  return Math.max(0, Math.min(d, subtotal));
+  return couponDiscountValue(coupon, subtotal);
 }
 
 // Return a copy of products with live sale prices baked in: the discounted price
