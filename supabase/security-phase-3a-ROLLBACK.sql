@@ -8,22 +8,18 @@
 --  What comes back if you run it:
 --    * the PIN throttle can be out-run by parallel guesses again
 --    * a recovery OTP can be spent more than once again
---    * the whole pending_signups table becomes readable by anyone again
 --
 --  What does NOT come back, deliberately:
 --    * TRUNCATE/INSERT/UPDATE/DELETE on console_audit for anon and
 --      authenticated. Nothing uses them; re-granting is a decision, not an undo.
 --      The statement is written out at the end, commented, if you truly need it.
 --
---  IMPORTANT: get_pending_signup is kept. src/utils/storeService.js calls it,
---  so dropping it would break onboarding for anyone running the deployed site.
---  Restoring the SELECT policy is enough to put the old path back; the function
---  simply stops being the only way in.
+--  pending_signups is not mentioned here because this phase never touched it.
 --
 --  RUN: Supabase Dashboard -> SQL Editor -> paste -> Run. Idempotent.
 --  VERIFY: supabase/security-phase-3a-verify.sql
---          (V1.1, V2.1, V2.4, V3.1, V3.2 read FAIL afterwards, which is the
---           point; V4.1, V5.1 and V5.2 must still read PASS.)
+--          (V1.1, V2.1 and V2.4 read FAIL afterwards, which is the point;
+--           V3.1, V3.2, V4.1 and V4.2 must still read PASS.)
 -- ===========================================================================
 
 begin;
@@ -174,15 +170,9 @@ begin
 end;
 $function$;
 
--- 3. pending_signups readable by anyone again.
-grant select on public.pending_signups to anon, authenticated;
-drop policy if exists "pending select" on public.pending_signups;
-create policy "pending select" on public.pending_signups
-  for select to anon, authenticated using (true);
-
 commit;
 
--- 4. console_audit grants stay revoked. If you have a real need, run this by
+-- 3. console_audit grants stay revoked. If you have a real need, run this by
 --    hand and write down why:
 --
 --    grant insert, update, delete, truncate on public.console_audit to anon, authenticated;

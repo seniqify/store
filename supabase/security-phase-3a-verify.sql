@@ -9,8 +9,8 @@
 --  through to_regprocedure and query_to_xml -- never named where PostgreSQL
 --  would resolve it while parsing. (That lesson cost phase 2 a whole cycle.)
 --
---  BEFORE: V1.1, V2.1, V3.1, V3.2 read FAIL and V3.3 reads "N/A"; everything
---          else already passes. That is today's production.
+--  BEFORE: V1.1, V2.1 and V2.4 read FAIL; everything else already passes.
+--          That is today's production.
 --  AFTER:  every row PASS except the rows labelled (info).
 -- ===========================================================================
 
@@ -94,37 +94,22 @@ select 'V2', 'V2.5 (info) stored OTP phone formats — exact matching depends on
               from (select length(regexp_replace(phone, '\D', '', 'g')) as dl, count(*) as n
                       from public.otp_codes group by 1) t), 'no codes outstanding')
 
--- -- V3  pending_signups is not readable --------------------------------------
+-- -- V3  pending_signups is deliberately untouched ---------------------------
+-- It is open -- anon can read the whole table and write itself a paid plan --
+-- and closing it needs reads and writes tied to server-verified payment
+-- authority, not to knowing a phone number. That is its own design and its own
+-- PR. These rows exist so this migration cannot quietly change it.
 union all
-select 'V3', 'V3.1 the anonymous SELECT policy is gone',
-  case when exists (select 1 from pol where tbl = 'pending_signups' and cmd = 'SELECT')
-       then 'FAIL - a read policy still exists' else 'PASS' end
+select 'V3', 'V3.1 its four policies are exactly as they were',
+  case when (select count(*) from pol where tbl = 'pending_signups') = 4
+       then 'PASS - unchanged, closure is a separate PR'
+       else 'FAIL - this phase must not touch pending_signups (found ' ||
+            (select count(*)::text from pol where tbl = 'pending_signups') || ' policies)' end
 union all
-select 'V3', 'V3.2 no SELECT grant to anon or authenticated',
-  case when exists (select 1 from grants where tbl = 'pending_signups' and priv = 'SELECT')
-       then 'FAIL - table still readable' else 'PASS' end
-union all
-select 'V3', 'V3.3 onboarding can still look up one phone, and still gets its subscription',
-  -- Per-phone lookup is fine; the dump was the leak. The subscription id has to
-  -- come back or a recovered signup loses its Razorpay link at publish.
+select 'V3', 'V3.2 no phase-3A function was added for it',
   case when to_regprocedure('public.get_pending_signup(text)') is null
-       then 'N/A - Phase 3A not installed'
-       when (select prosrc from fn where name = 'get_pending_signup') not like '%subscription_id%'
-       then 'FAIL - onboarding would lose the Razorpay link'
-       when (select definer from fn where name = 'get_pending_signup')
-        and (select cfg from fn where name = 'get_pending_signup') = 'search_path=public, pg_temp'
-        and (select acl from fn where name = 'get_pending_signup') like '%anon=X%'
-       then 'PASS' else 'FAIL - missing, unpinned, or not callable' end
-union all
-select 'V3', 'V3.4 the signup write paths still work (INSERT/UPDATE/DELETE kept)',
-  case when (select count(*) from pol where tbl = 'pending_signups' and cmd in ('INSERT', 'UPDATE', 'DELETE')) = 3
-       then 'PASS - deliberately kept, see the header'
-       else 'CHECK - found ' ||
-            (select count(*)::text from pol where tbl = 'pending_signups' and cmd in ('INSERT','UPDATE','DELETE'))
-            || ' of 3 - signup recovery may be broken' end
-union all
-select 'V3', 'V3.5 (info) rows parked awaiting onboarding',
-  (select count(*)::text from public.pending_signups)
+       then 'PASS - not introduced'
+       else 'FAIL - a phone-keyed lookup exists - it was removed in review' end
 
 -- -- V4  console_audit ---------------------------------------------------------
 union all

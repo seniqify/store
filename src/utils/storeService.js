@@ -201,32 +201,13 @@ export async function savePendingSignup(phone, plan, planExpiresAt = null, subsc
 export async function getPendingSignup(phone) {
   const last10 = String(phone).replace(/\D/g, '').slice(-10);
   if (!last10) return null;
-  // Through the RPC, not the table: the table was readable in full by anyone,
-  // so an unfiltered request returned every pending signup's phone, plan and
-  // Razorpay subscription id. get_pending_signup answers for one number and
-  // returns only what onboarding uses -- the subscription id stays server-side.
-  const { data, error } = await supabase.rpc('get_pending_signup', { p_phone: last10 });
-
-  if (error) {
-    // TEMPORARY, and delete it once security-phase-3a-forward.sql is applied.
-    // Without this, whichever of the two deploys lands first leaves a window
-    // where a paid merchant returning to finish signup is told they have no
-    // plan and sent back to /plans: the site alone has no RPC to call, and the
-    // SQL alone leaves an old cached bundle reading a table it may no longer
-    // read. The fallback is the pre-3A path, which stops working by itself the
-    // moment the migration lands -- it cannot outlive its purpose.
-    const { data: row } = await supabase
-      .from('pending_signups')
-      .select('plan, plan_expires_at, subscription_id')
-      .eq('phone', last10)
-      .maybeSingle();
-    if (!row?.plan) return null;
-    return { plan: row.plan, planExpiresAt: row.plan_expires_at, subscriptionId: row.subscription_id || null };
-  }
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.plan) return null;
-  return { plan: row.plan, planExpiresAt: row.plan_expires_at, subscriptionId: row.subscription_id || null };
+  const { data } = await supabase
+    .from('pending_signups')
+    .select('plan, plan_expires_at, subscription_id')
+    .eq('phone', last10)
+    .maybeSingle();
+  if (!data) return null;
+  return { plan: data.plan, planExpiresAt: data.plan_expires_at, subscriptionId: data.subscription_id };
 }
 
 /** Clear a pending signup once the store is actually created. */

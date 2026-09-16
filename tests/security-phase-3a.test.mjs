@@ -149,78 +149,40 @@ test('the recovery signature and privileges are unchanged', () => {
   assert.match(RESET, /set search_path = public, pg_temp/);
 });
 
-// ── C. pending_signups ───────────────────────────────────────────────────────
+// ── C. pending_signups is deliberately NOT in this phase ─────────────────────
+// A first attempt put the read behind a function anyone could call with any
+// phone number and left the writes open. That is a smaller hole plus a new
+// permanent RPC, not a closure, and review removed it. Reads and writes here
+// have to hang off server-verified payment authority, which is its own design.
 
-test('the anonymous read is removed, policy and grant together', () => {
+test('the migration does not touch pending_signups at all', () => {
   const code = stripToCode(FWD);
-  assert.match(code, /drop policy if exists "pending select" on public\.pending_signups;/);
-  assert.match(code, /revoke select on public\.pending_signups from anon, authenticated;/);
+  assert.equal(/pending_signups/.test(code), false, 'no policy, grant or function for it');
+  assert.equal(/get_pending_signup/.test(code), false, 'the phone-keyed lookup must not return');
 });
 
-test('the write paths the signup flow depends on are deliberately kept', () => {
-  // Checkout writes the row after payment and is the ONLY writer on the coupon
-  // path; Onboarding deletes it once the store exists. Removing these would
-  // break signup recovery, which this phase must not do.
-  const code = stripToCode(FWD);
-  for (const cmd of ['insert', 'update', 'delete']) {
-    assert.equal(new RegExp(`drop policy if exists "pending ${cmd}"`, 'i').test(code), false,
-      `the ${cmd} policy must survive`);
-  }
-  assert.match(FWD, /INSERT, UPDATE and DELETE stay for now/);
+test('neither does the rollback', () => {
+  const code = stripToCode(ROLLBACK);
+  assert.equal(/pending_signups/.test(code), false);
 });
 
-test('the residual billing bypass is stated, not glossed', () => {
-  // Anyone may still insert themselves a paid plan and claim it at onboarding.
-  assert.match(FWD, /KNOWN AND NOT CLOSED HERE/);
-  assert.match(FWD, /billing bypass/i);
-  assert.match(FWD, /merchant identity/i);
+test('the client is byte-identical to main for the signup lookup', () => {
+  // getPendingSignup reads the table exactly as it does in production today.
+  assert.match(STORESVC, /from\('pending_signups'\)[\s\S]{0,60}select\('plan, plan_expires_at, subscription_id'\)/);
+  assert.equal(/rpc\('get_pending_signup'/.test(STORESVC), false, 'no RPC call');
+  assert.equal(/TEMPORARY/.test(STORESVC), false, 'no rollout fallback left behind');
 });
 
-test('lookup moves behind a pinned, definer function callable by the browser', () => {
-  const fn = FWD.slice(FWD.indexOf('create or replace function public.get_pending_signup'),
-                       FWD.indexOf('revoke all on function public.get_pending_signup'));
-  assert.match(fn, /security definer/);
-  assert.match(fn, /set search_path = public, pg_temp/);
-  assert.match(fn, /\bstable\b/);
-  assert.match(fn, /where s\.phone = right\(regexp_replace\(coalesce\(p_phone, ''\), '\\D', '', 'g'\), 10\)/);
-  assert.match(fn, /limit 1/);
-  const code = stripToCode(FWD);
-  assert.match(code, /grant execute on function public\.get_pending_signup\(text\) to anon, authenticated, service_role;/);
+test('the verifier proves the table was left alone', () => {
+  assert.match(VERIFY, /V3\.1 its four policies are exactly as they were/);
+  assert.match(VERIFY, /V3\.2 no phase-3A function was added for it/);
+  assert.match(VERIFY, /closure is a separate PR/);
 });
 
-test('an empty phone matches nothing', () => {
-  const fn = FWD.slice(FWD.indexOf('create or replace function public.get_pending_signup'),
-                       FWD.indexOf('revoke all on function public.get_pending_signup'));
-  assert.match(fn, /coalesce\(btrim\(p_phone\), ''\) <> ''/);
-});
-
-test('the subscription id still reaches onboarding — publish needs it', () => {
-  // Withholding it would unlink a recovered signup from its Razorpay
-  // subscription at publish, which is a silent billing regression.
-  assert.match(FWD, /returns table \(plan text, plan_expires_at timestamptz, subscription_id text\)/);
-  assert.match(STORESVC, /rpc\('get_pending_signup', \{ p_phone: last10 \}\)/);
-  assert.match(STORESVC, /subscriptionId: row\.subscription_id \|\| null/);
-});
-
-test('the lookup falls back to the old path only while the RPC is missing', () => {
-  // Either deploy order leaves a window otherwise: the site alone has no RPC to
-  // call, and the SQL alone leaves cached bundles reading a table they may no
-  // longer read. Both ends of that window told a paid merchant they had no plan.
-  const fn = STORESVC.slice(STORESVC.indexOf('export async function getPendingSignup'),
-                            STORESVC.indexOf('/** Clear a pending signup'));
-  assert.match(fn, /const \{ data, error \} = await supabase\.rpc\('get_pending_signup'/);
-  assert.match(fn, /if \(error\) \{/, 'the fallback is reached only on an RPC error');
-  assert.match(fn, /TEMPORARY, and delete it once security-phase-3a-forward\.sql is applied/);
-  // It reads the table, which the migration makes unreadable — so it expires by
-  // itself rather than lingering as a way around the new rule.
-  assert.match(fn, /\.from\('pending_signups'\)/);
-  assert.ok(fn.indexOf("rpc('get_pending_signup'") < fn.indexOf(".from('pending_signups')"),
-    'the RPC is always tried first');
-});
-
-test('the client still writes and clears signups exactly as before', () => {
-  assert.match(STORESVC, /from\('pending_signups'\)\.upsert\(/);
-  assert.match(STORESVC, /from\('pending_signups'\)\.delete\(\)\.eq\('phone', last10\)/);
+test('the file says why it is out of scope, rather than going quiet about it', () => {
+  assert.match(FWD, /pending_signups is NOT in this phase/);
+  assert.match(FWD, /phone-keyed oracle/);
+  assert.match(FWD, /server-verified payment and[\s\S]{0,20}signup authority/);
 });
 
 // ── D. console_audit ─────────────────────────────────────────────────────────
@@ -277,14 +239,12 @@ test('the verifier is read-only and runs in both states', () => {
   assert.match(VERIFY, /to_regprocedure\('public\.get_pending_signup\(text\)'\)/);
 });
 
-test('the rollback restores the old behaviour and keeps the lookup function', () => {
+test('the rollback restores the old behaviour, and nothing else', () => {
   const code = stripToCode(ROLLBACK);
   assert.match(code, /create or replace function public\.verify_store_pin/);
   assert.match(code, /create or replace function public\.reset_store_pin/);
-  assert.match(code, /grant select on public\.pending_signups to anon, authenticated;/);
-  assert.match(code, /create policy "pending select"/);
-  assert.equal(/drop function if exists public\.get_pending_signup/.test(code), false,
-    'the deployed client calls it — dropping it would break onboarding');
+  // pending_signups is out of this phase, so the undo has nothing to say about it.
+  assert.equal(/pending_signups/.test(code), false);
   assert.equal(/^\s*grant[^;]*console_audit/im.test(code), false,
     'the console_audit grants stay revoked');
 });

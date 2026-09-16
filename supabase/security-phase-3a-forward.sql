@@ -40,32 +40,24 @@
 --     20-per-store OTP budgets, the WhatsApp-number check, the expiry, the
 --     clearing of failures on success, and the signature.
 --
---  3. pending_signups stops being readable by anybody
+--  3. pending_signups is NOT in this phase
 --
---     Policies granted anon SELECT, INSERT, UPDATE and DELETE, each USING
---     (true). The SELECT is the leak: PostgREST will answer an unfiltered
---     select, so the whole table -- phone, plan and Razorpay subscription id --
---     could be dumped by anyone. That policy goes, along with the table grant.
+--     The audit found it open: anon holds SELECT, INSERT, UPDATE and DELETE,
+--     every policy USING (true), so the whole table -- phone, plan, Razorpay
+--     subscription id -- can be read, and anyone can write themselves a paid
+--     plan and claim it during onboarding.
 --
---     Onboarding still has to find a paid signup by phone, so it gets a
---     function that answers for ONE phone. It still returns the subscription
---     id: publish writes that into the new store as razorpaySubscriptionId, and
---     withholding it would quietly unlink a recovered signup from its Razorpay
---     subscription -- breaking renewal for exactly the merchants this table
---     exists to protect. What is closed is the dump, which is where the value
---     was: an unfiltered read of every row.
+--     A first attempt at closing it shipped in this file and was removed in
+--     review, correctly. It put the read behind a function that anyone could
+--     call with any phone number, which turns a bulk-readable table into a
+--     phone-keyed oracle rather than establishing who may read what, and it
+--     left the writes untouched, so the billing bypass survived. That is not a
+--     closure; it is a smaller hole plus a new permanent RPC.
 --
---     INSERT, UPDATE and DELETE stay for now, because the live flow needs them:
---     Checkout writes the row after payment (and on the coupon path it is the
---     only writer -- no Razorpay webhook fires for a fully discounted plan), and
---     Onboarding deletes it once the store exists. Removing them would break
---     signup recovery, which this phase must not do.
---
---     KNOWN AND NOT CLOSED HERE: because anyone may still insert, anyone may
---     still write themselves a paid plan and claim it during onboarding. That
---     is a billing bypass, it is the most valuable thing left in this table, and
---     it cannot be closed without a verified merchant identity to write against.
---     It is the first item for the next phase.
+--     Reads and writes here have to be tied to server-verified payment and
+--     signup authority, not to possession of a phone number, and that is a
+--     design question rather than a grant change. It gets its own PR.
+--     Production behaviour is deliberately unchanged by this migration.
 --
 --  4. console_audit -- the audit's finding was WRONG, and this corrects it
 --
@@ -279,47 +271,7 @@ $function$;
 
 
 -- ---------------------------------------------------------------------------
--- 3. pending_signups: nobody may read the table
--- ---------------------------------------------------------------------------
--- The whole table could be fetched by anyone: phone, plan and the Razorpay
--- subscription id. The read goes behind a function that answers for one phone.
-drop policy if exists "pending select" on public.pending_signups;
-revoke select on public.pending_signups from anon, authenticated;
-
--- One phone, one answer. This closes the real exposure -- PostgREST would
--- answer an unfiltered select and hand over every row -- without changing what
--- onboarding can do.
---
--- subscription_id IS returned, deliberately. Onboarding writes it into the new
--- store as razorpaySubscriptionId, which is how a recovered signup stays linked
--- to its Razorpay subscription for renewal and cancellation. Withholding it
--- would silently break that link for exactly the merchants this table exists to
--- protect: the ones who paid, left, and came back on another device.
-create or replace function public.get_pending_signup(p_phone text)
-returns table (plan text, plan_expires_at timestamptz, subscription_id text)
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $function$
-  select s.plan, s.plan_expires_at, s.subscription_id
-    from public.pending_signups s
-   where s.phone = right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10)
-     and coalesce(btrim(p_phone), '') <> ''
-   limit 1;
-$function$;
-
-revoke all on function public.get_pending_signup(text) from public;
-grant execute on function public.get_pending_signup(text) to anon, authenticated, service_role;
-
--- INSERT, UPDATE and DELETE policies are deliberately left in place: Checkout
--- writes the row after payment (and is the only writer on the coupon path) and
--- Onboarding clears it once the store exists. See the header for the billing
--- bypass this leaves open and why it needs merchant identity to close.
-
-
--- ---------------------------------------------------------------------------
--- 4. console_audit: remove the destructive grant nothing uses
+-- 3. console_audit: remove the destructive grant nothing uses
 -- ---------------------------------------------------------------------------
 -- The read policy is `to public USING (public.is_crm_admin())` and is LEFT
 -- ALONE: the predicate already refuses everyone who is not a console admin.
