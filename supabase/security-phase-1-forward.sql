@@ -77,9 +77,11 @@ create index if not exists pin_attempts_kind_subject_time_idx
 
 -- Actions, all called with the service role from supabase/functions/send-otp:
 --   send    may a code go out now?   Records the send when it may.
---   verify  may a guess be made now? Records nothing.
---   fail    record one wrong guess.  Always true.
---   clear   a correct code was used: drop that phone's failures. Always true.
+--   verify  may a guess be made now?  Records the guess when it may.
+--   clear   the code was right: drop that phone's guesses. Always true.
+--
+-- send and verify decide and record inside one locked transaction, so requests
+-- that arrive together cannot overshoot a limit between them.
 --
 -- Limits. A real person asks for at most two or three codes; these caps stop a
 -- flood of WhatsApp messages (which cost money and burn the sender's standing)
@@ -101,16 +103,40 @@ declare
   c_short              constant interval := interval '15 minutes';
   c_hour               constant interval := interval '1 hour';
   c_day                constant interval := interval '24 hours';
+  c_lock_ns            constant integer  := 774411;  -- this guard's lock space
   v_subject text := nullif(btrim(coalesce(p_subject, '')), '');
   v_ip      text := nullif(btrim(coalesce(p_ip, '')), '');
   v_n_short integer := 0;
   v_n_day   integer := 0;
   v_n_ip    integer := 0;
+  v_k_sub   integer;
+  v_k_ip    integer;
 begin
   -- No subject means the caller could not identify the phone. Refuse rather
   -- than let an unkeyed request through the limit.
   if v_subject is null then
     return false;
+  end if;
+
+  -- Serialize the deciding actions. Counting rows and then writing one is a
+  -- check-then-act: without this, requests that arrive together all read a
+  -- count below the limit and all proceed, and the cap means nothing against
+  -- exactly the parallel flood it exists to stop.
+  --
+  -- Transaction-scoped advisory locks, released on commit. Both budgets are
+  -- locked -- a subject can arrive from many addresses and an address can carry
+  -- many subjects -- and they are always taken in ascending key order, so two
+  -- callers holding one lock each can never wait on the other's.
+  if p_action in ('send', 'verify') then
+    v_k_sub := pg_catalog.hashtext('otp:subject:' || v_subject);
+    v_k_ip  := case when v_ip is null then null
+                    else pg_catalog.hashtext('otp:ip:' || v_ip) end;
+    if v_k_ip is null or v_k_ip = v_k_sub then
+      perform pg_catalog.pg_advisory_xact_lock(c_lock_ns, v_k_sub);
+    else
+      perform pg_catalog.pg_advisory_xact_lock(c_lock_ns, least(v_k_sub, v_k_ip));
+      perform pg_catalog.pg_advisory_xact_lock(c_lock_ns, greatest(v_k_sub, v_k_ip));
+    end if;
   end if;
 
   if p_action = 'send' then
@@ -143,6 +169,12 @@ begin
     return true;
   end if;
 
+  -- A guess is counted when it is ALLOWED, not after it turns out wrong. The
+  -- caller cannot record the failure for us: between its check and its report
+  -- any number of other guesses would pass, and the limit would count one guess
+  -- per round trip instead of five in total. So the row goes in here, inside
+  -- the same locked transaction that decided, and a correct code removes it
+  -- again through 'clear'.
   if p_action = 'verify' then
     select
       count(*) filter (where subject = v_subject and attempted_at > now() - c_short),
@@ -153,13 +185,14 @@ begin
       and not success
       and attempted_at > now() - c_hour;
 
-    return not (v_n_short >= c_fail_subject
-                or (v_ip is not null and v_n_ip >= c_fail_ip));
-  end if;
+    if v_n_short >= c_fail_subject
+       or (v_ip is not null and v_n_ip >= c_fail_ip) then
+      return false;
+    end if;
 
-  if p_action = 'fail' then
     insert into public.pin_attempts (slug, ip, success, kind, subject)
     values ('', v_ip, false, 'otp_verify', v_subject);
+
     return true;
   end if;
 

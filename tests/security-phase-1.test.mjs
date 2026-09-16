@@ -114,21 +114,20 @@ test('send asks the guard before it sends, and refuses with 429', () => {
   assert.match(send.slice(guard, guard + 200), /429/);
 });
 
-test('verify asks the guard, records wrong guesses and clears on success', () => {
+test('verify asks the guard before the lookup, and clears on success', () => {
   const v = OTPFN.slice(OTPFN.indexOf("if (action === 'verify')"),
                         OTPFN.indexOf("if (action === 'welcome')"));
   assert.ok(v.indexOf("otpGuard(supabase, 'verify'") < v.indexOf("from('otp_codes')"),
     'the limit is checked before the code is looked up');
-  assert.match(v, /otpGuard\(supabase, 'fail'[\s\S]{0,200}Invalid or expired OTP/);
   assert.match(v, /delete\(\)\.eq\('phone', phone\);\s*\n\s*await otpGuard\(supabase, 'clear'/);
   assert.match(v, /429/);
 });
 
-test('the guard fails closed for send and verify, and is book-keeping for the rest', () => {
+test('the guard fails closed for send and verify, and is book-keeping for clear', () => {
   const fn = OTPFN.slice(OTPFN.indexOf('async function otpGuard'), OTPFN.indexOf('const TOO_MANY'));
   // Two error paths (rpc error, thrown) plus the empty-subject guard, all of
-  // which answer "no" for send/verify and "yes" only for fail/clear.
-  const closed = fn.match(/return action === 'fail' \|\| action === 'clear';/g) || [];
+  // which answer "no" for send/verify and "yes" only for clear.
+  const closed = fn.match(/return action === 'clear';/g) || [];
   assert.equal(closed.length, 3, 'every failure path must fail closed for send/verify');
   assert.match(fn, /return data === true;/, 'only an explicit true is permission');
 });
@@ -137,6 +136,71 @@ test('the rate-limit ledger never stores a raw phone number', () => {
   assert.match(OTPFN, /async function phoneKey[\s\S]{0,400}crypto\.subtle\.digest\('SHA-256'/);
   assert.match(OTPFN, /otpGuard\(supabase, 'send', subject,/);
   assert.equal(/p_subject:\s*phone\b/.test(OTPFN), false, 'the phone itself must not be the key');
+});
+
+// ── P1-2  the limits must hold under parallel requests ───────────────────────
+// Counting rows and then writing one is a check-then-act. Requests that arrive
+// together read the same count, all see room, and all proceed — which is
+// exactly the parallel flood the limit exists to stop. These pin the fix.
+
+const GUARD = FWD.slice(FWD.indexOf('create or replace function public.otp_guard'),
+                        FWD.indexOf('revoke all on function public.otp_guard'));
+
+test('a decision is serialized before anything is counted', () => {
+  const lock  = GUARD.indexOf('pg_advisory_xact_lock');
+  const count = GUARD.indexOf('select\n      count(*)');
+  assert.ok(lock > -1, 'the guard must take a lock');
+  assert.ok(lock < count, 'the lock must be held before the count is read');
+  assert.match(GUARD, /if p_action in \('send', 'verify'\) then/,
+    'both deciding actions are serialized');
+});
+
+test('both budgets are locked, so neither can be overshot from the side', () => {
+  // A phone can be hit from many addresses and an address can carry many
+  // phones: locking only one of the two leaves the other counting freely.
+  assert.match(GUARD, /v_k_sub := pg_catalog\.hashtext\('otp:subject:' \|\| v_subject\);/);
+  assert.match(GUARD, /v_k_ip\s+:= case when v_ip is null then null[\s\S]{0,120}hashtext\('otp:ip:' \|\| v_ip\)/);
+});
+
+test('the two locks are always taken in the same order, so they cannot deadlock', () => {
+  assert.match(GUARD, /pg_advisory_xact_lock\(c_lock_ns, least\(v_k_sub, v_k_ip\)\)/);
+  assert.match(GUARD, /pg_advisory_xact_lock\(c_lock_ns, greatest\(v_k_sub, v_k_ip\)\)/);
+  // One key, one lock: taking least() and greatest() of the same value twice is
+  // harmless, but the equal case is written out so the intent cannot drift.
+  assert.match(GUARD, /if v_k_ip is null or v_k_ip = v_k_sub then/);
+});
+
+test('the locks are transaction-scoped, never session-scoped', () => {
+  // A session lock would leak across pooled connections and never be released.
+  assert.equal(/pg_advisory_lock\(/.test(GUARD), false, 'must not be a session lock');
+  assert.equal(/pg_advisory_unlock/.test(GUARD), false, 'xact locks release themselves');
+});
+
+test('send records inside the same transaction that decided', () => {
+  const send = GUARD.slice(GUARD.indexOf("if p_action = 'send' then"),
+                           GUARD.indexOf("if p_action = 'verify' then"));
+  assert.ok(send.indexOf('return false;') < send.indexOf('insert into public.pin_attempts'),
+    'refusal first, then the record — one path, one transaction');
+  assert.match(send, /values \('', v_ip, true, 'otp_send', v_subject\);/);
+});
+
+test('a guess is spent when it is allowed, not reported after it fails', () => {
+  const verify = GUARD.slice(GUARD.indexOf("if p_action = 'verify' then"),
+                             GUARD.indexOf("if p_action = 'clear' then"));
+  assert.match(verify, /insert into public\.pin_attempts[\s\S]{0,140}'otp_verify', v_subject\);/,
+    'verify must record the guess itself');
+  assert.ok(verify.indexOf('return false;') < verify.indexOf('insert into'),
+    'over the limit means no row and no permission');
+  // The old two-call shape (check here, report later) is the race: between the
+  // two, any number of guesses pass. It must not come back.
+  assert.equal(/p_action = 'fail'/.test(FWD), false, 'no separate report action');
+  assert.equal(/otpGuard\(supabase, 'fail'/.test(OTPFN), false, 'and no caller for one');
+  assert.equal(/'send' \| 'verify' \| 'clear'/.test(OTPFN), true, 'the type says so too');
+});
+
+test('a correct code gives the guesses back', () => {
+  const clear = GUARD.slice(GUARD.indexOf("if p_action = 'clear' then"));
+  assert.match(clear, /delete from public\.pin_attempts\s*\n\s*where kind = 'otp_verify' and not success and subject = v_subject;/);
 });
 
 test('the guard is SECURITY DEFINER, pinned, and callable only by the service role', () => {

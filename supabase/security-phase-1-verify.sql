@@ -76,7 +76,22 @@ select 'V2', 'V2.3 only the service role may call otp_guard',
        when (select acl from guard) like '%service_role=X%' then 'PASS'
        else 'FAIL - service_role cannot call it: ' || (select acl from guard) end
 union all
-select 'V2', 'V2.4 every limit is still in the body',
+select 'V2', 'V2.4 otp_guard serializes its decisions',
+  -- Counting and then writing is a check-then-act: without a lock, requests
+  -- that arrive together all read a count below the limit and all proceed.
+  case when exists (select 1 from guard
+                     where prosrc like '%pg_advisory_xact_lock%'
+                       and prosrc like '%least(v_k_sub, v_k_ip)%'
+                       and prosrc like '%greatest(v_k_sub, v_k_ip)%')
+       then 'PASS' else 'FAIL - the guard can be overshot in parallel' end
+union all
+select 'V2', 'V2.5 a guess is spent when it is allowed',
+  case when exists (select 1 from guard
+                     where prosrc not like '%p_action = ''fail''%'
+                       and prosrc like '%''otp_verify'', v_subject%')
+       then 'PASS' else 'FAIL - the guess is recorded outside the decision' end
+union all
+select 'V2', 'V2.6 every limit is still in the body',
   case when exists (select 1 from guard where prosrc like '%c_send_subject_short%'
                       and prosrc like '%c_send_subject_day%'
                       and prosrc like '%c_send_ip_hour%'

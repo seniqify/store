@@ -93,11 +93,18 @@ to ask Razorpay before writing "paid"; that is phase 2, because it means
 touching the payment path.
 
 **The OTP endpoint refuses floods.** Per phone: 3 codes per 15 minutes, 10 per
-day. Per address: 15 per hour. Wrong guesses: 5 per phone per 15 minutes, 30 per
-address per hour. A correct code clears that phone's failures. The counters live
-in `public.pin_attempts` — the same ledger the PIN throttle uses — under their
-own `kind` values, so an OTP flood cannot lock anyone out of PIN entry. Phone
-numbers are stored as a SHA-256 hash, not in the clear.
+day. Per address: 15 per hour. Guesses: 5 per phone per 15 minutes, 30 per
+address per hour. A correct code gives that phone's guesses back. The counters
+live in `public.pin_attempts` — the same ledger the PIN throttle uses — under
+their own `kind` values, so an OTP flood cannot lock anyone out of PIN entry.
+Phone numbers are stored as a SHA-256 hash, not in the clear.
+
+The limits hold under parallel requests, which is the case that matters: each
+decision takes transaction-scoped advisory locks on both the phone and the
+address budget (always in ascending key order, so they cannot deadlock), and
+writes its row inside that same transaction. A guess is spent when it is
+allowed, not reported after it fails — otherwise requests fired together would
+all pass the check before any of them was counted.
 
 **A failed PIN check is a refusal.** `verifyPin` no longer falls back to reading
 `stores.pin` and comparing in the browser.

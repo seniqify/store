@@ -78,34 +78,38 @@ async function phoneKey(phone: unknown): Promise<string> {
  * supabase/security-phase-1-forward.sql).
  *
  *   send    may a code go out now?   Records the send when it may.
- *   verify  may a guess be made now?
- *   fail    record one wrong guess.
- *   clear   a correct code was used: drop that phone's failures.
+ *   verify  may a guess be made now?  Records the guess when it may.
+ *   clear   the code was right: drop that phone's guesses.
+ *
+ * `verify` SPENDS the guess at the moment it allows it, inside one locked
+ * transaction. This function must not report the outcome afterwards instead:
+ * between a check here and a report from here, any number of parallel guesses
+ * would pass, and five-per-fifteen-minutes would become five per round trip.
  *
  * Fails CLOSED for send and verify: if the guard is missing or the call errors,
  * the answer is no. An unlimited OTP endpoint is how a store's WhatsApp number
- * gets flooded and how a six-digit code gets guessed. `fail` and `clear` are
- * book-keeping, so a failure there is logged and ignored.
+ * gets flooded and how a six-digit code gets guessed. `clear` is book-keeping,
+ * so a failure there is logged and ignored.
  */
 async function otpGuard(
   supabase: ReturnType<typeof createClient>,
-  action: 'send' | 'verify' | 'fail' | 'clear',
+  action: 'send' | 'verify' | 'clear',
   subject: string,
   ip: string | null,
 ): Promise<boolean> {
-  if (!subject) return action === 'fail' || action === 'clear';
+  if (!subject) return action === 'clear';
   try {
     const { data, error } = await supabase.rpc('otp_guard', {
       p_action: action, p_subject: subject, p_ip: ip,
     });
     if (error) {
       console.error(`otp_guard ${action} failed:`, error.message);
-      return action === 'fail' || action === 'clear';
+      return action === 'clear';
     }
     return data === true;
   } catch (e) {
     console.error(`otp_guard ${action} error:`, (e as Error)?.message);
-    return action === 'fail' || action === 'clear';
+    return action === 'clear';
   }
 }
 
@@ -232,7 +236,9 @@ serve(async (req: Request) => {
 
       // A six-digit code is 900,000 values and lives for ten minutes. Without a
       // cap on guesses that is a few minutes of scripted requests, so the count
-      // of wrong guesses is what actually protects it.
+      // of guesses is what actually protects it. The guard spends one guess as
+      // it allows this call -- guesses fired in parallel cannot slip past each
+      // other -- and 'clear' gives them back when the code turns out right.
       const subject = await phoneKey(phone);
       const ip      = callerIp(req);
       if (!(await otpGuard(supabase, 'verify', subject, ip))) {
@@ -250,7 +256,7 @@ serve(async (req: Request) => {
       if (fetchErr) throw new Error(fetchErr.message);
 
       if (!data) {
-        await otpGuard(supabase, 'fail', subject, ip);
+        // The guess is already on the ledger, spent by the 'verify' call above.
         return json({ error: 'Invalid or expired OTP. Please try again.' }, 400);
       }
 
