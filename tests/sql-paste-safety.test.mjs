@@ -24,6 +24,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/payments-automation-schedule.sql',
   'supabase/meta-ads-mcp-forward.sql',
   'supabase/meta-ads-mcp-rollback.sql',
+  'supabase/security-phase-1-forward.sql',
+  'supabase/security-phase-1-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
