@@ -7,6 +7,7 @@ import { calcCartTotals, formatINR } from '../../utils/currency';
 import { whatsappLink } from '../../utils/theme';
 import { pixelTrack } from '../../utils/metaPixel';
 import { saveOrder, saveAbandonedCheckout, buildOrderRow } from '../../utils/orderService';
+import { sendShadowOrder } from '../../utils/orderShadow';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { fetchReviews, reviewStats } from '../../utils/reviewService';
@@ -285,8 +286,9 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // RLS lets a customer INSERT an order but never SELECT it back.
     const confirmToken = retry ? retry.confirmToken : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined);
     const orderRow = buildOrderRow(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+    let saved = retry ? retry.orderId : null;
     if (!retry) {
-      const saved = await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
+      saved = await saveOrder(sendData, cart, effConfig, appliedCoupon, orderId, confirmToken);
       // A payment is bound to the saved order. If the order didn't save, don't take
       // the customer's money for it. (COD still goes ahead: the notification below
       // re-saves the order on the server.)
@@ -297,6 +299,39 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
       }
     }
     const orderRowId = orderId;
+
+    // -- Shadow observation - nothing below depends on it --------------------
+    // The order above is already written and is the only authoritative one. This
+    // asks the server to price the same cart from the store's own configuration
+    // so the two can be compared later; it sends no prices and no totals.
+    //
+    // Deliberately NOT awaited, so it adds no checkout latency, and it returns a
+    // promise that never rejects. Whatever happens to it - timeout, 400, 500,
+    // endpoint down, unknown product - this function carries on to the payment
+    // and the notifications exactly as it did before. Its response is never read.
+    //
+    // It runs only when an order is actually on the record: `saved` is the id
+    // this checkout just wrote (or, on a Pay-again retry, the one the first
+    // attempt wrote). Nothing user-supplied can reach it.
+    if (saved) {
+      void sendShadowOrder({
+        slug: effConfig.slug,
+        mode: 'order',
+        cart,
+        config: effConfig,
+        customer: {
+          name:        sendData.partyName || sendData.name || '',
+          phone:       sendData.mobile || '',
+          destination: sendData.destination || '',
+          pincode:     sendData.pincode || '',
+        },
+        paymentMethod: formData.paymentMethod,
+        couponCode: appliedCoupon?.code || null,
+        notes: sendData.notes || '',
+        observedOrderId: saved,
+        attribution: { fbp: orderRow.fbp, fbc: orderRow.fbc, ua: orderRow.client_ua },
+      });
+    }
 
     // ── Online payment ────────────────────────────────────────────────────────
     // Collect payment before confirming. The order is already saved (unpaid), so a

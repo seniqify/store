@@ -27,7 +27,7 @@ test('saveOrder reads the insert error and only reports success when the row lan
 });
 
 test('checkout does not start an online payment when the order did not save', () => {
-  const at = FORM.indexOf('const saved = await saveOrder(');
+  const at = FORM.indexOf('saved = await saveOrder(');
   const pay = FORM.indexOf('await payOnline(');
   assert.ok(at > 0 && pay > at, 'save is checked before payment starts');
   const guard = FORM.slice(at, pay);

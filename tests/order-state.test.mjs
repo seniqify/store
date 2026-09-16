@@ -43,7 +43,9 @@ test('the order card never offers Accept for an unpaid online order', () => {
 test('Pay again reuses the order saved on the first attempt', () => {
   const f = read('src/components/form/CustomerDetailsForm.jsx');
   assert.match(f, /const retry = formData\.paymentMethod === 'online' && pendingPay\.current\?\.key === buyKey/);
-  assert.match(f, /if \(!retry\) \{\s*const saved = await saveOrder\(/);
+  // `saved` is declared before the branch now, so the shadow observation below
+  // can reuse the id on a Pay-again retry. Same order, same gating.
+  assert.match(f, /let saved = retry \? retry\.orderId : null;\s*if \(!retry\) \{\s*saved = await saveOrder\(/);
   assert.equal(/Your order is saved — tap Pay again/.test(f), false, 'the customer must not be told a failed payment placed the order');
   assert.match(f, /pendingPay\.current = null;/);
 });
