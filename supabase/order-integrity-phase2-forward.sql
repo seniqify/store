@@ -111,16 +111,21 @@ create table if not exists public.order_pricing_shadow (
   reasons        jsonb,
   line_count     integer,
   idem_key_hash  text,
+  ip_hash        text,
   would_limit    text,
   created_at     timestamptz not null default now()
 );
 
 comment on table public.order_pricing_shadow is
-  'Shadow mode only: what the server WOULD have charged versus what the browser '
-  'actually wrote, compared against the saved row -- never against a number '
-  'from the request. Holds no product names, no costs, no margins, no coupon '
-  'definitions. would_limit records the rate limit that would have fired, so '
-  'the limits can be sized on real traffic before they refuse anybody.';
+  'Shadow mode only: what the server WOULD have charged, next to what the '
+  'browser actually wrote. db_total is read from the saved order row rather '
+  'than from the request -- which makes it a trustworthy record of what the old '
+  'path produced, NOT an authoritative price. It is the baseline under '
+  'suspicion; server_total is the figure being introduced. Holds no product '
+  'names, no costs, no margins, no coupon definitions. ip_hash is a truncated '
+  'hash, never an address. would_limit records the rate limit that would have '
+  'fired, so the limits can be sized on real traffic before they refuse '
+  'anybody.';
 
 create index if not exists order_pricing_shadow_time_idx on public.order_pricing_shadow (created_at desc);
 create index if not exists order_pricing_shadow_delta_idx on public.order_pricing_shadow (store_slug, created_at desc) where delta <> 0;
@@ -289,9 +294,27 @@ begin
     raise exception 'config_changed' using errcode = 'P0003';
   end if;
 
-  -- ── 4. Availability, for every line, before anything is written ──────────
+  -- ── 4. Availability, PER PRODUCT, before anything is written ─────────────
+  -- Grouped exactly as the decrement below groups. Checking line by line would
+  -- pass two lines of one unit each against a stock of one -- both see 1 >= 1 --
+  -- and the decrement would then take 2 and floor at 0, shipping an order for
+  -- stock that was never there. The check and the decrement must count the same
+  -- way or they are not the same transaction in any useful sense.
   if v_status <> 'abandoned' then
-    for v_line in select * from jsonb_array_elements(p_items) loop
+    -- A line with no product id can decrement nothing, so it must not be
+    -- orderable: refuse rather than silently sell an unidentifiable item.
+    if exists (select 1 from jsonb_array_elements(p_items) as item
+                where coalesce(btrim(item->>'productId'), '') = '') then
+      raise exception 'line_without_product' using errcode = '22023';
+    end if;
+
+    for v_line in
+      select jsonb_build_object(
+               'productId', item->>'productId',
+               'qty', sum(coalesce(nullif(item->>'qty', '')::numeric, 1)))
+        from jsonb_array_elements(p_items) as item
+       group by item->>'productId'
+    loop
       select (prod->>'stock')::numeric into v_have
         from public.stores s,
              lateral jsonb_array_elements(

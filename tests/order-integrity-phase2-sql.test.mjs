@@ -142,6 +142,41 @@ test('the writer runs reserve, lock, verify, check, decrement, insert, snapshot 
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'the steps must be in this order');
 });
 
+test('availability is checked per PRODUCT, not per line — duplicate lines cannot oversell', () => {
+  // Two lines of one unit each against a stock of one: checked line by line
+  // both see 1 >= 1 and pass, then the decrement takes 2 and floors at 0,
+  // shipping an order for stock that was never there. The check has to group
+  // exactly the way the decrement groups.
+  const fn = FWD.slice(FWD.indexOf('create or replace function public.create_order_secure'));
+  const check = fn.slice(fn.indexOf('4. Availability'), fn.indexOf('5. Decrement'));
+
+  assert.match(check, /group by item->>'productId'/, 'the check must aggregate per product');
+  assert.match(check, /sum\(coalesce\(nullif\(item->>'qty', ''\)::numeric, 1\)\)/,
+    'and must sum quantities the same way the decrement does');
+  assert.equal(/for v_line in select \* from jsonb_array_elements\(p_items\) loop/.test(check), false,
+    'the per-line loop is the bug');
+});
+
+test('the check and the decrement count quantities identically', () => {
+  const fn = FWD.slice(FWD.indexOf('create or replace function public.create_order_secure'));
+  const check = fn.slice(fn.indexOf('4. Availability'), fn.indexOf('5. Decrement'));
+  const dec   = fn.slice(fn.indexOf('5. Decrement'), fn.indexOf('6. The order'));
+  const qtyExpr = /sum\(coalesce\(nullif\(item->>'qty', ''\)::numeric, 1\)\)/;
+  const groupBy = /group by item->>'productId'/;
+  for (const [name, block] of [['check', check], ['decrement', dec]]) {
+    assert.match(block, qtyExpr, `${name}: same quantity expression`);
+    assert.match(block, groupBy, `${name}: same grouping`);
+  }
+});
+
+test('a line with no product id is refused outright', () => {
+  // It could decrement nothing, so it must not be orderable.
+  const fn = FWD.slice(FWD.indexOf('create or replace function public.create_order_secure'));
+  assert.match(fn, /raise exception 'line_without_product'/);
+  assert.ok(fn.indexOf("raise exception 'line_without_product'") < fn.indexOf('update public.stores s'),
+    'refused before anything is written');
+});
+
 test('stock is decremented by product id, and abandoned rows decrement nothing', () => {
   const fn = FWD.slice(FWD.indexOf('create or replace function public.create_order_secure'));
   assert.match(fn, /dec\.pid = prod->>'id'/);
@@ -203,7 +238,7 @@ test('the comparison is against the saved row, never a number from the request',
   assert.match(SHADOW, /from\('orders'\)\.select\('total'\)\.eq\('id', observedId\)/);
   assert.equal(/body\.(total|subtotal|amount)/.test(SHADOW), false,
     'server correctness must not depend on a browser total');
-  assert.match(SHADOW, /never from the[\s\S]{0,12}request/i, 'and the reason is written down');
+  assert.match(SHADOW, /read from the SAVED ROW rather than from/i, 'and the reason is written down');
 });
 
 test('price-bearing bodies are recorded in shadow mode, not yet refused', () => {
@@ -221,6 +256,29 @@ test('the request is allowlisted before anything reads it', () => {
   for (const bad of ['price', 'total', 'discount', 'gstRate']) {
     assert.equal(fn.includes(`${bad}:`), false, `${bad} must not survive the allowlist`);
   }
+});
+
+test('both rate budgets are measured, and the address is only ever a hash', () => {
+  // One address hammering many stores, and many addresses hammering one store,
+  // are different abuses; sizing either needs its own count.
+  assert.match(SHADOW, /count\('ip_hash', ipHash\)/, 'per-address measurement');
+  assert.match(SHADOW, /count\('store_slug', slug\)/, 'per-store measurement');
+  assert.match(SHADOW, /return 'ip_10m'/);
+  assert.match(SHADOW, /return 'store_10m'/);
+  assert.match(SHADOW, /const ipHash = ip \? await sha256Short\(ip\) : null;/);
+  assert.equal(/ip: ip|ip_address|callerIp\(req\),\s*$/m.test(SHADOW), false,
+    'a raw address must never be logged');
+  assert.match(FWD, /ip_hash        text,/, 'and the column exists to record it');
+});
+
+test('the shadow baseline is described as the browser figure, not as authoritative', () => {
+  // db_total comes from the saved row, which makes it a trustworthy record of
+  // what the old path produced — not a trustworthy price. That distinction is
+  // the entire point of shadow mode.
+  assert.equal(/[Bb]oth sides of this comparison are authoritative/.test(SHADOW), false);
+  assert.match(SHADOW, /NOT an authoritative price/);
+  assert.match(SHADOW, /baseline under suspicion/);
+  assert.match(FWD, /NOT an authoritative price/, 'the table comment says so too');
 });
 
 test('rate limits are measured, not enforced, and the endpoint says so', () => {

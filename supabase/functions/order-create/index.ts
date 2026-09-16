@@ -86,19 +86,27 @@ function allowlist(body: Record<string, any>) {
 }
 
 /** Rate limits, MEASURED not enforced. Returns the limit that would have fired,
- *  so the thresholds can be set from real traffic instead of guesswork. */
+ *  so the thresholds can be set from real traffic instead of guesswork.
+ *
+ *  Both budgets are measured, because they catch different abuse: one address
+ *  hammering many stores, and many addresses hammering one store. The address
+ *  is counted by its hash, so the ledger can tell requests apart without ever
+ *  holding somebody's IP. */
 async function wouldLimit(
-  supabase: ReturnType<typeof createClient>, slug: string, ip: string | null,
+  supabase: ReturnType<typeof createClient>, slug: string, ipHash: string | null,
 ): Promise<string | null> {
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  try {
-    const { count: perStore } = await supabase
+  const count = async (column: string, value: string) => {
+    const { count: n } = await supabase
       .from('order_pricing_shadow')
       .select('id', { count: 'exact', head: true })
-      .eq('store_slug', slug)
+      .eq(column, value)
       .gte('created_at', since);
-    if ((perStore ?? 0) >= 60) return 'store_10m';
-    if (!ip) return null;
+    return n ?? 0;
+  };
+  try {
+    if (ipHash && await count('ip_hash', ipHash) >= 20) return 'ip_10m';
+    if (await count('store_slug', slug) >= 60) return 'store_10m';
     return null;
   } catch {
     return null;
@@ -129,9 +137,14 @@ serve(async (req: Request) => {
 
     const quote = priceOrder(store.config, req0);
     const fingerprint = await requestFingerprint(req0);
+    const ip = callerIp(req);
+    const ipHash = ip ? await sha256Short(ip) : null;
 
-    // What the browser actually wrote, read from the SAVED ROW — never from the
-    // request. Both sides of this comparison are authoritative.
+    // What the browser actually wrote, read from the SAVED ROW rather than from
+    // the request — so this is a trustworthy record of what the old path
+    // produced. It is NOT an authoritative price: it is the browser's figure,
+    // which is the whole reason this comparison is being made. server_total is
+    // the number under test; db_total is the baseline under suspicion.
     const observedId = typeof body?.observedOrderId === 'string' ? body.observedOrderId : null;
     let dbTotal: number | null = null;
     if (observedId) {
@@ -163,7 +176,8 @@ serve(async (req: Request) => {
       reasons,
       line_count: req0.lines.length,
       idem_key_hash: body?.idempotencyKey ? await sha256Short(String(body.idempotencyKey)) : null,
-      would_limit: await wouldLimit(supabase, req0.slug, callerIp(req)),
+      ip_hash: ipHash,
+      would_limit: await wouldLimit(supabase, req0.slug, ipHash),
     }).then(({ error }) => {
       if (error) console.error('shadow log refused:', error.message);
     });
@@ -181,8 +195,8 @@ function callerIp(req: Request): string | null {
   return fwd.split(',')[0].trim() || null;
 }
 
-/** A short hash of the idempotency key: enough to spot a replay in the log,
- *  not enough to replay one. */
+/** A short hash: enough to tell two values apart in the log, not enough to
+ *  recover the value. Used for the idempotency key and the caller's address. */
 async function sha256Short(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf)).slice(0, 8)
