@@ -35,9 +35,12 @@ test('checkout does not start an online payment when the order did not save', ()
 });
 
 test('order-notify safety net checks its upsert error', () => {
-  assert.match(OTP, /const \{ error: saveErr \} = await supabase\.from\('orders'\)\.upsert\(order,/);
+  // The row is sanitised on the way in (safeOrderRow — an order may not be born
+  // paid, whatever the caller sent), but the save itself must still be checked:
+  // an unchecked error is how a paid order was lost on 2026-09-09.
+  assert.match(OTP, /const \{ error: saveErr \} = await supabase\s*\n?\s*\.from\('orders'\)\s*\n?\s*\.upsert\(safeOrderRow\(order\),/);
   assert.match(OTP, /if \(saveErr\) console\.error/);
-  assert.equal(/^\s*await supabase\.from\('orders'\)\.upsert\(order/m.test(OTP), false);
+  assert.equal(/^\s*await supabase\.from\('orders'\)\.upsert\(/m.test(OTP), false);
 });
 
 test('payments-link finds captured payments whose order never saved, behind the PIN', () => {

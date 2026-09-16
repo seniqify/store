@@ -88,7 +88,7 @@ export default function CampaignPanel({ slug, pin, businessName = '', audience =
 
         <Field label="Template API URL">
           <input value={form.templateUrl} onChange={(e) => setForm((f) => ({ ...f, templateUrl: e.target.value }))}
-            placeholder="https://adminapis.backendprod.com/lms_campaign/api/whatsapp/template/…/process"
+            placeholder="Paste the template's API link from Seniqify"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-emerald-200" />
         </Field>
 
