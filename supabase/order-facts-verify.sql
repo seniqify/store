@@ -32,22 +32,71 @@ select 'G2', 'G2 get_store_orders grants unchanged',
        then 'PASS' else 'FAIL - the order list feed was re-granted' end
 
 union all
-select 'G3', 'G3 public.orders untouched: triggers, policies and browser grants',
+select 'G3', 'G3 public.orders structure unchanged: triggers and policies',
   case when (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid
               where c.relname = 'orders' and not t.tgisinternal) = 4
-        and (select count(*) from pg_policies
-              where schemaname = 'public' and tablename = 'orders') = 2
-        and (select count(*) from information_schema.role_table_grants
-              where table_schema = 'public' and table_name = 'orders'
-                and grantee in ('anon', 'authenticated')) =
-            (select count(*) from information_schema.role_table_grants
+        and (select md5(string_agg(t.tgname || ':' || t.tgenabled::text, ',' order by t.tgname))
+               from pg_trigger t join pg_class c on c.oid = t.tgrelid
+              where c.relname = 'orders' and not t.tgisinternal)
+            = '11af8163bb6f3fa4d110377466aa79ab'
+        and (select md5(string_agg(policyname || ':' || cmd || ':' || roles::text, ',' order by policyname))
+               from pg_policies where schemaname = 'public' and tablename = 'orders')
+            = '7688ac51decf44b30d8051ef8d32defb'
+       then 'PASS'
+       else 'FAIL - triggers or policies moved: '
+            || coalesce((select string_agg(t.tgname || ':' || t.tgenabled::text, ', ' order by t.tgname)
+                           from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                          where c.relname = 'orders' and not t.tgisinternal), 'none')
+            || ' / '
+            || coalesce((select string_agg(policyname || ':' || cmd, ', ' order by policyname)
+                           from pg_policies where schemaname = 'public' and tablename = 'orders'), 'none') end
+
+union all
+select 'G3b', 'G3b public.orders BROWSER GRANTS unchanged (pinned, per role)',
+  -- The previous version of this row compared a count against ITSELF and could
+  -- never fail. It is now pinned to the exact privilege set each browser role
+  -- holds, so any added, removed or swapped privilege is caught -- including
+  -- combinations that would keep the count identical.
+  case when (select string_agg(privilege_type, ',' order by privilege_type)
+               from information_schema.role_table_grants
+              where table_schema = 'public' and table_name = 'orders' and grantee = 'anon')
+            = 'INSERT,REFERENCES,SELECT,TRIGGER,UPDATE'
+        and (select string_agg(privilege_type, ',' order by privilege_type)
+               from information_schema.role_table_grants
+              where table_schema = 'public' and table_name = 'orders' and grantee = 'authenticated')
+            = 'INSERT,REFERENCES,SELECT,TRIGGER,UPDATE'
+        -- ...and a fingerprint over the whole browser-grant set, which also
+        -- catches a privilege appearing under some OTHER grantee.
+        and (select md5(string_agg(grantee || ':' || privilege_type, ',' order by grantee, privilege_type))
+               from information_schema.role_table_grants
               where table_schema = 'public' and table_name = 'orders'
                 and grantee in ('anon', 'authenticated'))
-        and exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+            = 'f1fe5bb55be0937a01c7ae64fac8b84a'
+        -- ...and the column-level grants, where a narrowing or widening would
+        -- not show up at table level at all.
+        and (select md5(string_agg(grantee || ':' || column_name || ':' || privilege_type,
+                                   ',' order by grantee, column_name, privilege_type))
+               from information_schema.role_column_grants
+              where table_schema = 'public' and table_name = 'orders'
+                and grantee in ('anon', 'authenticated'))
+            = '55d396069f53d6ec791338390358e761'
+       then 'PASS'
+       else 'FAIL - browser grants on orders drifted: '
+            || coalesce((select string_agg(grantee || '=' || privs, ' | ' order by grantee)
+                           from (select grantee,
+                                        string_agg(privilege_type, ',' order by privilege_type) as privs
+                                   from information_schema.role_table_grants
+                                  where table_schema = 'public' and table_name = 'orders'
+                                    and grantee in ('anon', 'authenticated')
+                                  group by grantee) x), 'no browser grants at all') end
+
+union all
+select 'G3c', 'G3c phase 1 order protections still enabled',
+  case when exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
                      where c.relname = 'orders' and t.tgname = 'orders_insert_guard' and t.tgenabled = 'O')
         and exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
                      where c.relname = 'orders' and t.tgname = 'trg_decrement_stock' and t.tgenabled = 'O')
-       then 'PASS' else 'FAIL - the orders table changed' end
+       then 'PASS' else 'FAIL - an order guard was disabled' end
 
 union all
 select 'G4', 'G4 verify_store_pin still the PIN gate, definer and pinned',

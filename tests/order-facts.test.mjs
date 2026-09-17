@@ -205,11 +205,59 @@ test('the verifier proves the projection and the absence of PII', () => {
 test('the verifier proves nothing else moved', () => {
   for (const row of ['G1 get_store_orders source UNCHANGED',
                      'G2 get_store_orders grants unchanged',
-                     'G3 public.orders untouched',
+                     'G3 public.orders structure unchanged',
+                     'G3b public.orders BROWSER GRANTS unchanged',
+                     'G3c phase 1 order protections still enabled',
                      'G4 verify_store_pin still the PIN gate',
                      'G5 phase 3C billing objects untouched']) {
     assert.ok(VERIFY.includes(row), `missing verifier row: ${row}`);
   }
+});
+
+test('no verifier row compares a subquery against an identical copy of itself', () => {
+  // The first version of G3 compared a grant COUNT against the same COUNT, so
+  // it could never fail. Catch that shape generically rather than only the one
+  // instance: collect every parenthesised `(select …)` and assert none appears
+  // on both sides of an `=`.
+  const norm = (s) => s.replace(/--.*$/gm, '').replace(/\s+/g, ' ').trim();
+  const body = norm(VERIFY);
+  const subqueries = body.match(/\(select [^()]*(?:\([^()]*\)[^()]*)*\)/g) ?? [];
+  const seen = new Map();
+  for (const q of subqueries) seen.set(q, (seen.get(q) ?? 0) + 1);
+  for (const [q, n] of seen) {
+    if (n < 2) continue;
+    // A repeat is only a tautology if the two copies are compared to each other.
+    assert.equal(body.includes(`${q} = ${q}`), false,
+      `tautological comparison: ${q.slice(0, 90)}`);
+  }
+});
+
+test('G3b pins the exact privilege set per browser role, not a count', () => {
+  const g3b = VERIFY.slice(VERIFY.indexOf("'G3b'"), VERIFY.indexOf("'G3c'"));
+  // A count-only comparison cannot tell a swap from no change at all.
+  assert.equal(/count\(\*\)/.test(g3b), false, 'G3b must not rely on a count');
+  // Explicit per-role privilege sets...
+  assert.match(g3b, /and grantee = 'anon'\)\s*\n?\s*= 'INSERT,REFERENCES,SELECT,TRIGGER,UPDATE'/);
+  assert.match(g3b, /and grantee = 'authenticated'\)\s*\n?\s*= 'INSERT,REFERENCES,SELECT,TRIGGER,UPDATE'/);
+  // ...a fingerprint over the whole browser-grant set...
+  assert.match(g3b, /f1fe5bb55be0937a01c7ae64fac8b84a/);
+  // ...and the column-level grants, which a table-level check cannot see.
+  assert.match(g3b, /role_column_grants/);
+  assert.match(g3b, /55d396069f53d6ec791338390358e761/);
+});
+
+test('G3b reports what actually drifted, so a failure is diagnosable', () => {
+  const g3b = VERIFY.slice(VERIFY.indexOf("'G3b'"), VERIFY.indexOf("'G3c'"));
+  assert.match(g3b, /FAIL - browser grants on orders drifted: /);
+  assert.match(g3b, /string_agg\(grantee \|\| '=' \|\| privs/);
+});
+
+test('G3 pins the trigger and policy sets by fingerprint', () => {
+  const g3 = VERIFY.slice(VERIFY.indexOf("'G3'"), VERIFY.indexOf("'G3b'"));
+  assert.match(g3, /11af8163bb6f3fa4d110377466aa79ab/);   // 4 triggers, all enabled
+  assert.match(g3, /7688ac51decf44b30d8051ef8d32defb/);   // 2 policies
+  // tgenabled is "char" and needs an explicit cast before ||.
+  assert.match(g3, /t\.tgenabled::text/);
 });
 
 // ── F. rollback ──────────────────────────────────────────────────────────────
