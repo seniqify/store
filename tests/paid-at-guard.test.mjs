@@ -238,8 +238,48 @@ test('the verifier proves the orders baseline changed by exactly one trigger', (
   assert.match(VERIFY, /B1 the other four order triggers are untouched/);
   assert.match(VERIFY, /t\.tgname <> 'orders_payment_time_guard'/);
   assert.match(VERIFY, /11af8163bb6f3fa4d110377466aa79ab/);
-  assert.match(VERIFY, /B2 exactly one trigger was added, and it is ours/);
+  assert.match(VERIFY, /B2 the trigger set on orders is EXACTLY right for the state it is in/);
   assert.match(VERIFY, /B3 orders policies and browser grants unchanged/);
+});
+
+// ── B2, state-aware ──────────────────────────────────────────────────────────
+//
+// An earlier version accepted `count(*) in (4, 5)` plus a no-unexpected-names
+// check. That passed in BOTH states, so it proved nothing about whether the
+// guard should be present. Exercised against production, rolled back:
+//
+//   pre-install, untouched                      PASS - names the pre state
+//   pre-install + an UNEXPECTED trigger         FAIL
+//   pre-install + a REQUIRED trigger dropped    FAIL
+//   post-install, correct                       PASS - names the post state
+//   post-install + an UNEXPECTED trigger        FAIL
+//   post-install + a REQUIRED trigger dropped   FAIL
+
+test('B2 branches on whether the guard exists and demands the exact set for that state', () => {
+  const b2 = VERIFY.slice(VERIFY.indexOf("'B2'"), VERIFY.indexOf("'B3'")).replace(/--.*$/gm, '');
+  // The weakened form must be gone.
+  assert.equal(/in \(4, 5\)/.test(b2), false, 'a count accepted in both states proves nothing');
+  // It branches on the guard's presence...
+  assert.match(b2, /case when exists \(select 1 from pg_trigger t[\s\S]{0,200}tgname = 'orders_payment_time_guard'/);
+  // ...and pins the exact sorted name set for each state.
+  assert.match(b2, /'orders_insert_guard,orders_payment_automation,'\s*\n\s*\|\| 'orders_payment_time_guard,trg_decrement_stock,trg_meta_capi'/);
+  assert.match(b2, /'orders_insert_guard,orders_payment_automation,'\s*\n\s*\|\| 'trg_decrement_stock,trg_meta_capi'/);
+});
+
+test('B2 reports which state it validated, so a PASS is not ambiguous', () => {
+  const b2 = VERIFY.slice(VERIFY.indexOf("'B2'"), VERIFY.indexOf("'B3'"));
+  assert.match(b2, /PASS - pre-install: exactly the 4 expected triggers, guard absent/);
+  assert.match(b2, /PASS - post-install: exactly 5, the 4 originals plus the guard/);
+  // ...and a failure prints the set it actually found.
+  assert.match(b2, /FAIL - pre-install trigger set is wrong: /);
+  assert.match(b2, /FAIL - post-install trigger set is wrong: /);
+});
+
+test('B2 asserts count, membership and absence of extras in one comparison', () => {
+  // Comparing the sorted comma-joined names covers all three at once: a missing
+  // name, an extra name and a wrong count all change the string.
+  const b2 = VERIFY.slice(VERIFY.indexOf("'B2'"), VERIFY.indexOf("'B3'")).replace(/--.*$/gm, '');
+  assert.equal((b2.match(/string_agg\(t\.tgname, ',' order by t\.tgname\)/g) ?? []).length >= 2, true);
 });
 
 test('the WHEN-clause check matches semantics, not bracketing', () => {

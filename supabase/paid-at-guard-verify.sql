@@ -177,16 +177,43 @@ select 'B1', 'B1 the other four order triggers are untouched',
        then 'PASS' else 'FAIL - an existing order trigger moved' end
 
 union all
-select 'B2', 'B2 exactly one trigger was added, and it is ours',
-  case when (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid
-              where c.relname = 'orders' and not t.tgisinternal)
-            in (4, 5)
-        and (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid
-              where c.relname = 'orders' and not t.tgisinternal
-                and t.tgname not in ('orders_insert_guard', 'orders_payment_automation',
-                                     'trg_decrement_stock', 'trg_meta_capi',
-                                     'orders_payment_time_guard')) = 0
-       then 'PASS' else 'FAIL - an unexpected trigger exists on orders' end
+select 'B2', 'B2 the trigger set on orders is EXACTLY right for the state it is in',
+  -- State-aware on purpose. An earlier version accepted `count(*) in (4, 5)`,
+  -- which passed in BOTH states and so proved nothing about whether the guard
+  -- should be there. This branches on whether the guard exists and then demands
+  -- the exact name set for that state.
+  --
+  -- Comparing the sorted, comma-joined names in one string asserts all three
+  -- things at once: the exact count, every expected name present, and zero
+  -- unexpected names.
+  case when exists (select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                     where c.relname = 'orders' and t.tgname = 'orders_payment_time_guard'
+                       and not t.tgisinternal)
+       then
+         -- POST-INSTALL: the four originals plus the guard, and nothing else.
+         case when (select string_agg(t.tgname, ',' order by t.tgname)
+                      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                     where c.relname = 'orders' and not t.tgisinternal)
+                   = 'orders_insert_guard,orders_payment_automation,'
+                     || 'orders_payment_time_guard,trg_decrement_stock,trg_meta_capi'
+              then 'PASS - post-install: exactly 5, the 4 originals plus the guard'
+              else 'FAIL - post-install trigger set is wrong: '
+                   || coalesce((select string_agg(t.tgname, ',' order by t.tgname)
+                                  from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                                 where c.relname = 'orders' and not t.tgisinternal), 'none') end
+       else
+         -- PRE-INSTALL: exactly the four originals, and the guard absent.
+         case when (select string_agg(t.tgname, ',' order by t.tgname)
+                      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                     where c.relname = 'orders' and not t.tgisinternal)
+                   = 'orders_insert_guard,orders_payment_automation,'
+                     || 'trg_decrement_stock,trg_meta_capi'
+              then 'PASS - pre-install: exactly the 4 expected triggers, guard absent'
+              else 'FAIL - pre-install trigger set is wrong: '
+                   || coalesce((select string_agg(t.tgname, ',' order by t.tgname)
+                                  from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                                 where c.relname = 'orders' and not t.tgisinternal), 'none') end
+  end
 
 union all
 select 'B3', 'B3 orders policies and browser grants unchanged',
