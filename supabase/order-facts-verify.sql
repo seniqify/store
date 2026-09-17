@@ -141,11 +141,23 @@ union all
 select 'F4', 'F4 PUBLIC cannot execute it (the default grant was revoked)',
   -- PostgreSQL grants EXECUTE on every new function to PUBLIC. That default is
   -- how upgrade_store_plan became anon-callable, so it is revoked here.
+  --
+  -- PUBLIC is the aclitem whose GRANTEE IS EMPTY: '=X/postgres'. A named role
+  -- renders as 'anon=X/postgres'. The first version of this row tested the
+  -- flattened acl with `not like '%=X/%'`, which matches every named entry too
+  -- -- 'postgres=X/postgres' contains '=X/' -- so it could never pass for any
+  -- function holding any grant at all. Measured: of the 45 functions in public
+  -- with an acl, zero satisfied it. A check that can never pass is the mirror
+  -- of a check that can never fail, and just as useless.
+  --
+  -- The aclitems are inspected one at a time and matched at the START of the
+  -- string, so only the empty-grantee entry counts.
   case when to_regprocedure('public.get_store_order_facts(text,text)') is null
        then 'N/A - facts feed not installed'
-       when (select coalesce(array_to_string(p.proacl, ' '), '') from pg_proc p
-              where p.oid = to_regprocedure('public.get_store_order_facts(text,text)'))
-            not like '%=X/%'
+       when not exists (
+              select 1 from pg_proc p, unnest(coalesce(p.proacl, '{}'::aclitem[])) a
+               where p.oid = to_regprocedure('public.get_store_order_facts(text,text)')
+                 and a::text like '=%')
        then 'PASS' else 'FAIL - PUBLIC holds EXECUTE' end
 
 union all

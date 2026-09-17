@@ -194,6 +194,58 @@ test('the verifier is one read-only SELECT that survives the pre-install state',
   assert.ok(guards.length >= 8, `each F row needs a guard, found ${guards.length}`);
 });
 
+// ── E2. F4: PUBLIC detection, both directions ────────────────────────────────
+//
+// The first version tested the FLATTENED acl with `not like '%=X/%'`. Every
+// named entry contains that substring -- 'postgres=X/postgres' does -- so the
+// row could never pass for any function holding any grant. Measured against
+// production: of the 45 functions in public with an acl, ZERO satisfied it.
+//
+// Both predicates were run against production in a rolled-back transaction over
+// four synthetic functions and the two real ones:
+//
+//   case                                  old_F4   new_F4   correct?
+//   A named roles only, PUBLIC revoked    false    TRUE     pass  <- old was wrong
+//   B PUBLIC holds EXECUTE (pg default)   false    false    fail
+//   C PUBLIC granted on top of named      false    false    fail
+//   D no grants at all                    false    TRUE     pass  <- old was wrong
+//   E real get_store_order_facts          false    TRUE     pass  <- old was wrong
+//   F real get_store_orders (has PUBLIC)  false    false    fail
+
+test('F4 detects PUBLIC by the EMPTY grantee, not by a substring of the flat acl', () => {
+  // Comments stripped: the row's own commentary QUOTES the broken idiom to
+  // explain it, and the assertion is about what executes.
+  const f4 = VERIFY.slice(VERIFY.indexOf("'F4'"), VERIFY.indexOf("'F5'"))
+    .replace(/--.*$/gm, '');
+  // The broken idiom must be gone.
+  assert.equal(/not like '%=X\/%'/.test(f4), false,
+    "'%=X/%' matches named-role entries too, so the row could never pass");
+  assert.equal(/array_to_string\(p\.proacl/.test(f4), false,
+    'the acl must not be flattened before it is inspected');
+  // The catalog-correct form: inspect aclitems one at a time, anchored at the start.
+  assert.match(f4, /unnest\(coalesce\(p\.proacl, '\{\}'::aclitem\[\]\)\) a/);
+  assert.match(f4, /a::text like '=%'/);
+  assert.match(f4, /not exists \(/);
+});
+
+test('no verifier row detects PUBLIC by substring-matching a flattened acl', () => {
+  // Generic guard, not just for F4: any future ACL check must use the same form.
+  const body = VERIFY.replace(/--.*$/gm, '');
+  assert.equal(/array_to_string\([^)]*proacl[^)]*\)[^;]{0,120}like\s*'%=/.test(body), false,
+    'flattened-acl substring matching cannot distinguish PUBLIC from a named role');
+  // Every place that looks for PUBLIC uses the anchored aclitem form.
+  const publicChecks = body.match(/a::text like '[^']*'/g) ?? [];
+  for (const c of publicChecks) {
+    assert.equal(c, "a::text like '=%'", `unanchored aclitem match: ${c}`);
+  }
+});
+
+test('the F4 failure message still names the problem plainly', () => {
+  const f4 = VERIFY.slice(VERIFY.indexOf("'F4'"), VERIFY.indexOf("'F5'"));
+  assert.match(f4, /FAIL - PUBLIC holds EXECUTE/);
+  assert.match(f4, /'N\/A - facts feed not installed'/);
+});
+
 test('the verifier proves the projection and the absence of PII', () => {
   assert.match(VERIFY, /F6 it returns EXACTLY the 16 declared scalar columns/);
   assert.match(VERIFY, /F7 it leaks NO customer PII and no bulk columns/);
