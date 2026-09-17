@@ -304,19 +304,90 @@ test('the baseline fingerprints are pinned to the values read from production', 
 
 // ── H. rollback ──────────────────────────────────────────────────────────────
 
-test('the rollback refuses once anything but the migration has written the ledger', () => {
+// Every scenario below was executed against production inside a rolled-back
+// transaction, running THIS file's guard text verbatim over a freshly created
+// ledger. Measured outcomes:
+//
+//   1 import-only ledger               ALLOWED
+//   2 non-migration entitlement row    REFUSED  (a) data
+//   3 a VIEW on the ledger             REFUSED  (b) catalog, pg_rewrite
+//   4 FK from another table            REFUSED  (b) catalog, pg_constraint
+//   5 SQL fn with BEGIN ATOMIC body    REFUSED  (b) catalog, pg_proc
+//   6 plpgsql fn reading the ledger    REFUSED  (d) text - catalog is blind
+//   7 SQL fn with a string body        REFUSED  (d) text - catalog is blind
+//   8 trigger on the ledger            REFUSED  (c) pg_trigger
+//
+// Scenario 1 is the one that proves there is no false positive: the ledger's
+// own CHECK constraints record deptype 'n' dependencies on their own columns,
+// and the guard must not read those as outside dependants.
+
+test('an import-only ledger can still be rolled back', () => {
+  // Nothing in the guard may refuse a ledger that only the migration wrote.
+  // The single exclusion is structural (conrelid = the table itself), never a
+  // name match, so it cannot accidentally hide a real dependant.
+  assert.match(ROLLBACK, /and not \(d\.classid = 'pg_constraint'::regclass\s*\n\s*and exists \(select 1 from pg_constraint cn\s*\n\s*where cn\.oid = d\.objid and cn\.conrelid = v_tbl\)\)/);
+  assert.match(ROLLBACK, /raise notice 'ledger is still import-only with no dependants - safe to drop'/);
+});
+
+test('a non-migration entitlement row still refuses the rollback', () => {
   assert.match(ROLLBACK, /source <> ''migration_backfill''/);
   assert.match(ROLLBACK, /REFUSED - %s entitlements were written by something other than the/);
 });
 
-test('the rollback refuses if any function references the ledger', () => {
-  assert.match(ROLLBACK, /prosrc ilike '%plan_entitlements%'/);
-  assert.match(ROLLBACK, /REFUSED - these functions reference the ledger/);
+test('catalog dependencies are the authoritative check, not a text search', () => {
+  // pg_depend, restricted to genuine outside dependencies (deptype 'n') on the
+  // table or any of its columns, in any schema.
+  assert.match(ROLLBACK, /from pg_depend d/);
+  assert.match(ROLLBACK, /d\.refclassid = 'pg_class'::regclass/);
+  assert.match(ROLLBACK, /d\.refobjid\s*= v_tbl/);
+  assert.match(ROLLBACK, /d\.deptype\s*= 'n'/);
+  assert.match(ROLLBACK, /REFUSED - PostgreSQL records these objects as depending on the/);
 });
 
-test('the rollback refuses if a view or other object depends on the ledger', () => {
-  assert.match(ROLLBACK, /REFUSED - these objects depend on the ledger/);
-  assert.match(ROLLBACK, /pg_depend/);
+test('the catalog check names each dependant kind so the message is actionable', () => {
+  // views/rules, foreign keys, function bodies and triggers each resolve to a
+  // readable name rather than a bare oid.
+  for (const cls of ['pg_class', 'pg_rewrite', 'pg_proc', 'pg_constraint', 'pg_trigger']) {
+    assert.match(ROLLBACK, new RegExp(`d\\.classid = '${cls}'::regclass`),
+      `${cls} dependants must be resolvable by name`);
+  }
+});
+
+test('a trigger added to the ledger by a later phase refuses the rollback', () => {
+  assert.match(ROLLBACK, /from pg_trigger t\s*\n\s*where t\.tgrelid = v_tbl and not t\.tgisinternal/);
+  assert.match(ROLLBACK, /REFUSED - the ledger carries triggers a later phase added/);
+});
+
+test('the text scan is kept, because the catalog is blind to plpgsql bodies', () => {
+  // Measured: a plpgsql function and a string-bodied SQL function reading the
+  // ledger record NOTHING in pg_depend. Text is the only signal that exists
+  // for them, so the scan supplements the catalog check rather than replacing
+  // it -- and it must not be narrowed away.
+  assert.match(ROLLBACK, /p\.prosrc ilike '%plan_entitlements%'/);
+  assert.match(ROLLBACK, /REFUSED - these function bodies mention the ledger/);
+  // Every schema, not just public.
+  assert.match(ROLLBACK, /n\.nspname not in \('pg_catalog', 'information_schema'\)/);
+  assert.equal(/nspname = 'public'\s*\n?\s*and p\.prosrc ilike/.test(ROLLBACK), false,
+    'the scan must not be limited to the public schema');
+});
+
+test('the guard is not weakened by exclusions for our own machinery', () => {
+  // Refusing on a false text match is the safe direction. Nothing is exempted
+  // by name -- a human reads the message and decides.
+  const guard = ROLLBACK.slice(ROLLBACK.indexOf('do $guard$'), ROLLBACK.indexOf('$guard$;'));
+  assert.equal(/proname\s*(not\s+)?in\s*\(/.test(guard), false,
+    'no function may be exempted from the scan by name');
+  assert.equal(/plan-entitlements|verify\.sql|rollback\.sql/i.test(guard), false,
+    'no self-exclusion for this PR\'s own files');
+});
+
+test('all four refusal paths run before the drop, in the same transaction', () => {
+  const guardEnd = ROLLBACK.indexOf('$guard$;');
+  const drop     = ROLLBACK.indexOf('drop table if exists public.plan_entitlements');
+  assert.ok(guardEnd > -1 && drop > guardEnd, 'every check precedes the drop');
+  const guard = ROLLBACK.slice(0, guardEnd);
+  assert.equal((guard.match(/raise exception using/g) ?? []).length, 4,
+    'data, catalog, triggers, text - four independent refusals');
 });
 
 test('the guard runs before the drop, inside the same transaction', () => {
@@ -330,9 +401,17 @@ test('the guard runs before the drop, inside the same transaction', () => {
   assert.ok(ROLLBACK.indexOf('$guard$') < ROLLBACK.indexOf('drop table'));
 });
 
-test('the rollback does not cascade and reverts nothing else', () => {
+test('an unexpected dependency is never silently cascaded away', () => {
+  // The last net. If something depends on the table that all four checks above
+  // missed, PostgreSQL must refuse the DROP rather than quietly removing it too.
   const code = stripToCode(ROLLBACK);
-  assert.equal(/cascade/i.test(code), false, 'a surprise dependency should stop the drop');
+  assert.equal(/cascade/i.test(code), false, 'no CASCADE anywhere in executable code');
+  assert.match(code, /drop table if exists public\.plan_entitlements\s*;/,
+    'the drop is plain: no CASCADE, no RESTRICT-by-omission surprise');
+});
+
+test('the rollback reverts nothing else', () => {
+  const code = stripToCode(ROLLBACK);
   assert.equal(/grant |revoke /i.test(code), false, 'PR 1 altered no existing grant to restore');
   for (const forbidden of ['upgrade_store_plan', 'pending_signups', 'public.stores']) {
     assert.equal(code.includes(forbidden), false, `${forbidden} must not be touched on undo`);
