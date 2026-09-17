@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase';
 import { validateCoupon } from '../utils/coupons';
 import { findStoreByPhone, upgradePlan, savePendingSignup } from '../utils/storeService';
+import { activatePaidPlan, logActivation } from '../utils/planActivation';
 import { PRICE } from '../utils/planLimits';
 
 // Display names follow the pricing page: internal key 'business' = Growth,
@@ -142,32 +143,15 @@ export default function Checkout() {
             // provisions the plan server-side as a safety net, so any hiccup on
             // our side should reassure, not alarm.
             try {
-              // 4. Verify the signature on the backend (payment_id | subscription_id)
-              const { data: verifyData } = await supabase.functions.invoke(
-                'verify-razorpay-payment',
-                {
-                  body: {
-                    razorpay_payment_id:      response.razorpay_payment_id,
-                    razorpay_subscription_id: response.razorpay_subscription_id,
-                    razorpay_signature:       response.razorpay_signature,
-                  },
-                },
-              );
-
-              if (!verifyData?.verified) {
-                // Couldn't verify the signature — but money may still have been
-                // deducted. Don't scare a paying customer; the webhook recovers it.
-                setPaying(false);
-                setPayError(PAID_BUT_PENDING);
-                resolve(null);
-                return;
-              }
-
-              // 5. Provision using OUR known plan/period (not the server's echo),
-              //    with retries so a transient DB blip doesn't lose a paid plan.
-              await provisionPaidPlan(subData.subscription_id);
+              // 4. Hand the three identifiers to provisioning. Which path runs
+              //    depends on whether a store already exists — see below.
+              await provisionPaidPlan({
+                subscriptionId: subData.subscription_id,
+                paymentId:      response.razorpay_payment_id,
+                signature:      response.razorpay_signature,
+              });
               resolve(true);
-            } catch (err) {
+            } catch {
               // Payment almost certainly succeeded but a follow-up step failed.
               // The webhook will still provision the plan — reassure the customer.
               setPaying(false);
@@ -189,24 +173,111 @@ export default function Checkout() {
     }
   }
 
-  // Apply the just-paid plan. Existing store for this phone → upgrade it
-  // (renewal); otherwise it's a new signup → carry the plan into onboarding.
-  // Each DB step is retried so a transient blip after a real payment doesn't
-  // strand the customer; the razorpay-webhook is the server-side backstop.
-  async function provisionPaidPlan(subId) {
-    const expires  = termExpiry(period);
+  // Apply the just-paid plan.
+  //
+  // ── EXISTING STORE ── the path phase 3C migrates.
+  //    plan-activate is asked to activate, using ONLY the three identifiers
+  //    Razorpay returned. It verifies the signature, fetches the subscription
+  //    itself, and derives the plan, the window, the store and the billing
+  //    cycle server-side. Nothing here decides any of that any more.
+  //
+  //    On success we are done: upgradePlan() is NOT called, and no plan field
+  //    is written from the browser.
+  //
+  //    On a DEFINITIVE refusal we stop and reassure. We do NOT fall back —
+  //    falling back would launder a rejected activation into a browser-authored
+  //    one, which is the hole this phase exists to close. The webhook still
+  //    provisions, so the merchant gets their plan moments later.
+  //
+  //    On a TRANSIENT failure, after the retries inside activatePaidPlan have
+  //    already been spent, we run the legacy path exactly as it was. This is a
+  //    compatibility measure for the cutover only, and PR 4 removes it together
+  //    with upgrade_store_plan.
+  //
+  // ── NO STORE YET ── deliberately unchanged.
+  //    A paid signup with no store cannot be written to the ledger (an
+  //    entitlement needs a store), so it still goes down the existing
+  //    pending_signups route, verify-razorpay-payment and all. Closing that is
+  //    its own phase; this PR must not half-close it.
+  async function provisionPaidPlan({ subscriptionId, paymentId, signature }) {
     const existing = await retry(() => findStoreByPhone(phone));
-    if (existing) {
-      await retry(() => upgradePlan(existing, storePlan, expires, subId));
-      navigate(`/${existing}/manage`);
-    } else {
-      // Best-effort persist; the webhook also records this by phone.
-      await retry(() => savePendingSignup(phone, storePlan, expires, subId)).catch(() => {});
-      sessionStorage.setItem('pocketlink_plan', storePlan);
-      sessionStorage.setItem('pocketlink_plan_expires', expires);
-      sessionStorage.setItem('pocketlink_subscription_id', subId);
-      navigate('/onboarding');
+
+    if (!existing) {
+      await provisionPreStoreSignup({ subscriptionId, paymentId, signature });
+      return;
     }
+
+    const outcome = await activatePaidPlan({ paymentId, subscriptionId, signature });
+    logActivation(outcome, subscriptionId);
+
+    if (outcome === 'activated' || outcome === 'already_active') {
+      navigate(`/${existing}/manage`);
+      return;
+    }
+
+    if (outcome === 'refused') {
+      setPaying(false);
+      setPayError(PAID_BUT_PENDING);
+      return;
+    }
+
+    if (outcome === 'no_store_yet') {
+      // The store went away between the lookup and the call. Vanishingly
+      // unlikely, but the paid customer must still land somewhere sensible.
+      await provisionPreStoreSignup({ subscriptionId, paymentId, signature });
+      return;
+    }
+
+    // outcome === 'retry' — transient, retries already exhausted.
+    await legacyUpgrade(existing, subscriptionId, { paymentId, signature });
+    navigate(`/${existing}/manage`);
+  }
+
+  // The pre-store route, byte-for-byte what it has always been: verify the
+  // signature, record the paid signup by phone, carry it into onboarding.
+  // The webhook records the same thing server-side.
+  async function provisionPreStoreSignup({ subscriptionId, paymentId, signature }) {
+    const expires = termExpiry(period);
+    const verified = await verifySignature({ subscriptionId, paymentId, signature });
+    if (!verified) {
+      setPaying(false);
+      setPayError(PAID_BUT_PENDING);
+      return;
+    }
+    // Best-effort persist; the webhook also records this by phone.
+    await retry(() => savePendingSignup(phone, storePlan, expires, subscriptionId)).catch(() => {});
+    sessionStorage.setItem('pocketlink_plan', storePlan);
+    sessionStorage.setItem('pocketlink_plan_expires', expires);
+    sessionStorage.setItem('pocketlink_subscription_id', subscriptionId);
+    navigate('/onboarding');
+  }
+
+  // COMPATIBILITY ONLY, for the cutover. Reached solely when plan-activate
+  // could not be spoken to, never when it refused. Removed in PR 4 along with
+  // upgrade_store_plan itself.
+  async function legacyUpgrade(slug, subscriptionId, { paymentId, signature }) {
+    const verified = await verifySignature({ subscriptionId, paymentId, signature });
+    if (!verified) {
+      setPaying(false);
+      setPayError(PAID_BUT_PENDING);
+      throw new Error('unverified');
+    }
+    const expires = termExpiry(period);
+    await retry(() => upgradePlan(slug, storePlan, expires, subscriptionId));
+  }
+
+  // The legacy signature check. It is no longer the authority for an existing
+  // store — plan-activate is — but it still gates the two paths that have not
+  // been migrated yet.
+  async function verifySignature({ subscriptionId, paymentId, signature }) {
+    const { data } = await supabase.functions.invoke('verify-razorpay-payment', {
+      body: {
+        razorpay_payment_id:      paymentId,
+        razorpay_subscription_id: subscriptionId,
+        razorpay_signature:       signature,
+      },
+    });
+    return Boolean(data?.verified);
   }
 
   function applyCoupon() {

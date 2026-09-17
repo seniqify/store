@@ -471,12 +471,22 @@ test('no secret is ever returned or logged', () => {
 });
 
 test('external errors are generic and never name the internal reason', () => {
-  assert.match(FN, /const refuse = \(\) => json\(\{ ok: false, error: 'invalid_request' \}, 400\)/);
-  assert.match(FN, /const unavailable = \(\) => json\(\{ ok: false, error: 'temporarily_unavailable' \}, 503\)/);
+  // PR 3 added a coarse `status` so a caller can tell "never" from "not yet".
+  // It still carries no internal detail: a prober learns nothing from it that
+  // any failure would not already have told them.
+  assert.match(FN, /const refuse = \(\) => json\(\{ ok: false, status: 'refused', error: 'invalid_request' \}, 400\)/);
+  assert.match(FN, /const unavailable = \(\) => json\(\{ ok: false, status: 'retry', error: 'temporarily_unavailable' \}, 503\)/);
   // Razorpay's own error body is never forwarded.
   assert.equal(/await res\.text\(\)|JSON\.stringify\(data\)/.test(FN), false);
   // The resolver's reason is logged, not returned.
-  assert.match(FN, /console\.error\(`plan-activate: \$\{resolved\.reason\}/);
+  assert.match(FN, /console\.error\(`plan-activate: refused, \$\{resolved\.reason\}/);
+  // No internal reason string ever reaches a response body.
+  for (const body of FN.match(/json\(\{[^}]*\}[^)]*\)/g) ?? []) {
+    for (const reason of ['plan_unresolved', 'subscription_not_paid', 'owner_unresolved',
+                          'idempotency_conflict', 'owner_ambiguous', 'cycle_unresolved']) {
+      assert.equal(body.includes(reason), false, `${reason} must not be returned: ${body}`);
+    }
+  }
 });
 
 test('missing configuration fails closed without naming what is missing', () => {
@@ -485,8 +495,12 @@ test('missing configuration fails closed without naming what is missing', () => 
 });
 
 test('the successful response reveals nothing about the store', () => {
-  assert.match(FN, /return json\(\{ ok: true, activated: Boolean\(data\.activated\) \}\)/);
+  assert.match(FN, /return json\(\{ ok: true, activated: true, status \}\)/);
+  assert.match(FN, /return json\(\{ ok: true, activated: false, status: 'no_store_yet' \}\)/);
   assert.equal(/store_slug: data|data\.store_slug/.test(FN), false);
+  // `status` distinguishes a fresh grant from a replay, which the caller needs
+  // for telemetry, and nothing else.
+  assert.match(FN, /const status = data\.created \? 'activated' : 'already_active'/);
 });
 
 // ── G. one shared authority, no second implementation ────────────────────────

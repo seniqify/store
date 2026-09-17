@@ -69,17 +69,46 @@ const CORS = {
 const ALLOWED_FIELDS = ['razorpay_payment_id', 'razorpay_subscription_id', 'razorpay_signature'];
 
 /**
- * External errors are deliberately generic. The reason is logged server-side
- * and never returned: "plan_unresolved" vs "subscription_not_paid" tells a
- * prober exactly which lever to pull next.
+ * External errors are deliberately generic. The internal reason is logged
+ * server-side and never returned: "plan_unresolved" vs "subscription_not_paid"
+ * would tell a prober exactly which lever to pull next.
+ *
+ * ---------------------------------------------------------------------------
+ * THE THREE-WAY CONTRACT
+ *
+ * A caller has to know one thing this function did not previously tell it:
+ * whether failing again is possible. During the cutover the browser keeps the
+ * legacy path as a compatibility fallback, and it must run that fallback ONLY
+ * for transient infrastructure failure -- never for a refusal, or the fallback
+ * becomes a way to launder a rejected activation into a browser-authored one.
+ *
+ *   status          http  meaning                          caller may fall back
+ *   --------------  ----  -------------------------------  --------------------
+ *   activated       200   granted now                      no
+ *   already_active  200   this cycle was already granted   no
+ *   no_store_yet    200   paid, but no store to grant to   no (pre-store path)
+ *   refused         400   will never succeed as submitted  NO. NEVER.
+ *   retry           503   infrastructure, try again        yes
+ *
+ * "refused" and "retry" carry no detail beyond that distinction, so they leak
+ * nothing an attacker can steer by: a prober already learns "this did not work"
+ * from any failure, and learning "and it never will" tells them nothing more.
+ *
+ * WHY A REFUSAL IS SAFE TO BE FINAL: the razorpay-webhook is unchanged and
+ * still provisions on subscription.charged. A refusal here does not cost a
+ * paying merchant their plan -- it costs them the instant activation, and the
+ * webhook lands it seconds later. That is exactly the case the existing
+ * "paid but pending" message in checkout was written for.
  */
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 }
-const refuse = () => json({ ok: false, error: 'invalid_request' }, 400);
-const unavailable = () => json({ ok: false, error: 'temporarily_unavailable' }, 503);
+/** Definitive. The caller must NOT retry and must NOT fall back. */
+const refuse = () => json({ ok: false, status: 'refused', error: 'invalid_request' }, 400);
+/** Transient. The caller may retry the same identifiers, then fall back. */
+const unavailable = () => json({ ok: false, status: 'retry', error: 'temporarily_unavailable' }, 503);
 
 async function hmacHex(secret: string, message: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -153,7 +182,10 @@ serve(async (req) => {
     if (!res.ok) {
       // Razorpay's body can echo request detail. Log the status only.
       console.error(`plan-activate: razorpay fetch ${res.status} for ${subscriptionId}`);
-      return unavailable();
+      // A 4xx means Razorpay will keep saying no to this subscription -- an id
+      // that does not exist, or one our key cannot see. Only their side being
+      // unwell is worth another attempt.
+      return res.status >= 500 || res.status === 429 ? unavailable() : refuse();
     }
     const sub = await res.json();
 
@@ -165,12 +197,16 @@ serve(async (req) => {
 
     const resolved = resolveActivation(sub);
     if (!resolved.ok) {
-      console.error(`plan-activate: ${resolved.reason} for ${subscriptionId}`);
-      // A stale or unpaid subscription is a client-visible refusal; an
-      // unmapped plan_id is our configuration problem, not the caller's.
-      return resolved.reason === 'plan_unresolved' || resolved.reason === 'cycle_unresolved'
-        ? unavailable()
-        : refuse();
+      // Every one of these is DEFINITIVE, including plan_unresolved.
+      //
+      // plan_unresolved means our own map does not know the plan_id, which is
+      // a configuration gap on our side rather than the caller's fault -- so it
+      // is tempting to call it transient and let the browser carry on. That
+      // would be exactly wrong: the only thing the browser could fall back to
+      // is its own claim about what was bought, which is the authority this
+      // whole phase exists to remove. The webhook still provisions.
+      console.error(`plan-activate: refused, ${resolved.reason} for ${subscriptionId}`);
+      return refuse();
     }
 
     // -- [3] ENTITLEMENT + PROJECTION, one transaction ----------------------
@@ -189,22 +225,36 @@ serve(async (req) => {
     });
 
     if (error) {
+      // The transport or the database was unwell. Worth another attempt.
       console.error(`plan-activate: writer failed for ${subscriptionId}: ${error.message}`);
       return unavailable();
     }
     if (!data?.ok) {
+      // The writer itself said no: idempotency_conflict, owner_ambiguous,
+      // incomplete_grant. These are DEFINITIVE -- retrying sends the identical
+      // payload and gets the identical answer, and falling back would let a
+      // conflicting grant become a browser-authored one.
       console.error(`plan-activate: writer refused for ${subscriptionId}: ${data?.reason}`);
-      return unavailable();
+      return refuse();
     }
 
     // The store this resolved to is NOT returned. The caller told us three
     // identifiers and gets back whether activation happened -- nothing that
     // could be used to enumerate stores by paying once.
+    if (!data.activated) {
+      // Paid, but the phone on the subscription maps to no store yet. This is
+      // NOT a failure: it is the paid-before-building case, which still belongs
+      // to the existing pending_signups path. Nothing was written here.
+      console.log(`plan-activate: no_store_yet for ${subscriptionId} cycle=${resolved.idempotencyKey}`);
+      return json({ ok: true, activated: false, status: 'no_store_yet' });
+    }
+
+    const status = data.created ? 'activated' : 'already_active';
     console.log(
-      `plan-activate: ${subscriptionId} cycle=${resolved.idempotencyKey} ` +
-      `activated=${data.activated} created=${data.created} plan=${resolved.plan}`,
+      `plan-activate: ${status} ${subscriptionId} cycle=${resolved.idempotencyKey} ` +
+      `enriched=${data.enriched} plan=${resolved.plan}`,
     );
-    return json({ ok: true, activated: Boolean(data.activated) });
+    return json({ ok: true, activated: true, status });
   } catch (err) {
     console.error(`plan-activate: unexpected failure: ${(err as Error)?.message}`);
     return unavailable();
