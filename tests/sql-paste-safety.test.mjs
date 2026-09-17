@@ -37,6 +37,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/plan-entitlements-ROLLBACK.sql',
   'supabase/plan-activation-forward.sql',
   'supabase/plan-activation-ROLLBACK.sql',
+  'supabase/order-facts-forward.sql',
+  'supabase/order-facts-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
