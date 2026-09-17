@@ -130,6 +130,8 @@ declare
   v_matches     integer;
   v_cfg         jsonb;
   v_created     boolean := false;
+  v_enriched    boolean := false;
+  v_conflict    text[];
   v_existing    public.plan_entitlements%rowtype;
   v_cur_expiry  timestamptz;
   v_new_expiry  timestamptz;
@@ -195,23 +197,80 @@ begin
   get diagnostics v_matches = row_count;
   v_created := v_matches = 1;
 
-  -- -- 3. a replay must agree with what was already granted.
+  -- -- 3. a replay must agree with the WHOLE authoritative grant, not part of it.
   -- --
-  -- -- If the key is already present, this is a retry: the webhook and the
-  -- -- browser racing for one charge, or the same request twice. That is fine
-  -- -- and must be a no-op. But if the key is present carrying a DIFFERENT
-  -- -- grant, something is wrong -- a reused key, a changed plan mapping -- and
-  -- -- projecting either version would be guessing. Refuse and write nothing.
+  -- -- If the key is already present this is a retry: the same request twice,
+  -- -- or the webhook and the browser racing for one charge. That must be a
+  -- -- no-op. But a reused key carrying a DIFFERENT grant is a contradiction,
+  -- -- and projecting either version would be guessing.
+  -- --
+  -- -- EVERY security-relevant field is compared, because the projection below
+  -- -- uses the INCOMING values: comparing only some of them would let a retry
+  -- -- skip the insert and still move stores.config to a different expiry.
+  -- --
+  -- --   store_slug, plan, source          who and what
+  -- --   razorpay_subscription_id          which mandate
+  -- --   razorpay_plan_id                  which price -- the amount evidence
+  -- --   starts_at, expires_at             the window being granted
+  -- --
+  -- -- verified_at is deliberately NOT compared. It records when a server
+  -- -- checked the proof, not what was granted, and it legitimately differs
+  -- -- between the first write and a later retry.
+  -- --
+  -- -- razorpay_payment_id has its own rule, because the two future writers for
+  -- -- one cycle do not both know it:
+  -- --
+  -- --   stored     incoming    outcome
+  -- --   ---------  ----------  ---------------------------------------------
+  -- --   X          X           compatible
+  -- --   X          NULL        compatible, the stored id is KEPT (the webhook
+  -- --                          replaying subscription.activated after the
+  -- --                          browser already recorded the charge)
+  -- --   NULL       X           compatible, and ENRICHED in place (the webhook
+  -- --                          claimed the cycle first, the browser now
+  -- --                          supplies the charge it was paid by)
+  -- --   X          Y  (X<>Y)   CONFLICT - two different payments cannot have
+  -- --                          paid for the same cycle
+  -- --
+  -- -- Enrichment is safe because the payment id is audit evidence only: it
+  -- -- feeds no decision here -- plan, window and store all come from the
+  -- -- subscription entity. It is strictly one-way, NULL -> value, so it can
+  -- -- never rewrite authority and concurrent enrichment converges.
   if not v_created then
     select * into v_existing
       from public.plan_entitlements
-     where idempotency_key = p_idempotency_key;
+     where idempotency_key = p_idempotency_key
+     for update;
 
-    if v_existing.store_slug is distinct from v_slug
-       or v_existing.plan is distinct from p_plan
-       or v_existing.source is distinct from p_source then
+    v_conflict := array_remove(array[
+      case when v_existing.store_slug               is distinct from v_slug              then 'store_slug'               end,
+      case when v_existing.plan                     is distinct from p_plan              then 'plan'                     end,
+      case when v_existing.source                   is distinct from p_source            then 'source'                   end,
+      case when v_existing.razorpay_subscription_id is distinct from p_subscription_id   then 'razorpay_subscription_id' end,
+      case when v_existing.razorpay_plan_id         is distinct from p_razorpay_plan_id  then 'razorpay_plan_id'         end,
+      case when v_existing.starts_at                is distinct from p_starts_at         then 'starts_at'                end,
+      case when v_existing.expires_at               is distinct from p_expires_at        then 'expires_at'               end,
+      case when v_existing.razorpay_payment_id is not null and p_payment_id is not null
+            and v_existing.razorpay_payment_id <> p_payment_id                           then 'razorpay_payment_id'     end
+    ], null);
+
+    if array_length(v_conflict, 1) > 0 then
+      -- Nothing is written. stores.config is NOT touched, and the stored
+      -- entitlement is left exactly as it was.
       return jsonb_build_object(
-        'ok', false, 'reason', 'idempotency_conflict', 'store_slug', v_existing.store_slug);
+        'ok', false,
+        'reason', 'idempotency_conflict',
+        'conflict_on', to_jsonb(v_conflict),
+        'store_slug', v_existing.store_slug);
+    end if;
+
+    if v_existing.razorpay_payment_id is null and p_payment_id is not null then
+      update public.plan_entitlements
+         set razorpay_payment_id = p_payment_id,
+             updated_at = now()
+       where idempotency_key = p_idempotency_key
+         and razorpay_payment_id is null;
+      v_enriched := true;
     end if;
   end if;
 
@@ -261,6 +320,7 @@ begin
     'ok',         true,
     'activated',  true,
     'created',    v_created,
+    'enriched',   v_enriched,
     'store_slug', v_slug,
     'plan',       p_plan,
     'expires_at', v_new_expiry,

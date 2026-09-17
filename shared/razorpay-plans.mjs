@@ -95,19 +95,33 @@ export function planFromSubscription(sub) {
 }
 
 /**
- * Paid-through date, server-derived.
+ * Paid-through date, server-derived -- and DETERMINISTIC.
+ *
+ * There is no clock in here, on purpose. apply_plan_entitlement compares
+ * expires_at exactly when it sees a replayed idempotency key, so the same
+ * subscription entity must always produce the same window. A now()-based
+ * fallback would make an ordinary retry look like a conflicting grant, and a
+ * webhook and a browser resolving the same cycle a second apart would disagree.
  *
  * current_end is Razorpay's own "this cycle is paid until", in epoch seconds.
- * When it is absent -- which happens on a fresh activation before the first
- * cycle is published -- one period is used instead, so a merchant who has just
- * paid is never left without an entitlement window.
+ * If it has not been published yet, one period from current_start is used --
+ * still a pure function of the entity. If neither is present there is nothing
+ * deterministic to derive a window from, and the caller must refuse rather than
+ * invent one.
+ *
+ * Returns null when no window can be derived.
  */
-export function expiryFromSubscription(sub, period, nowMs = Date.now()) {
-  const endSec = sub && Number.isFinite(sub.current_end) ? sub.current_end : null;
-  const baseMs = endSec !== null && endSec > 0
-    ? endSec * 1000
-    : nowMs + (CYCLE_DAYS[period] ?? CYCLE_DAYS.monthly) * 86400000;
-  return new Date(baseMs + GRACE_MS).toISOString();
+export function expiryFromSubscription(sub, period) {
+  const endSec = sub && Number.isFinite(sub.current_end) && sub.current_end > 0
+    ? sub.current_end : null;
+  if (endSec !== null) return new Date(endSec * 1000 + GRACE_MS).toISOString();
+
+  const startSec = sub && Number.isFinite(sub.current_start) && sub.current_start > 0
+    ? sub.current_start : null;
+  if (startSec === null) return null;
+
+  const cycleMs = (CYCLE_DAYS[period] ?? CYCLE_DAYS.monthly) * 86400000;
+  return new Date(startSec * 1000 + cycleMs + GRACE_MS).toISOString();
 }
 
 /** When the current cycle began, if Razorpay published it. */
@@ -146,8 +160,14 @@ export function cycleIdempotencyKey(sub) {
  *
  * Returns { ok: false, reason } rather than throwing, so the caller can map
  * reasons to logs without leaking them to the browser.
+ *
+ * Every field it returns is a pure function of `sub`, with no clock and no
+ * caller input, so resolving the same cycle twice -- from the browser now and
+ * from the webhook a second later -- yields an identical grant payload. That is
+ * what lets apply_plan_entitlement compare a replay field by field and refuse
+ * anything that disagrees.
  */
-export function resolveActivation(sub, nowMs = Date.now()) {
+export function resolveActivation(sub) {
   if (!sub || !isSubscriptionId(sub.id)) return { ok: false, reason: 'subscription_malformed' };
   if (!PAID_STATUSES.includes(sub.status)) return { ok: false, reason: 'subscription_not_paid' };
 
@@ -161,6 +181,9 @@ export function resolveActivation(sub, nowMs = Date.now()) {
   const phone = phoneLast10(sub.notes && sub.notes.phone);
   if (!phone) return { ok: false, reason: 'owner_unresolved' };
 
+  const expiresAt = expiryFromSubscription(sub, mapped.period);
+  if (!expiresAt) return { ok: false, reason: 'cycle_window_unresolved' };
+
   return {
     ok: true,
     plan: mapped.plan,
@@ -169,7 +192,7 @@ export function resolveActivation(sub, nowMs = Date.now()) {
     subscriptionId: sub.id,
     ownerPhoneLast10: phone,
     startsAt: startFromSubscription(sub),
-    expiresAt: expiryFromSubscription(sub, mapped.period, nowMs),
+    expiresAt,
     idempotencyKey: key,
   };
 }

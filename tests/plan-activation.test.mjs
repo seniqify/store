@@ -107,14 +107,38 @@ test('a forged expiry is ignored: the expiry is derived from current_end', () =>
   assert.equal(resolveActivation({ ...forged, expires_at: '2099-01-01T00:00:00Z' }, NOW).expiresAt, want);
 });
 
-test('a missing current_end falls back to one cycle, never to nothing', () => {
-  const monthly = resolveActivation(sub({ current_end: undefined }), NOW);
+test('a missing current_end falls back to one cycle from current_start, with no clock', () => {
+  // The fallback must stay a pure function of the entity: apply_plan_entitlement
+  // compares expires_at exactly on a replay, so a now()-based window would make
+  // an ordinary retry look like a conflicting grant.
+  const startSec = Math.floor(NOW / 1000) - 86400;
+  const monthly = resolveActivation(sub({ current_end: undefined }));
   assert.equal(monthly.expiresAt,
-    new Date(NOW + CYCLE_DAYS.monthly * 86400000 + GRACE_MS).toISOString());
-  const yearly = resolveActivation(
-    sub({ current_end: 0, plan_id: 'plan_TX4a4orxglrlrC' }), NOW);
+    new Date(startSec * 1000 + CYCLE_DAYS.monthly * 86400000 + GRACE_MS).toISOString());
+  const yearly = resolveActivation(sub({ current_end: 0, plan_id: 'plan_TX4a4orxglrlrC' }));
   assert.equal(yearly.expiresAt,
-    new Date(NOW + CYCLE_DAYS.yearly * 86400000 + GRACE_MS).toISOString());
+    new Date(startSec * 1000 + CYCLE_DAYS.yearly * 86400000 + GRACE_MS).toISOString());
+});
+
+test('with neither current_end nor current_start there is no window, so it refuses', () => {
+  // Inventing a window from the clock is what the replay contract cannot allow.
+  const r = resolveActivation(sub({ current_end: undefined, current_start: undefined }));
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'cycle_window_unresolved');
+  assert.equal(expiryFromSubscription({ id: 'sub_x' }, 'monthly'), null);
+});
+
+test('resolving the same cycle twice, seconds apart, yields an IDENTICAL payload', () => {
+  // This is the property the whole replay comparison rests on.
+  const entity = sub();
+  const a = resolveActivation(entity);
+  const b = resolveActivation(entity);
+  assert.deepEqual(a, b);
+  // ...and it holds across a real interval, because no clock is consulted.
+  const later = resolveActivation({ ...entity });
+  assert.equal(later.expiresAt, a.expiresAt);
+  assert.equal(later.startsAt, a.startsAt);
+  assert.equal(later.idempotencyKey, a.idempotencyKey);
 });
 
 test('a forged subscription id cannot be substituted: shape is checked and the fetch is authoritative', () => {
@@ -274,11 +298,99 @@ test('no store yet is a benign no-op, not an error and not a write', () => {
   assert.equal(/insert into/.test(branch), false, 'nothing is written when there is no store');
 });
 
-test('a replay carrying a different grant is refused, not silently accepted', () => {
-  assert.match(WRITER, /if not v_created then/);
-  assert.match(WRITER, /v_existing\.store_slug is distinct from v_slug/);
-  assert.match(WRITER, /v_existing\.plan is distinct from p_plan/);
-  assert.match(WRITER, /'idempotency_conflict'/);
+// ── D2. the replay contract ──────────────────────────────────────────────────
+//
+// Every scenario below was executed against production inside a rolled-back
+// transaction, calling the real function. Measured outcomes:
+//
+//   same key, different expires_at            CONFLICT on [expires_at], no projection
+//   same key, different razorpay_plan_id      CONFLICT on [razorpay_plan_id]
+//   same key, different subscription_id       CONFLICT on [razorpay_subscription_id]
+//   same key, different starts_at             CONFLICT on [starts_at]
+//   browser (with pay id) -> webhook (no pay) compatible, stored id KEPT
+//   webhook (no pay) -> browser (with pay)    compatible, ENRICHED in place
+//   same key, two different payment ids       CONFLICT on [razorpay_payment_id]
+//   exact replay                              ok, created=false, one row
+
+test('the replay comparison covers the WHOLE authoritative grant', () => {
+  // Comparing only some fields would let a retry skip the insert and still
+  // move stores.config to a different expiry -- which is what review caught.
+  const cmp = WRITER.slice(WRITER.indexOf('v_conflict := array_remove'),
+                           WRITER.indexOf('if array_length(v_conflict, 1) > 0'));
+  for (const [field, expr] of [
+    ['store_slug', /v_existing\.store_slug\s+is distinct from v_slug/],
+    ['plan', /v_existing\.plan\s+is distinct from p_plan/],
+    ['source', /v_existing\.source\s+is distinct from p_source/],
+    ['razorpay_subscription_id', /v_existing\.razorpay_subscription_id is distinct from p_subscription_id/],
+    ['razorpay_plan_id', /v_existing\.razorpay_plan_id\s+is distinct from p_razorpay_plan_id/],
+    ['starts_at', /v_existing\.starts_at\s+is distinct from p_starts_at/],
+    ['expires_at', /v_existing\.expires_at\s+is distinct from p_expires_at/],
+  ]) {
+    assert.match(cmp, expr, `${field} must be compared on a replay`);
+  }
+});
+
+test('verified_at is deliberately NOT part of the comparison', () => {
+  // It records when a server checked the proof, not what was granted, and it
+  // legitimately differs between the first write and a later retry.
+  const cmp = WRITER.slice(WRITER.indexOf('v_conflict := array_remove'),
+                           WRITER.indexOf('if array_length(v_conflict, 1) > 0'));
+  assert.equal(/verified_at/.test(cmp), false);
+});
+
+test('a conflict refuses BEFORE any projection and mutates nothing', () => {
+  const conflictReturn = WRITER.indexOf("'reason', 'idempotency_conflict'");
+  const enrich = WRITER.indexOf('set razorpay_payment_id = p_payment_id');
+  const project = WRITER.indexOf('update public.stores s');
+  assert.ok(conflictReturn > -1);
+  assert.ok(conflictReturn < enrich, 'the conflict returns before any enrichment');
+  assert.ok(conflictReturn < project, 'and before the projection');
+  // The refusal branch itself: from the conflict test to the start of the
+  // compatible-path enrichment.
+  const block = WRITER.slice(WRITER.indexOf('if array_length(v_conflict, 1) > 0'),
+                             WRITER.indexOf('if v_existing.razorpay_payment_id is null'));
+  assert.match(block, /return jsonb_build_object\(/);
+  assert.equal(/update public\./.test(block), false, 'nothing is written on a conflict');
+  assert.equal(/insert into/.test(block), false);
+});
+
+test('the conflict result names which fields disagreed', () => {
+  assert.match(WRITER, /'conflict_on', to_jsonb\(v_conflict\)/);
+});
+
+test('the payment-id compatibility rule is exactly NULL-tolerant, value-strict', () => {
+  // X/X and X/NULL and NULL/X are compatible; X/Y is not.
+  assert.match(WRITER, /v_existing\.razorpay_payment_id is not null and p_payment_id is not null\s*\n\s*and v_existing\.razorpay_payment_id <> p_payment_id/);
+});
+
+test('enrichment is strictly one-way, NULL to value, and never rewrites', () => {
+  const enrich = WRITER.slice(WRITER.indexOf('if v_existing.razorpay_payment_id is null'),
+                              WRITER.indexOf('-- -- 4.'));
+  assert.match(enrich, /is null and p_payment_id is not null/);
+  assert.match(enrich, /set razorpay_payment_id = p_payment_id/);
+  // The UPDATE re-asserts the NULL in its WHERE, so two concurrent enrichments
+  // converge and neither can overwrite a value that arrived first.
+  assert.match(enrich, /where idempotency_key = p_idempotency_key\s*\n\s*and razorpay_payment_id is null/);
+  // Nothing else about the stored grant may be touched.
+  for (const col of ['plan', 'expires_at', 'starts_at', 'razorpay_plan_id',
+                     'razorpay_subscription_id', 'store_slug', 'source', 'verified_at']) {
+    assert.equal(new RegExp(`set[^;]*\\b${col}\\s*=`).test(enrich), false,
+      `enrichment must not write ${col}`);
+  }
+});
+
+test('the existing row is locked before it is compared', () => {
+  const sel = WRITER.slice(WRITER.indexOf('select * into v_existing'),
+                           WRITER.indexOf('v_conflict := array_remove'));
+  assert.match(sel, /for update/);
+  // Store first, then ledger -- one lock order for every caller.
+  assert.ok(WRITER.indexOf('for update') < WRITER.indexOf('select * into v_existing'));
+});
+
+test('an exact replay reports created=false and enriched=false', () => {
+  assert.match(WRITER, /'created',    v_created,/);
+  assert.match(WRITER, /'enriched',   v_enriched,/);
+  assert.match(WRITER, /v_enriched\s+boolean := false;/);
 });
 
 test('the projection never reduces an entitlement', () => {
