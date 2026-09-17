@@ -33,6 +33,20 @@
  * A refusal is safe to be final because the razorpay-webhook is unchanged and
  * still provisions on subscription.charged: the merchant gets their plan a few
  * moments later instead of instantly.
+ *
+ * ---------------------------------------------------------------------------
+ * ONLY THE EXACT CONTRACT COUNTS
+ *
+ * An outcome is recognised only when the HTTP status, `ok`, `status` and
+ * `activated` all agree with RESPONSE_CONTRACT below. Nothing is inferred from
+ * the HTTP code alone, because the code alone is not ours: a 400 can come from
+ * a CDN, a proxy or a misrouted request, and `refused` is the one outcome that
+ * suppresses the fallback. Anything that does not speak the contract is
+ * `retry`.
+ *
+ * A useful side effect: the function currently deployed answers success without
+ * a `status` field, so a site-first deployment degrades to the legacy path
+ * rather than being misread. The order is still function first, then site.
  */
 
 const SB_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
@@ -60,6 +74,61 @@ export function isSettled(outcome) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * THE SERVER CONTRACT, ENUMERATED.
+ *
+ * An outcome is only recognised when the HTTP status, `ok`, `status` and
+ * `activated` ALL match one of these rows exactly. Nothing is inferred from
+ * the HTTP code on its own.
+ *
+ * That matters most for 400. A 400 can come from a CDN, a proxy, a gateway or
+ * a misrouted request as easily as from plan-activate, and `refused` is the one
+ * outcome that SUPPRESSES the compatibility fallback. Reading "400" as "the
+ * server refused this activation" would let any intermediary strand a paying
+ * merchant. Only a body that actually speaks the contract can do that.
+ *
+ * `activated: undefined` means the field is not part of that row's contract.
+ */
+export const RESPONSE_CONTRACT = Object.freeze({
+  activated:      Object.freeze({ http: 200, ok: true,  activated: true }),
+  already_active: Object.freeze({ http: 200, ok: true,  activated: true }),
+  no_store_yet:   Object.freeze({ http: 200, ok: true,  activated: false }),
+  refused:        Object.freeze({ http: 400, ok: false, activated: undefined }),
+  retry:          Object.freeze({ http: 503, ok: false, activated: undefined }),
+});
+
+/**
+ * Map one response to an outcome, or to 'retry' if it does not speak the
+ * contract exactly. Exported so the tests can drive it directly.
+ *
+ * Everything unrecognised becomes 'retry' rather than a refusal, including
+ * 401/403 and 404: those are configuration or routing problems, not a ruling on
+ * this payment, and during the cutover the safer reading of "I could not get an
+ * answer" is "let the merchant through the legacy path" -- which still requires
+ * a valid Razorpay signature before it writes anything.
+ */
+export function classifyResponse(httpStatus, data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'retry';
+
+  const name = data.status;
+  if (typeof name !== 'string') return 'retry';
+  if (!Object.prototype.hasOwnProperty.call(RESPONSE_CONTRACT, name)) return 'retry';
+
+  const spec = RESPONSE_CONTRACT[name];
+  if (httpStatus !== spec.http) return 'retry';
+  if (data.ok !== spec.ok) return 'retry';
+  if (spec.activated === undefined) {
+    // refused and retry carry no `activated` at all. A body that pairs a
+    // refusal with an activation flag is contradicting itself.
+    if ('activated' in data) return 'retry';
+  } else if (data.activated !== spec.activated) {
+    // status and activated must agree: no_store_yet with activated:true, or
+    // activated with activated:false, is not a contract this client honours.
+    return 'retry';
+  }
+  return name;
+}
+
 /** One attempt. Returns an outcome string; never throws. */
 async function attempt(body, endpoint, timeoutMs, fetchImpl) {
   const controller = new AbortController();
@@ -72,22 +141,18 @@ async function attempt(body, endpoint, timeoutMs, fetchImpl) {
       signal: controller.signal,
     });
 
-    // 400 is the server saying "never". Anything else that is not a success is
-    // treated as infrastructure -- including 404, which is what an undeployed
-    // function looks like.
-    if (res.status === 400) return 'refused';
-    if (!res.ok) return 'retry';
-
-    const data = await res.json().catch(() => null);
-    if (!data || data.ok !== true) return 'retry';
-    if (data.activated === true) {
-      return data.status === 'already_active' ? 'already_active' : 'activated';
+    // Parse FIRST, classify from the contract. The status code alone decides
+    // nothing -- a non-JSON 400 from a proxy is 'retry', not a refusal.
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      return 'retry';
     }
-    if (data.activated === false) return 'no_store_yet';
-    return 'retry';
+    return classifyResponse(res.status, data);
   } catch {
-    // Abort, DNS, offline, CORS, malformed response -- all indistinguishable
-    // from here, and all transient as far as the caller is concerned.
+    // Abort, DNS, offline, CORS -- all indistinguishable from here, and all
+    // transient as far as the caller is concerned.
     return 'retry';
   } finally {
     clearTimeout(timer);

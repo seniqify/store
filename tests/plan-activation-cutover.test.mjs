@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  activatePaidPlan, isSettled, logActivation,
-  ACTIVATION_OUTCOMES, ACTIVATE_ATTEMPTS,
+  activatePaidPlan, isSettled, logActivation, classifyResponse,
+  ACTIVATION_OUTCOMES, ACTIVATE_ATTEMPTS, RESPONSE_CONTRACT,
 } from '../src/utils/planActivation.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
@@ -107,6 +107,124 @@ test('every documented outcome is produced from the matching response', async ()
     assert.equal(await activatePaidPlan(IDS, { ...OPTS, fetchImpl: impl }), want);
   }
   for (const o of ACTIVATION_OUTCOMES) assert.ok(typeof o === 'string');
+});
+
+// ── B2. the parser trusts the contract, not the status code ──────────────────
+//
+// `refused` is the one outcome that SUPPRESSES the compatibility fallback, and
+// a 400 can come from a CDN, a proxy or a misrouted request as easily as from
+// plan-activate. So nothing is inferred from the HTTP code alone.
+
+test('each of the five exact contracts maps to its outcome', () => {
+  assert.equal(classifyResponse(200, { ok: true, status: 'activated', activated: true }), 'activated');
+  assert.equal(classifyResponse(200, { ok: true, status: 'already_active', activated: true }), 'already_active');
+  assert.equal(classifyResponse(200, { ok: true, status: 'no_store_yet', activated: false }), 'no_store_yet');
+  assert.equal(classifyResponse(400, { ok: false, status: 'refused' }), 'refused');
+  assert.equal(classifyResponse(503, { ok: false, status: 'retry' }), 'retry');
+});
+
+test('the contract table covers exactly the five outcomes', () => {
+  assert.deepEqual(Object.keys(RESPONSE_CONTRACT).sort(), [...ACTIVATION_OUTCOMES].sort());
+});
+
+test('a status/activated mismatch is never promoted to a business outcome', () => {
+  const mismatches = [
+    [200, { ok: true, status: 'no_store_yet', activated: true }],
+    [200, { ok: true, status: 'activated', activated: false }],
+    [200, { ok: true, status: 'already_active', activated: false }],
+    [200, { ok: true, status: 'activated' }],                       // activated absent
+    [200, { ok: true, status: 'no_store_yet' }],
+    [400, { ok: false, status: 'refused', activated: true }],       // contradicts itself
+    [503, { ok: false, status: 'retry', activated: false }],
+  ];
+  for (const [http, body] of mismatches) {
+    assert.equal(classifyResponse(http, body), 'retry', JSON.stringify(body));
+  }
+});
+
+test('a status on the WRONG http code is not honoured', () => {
+  assert.equal(classifyResponse(200, { ok: false, status: 'refused' }), 'retry');
+  assert.equal(classifyResponse(400, { ok: false, status: 'retry' }), 'retry');
+  assert.equal(classifyResponse(503, { ok: false, status: 'refused' }), 'retry');
+  assert.equal(classifyResponse(400, { ok: true, status: 'activated', activated: true }), 'retry');
+  assert.equal(classifyResponse(201, { ok: true, status: 'activated', activated: true }), 'retry');
+});
+
+test('a wrong ok flag is not honoured', () => {
+  assert.equal(classifyResponse(200, { ok: false, status: 'activated', activated: true }), 'retry');
+  assert.equal(classifyResponse(400, { ok: true, status: 'refused' }), 'retry');
+  assert.equal(classifyResponse(200, { status: 'activated', activated: true }), 'retry');
+});
+
+test('an unknown or non-string status is retry', () => {
+  for (const status of ['granted', 'ACTIVATED', 'ok', '', 'no_store', 42, null, undefined, {}, ['activated']]) {
+    assert.equal(classifyResponse(200, { ok: true, status, activated: true }), 'retry', String(status));
+  }
+});
+
+test('a prototype-polluting status cannot resolve', () => {
+  for (const status of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    assert.equal(classifyResponse(400, { ok: false, status }), 'retry', status);
+  }
+});
+
+test('a non-object body is retry', () => {
+  for (const body of [null, undefined, 'refused', 42, true, ['refused'], []]) {
+    assert.equal(classifyResponse(400, body), 'retry', JSON.stringify(body) ?? 'undefined');
+  }
+});
+
+test('an OLD PR2-style success body is retry, not a business outcome', () => {
+  // The currently deployed function answers without a `status`. A site-first
+  // deployment therefore degrades to the legacy path instead of being misread.
+  assert.equal(classifyResponse(200, { ok: true, activated: true }), 'retry');
+  assert.equal(classifyResponse(200, { ok: true, activated: false }), 'retry');
+  assert.equal(classifyResponse(400, { ok: false, error: 'invalid_request' }), 'retry');
+  assert.equal(classifyResponse(503, { ok: false, error: 'temporarily_unavailable' }), 'retry');
+});
+
+test('ONLY the exact refused contract can suppress the fallback', async () => {
+  // Everything that merely looks like a refusal must leave the fallback open.
+  const notRefusals = [
+    { status: 400, body: null },                                   // non-JSON 400
+    { status: 400, body: { ok: false } },                          // no status
+    { status: 400, body: { ok: false, status: 'retry' } },
+    { status: 400, body: { ok: false, status: 'nope' } },
+    { status: 400, body: { ok: true, status: 'refused' } },
+    { status: 403, body: { ok: false, status: 'refused' } },
+    { status: 404, body: {} },
+    { status: 401, body: { message: 'Invalid JWT' } },
+    { status: 500, body: { garbage: true } },
+    { status: 502, body: null },
+  ];
+  for (const res of notRefusals) {
+    const { impl } = stubFetch(res);
+    const outcome = await activatePaidPlan(IDS, { ...OPTS, fetchImpl: impl });
+    assert.equal(outcome, 'retry', JSON.stringify(res));
+  }
+  // ...and the real thing still does suppress it.
+  const { impl } = stubFetch(refused);
+  assert.equal(await activatePaidPlan(IDS, { ...OPTS, fetchImpl: impl }), 'refused');
+});
+
+test('a non-JSON body at any status is retry', async () => {
+  for (const status of [200, 400, 403, 404, 500, 503]) {
+    const impl = async () => ({
+      ok: status < 300, status,
+      json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+    });
+    assert.equal(await activatePaidPlan(IDS, { ...OPTS, fetchImpl: impl }), 'retry', String(status));
+  }
+});
+
+test('the body is parsed before anything is classified', () => {
+  const attempt = ACTIVATION.slice(ACTIVATION.indexOf('async function attempt'),
+                                   ACTIVATION.indexOf('export async function activatePaidPlan'));
+  assert.ok(attempt.indexOf('await res.json()') < attempt.indexOf('classifyResponse'),
+    'parse first, then classify');
+  assert.equal(/res\.status === 400/.test(attempt), false,
+    'the http code alone must decide nothing');
+  assert.equal(/if \(!res\.ok\) return/.test(attempt), false);
 });
 
 test('a definitive refusal is returned immediately and is never retried', async () => {
