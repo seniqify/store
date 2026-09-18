@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildCommerceMetrics, checkInvariants,
   classifyOrder, paymentState, shipmentState, isPaymentIncomplete, isShippedOrDelivered,
-  dayKeyInZone, dayKeysBetween,
+  dayKeyInZone, dayKeysBetween, MAX_DAY_KEYS,
   ORDER_KINDS, PAYMENT_STATES, DELIVERY_STATES,
 } from '../src/utils/commerceMetrics.js';
 
@@ -585,4 +585,181 @@ test('the courier-string fixture covers the strings production actually has', ()
   const set = new Set(COURIER_STRINGS.map((s) => s.shipment_status));
   for (const o of FIXTURE) assert.ok(set.has(String(o.shipment_status ?? '')),
     `fixture row uses an uncaptured status: ${o.shipment_status}`);
+});
+
+// ── dayKeysBetween: merchant-LOCAL calendar days, across DST ─────────────────
+//
+// The public API takes any IANA zone, not only Asia/Kolkata. Stepping a fixed
+// 86,400,000 ms through *instants* and de-duplicating the keys is not enough: a
+// local day can be 23 or 25 hours, so a 24-hour step can jump clean over a short
+// day. These tests pin the enumeration to civil dates.
+
+const NY = 'America/New_York';
+// 2026: DST starts Sun 08 Mar (local day = 23h), ends Sun 01 Nov (local day = 25h).
+
+test('spring forward: the 23-hour local day is enumerated like any other', () => {
+  const keys = dayKeysBetween(Date.parse('2026-03-06T12:00:00Z'),
+                              Date.parse('2026-03-11T12:00:00Z'), NY);
+  assert.deepEqual(keys, [
+    '2026-03-06', '2026-03-07', '2026-03-08', '2026-03-09', '2026-03-10', '2026-03-11',
+  ]);
+});
+
+test('fall back: the 25-hour local day appears exactly once', () => {
+  const keys = dayKeysBetween(Date.parse('2026-10-30T12:00:00Z'),
+                              Date.parse('2026-11-04T12:00:00Z'), NY);
+  assert.deepEqual(keys, [
+    '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04',
+  ]);
+  assert.equal(keys.filter((k) => k === '2026-11-01').length, 1, 'not doubled');
+});
+
+test('a 23-hour local day is one key, and a 25-hour local day is one key', () => {
+  // The whole of 2026-03-08 in New York: 05:00Z -> 04:00Z next day (23 hours).
+  assert.deepEqual(
+    dayKeysBetween(Date.parse('2026-03-08T05:00:00Z'), Date.parse('2026-03-09T03:59:00Z'), NY),
+    ['2026-03-08']);
+  // The whole of 2026-11-01: 04:00Z -> 05:00Z next day (25 hours).
+  assert.deepEqual(
+    dayKeysBetween(Date.parse('2026-11-01T04:00:00Z'), Date.parse('2026-11-02T04:59:00Z'), NY),
+    ['2026-11-01']);
+});
+
+test('REGRESSION: a fixed 24-hour step skips the short DST day; this must not', () => {
+  // Local Mar 7 23:30 EST through local Mar 9 00:30 EDT. Because 2026-03-08 is
+  // only 23 hours long, one 86,400,000 ms hop clears it entirely — the day
+  // vanishes from the chart and its sales are never bucketed anywhere.
+  const from = Date.parse('2026-03-08T04:30:00Z');
+  const to = Date.parse('2026-03-09T04:30:00Z');
+  assert.equal(dayKeyInZone(from, NY), '2026-03-07');
+  assert.equal(dayKeyInZone(to, NY), '2026-03-09');
+
+  // What the fixed-step version produced, kept here so the bug cannot return.
+  const fixedStep = [];
+  for (let t = from; t <= to + 86400000; t += 86400000) {
+    const k = dayKeyInZone(t, NY);
+    if (k && fixedStep[fixedStep.length - 1] !== k) fixedStep.push(k);
+  }
+  assert.deepEqual(fixedStep, ['2026-03-07', '2026-03-09', '2026-03-10'],
+    'the old behaviour: 03-08 missing, 03-10 invented');
+
+  assert.deepEqual(dayKeysBetween(from, to, NY),
+    ['2026-03-07', '2026-03-08', '2026-03-09']);
+});
+
+test('across both DST transitions, no start minute yields a gap or a repeat', () => {
+  const windows = [
+    ['2026-03-06T00:00:00Z', '2026-03-10T00:00:00Z'],  // spring forward
+    ['2026-10-30T00:00:00Z', '2026-11-03T00:00:00Z'],  // fall back
+  ];
+  let checked = 0;
+  for (const [a, b] of windows) {
+    for (let t = Date.parse(a); t <= Date.parse(b); t += 60000) {
+      const keys = dayKeysBetween(t, t + 3 * 86400000, NY);
+      checked += 1;
+      assert.equal(new Set(keys).size, keys.length, `repeat at ${new Date(t).toISOString()}`);
+      for (let i = 1; i < keys.length; i++) {
+        const step = Date.parse(keys[i] + 'T00:00:00Z') - Date.parse(keys[i - 1] + 'T00:00:00Z');
+        assert.equal(step, 86400000, `gap at ${new Date(t).toISOString()}: ${keys[i - 1]} -> ${keys[i]}`);
+      }
+    }
+  }
+  assert.ok(checked > 10000, `only ${checked} windows checked`);
+});
+
+test('every instant in a DST range has its own local day in the key set', () => {
+  // The coverage property, brute-forced: sample the range minute by minute and
+  // demand the key set contain each sampled day, and nothing beyond the ends.
+  for (const [a, b] of [['2026-03-07T00:00:00Z', '2026-03-09T23:00:00Z'],
+                        ['2026-10-31T00:00:00Z', '2026-11-02T23:00:00Z']]) {
+    const from = Date.parse(a); const to = Date.parse(b);
+    const keys = dayKeysBetween(from, to, NY);
+    const seen = new Set();
+    for (let t = from; t <= to; t += 60000) seen.add(dayKeyInZone(t, NY));
+    for (const d of seen) assert.ok(keys.includes(d), `missing local day ${d}`);
+    assert.deepEqual(keys, [...seen].sort(), 'no extra days either');
+  }
+});
+
+test('a full DST year is contiguous, unique and the right length', () => {
+  const keys = dayKeysBetween(Date.parse('2026-01-01T06:00:00Z'),
+                              Date.parse('2026-12-31T20:00:00Z'), NY);
+  assert.equal(keys.length, 365, '2026 is not a leap year');
+  assert.equal(new Set(keys).size, 365, 'no repeats');
+  assert.equal(keys[0], '2026-01-01');
+  assert.equal(keys[364], '2026-12-31');
+  for (let i = 1; i < keys.length; i++) {
+    assert.equal(Date.parse(keys[i] + 'T00:00:00Z') - Date.parse(keys[i - 1] + 'T00:00:00Z'),
+      86400000, `gap before ${keys[i]}`);
+  }
+});
+
+test('a leap day is enumerated, not stepped over', () => {
+  assert.deepEqual(
+    dayKeysBetween(Date.parse('2028-02-27T12:00:00Z'), Date.parse('2028-03-02T12:00:00Z'), 'UTC'),
+    ['2028-02-27', '2028-02-28', '2028-02-29', '2028-03-01', '2028-03-02']);
+});
+
+test('half-hour and 45-minute zones enumerate cleanly too', () => {
+  // Lord Howe shifts by 30 minutes, Chatham sits at +12:45/+13:45, Kathmandu +05:45.
+  for (const tz of ['Australia/Lord_Howe', 'Pacific/Chatham', 'Asia/Kathmandu']) {
+    const keys = dayKeysBetween(Date.parse('2026-04-03T00:00:00Z'),
+                                Date.parse('2026-04-07T00:00:00Z'), tz);
+    assert.equal(new Set(keys).size, keys.length, `${tz} repeats`);
+    assert.ok(keys.length === 5 || keys.length === 4, `${tz} produced ${keys.length}`);
+  }
+});
+
+test('a reversed range yields no days at all, not a wrapped or partial run', () => {
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T00:00:00Z'),
+                                  Date.parse('2026-03-01T00:00:00Z'), NY), []);
+  // reversed by a single second, but still inside one local day, is not reversed by day
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T12:00:01Z'),
+                                  Date.parse('2026-03-10T12:00:00Z'), NY), ['2026-03-10']);
+});
+
+test('an unusable range yields no days and never throws', () => {
+  for (const [a, b] of [[NaN, 0], [0, NaN], [null, null], [undefined, 1],
+                        ['nonsense', 'nonsense'], [Infinity, 0], [0, Infinity]]) {
+    assert.deepEqual(dayKeysBetween(a, b, NY), [], `${a} .. ${b}`);
+  }
+});
+
+test('dayKeysBetween is deterministic and independent of the host clock', () => {
+  const a = dayKeysBetween(Date.parse('2026-03-06T12:00:00Z'),
+                           Date.parse('2026-03-11T12:00:00Z'), NY);
+  const b = dayKeysBetween(Date.parse('2026-03-06T12:00:00Z'),
+                           Date.parse('2026-03-11T12:00:00Z'), NY);
+  assert.deepEqual(a, b);
+  // and it reads the zone it is given, never the machine's own
+  assert.notDeepEqual(dayKeysBetween(Date.parse('2026-03-08T04:30:00Z'),
+                                     Date.parse('2026-03-08T04:30:00Z'), 'UTC'),
+    dayKeysBetween(Date.parse('2026-03-08T04:30:00Z'),
+                   Date.parse('2026-03-08T04:30:00Z'), NY));
+});
+
+test('an absurd range terminates instead of hanging', () => {
+  const keys = dayKeysBetween(Date.parse('1500-01-01T00:00:00Z'),
+                              Date.parse('2200-01-01T00:00:00Z'), 'UTC');
+  assert.equal(keys.length, MAX_DAY_KEYS, 'clamped to the documented bound');
+  assert.equal(new Set(keys).size, keys.length, 'still no repeats');
+});
+
+test('the day buckets a range opens cover every event the range admits', () => {
+  // The model gates events by epoch ms and labels buckets by local day; this is
+  // the join between the two, on a DST boundary. Every admitted order must find
+  // a bucket — bumpDay silently drops an event whose key was never opened.
+  const rows = [];
+  const from = Date.parse('2026-03-06T12:00:00Z');
+  const to = Date.parse('2026-03-11T12:00:00Z');
+  for (let t = from; t <= to; t += 3600000) {
+    rows.push(order({ id: `h-${t}`, total: 1, created_at: new Date(t).toISOString() }));
+  }
+  const m = M(rows, { timeZone: NY, rangeFrom: from, rangeTo: to });
+  const bucketed = m.flows.byDay.reduce((s, d) => s + d.sales, 0);
+  assert.equal(m.flows.sales.count, rows.length, 'every row is in range');
+  assert.equal(bucketed, m.flows.sales.amount,
+    'every in-range rupee landed in a day bucket');
+  assert.ok(m.flows.byDay.some((d) => d.day === '2026-03-08' && d.sales > 0),
+    'the short DST day carries its sales');
 });

@@ -195,16 +195,59 @@ export function dayKeyInZone(msVal, timeZone = 'Asia/Kolkata') {
   }).format(d);
 }
 
-/** Inclusive day range, as day keys. Both ends are the merchant's own days. */
+/**
+ * Split a day key back into its parts, as a UTC-midnight instant.
+ * A day key is a civil date, so this is string parsing, not a zone conversion.
+ */
+function dayKeyToUtcMidnight(key) {
+  if (typeof key !== 'string' || key.length !== 10) return null;
+  if (key[4] !== '-' || key[7] !== '-') return null;
+  const y = Number(key.slice(0, 4));
+  const mo = Number(key.slice(5, 7));
+  const d = Number(key.slice(8, 10));
+  if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const t = Date.UTC(y, mo - 1, d);
+  return Number.isNaN(t) ? null : t;
+}
+
+/** Render a UTC-midnight instant back as a civil date. */
+function utcMidnightToDayKey(t) {
+  const d = new Date(t);
+  return `${String(d.getUTCFullYear()).padStart(4, '0')}-${
+    String(d.getUTCMonth() + 1).padStart(2, '0')}-${
+    String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Widest span this will enumerate (~27 years), so a garbage range cannot hang. */
+export const MAX_DAY_KEYS = 10000;
+
+/**
+ * Inclusive run of merchant-LOCAL CALENDAR DAYS, as day keys: from the local day
+ * containing `fromMs` through the local day containing `toMs`.
+ *
+ * The two ends are resolved in `timeZone` — that is the only place the zone is
+ * consulted. Everything after it is calendar arithmetic on civil dates, carried
+ * out in UTC, where a day is always exactly 86,400,000 ms. Stepping in UTC across
+ * *local instants* would be wrong, because a local day can be 23 or 25 hours on a
+ * DST boundary; stepping across *civil dates* in UTC is exact, because a civil
+ * date has no duration to shift.
+ *
+ * Reversed or unparseable ranges yield [] rather than a partial or wrapped run.
+ */
 export function dayKeysBetween(fromMs, toMs, timeZone = 'Asia/Kolkata') {
-  const keys = [];
+  const startKey = dayKeyInZone(fromMs, timeZone);
+  const endKey = dayKeyInZone(toMs, timeZone);
+  if (!startKey || !endKey) return [];
+
+  const start = dayKeyToUtcMidnight(startKey);
+  const end = dayKeyToUtcMidnight(endKey);
+  if (start === null || end === null || end < start) return [];
+
   const DAY = 86400000;
-  // Walk in UTC days and de-duplicate by zone key, so a DST-shifting zone
-  // cannot drop or double a day.
-  for (let t = fromMs; t <= toMs + DAY; t += DAY) {
-    const k = dayKeyInZone(t, timeZone);
-    if (k && keys[keys.length - 1] !== k) keys.push(k);
-  }
+  const span = Math.min(Math.round((end - start) / DAY), MAX_DAY_KEYS - 1);
+  const keys = [];
+  for (let i = 0; i <= span; i++) keys.push(utcMidnightToDayKey(start + i * DAY));
   return keys;
 }
 
