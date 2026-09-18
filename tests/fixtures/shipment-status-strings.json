@@ -1,0 +1,98 @@
+[
+ {
+  "shipment_status": "",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": " Pincode Updated",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Assigned For Delivery",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Bag In Transit",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Bag Received",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Bag Received at Via",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Cancelled",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Delivered",
+  "sql_outcome": "delivered"
+ },
+ {
+  "shipment_status": "In RTO/RTS Process",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "In Transit for Return",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "Item added to Bag",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Lost",
+  "sql_outcome": "lost"
+ },
+ {
+  "shipment_status": "Not Contactable",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Not Picked",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "On Hold",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Out For Delivery",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Received at Forward Hub",
+  "sql_outcome": ""
+ },
+ {
+  "shipment_status": "Received at RTS DC",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "Received at RTS destination hub",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "Returned To Client",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "Returned To Seller",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "RTO",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "RTO In Transit",
+  "sql_outcome": "returned"
+ },
+ {
+  "shipment_status": "RTO Pending",
+  "sql_outcome": "returned"
+ }
+]
