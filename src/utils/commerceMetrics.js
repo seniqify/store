@@ -233,15 +233,30 @@ export const MAX_DAY_KEYS = 10000;
  * DST boundary; stepping across *civil dates* in UTC is exact, because a civil
  * date has no duration to shift.
  *
- * Reversed or unparseable ranges yield [] rather than a partial or wrapped run.
+ * ORDER IS DECIDED ON THE RAW INSTANTS, BEFORE ANY ZONE IS CONSULTED:
+ * `fromMs > toMs` is always empty, never "empty unless the two happen to land on
+ * the same civil day". Deciding it after the conversion would make the result of
+ * a reversed range depend on the zone and on how far apart the two instants are,
+ * which is not a contract a caller can reason about. Equal instants are a valid
+ * range and yield exactly the one local day they fall on.
+ *
+ * Anything that is not a finite epoch value, and any reversed range, yields []
+ * rather than a partial or wrapped run.
  */
 export function dayKeysBetween(fromMs, toMs, timeZone = 'Asia/Kolkata') {
+  // 1. the raw instants, before the zone enters the picture
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return [];
+  if (fromMs > toMs) return [];
+
+  // 2. the only place the zone is consulted
   const startKey = dayKeyInZone(fromMs, timeZone);
   const endKey = dayKeyInZone(toMs, timeZone);
   if (!startKey || !endKey) return [];
 
   const start = dayKeyToUtcMidnight(startKey);
   const end = dayKeyToUtcMidnight(endKey);
+  // end < start is unreachable once fromMs <= toMs — local day order follows
+  // instant order in every zone — but it stays as a fail-closed backstop.
   if (start === null || end === null || end < start) return [];
 
   const DAY = 86400000;

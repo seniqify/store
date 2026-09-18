@@ -710,12 +710,62 @@ test('half-hour and 45-minute zones enumerate cleanly too', () => {
   }
 });
 
-test('a reversed range yields no days at all, not a wrapped or partial run', () => {
+test('a reversed range yields no days, however far reversed and in any zone', () => {
+  // The contract is decided on the raw instants, before the zone is consulted:
+  // from > to is empty, full stop. It must NOT depend on whether the two ends
+  // happen to land on the same civil day, which would make the answer a function
+  // of the zone and of how far apart they are.
   assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T00:00:00Z'),
-                                  Date.parse('2026-03-01T00:00:00Z'), NY), []);
-  // reversed by a single second, but still inside one local day, is not reversed by day
+                                  Date.parse('2026-03-01T00:00:00Z'), NY), [],
+    'reversed across days');
   assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T12:00:01Z'),
-                                  Date.parse('2026-03-10T12:00:00Z'), NY), ['2026-03-10']);
+                                  Date.parse('2026-03-10T12:00:00Z'), NY), [],
+    'reversed by one second inside one local day');
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T12:00:00.001Z'),
+                                  Date.parse('2026-03-10T12:00:00.000Z'), NY), [],
+    'reversed by one millisecond');
+  // and the answer does not move with the zone
+  for (const tz of [NY, 'Asia/Kolkata', 'UTC', 'Pacific/Chatham', 'Australia/Lord_Howe']) {
+    assert.deepEqual(dayKeysBetween(1, 0, tz), [], `reversed in ${tz}`);
+  }
+  // reversed across a DST boundary is still just reversed
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-09T00:00:00Z'),
+                                  Date.parse('2026-03-07T00:00:00Z'), NY), []);
+});
+
+test('equal instants are a valid range and yield exactly their own local day', () => {
+  const t = Date.parse('2026-03-10T12:00:00Z');
+  assert.deepEqual(dayKeysBetween(t, t, NY), ['2026-03-10']);
+  // the same instant read in a zone where it is already the next day
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T18:30:00Z'),
+                                  Date.parse('2026-03-10T18:30:00Z'), 'Asia/Kolkata'),
+    ['2026-03-11']);
+  // and on the short DST day itself
+  const dst = Date.parse('2026-03-08T12:00:00Z');
+  assert.deepEqual(dayKeysBetween(dst, dst, NY), ['2026-03-08']);
+});
+
+test('a forward range inside one local day yields exactly that one day', () => {
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T12:00:00Z'),
+                                  Date.parse('2026-03-10T12:00:01Z'), NY), ['2026-03-10']);
+  // the full width of one local day, to its last millisecond
+  assert.deepEqual(dayKeysBetween(Date.parse('2026-03-10T05:00:00.000Z'),
+                                  Date.parse('2026-03-11T03:59:59.999Z'), NY), ['2026-03-10']);
+});
+
+test('reversing any forward range empties it, across both DST transitions', () => {
+  // The property behind the contract, swept rather than sampled: for every hour
+  // in the transition windows, a forward range is non-empty and its reverse is
+  // empty — except when the two instants are equal, where both are the same day.
+  for (const [a, b] of [['2026-03-06T00:00:00Z', '2026-03-10T00:00:00Z'],
+                        ['2026-10-30T00:00:00Z', '2026-11-03T00:00:00Z']]) {
+    for (let t = Date.parse(a); t <= Date.parse(b); t += 3600000) {
+      for (const gap of [1, 1000, 3600000, 86400000]) {
+        assert.ok(dayKeysBetween(t, t + gap, NY).length > 0, 'forward is non-empty');
+        assert.deepEqual(dayKeysBetween(t + gap, t, NY), [], 'reverse is empty');
+      }
+    }
+  }
 });
 
 test('an unusable range yields no days and never throws', () => {
