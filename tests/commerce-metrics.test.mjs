@@ -543,13 +543,36 @@ test('checkInvariants actually reports a violation when one exists', () => {
 // must still be untouched, so this guard now names what is still to come rather
 // than being deleted.
 
-test('Delivery still does not consume the module', () => {
-  // PR 4 migrated Stats, PR 5 Home, PR 6 Orders, PR 7 Payments. Delivery is PR 8.
-  const src = readFileSync(fileURLToPath(new URL(
+test('every Manage screen now consumes the model through its own projection', () => {
+  // The sequence is complete: Stats (PR 4), Home (5), Orders (6), Payments (7),
+  // Delivery (8). Each goes through one projection of its own and none reaches
+  // past it into the model, so no two screens can define a term differently.
+  const wiring = {
+    'AnalyticsTab.jsx': 'statsMetrics',
+    'OverviewTab.jsx': 'overviewMetrics',
+    'OrdersTab.jsx': 'ordersView',
+    'PaymentsTab.jsx': 'paymentsMetrics',
+    'DeliveryBoard.jsx': 'deliveryMetrics',
+  };
+  for (const [file, projection] of Object.entries(wiring)) {
+    const src = readFileSync(fileURLToPath(new URL(
+      `../src/components/manage/${file}`, import.meta.url)), 'utf8');
+    assert.match(src, new RegExp(projection), `${file} is wired to ${projection}`);
+    assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(src), false,
+      `${file} goes through its projection, never straight to the model`);
+  }
+});
+
+test('Delivery consumes the model and stays out of the financial cards', () => {
+  const board = readFileSync(fileURLToPath(new URL(
     '../src/components/manage/DeliveryBoard.jsx', import.meta.url)), 'utf8');
-  assert.equal(
-    /commerceMetrics|statsMetrics|overviewMetrics|ordersView|paymentsMetrics/.test(src), false,
-    'DeliveryBoard is migrated by PR 8, not this one');
+  assert.match(board, /deliveryMetrics/, 'Delivery is wired to its projection');
+  assert.match(board, /fetchOrderFacts/, 'the summary reads the uncapped feed');
+  assert.equal(/buildDeliveryMetrics\(orders|buildDeliveryMetrics\(pool/.test(board), false,
+    'no total is computed from the capped rows');
+  // Payments remains the financial authority.
+  assert.equal(/COD still to collect|>Still to collect</.test(board), false,
+    'Delivery does not borrow the Payments label');
 });
 
 test('Payments consumes the model through its own projection', () => {
