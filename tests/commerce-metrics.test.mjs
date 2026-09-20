@@ -543,23 +543,42 @@ test('checkInvariants actually reports a violation when one exists', () => {
 // must still be untouched, so this guard now names what is still to come rather
 // than being deleted.
 
-test('Home, Orders, Payments and Delivery still do not consume the module', () => {
-  for (const f of ['src/components/manage/OverviewTab.jsx', 'src/components/manage/OrdersTab.jsx',
-                   'src/components/manage/PaymentsTab.jsx', 'src/components/manage/DeliveryBoard.jsx',
-                   'src/utils/overviewStats.js', 'src/utils/paymentsLedger.js']) {
+test('Orders, Payments and Delivery still do not consume the module', () => {
+  // PR 4 migrated Stats, PR 5 migrated Home. These three are PRs 6-8.
+  for (const f of ['src/components/manage/OrdersTab.jsx',
+                   'src/components/manage/PaymentsTab.jsx',
+                   'src/components/manage/DeliveryBoard.jsx',
+                   'src/utils/paymentsLedger.js']) {
     const src = readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8');
-    assert.equal(/commerceMetrics|statsMetrics/.test(src), false,
+    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics/.test(src), false,
       `${f} is migrated by a later PR, not this one`);
   }
 });
 
-test('Stats consumes the model, and only through the canonical projection', () => {
-  const src = readFileSync(fileURLToPath(new URL(
+test('Stats and Home each consume the model through their own projection', () => {
+  const stats = readFileSync(fileURLToPath(new URL(
     '../src/components/manage/AnalyticsTab.jsx', import.meta.url)), 'utf8');
-  assert.match(src, /statsMetrics/, 'Stats is wired to the canonical projection');
-  // It must not reach past statsMetrics into the model to do its own sums.
-  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(src), false,
+  const home = readFileSync(fileURLToPath(new URL(
+    '../src/components/manage/OverviewTab.jsx', import.meta.url)), 'utf8');
+  assert.match(stats, /statsMetrics/, 'Stats is wired to its projection');
+  assert.match(home, /overviewMetrics/, 'Home is wired to its projection');
+  // Neither screen may reach past its projection into the model to do its own sums.
+  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(stats), false,
     'Stats goes through statsMetrics, never straight to the model');
+  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(home), false,
+    'Home goes through overviewMetrics, never straight to the model');
+});
+
+test('the Home presentation helper holds no accounting any more', () => {
+  const src = readFileSync(fileURLToPath(new URL(
+    '../src/utils/overviewStats.js', import.meta.url)), 'utf8');
+  // Matched on IMPORT shape, not on the module names: the file's own comment
+  // says where the accounting went, and a name test would match that prose.
+  assert.equal(/from '\.\/(commerceMetrics|overviewMetrics|orderState)/.test(src), false,
+    'it imports no model and no order-state helper - it is stock and reviews only');
+  assert.equal(/countsAsSale\(|isPaymentIncomplete\(|classifyOrder\(/.test(src), false,
+    'and calls no order classifier');
+  assert.match(src, /export function buildOverviewExtras/, 'it is the stock + reviews helper');
 });
 
 test('classifyBucket is still presentation-only and is not used for accounting', () => {
