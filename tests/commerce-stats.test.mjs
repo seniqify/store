@@ -15,6 +15,9 @@ import {
   hourInZone, weekdayInZone,
 } from '../src/utils/commerceMetrics.js';
 import { isPaymentIncomplete as legacyIncomplete } from '../src/utils/orderState.js';
+import {
+  factsFromRpc, factsFailed, FACTS_FAILURE_REASONS,
+} from '../src/utils/orderFactsResult.js';
 
 const FIXTURE = JSON.parse(readFileSync(
   fileURLToPath(new URL('./fixtures/commerce-royalfoods.json', import.meta.url)), 'utf8'));
@@ -397,4 +400,146 @@ test('chart labels are read from the day key, with no Date involved', () => {
   assert.equal(chartDayLabel(null), '');
   assert.ok(!code('../src/utils/statsMetrics.js').includes('Date.now'),
     'statsMetrics reads no clock of its own');
+});
+
+// ── FAILURE IS NOT ZERO ─────────────────────────────────────────────────────
+//
+// The feed the accounting is computed from must never turn a backend, auth or
+// network failure into "Gross Sales 0". An empty list is a real answer; a failed
+// read is not an answer at all, and the two have to reach the screen as
+// different things.
+
+test('a successful read of an empty store is a real, usable zero', () => {
+  const r = factsFromRpc({ data: [], error: null });
+  assert.equal(r.ok, true, 'success');
+  assert.deepEqual(r.data, []);
+  const s = buildStatsMetrics(r.data, { timeZone: TZ, now: NOW });
+  assert.equal(s.orders, 0);
+  assert.equal(s.revenue, 0);
+  assert.deepEqual(s.invariants, [], 'zero is a coherent set of books');
+});
+
+test('an RPC error is a failure, not an empty store', () => {
+  const r = factsFromRpc({ data: null, error: { message: 'permission denied for schema public' } });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'rpc');
+  assert.deepEqual(r.data, [], 'and carries no rows for a careless caller to count');
+});
+
+test('an error alongside rows is still a failure', () => {
+  // supabase-js can return both; the error wins.
+  const r = factsFromRpc({ data: [{ id: 'x', total: 100 }], error: { message: 'timeout' } });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'rpc');
+  assert.deepEqual(r.data, [], 'the partial rows are dropped, not counted');
+});
+
+test('a success whose payload is not a list is a failure, not zero', () => {
+  for (const data of [null, undefined, {}, 'rows', 42]) {
+    const r = factsFromRpc({ data, error: null });
+    assert.equal(r.ok, false, `${JSON.stringify(data)} must not read as success`);
+    assert.equal(r.reason, 'malformed');
+    assert.deepEqual(r.data, []);
+  }
+});
+
+test('a thrown network failure is a failure with a safe reason', () => {
+  const r = factsFailed('unavailable');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'unavailable');
+  assert.deepEqual(r.data, []);
+});
+
+test('no backend detail can escape through the reason', () => {
+  // Whatever a caller passes, only the three safe labels come out.
+  for (const junk of ['permission denied for relation orders', 'ECONNREFUSED 10.0.0.1:5432',
+                      'JWT expired', undefined, null, '', 'rpc']) {
+    const r = factsFailed(junk);
+    assert.ok(FACTS_FAILURE_REASONS.includes(r.reason),
+      `leaked reason: ${r.reason}`);
+  }
+  assert.deepEqual([...FACTS_FAILURE_REASONS], ['rpc', 'malformed', 'unavailable']);
+});
+
+test('a missing or malformed response object does not throw', () => {
+  for (const response of [undefined, null, {}]) {
+    const r = factsFromRpc(response);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.data, []);
+  }
+});
+
+test('a successful read still produces the anchors, through the envelope', () => {
+  const r = factsFromRpc({ data: FIXTURE, error: null });
+  assert.equal(r.ok, true);
+  const s = buildStatsMetrics(r.data, { timeZone: TZ, now: NOW });
+  assert.equal(s.orders, 182);
+  assert.equal(s.revenue, 86018);
+  assert.equal(s.aov, 472.63);
+});
+
+test('a failure and an empty store compute the same numbers - so only ok separates them', () => {
+  // This is the whole reason the envelope exists: the numbers cannot tell you.
+  const failed = factsFailed('rpc');
+  const empty = factsFromRpc({ data: [], error: null });
+  const a = buildStatsMetrics(failed.data, { timeZone: TZ, now: NOW });
+  const b = buildStatsMetrics(empty.data, { timeZone: TZ, now: NOW });
+  assert.equal(a.orders, b.orders);
+  assert.equal(a.revenue, b.revenue);
+  assert.notEqual(failed.ok, empty.ok, 'only the flag distinguishes them');
+});
+
+test('the wrong-PIN case is documented against the real backend contract', () => {
+  // get_store_order_facts returns an EMPTY SET on a bad PIN rather than an
+  // error, so that it cannot be used to probe which stores or PINs exist.
+  // It therefore arrives as a successful empty read, and the docs must say so
+  // rather than imply the client can tell the difference.
+  const svc = SRC('../src/utils/orderService.js');
+  assert.match(svc, /wrong PIN is NOT an error/i);
+  assert.match(svc, /indistinguishable from a store\s*\n?\s*\*?\s*with no orders/i);
+  const sql = readFileSync(fileURLToPath(
+    new URL('../supabase/order-facts-forward.sql', import.meta.url)), 'utf8');
+  assert.match(sql, /if not public\.verify_store_pin\(p_slug, p_hashed_pin\) then\s*\n\s*return;/,
+    'and the SQL really does return an empty set rather than raising');
+});
+
+// ── THE SCREEN'S FAILURE BEHAVIOUR ──────────────────────────────────────────
+
+test('Stats refuses to render figures from a failed read', () => {
+  const src = code('../src/components/manage/AnalyticsTab.jsx');
+  assert.match(src, /if \(!factsResult\.ok\)/, 'it branches on the envelope');
+  // The refusal must come BEFORE any figure is rendered.
+  const guard = src.indexOf('if (!factsResult.ok)');
+  const firstStat = src.indexOf('<Stat label="Revenue"');
+  assert.ok(guard !== -1 && firstStat !== -1, 'both present');
+  assert.ok(guard < firstStat, 'the failure branch returns before any figure is drawn');
+});
+
+test('the failure state offers a retry through the existing load path', () => {
+  const src = SRC('../src/components/manage/AnalyticsTab.jsx');
+  const from = src.indexOf('if (!factsResult.ok)');
+  const to = src.indexOf('// ── Canonical accounting');
+  const branch = src.slice(from, to);
+  assert.match(branch, /onClick=\{load\}/, 'retry calls the same loader');
+  assert.ok(!/Gross Sales|₹0|formatINR/.test(branch), 'and shows no figure at all');
+});
+
+test('Stats NEVER falls back to the capped feed for an accounting scalar', () => {
+  const src = code('../src/components/manage/AnalyticsTab.jsx');
+  // The scalars come from the stats object and nowhere else.
+  assert.match(src, /const revenue\s*=\s*stats\.revenue/);
+  assert.match(src, /const count\s*=\s*stats\.orders/);
+  assert.match(src, /const aov\s*=\s*stats\.aov/);
+  // And that object is built only from a successful facts read.
+  assert.match(src, /factsResult\?\.ok \? factsResult\.data : \[\]/,
+    'the model is fed the rows only when the read succeeded');
+  // No orders-derived fallback anywhere near them.
+  assert.ok(!/revenue\s*=\s*[^;]*\borders\b/.test(src), 'revenue never comes from the capped feed');
+  assert.ok(!/stats\.revenue\s*\|\|/.test(src), 'and is never defaulted away');
+});
+
+test('the empty state is decided by the canonical feed, not the capped one', () => {
+  const src = code('../src/components/manage/AnalyticsTab.jsx');
+  assert.match(src, /factsResult\.data\.length === 0/, 'keyed on the population of record');
+  assert.ok(!/if \(orders\.length === 0\)/.test(src), 'not on the capped list');
 });

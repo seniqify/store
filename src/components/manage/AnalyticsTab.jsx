@@ -29,7 +29,9 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   //           checkouts included. It is the only feed carrying items and phone
   //           numbers, so top products, profit and customer counts still need
   //           it - and those sections say on screen that they are capped.
-  const [facts,  setFacts]  = useState(null);
+  // The facts RESULT, not its rows: { ok, data, reason }. Keeping the envelope
+  // is the whole point - see the failure branch below.
+  const [factsResult, setFactsResult] = useState(null);
   const [orders, setOrders] = useState(null);
   const [views,  setViews]  = useState(null);
   // The one clock reading on this screen, taken when the feed lands rather than
@@ -42,7 +44,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     const [f, o, v] = await Promise.all([
       fetchOrderFacts(slug, pin), fetchOrders(slug, pin), fetchViewStats(slug),
     ]);
-    setFacts(f);
+    setFactsResult(f);
     setOrders(o);
     setViews(v);
     setLoadedAt(Date.now());
@@ -54,9 +56,14 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // upsell and loading returns below. buildStatsMetrics is total: a null feed
   // gives zeroes rather than throwing, and the result is simply unused until
   // the data arrives.
+  // Only ever built from a SUCCESSFUL facts read. On failure the rows are empty
+  // and this computes zeroes - which is exactly why the render below refuses to
+  // show them and returns the error state instead.
   const stats = useMemo(
-    () => buildStatsMetrics(facts, { timeZone: STORE_TZ, now: loadedAt }),
-    [facts, loadedAt],
+    () => buildStatsMetrics(factsResult?.ok ? factsResult.data : [], {
+      timeZone: STORE_TZ, now: loadedAt,
+    }),
+    [factsResult, loadedAt],
   );
 
   // ── Upsell (lapsed / unpaid page) ──
@@ -80,10 +87,36 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     );
   }
 
-  if (orders === null || facts === null) {
+  if (orders === null || factsResult === null) {
     return (
       <div className="grid grid-cols-2 gap-3">
         {[0, 1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-white border border-gray-100 animate-pulse" />)}
+      </div>
+    );
+  }
+
+  // ── The accounting feed failed: say so, do NOT show zero ──────────────
+  // An empty result and a failed one both compute to 0, and for an accounting
+  // screen that is the difference between "you have made no sales" and "we
+  // could not reach the server". Falling back to the detailed feed here would
+  // be worse still: it is capped at 500 rows, so it would quietly under-report
+  // real money as if it were the total. Show nothing and offer a retry.
+  if (!factsResult.ok) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-8 text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 flex items-center justify-center mb-3">
+          <Wallet size={22} className="text-amber-500" />
+        </div>
+        <h3 className="font-extrabold text-gray-900">Couldn&rsquo;t load your sales figures</h3>
+        <p className="text-sm text-gray-500 mt-1.5 max-w-xs mx-auto">
+          Your orders are safe &mdash; this screen just couldn&rsquo;t reach them. Check your
+          connection and try again.
+        </p>
+        <button type="button" onClick={load}
+          className="inline-flex items-center gap-2 mt-5 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg active:scale-[0.98] transition-transform"
+          style={{ backgroundColor: themeColor }}>
+          Try again
+        </button>
       </div>
     );
   }
@@ -232,7 +265,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const revDays = stats.days.map((d) => ({ label: chartDayLabel(d.key), rev: d.revenue }));
   const maxRev = Math.max(1, ...revDays.map((d) => d.rev));
 
-  if (orders.length === 0) {
+  // The canonical feed is the population of record and is a superset of the
+  // detailed one, so "nothing here yet" is its answer to give. Reaching this
+  // line at all means the read succeeded.
+  if (factsResult.data.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
         <div className="text-4xl mb-3">📊</div>
