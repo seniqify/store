@@ -175,9 +175,25 @@ test('it touches nothing from the billing or order-integrity phases', () => {
   }
 });
 
-test('no client code consumes the feed yet', () => {
-  assert.equal(/get_store_order_facts/.test(ORDER_SVC), false,
-    'PR 1 adds the feed only; PRs 4-8 move the screens onto it');
+test('the client reads the feed through one place only', () => {
+  // PR 4 made Stats the first consumer, so this guard changed from "nobody
+  // calls it" to "only one thing calls it". Slice from the export keyword, so
+  // the doc comment above it - which names the RPC in prose - is not counted.
+  const from = ORDER_SVC.indexOf('export async function fetchOrderFacts');
+  const to = ORDER_SVC.indexOf('export async function fetchNewOrderSignal');
+  assert.ok(from !== -1 && to > from, 'fetchOrderFacts exists, above fetchNewOrderSignal');
+  const body = ORDER_SVC.slice(from, to);
+
+  // Exactly one call site in the whole client, and it is inside that function.
+  assert.equal((body.match(/get_store_order_facts/g) ?? []).length, 1, 'one call, in the fetcher');
+  assert.equal((ORDER_SVC.match(/rpc\('get_store_order_facts'/g) ?? []).length, 1,
+    'no other call anywhere in the client reaches the feed');
+
+  // The feed is still PII-free at the point of use: the fetcher adds nothing.
+  assert.equal(/customer_name|customer_phone|destination|items/.test(body), false,
+    'fetchOrderFacts must not reach for PII');
+
+  // The SQL itself is untouched by PR 4, and nothing in the schema calls it.
   assert.match(VERIFY, /F9 nothing in the schema calls it yet/);
 });
 

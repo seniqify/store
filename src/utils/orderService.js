@@ -146,6 +146,30 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) 
   }
 }
 
+/** Owner-only: the UNCAPPED, PII-free scalar feed behind every canonical
+ *  commerce metric (get_store_order_facts, added in commerce-metrics PR 1).
+ *
+ *  This is the accounting source. fetchOrders above is capped at the newest 500
+ *  rows of EVERY kind - abandoned checkouts included - so on a busy store the
+ *  sales it can see is a fraction of that again. This feed has no LIMIT, and it
+ *  deliberately carries no items, no name, no phone and no address, so the
+ *  screens that need those still go through fetchOrders.
+ *
+ *  Rows come back exactly as buildCommerceMetrics expects them. Abandoned and
+ *  cancelled rows are INCLUDED on purpose: classification is the model's job,
+ *  not the query's, so nothing filters a row out before it has been counted.
+ *  A wrong PIN yields an empty set, never an error. */
+export async function fetchOrderFacts(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('get_store_order_facts', { p_slug: slug, p_hashed_pin: hashed });
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
 /** Owner-only: a tiny, PII-safe "any new orders since X?" probe (PIN-checked
  *  server-side). Returns { new_count, latest_name, latest_total, latest_at } —
  *  one integer + the newest order's name/amount for the alert toast. Polled from

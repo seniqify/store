@@ -196,6 +196,35 @@ export function dayKeyInZone(msVal, timeZone = 'Asia/Kolkata') {
 }
 
 /**
+ * The hour of the day (0-23) an instant falls on, in a named zone.
+ * The merchant's clock, not the browser's — a shop is busy at 8pm in Solapur
+ * whoever happens to be looking at the dashboard.
+ */
+export function hourInZone(msVal, timeZone = 'Asia/Kolkata') {
+  if (msVal === null || msVal === undefined) return null;
+  const d = new Date(msVal);
+  if (Number.isNaN(d.getTime())) return null;
+  const txt = new Intl.DateTimeFormat('en-GB', {
+    timeZone, hour: '2-digit', hour12: false,
+  }).format(d);
+  const h = Number(txt);
+  if (!Number.isInteger(h) || h < 0 || h > 24) return null;
+  return h === 24 ? 0 : h;   // some ICU builds render midnight as 24
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** The weekday (0 = Sunday) an instant falls on, in a named zone. */
+export function weekdayInZone(msVal, timeZone = 'Asia/Kolkata') {
+  if (msVal === null || msVal === undefined) return null;
+  const d = new Date(msVal);
+  if (Number.isNaN(d.getTime())) return null;
+  const txt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(d);
+  const i = WEEKDAYS.indexOf(txt);
+  return i === -1 ? null : i;
+}
+
+/**
  * Split a day key back into its parts, as a UTC-midnight instant.
  * A day key is a civil date, so this is string parsing, not a zone conversion.
  */
@@ -330,12 +359,16 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
   };
   if (hasRange) {
     for (const k of dayKeysBetween(rangeFrom, rangeTo, timeZone)) {
-      flows.byDay.set(k, { day: k, sales: 0, collected: 0 });
+      flows.byDay.set(k, { day: k, sales: 0, salesCount: 0, collected: 0, collectedCount: 0 });
     }
   }
+  // A day bucket carries both the money and how many events made it, so a
+  // caller charting "orders per day" never has to re-bucket the rows itself.
   const bumpDay = (key, field, amountPaise) => {
     const row = flows.byDay.get(key);
-    if (row) row[field] += amountPaise;
+    if (!row) return;
+    row[field] += amountPaise;
+    row[field + 'Count'] += 1;
   };
 
   for (const o of rows) {
@@ -407,7 +440,9 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
   }
 
   const byDay = [...flows.byDay.values()].map((d) => ({
-    day: d.day, sales: rupees(d.sales), collected: rupees(d.collected),
+    day: d.day,
+    sales: rupees(d.sales), salesCount: d.salesCount,
+    collected: rupees(d.collected), collectedCount: d.collectedCount,
   }));
 
   return {
