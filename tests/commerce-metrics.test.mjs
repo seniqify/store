@@ -537,16 +537,29 @@ test('checkInvariants actually reports a violation when one exists', () => {
   assert.ok(checkInvariants(brokenDelivery).length > 0);
 });
 
-// ── H. scope: nothing is wired up ────────────────────────────────────────────
+// ── H. scope: only the screens that have been migrated consume the model ─────
+//
+// PR 4 moved Stats onto it. Home, Orders, Payments and Delivery are PRs 5-8 and
+// must still be untouched, so this guard now names what is still to come rather
+// than being deleted.
 
-test('no screen consumes the module yet', () => {
+test('Home, Orders, Payments and Delivery still do not consume the module', () => {
   for (const f of ['src/components/manage/OverviewTab.jsx', 'src/components/manage/OrdersTab.jsx',
                    'src/components/manage/PaymentsTab.jsx', 'src/components/manage/DeliveryBoard.jsx',
-                   'src/components/manage/AnalyticsTab.jsx', 'src/utils/overviewStats.js',
-                   'src/utils/paymentsLedger.js', 'src/utils/orderService.js']) {
+                   'src/utils/overviewStats.js', 'src/utils/paymentsLedger.js']) {
     const src = readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8');
-    assert.equal(/commerceMetrics/.test(src), false, `${f} must not consume the model yet`);
+    assert.equal(/commerceMetrics|statsMetrics/.test(src), false,
+      `${f} is migrated by a later PR, not this one`);
   }
+});
+
+test('Stats consumes the model, and only through the canonical projection', () => {
+  const src = readFileSync(fileURLToPath(new URL(
+    '../src/components/manage/AnalyticsTab.jsx', import.meta.url)), 'utf8');
+  assert.match(src, /statsMetrics/, 'Stats is wired to the canonical projection');
+  // It must not reach past statsMetrics into the model to do its own sums.
+  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(src), false,
+    'Stats goes through statsMetrics, never straight to the model');
 });
 
 test('classifyBucket is still presentation-only and is not used for accounting', () => {

@@ -4,6 +4,7 @@ import { couponDiscountFor } from './offers';
 import { hashPin } from './pinHash';
 import { lineProductId } from './reviewShape';
 import { getMetaMatchData } from './metaPixel';
+import { factsFromRpc, factsFailed } from './orderFactsResult';
 
 /**
  * Order capture + retrieval.
@@ -143,6 +144,50 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) 
     return (data || []).filter((o) => includeAbandoned || o.status !== 'abandoned');
   } catch {
     return [];
+  }
+}
+
+/** Owner-only: the UNCAPPED, PII-free scalar feed behind every canonical
+ *  commerce metric (get_store_order_facts, added in commerce-metrics PR 1).
+ *
+ *  This is the accounting source. fetchOrders above is capped at the newest 500
+ *  rows of EVERY kind - abandoned checkouts included - so on a busy store the
+ *  sales it can see is a fraction of that again. This feed has no LIMIT, and it
+ *  deliberately carries no items, no name, no phone and no address, so the
+ *  screens that need those still go through fetchOrders.
+ *
+ *  Rows come back exactly as buildCommerceMetrics expects them. Abandoned and
+ *  cancelled rows are INCLUDED on purpose: classification is the model's job,
+ *  not the query's, so nothing filters a row out before it has been counted.
+ *
+ *  RESULT CONTRACT - unlike the other fetchers here, this one does NOT collapse
+ *  failure into an empty array. An empty array is a real accounting answer: it
+ *  means this store has taken no orders. A failed request means we do not know,
+ *  and the two must never render the same screen, or a network blip shows the
+ *  merchant "Gross Sales 0" for a store that has been trading for a year.
+ *
+ *    { ok: true,  data: [...] }            the server answered
+ *    { ok: false, data: [], reason }       it did not
+ *
+ *  `reason` is one of 'rpc' | 'malformed' | 'unavailable' - a coarse, safe label
+ *  for the UI to branch on. Backend error text is never passed through.
+ *
+ *  BACKEND CONTRACT, stated plainly because it bounds what this can detect: a
+ *  wrong PIN is NOT an error. get_store_order_facts returns an empty set when
+ *  verify_store_pin fails, exactly as get_store_orders does, so that a caller
+ *  cannot use it to probe which stores or PINs exist. A wrong PIN therefore
+ *  arrives here as { ok: true, data: [] } and is indistinguishable from a store
+ *  with no orders. That is deliberate at the database, and Manage has already
+ *  verified the PIN before any of this renders. */
+export async function fetchOrderFacts(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    return factsFromRpc(
+      await supabase.rpc('get_store_order_facts', { p_slug: slug, p_hashed_pin: hashed }),
+    );
+  } catch {
+    // Network down, request aborted, hashing unavailable - all "we do not know".
+    return factsFailed('unavailable');
   }
 }
 

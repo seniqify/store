@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isPaymentIncomplete } from '../../utils/orderState';
 import { TrendingUp, TrendingDown, Lock, Sparkles, Clock, Wallet } from 'lucide-react';
-import { fetchOrders } from '../../utils/orderService';
+import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
+import { buildStatsMetrics, chartDayLabel } from '../../utils/statsMetrics';
 import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
 import { unitCostForItem, hasAnyCost } from '../../utils/variants';
 
-const DAY = 86400000;
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// The merchant's clock. Day and hour buckets are theirs, not the browser's.
+const STORE_TZ = 'Asia/Kolkata';
+// get_store_orders returns at most this many rows; at the cap the detailed
+// sections below are a window, not the whole story, and say so.
+const DETAILED_CAP = 500;
 const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h < 12 ? 'am' : 'pm'}`; };
 
 /**
@@ -17,17 +22,49 @@ const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h <
  * best day and the revenue trend. A lapsed/unpaid page sees an upsell.
  */
 export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enabled = false, advanced = false, products = [], packagingCost = 0, deliveryCost = 0, onGoTab }) {
+  // TWO feeds, deliberately.
+  //  facts  - get_store_order_facts: UNCAPPED and PII-free. Every accounting
+  //           scalar on this screen is built from it, through commerceMetrics.
+  //  orders - get_store_orders: the newest 500 rows of every kind, abandoned
+  //           checkouts included. It is the only feed carrying items and phone
+  //           numbers, so top products, profit and customer counts still need
+  //           it - and those sections say on screen that they are capped.
+  // The facts RESULT, not its rows: { ok, data, reason }. Keeping the envelope
+  // is the whole point - see the failure branch below.
+  const [factsResult, setFactsResult] = useState(null);
   const [orders, setOrders] = useState(null);
   const [views,  setViews]  = useState(null);
+  // The one clock reading on this screen, taken when the feed lands rather than
+  // during render, so the rolling windows are stable across re-renders and the
+  // numbers describe a single moment.
+  const [loadedAt, setLoadedAt] = useState(null);
 
   const load = useCallback(async () => {
     if (!enabled) return;
-    const [o, v] = await Promise.all([fetchOrders(slug, pin), fetchViewStats(slug)]);
+    const [f, o, v] = await Promise.all([
+      fetchOrderFacts(slug, pin), fetchOrders(slug, pin), fetchViewStats(slug),
+    ]);
+    setFactsResult(f);
     setOrders(o);
     setViews(v);
+    setLoadedAt(Date.now());
   }, [slug, pin, enabled]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Hooks must run in the same order on every render, so this sits ABOVE the
+  // upsell and loading returns below. buildStatsMetrics is total: a null feed
+  // gives zeroes rather than throwing, and the result is simply unused until
+  // the data arrives.
+  // Only ever built from a SUCCESSFUL facts read. On failure the rows are empty
+  // and this computes zeroes - which is exactly why the render below refuses to
+  // show them and returns the error state instead.
+  const stats = useMemo(
+    () => buildStatsMetrics(factsResult?.ok ? factsResult.data : [], {
+      timeZone: STORE_TZ, now: loadedAt,
+    }),
+    [factsResult, loadedAt],
+  );
 
   // ── Upsell (lapsed / unpaid page) ──
   if (!enabled) {
@@ -50,7 +87,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     );
   }
 
-  if (orders === null) {
+  if (orders === null || factsResult === null) {
     return (
       <div className="grid grid-cols-2 gap-3">
         {[0, 1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-white border border-gray-100 animate-pulse" />)}
@@ -58,16 +95,56 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     );
   }
 
-  // ── Compute metrics ──
-  // Unpaid online orders (customer left the payment screen) are not revenue.
+  // ── The accounting feed failed: say so, do NOT show zero ──────────────
+  // An empty result and a failed one both compute to 0, and for an accounting
+  // screen that is the difference between "you have made no sales" and "we
+  // could not reach the server". Falling back to the detailed feed here would
+  // be worse still: it is capped at 500 rows, so it would quietly under-report
+  // real money as if it were the total. Show nothing and offer a retry.
+  if (!factsResult.ok) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-8 text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 flex items-center justify-center mb-3">
+          <Wallet size={22} className="text-amber-500" />
+        </div>
+        <h3 className="font-extrabold text-gray-900">Couldn&rsquo;t load your sales figures</h3>
+        <p className="text-sm text-gray-500 mt-1.5 max-w-xs mx-auto">
+          Your orders are safe &mdash; this screen just couldn&rsquo;t reach them. Check your
+          connection and try again.
+        </p>
+        <button type="button" onClick={load}
+          className="inline-flex items-center gap-2 mt-5 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg active:scale-[0.98] transition-transform"
+          style={{ backgroundColor: themeColor }}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  // ── Canonical accounting ──────────────────────────────────────────────
+  // Revenue, order count, AOV, both charts and the busy-time histograms come
+  // from commerceMetrics over the UNCAPPED facts feed. No population, filter or
+  // classification is defined here - see src/utils/statsMetrics.js.
+  //
+  // Gross Sales, Sales Orders and Average Order Value are ALL-TIME AGGREGATES:
+  // every order the store has taken, never range-scoped, and this screen has no
+  // date selector to say otherwise. They are not balances - that word belongs to
+  // the position metrics (Collected / Outstanding / Written Off) on Payments.
+  //
+  // Only the two charts and the week-on-week comparison are flows, and each is
+  // bounded by an explicit range.
+  const revenue  = stats.revenue;
+  const count    = stats.orders;
+  const aov      = stats.aov;
+  const thisWeek = stats.thisWeekOrders;
+  const wow      = stats.wow;
+
+  // ── Detailed-order metrics: CAPPED at the newest 500 rows ─────────────
+  // Everything below needs items or a phone number, which the facts feed does
+  // not carry, so it stays on get_store_orders. Kept separate from the numbers
+  // above on purpose: do not mix a capped figure into an uncapped one.
   const valid   = orders.filter((o) => o.status !== 'cancelled' && !isPaymentIncomplete(o));
-  const revenue = valid.reduce((s, o) => s + (Number(o.total) || 0), 0);
-  const count   = valid.length;
-  const aov     = count ? revenue / count : 0;
-  const now     = Date.now();
-  const thisWeek = valid.filter((o) => now - new Date(o.created_at).getTime() < 7 * DAY).length;
-  const lastWeek = valid.filter((o) => { const d = now - new Date(o.created_at).getTime(); return d >= 7 * DAY && d < 14 * DAY; }).length;
-  const wow = lastWeek ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : (thisWeek ? 100 : 0);
+  const capped  = orders.length >= DETAILED_CAP;
   const customers = new Set(valid.map((o) => o.customer_phone).filter(Boolean)).size;
 
   // Reach → orders funnel. Compared on the same 7-day window so it's apples-to-
@@ -76,13 +153,8 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const weekViews  = views?.week  ?? 0;
   const conv = weekViews > 0 ? Math.min(100, Math.round((thisWeek / weekViews) * 100)) : null;
 
-  // Orders per day, last 14 days
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now - (13 - i) * DAY);
-    const key = d.toDateString();
-    const n = valid.filter((o) => new Date(o.created_at).toDateString() === key).length;
-    return { label: d.toLocaleDateString('en-IN', { day: 'numeric' }), n };
-  });
+  // Orders per day - canonical day buckets in the merchant's own zone.
+  const days = stats.days.map((d) => ({ label: chartDayLabel(d.key), n: d.orders }));
   const maxDay = Math.max(1, ...days.map((d) => d.n));
 
   // Top products by revenue
@@ -181,29 +253,22 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const returning  = Object.values(byPhone).filter((n) => n > 1).length;
   const repeatRate = customers ? Math.round((returning / customers) * 100) : 0;
 
-  // Peak ordering hours (0–23) and busiest weekday.
-  const hours = Array(24).fill(0);
-  const dows  = Array(7).fill(0);
-  for (const o of valid) {
-    const d = new Date(o.created_at);
-    hours[d.getHours()]++;
-    dows[d.getDay()]++;
-  }
-  const peakHour = hours.some((n) => n > 0) ? hours.indexOf(Math.max(...hours)) : null;
+  // Peak ordering hour and busiest weekday - canonical, in the STORE's clock
+  // rather than whatever zone the browser happens to be in, and over every
+  // order rather than the newest 500.
+  const hours    = stats.hours;
+  const peakHour = stats.peakHour;
   const maxHour  = Math.max(1, ...hours);
-  const bestDow  = dows.some((n) => n > 0) ? dows.indexOf(Math.max(...dows)) : null;
+  const bestDow  = stats.busiestWeekday;
 
-  // Revenue over the last 14 days (parallels the orders-per-day chart).
-  const revDays = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now - (13 - i) * DAY);
-    const key = d.toDateString();
-    const rev = valid.filter((o) => new Date(o.created_at).toDateString() === key)
-                     .reduce((s, o) => s + (Number(o.total) || 0), 0);
-    return { label: d.toLocaleDateString('en-IN', { day: 'numeric' }), rev };
-  });
+  // Revenue per day - the same canonical buckets as the orders chart.
+  const revDays = stats.days.map((d) => ({ label: chartDayLabel(d.key), rev: d.revenue }));
   const maxRev = Math.max(1, ...revDays.map((d) => d.rev));
 
-  if (orders.length === 0) {
+  // The canonical feed is the population of record and is a superset of the
+  // detailed one, so "nothing here yet" is its answer to give. Reaching this
+  // line at all means the read succeeded.
+  if (factsResult.data.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
         <div className="text-4xl mb-3">📊</div>
@@ -212,6 +277,16 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
       </div>
     );
   }
+
+  // Says, on the sections that cannot see past the cap, that they cannot.
+  // Only present once the cap is actually reached, so a small store - where the
+  // detailed feed really does hold everything - sees nothing extra. An element,
+  // not a component, so it is not redeclared on every render.
+  const capNote = capped ? (
+    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg whitespace-nowrap">
+      last {DETAILED_CAP} orders
+    </span>
+  ) : null;
 
   const Stat = ({ label, value, sub }) => (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
@@ -232,7 +307,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
           </span>
         } />
         <Stat label="Avg order" value={formatINR(Math.round(aov))} />
-        <Stat label="Customers" value={customers} sub={<span className="text-[11px] text-gray-400">unique buyers</span>} />
+        <Stat label="Customers" value={customers} sub={
+          <span className="text-[11px] text-gray-400">
+            unique buyers{capped ? ' · last ' + DETAILED_CAP + ' orders' : ''}
+          </span>} />
         <Stat label="Page views" value={totalViews.toLocaleString('en-IN')} sub={<span className="text-[11px] text-gray-400">{weekViews.toLocaleString('en-IN')} this week</span>} />
         <Stat label="Conversion" value={conv === null ? '—' : `${conv}%`} sub={<span className="text-[11px] text-gray-400">visitors → orders (7d)</span>} />
       </div>
@@ -325,7 +403,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
 
       {/* Top products */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-        <p className="text-sm font-bold text-gray-900 mb-3">Top products</p>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <p className="text-sm font-bold text-gray-900">Top products</p>
+          {capNote}
+        </div>
         <div className="space-y-2.5">
           {top.length === 0 && <p className="text-xs text-gray-400">No products sold yet.</p>}
           {top.map(([name, v], i) => (
@@ -345,7 +426,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
       {/* Profit by product — best earners + thin-margin flags */}
       {hasCostData && profRanked.length > 0 && (
         <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-          <p className="text-sm font-bold text-gray-900 mb-3">Profit by product</p>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-sm font-bold text-gray-900">Profit by product</p>
+            {capNote}
+          </div>
           <div className="space-y-2.5">
             {profRanked.slice(0, 6).map((p) => (
               <div key={p.name}>
@@ -382,7 +466,9 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
 
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Returning customers" value={returning}
-                  sub={<span className="text-[11px] text-gray-400">{repeatRate}% of buyers reorder</span>} />
+                  sub={<span className="text-[11px] text-gray-400">
+                    {repeatRate}% of buyers reorder{capped ? ' · last ' + DETAILED_CAP : ''}
+                  </span>} />
             <Stat label="Busiest day" value={bestDow === null ? '—' : DOW[bestDow]}
                   sub={<span className="text-[11px] text-gray-400">most orders land here</span>} />
           </div>
