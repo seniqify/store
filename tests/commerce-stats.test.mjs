@@ -311,9 +311,49 @@ test('behaviour histograms ignore cancelled and abandoned rows', () => {
   assert.equal(s.hours.reduce((a, b) => a + b, 0), 1);
 });
 
-// ── BALANCES vs FLOWS ───────────────────────────────────────────────────────
+// ── ALL-TIME AGGREGATES vs FLOWS ────────────────────────────────────────────
+//
+// The words matter as much as the numbers here. Gross Sales, Sales Orders and
+// Average Order Value are ALL-TIME AGGREGATES. Collected, Outstanding and
+// Written Off are BALANCES - position metrics. Calling the first group balances
+// invites a reader to expect Gross Sales to behave like Outstanding.
 
-test('balances are all-time and ignore the chart window entirely', () => {
+test('the headline three are documented as all-time aggregates, not balances', () => {
+  for (const f of ['../src/utils/statsMetrics.js',
+                   '../src/components/manage/AnalyticsTab.jsx']) {
+    const src = SRC(f);
+    assert.match(src, /ALL-TIME AGGREGATES/, `${f} names the concept`);
+    // The three must be named where the concept is pinned.
+    for (const term of ['Gross Sales', 'Sales Orders', 'Average Order Value']) {
+      assert.ok(src.includes(term), `${f} must name "${term}"`);
+    }
+    assert.match(src, /never range-scoped|not range-scoped/,
+      `${f} must say they are not range-scoped`);
+  }
+});
+
+test('Gross Sales is never called a balance in the Stats layer', () => {
+  for (const f of ['../src/utils/statsMetrics.js',
+                   '../src/components/manage/AnalyticsTab.jsx']) {
+    const src = SRC(f);
+    // "balance" may appear only to say these are NOT balances, or to point at
+    // the position metrics that genuinely are. It must never label the three.
+    const claims = src.match(/^.*\bbalances?\b.*$/gim) ?? [];
+    for (const line of claims) {
+      assert.match(line, /not balances|are BALANCES|position metric/i,
+        `ambiguous use of "balance" in ${f}: ${line.trim()}`);
+    }
+  }
+});
+
+test('the position metrics keep the word balance, in the model where it belongs', () => {
+  const model = SRC('../src/utils/commerceMetrics.js');
+  assert.match(model, /A BALANCE is a position/, 'the model still defines the term');
+  assert.match(model, /money balances/, 'and still labels Collected/Outstanding/Written Off');
+});
+
+
+test('the headline aggregates are all-time and ignore the chart window', () => {
   // Every order is far older than the 14-day chart window.
   const rows = [
     order({ id: 'old-1', total: 1000, created_at: '2026-01-05T06:00:00.000Z' }),
@@ -326,7 +366,7 @@ test('balances are all-time and ignore the chart window entirely', () => {
   assert.equal(s.thisWeekOrders, 0);
 });
 
-test('without a clock the balances still hold and the flows are simply empty', () => {
+test('without a clock the all-time aggregates still hold, and flows are empty', () => {
   const s = buildStatsMetrics(FIXTURE, { timeZone: TZ, now: null });
   assert.equal(s.orders, 182, 'the gate does not depend on the clock');
   assert.equal(s.revenue, 86018);

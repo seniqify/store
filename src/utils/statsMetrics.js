@@ -10,6 +10,17 @@
  * It is pure and takes `now` as an argument rather than reading the clock, so a
  * test can pin a date and the same input always gives the same output.
  *
+ * TERMINOLOGY. The three Stats headline figures - GROSS SALES, SALES ORDERS and
+ * AVERAGE ORDER VALUE - are ALL-TIME AGGREGATES. They total every order the
+ * store has ever taken and are never range-scoped.
+ *
+ * They are NOT balances. A balance in this codebase is a position metric -
+ * Collected, Outstanding, Written Off, and the delivery states - which says
+ * where money or stock stands right now. Gross Sales is not a position: it is
+ * the sum of everything sold, and Collected + Outstanding + Written Off is what
+ * adds up to it. Keep the two words apart, or a reader will expect Gross Sales
+ * to behave like Outstanding and be wrong about both.
+ *
  * WHAT IT CANNOT DO: the facts feed (get_store_order_facts) is deliberately free
  * of items and PII, so top products, per-product profit, operating costs and
  * unique/returning customers cannot be built from it. Those stay on the capped
@@ -34,8 +45,9 @@ export function buildStatsMetrics(facts, { timeZone = 'Asia/Kolkata', now, chart
   const rows = Array.isArray(facts) ? facts : [];
   const clock = Number.isFinite(now) ? now : null;
 
-  // ── Balances. Never range-scoped: "revenue" and "orders" on Stats mean
-  //    all-time, and the screen has no date selector to say otherwise. ──
+  // ── All-time aggregates. Never range-scoped: Gross Sales, Sales Orders and
+  //    Average Order Value on Stats mean every order the store has taken, and
+  //    the screen has no date selector to say otherwise. ──
   const canonical = buildCommerceMetrics(rows, { timeZone });
 
   const revenue = canonical.money.grossSales;
@@ -100,10 +112,10 @@ export function buildStatsMetrics(facts, { timeZone = 'Asia/Kolkata', now, chart
   const busiestWeekday = weekdays.some((n) => n > 0) ? weekdays.indexOf(Math.max(...weekdays)) : null;
 
   return {
-    // balances
-    revenue,
-    orders,
-    aov,
+    // all-time aggregates - not range-scoped, and not balances
+    revenue,   // Gross Sales
+    orders,    // Sales Orders
+    aov,       // Average Order Value
     // flows
     days: flow.days,
     thisWeekOrders: flow.thisWeekOrders,

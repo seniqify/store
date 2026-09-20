@@ -91,10 +91,15 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // ── Canonical accounting ──────────────────────────────────────────────
   // Revenue, order count, AOV, both charts and the busy-time histograms come
   // from commerceMetrics over the UNCAPPED facts feed. No population, filter or
-  // classification is defined here - see src/utils/statsMetrics.js. Balances
-  // (revenue, orders, AOV) are all-time: this screen has no date selector, and
-  // a balance is never range-scoped. Only the charts and the week-on-week
-  // comparison are flows, and each is bounded by an explicit range.
+  // classification is defined here - see src/utils/statsMetrics.js.
+  //
+  // Gross Sales, Sales Orders and Average Order Value are ALL-TIME AGGREGATES:
+  // every order the store has taken, never range-scoped, and this screen has no
+  // date selector to say otherwise. They are not balances - that word belongs to
+  // the position metrics (Collected / Outstanding / Written Off) on Payments.
+  //
+  // Only the two charts and the week-on-week comparison are flows, and each is
+  // bounded by an explicit range.
   const revenue  = stats.revenue;
   const count    = stats.orders;
   const aov      = stats.aov;
