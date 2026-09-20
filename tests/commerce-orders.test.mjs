@@ -376,14 +376,24 @@ test('Home and Stats are unchanged and keep their own projections', () => {
   }
 });
 
-test('Payments and Delivery remain non-consumers', () => {
+test('Orders does not leak into Payments, and Delivery is still untouched', () => {
+  // Payments migrated in PR 7, so it consumes the model now - through its own
+  // projection. It must not reach for the ORDERS view, and Delivery must remain
+  // a non-consumer entirely.
+  // paymentsLedger imports DETAILED_ORDER_CAP from ordersView deliberately: it
+  // is one backend fact (get_store_orders LIMIT 500) named in one place. What it
+  // must not borrow is the Orders VIEW LOGIC.
   for (const f of ['../src/components/manage/PaymentsTab.jsx',
-                   '../src/components/manage/DeliveryBoard.jsx',
                    '../src/utils/paymentsLedger.js']) {
     const src = SRC(f);
-    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics|ordersView/.test(src), false,
-      `${f} is migrated by a later PR, not this one`);
+    for (const own of ['isOrdersUnpaid', 'listableRows', 'statusCounts', 'paymentLabelState']) {
+      assert.ok(!src.includes(own), `${f} must not borrow the Orders projection: ${own}`);
+    }
   }
+  assert.equal(
+    /commerceMetrics|statsMetrics|overviewMetrics|ordersView|paymentsMetrics/
+      .test(SRC('../src/components/manage/DeliveryBoard.jsx')), false,
+    'DeliveryBoard is migrated by PR 8, not yet');
 });
 
 test('ordersView shapes canonical output but defines no rule', () => {

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, Wallet, Clock, MessageCircle, Link2, BadgeCheck } from 'lucide-react';
-import { fetchOrders } from '../../utils/orderService';
+import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
-import { buildPayments, KIND_LABEL } from '../../utils/paymentsLedger';
+import { buildPaymentsLists, KIND_LABEL, isAtDetailedCap, DETAILED_ORDER_CAP } from '../../utils/paymentsLedger';
+import { buildPaymentsMetrics, PAYMENT_RANGES, periodKeys } from '../../utils/paymentsMetrics';
 import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, findPaymentOrphans, paymentLinkMessage } from '../../utils/paymentLinks';
 import { syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { prettyStatus } from '../../utils/deliveryStatus';
 
-const RANGES = [{ days: 1, label: 'Today' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }];
+const RANGES = PAYMENT_RANGES;
 
 const REASON = {
   link_pending:   { label: 'Payment link sent, not paid yet', cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
@@ -23,22 +24,29 @@ const KIND_CHIP = {
   marked:        'bg-gray-100 text-gray-600',
 };
 
-function fmtWhen(ms, timeKnown) {
+function fmtWhen(ms) {
   try {
     const d = new Date(ms);
     const day = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    return timeKnown ? `${day}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : `${day} (order date)`;
+    return `${day}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
   } catch {
     return '';
   }
 }
 
-function dayLabel(at) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diff = Math.round((today.getTime() - at) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return new Date(at).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+/**
+ * Label a merchant civil day. The key is already the merchant's own date, so it
+ * is read back at midday UTC purely to format it - no timezone is applied to it
+ * a second time.
+ */
+function dayLabel(key, todayKey, yesterdayKey) {
+  if (key === todayKey) return 'Today';
+  if (key === yesterdayKey) return 'Yesterday';
+  const t = Date.parse(`${key}T12:00:00Z`);
+  if (Number.isNaN(t)) return key;
+  return new Date(t).toLocaleDateString('en-IN', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  });
 }
 
 function Tile({ label, value, sub, tone = 'text-gray-900' }) {
@@ -59,6 +67,15 @@ function Tile({ label, value, sub, tone = 'text-gray-900' }) {
  * back, without anyone marking it.
  */
 export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false }) {
+  // TWO feeds, kept apart on purpose.
+  //  facts  - get_store_order_facts: UNCAPPED, PII-free. EVERY money total.
+  //  orders - get_store_orders: newest 500, detailed. The two worklists only,
+  //           because they show a customer's name and hand off to WhatsApp.
+  // A sum over the capped feed is a wrong number with a confident face, so the
+  // two are never mixed.
+  const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
+  const [rawCount, setRawCount] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(null);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [range, setRange]     = useState(1);
   const [busy, setBusy]       = useState('');     // order id being actioned
@@ -67,13 +84,26 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
   const [checkedAt, setCheckedAt] = useState(null);
   const [orphans, setOrphans] = useState([]);   // paid on Razorpay, order never saved
 
-  const load = useCallback(async () => { setOrders(await fetchOrders(slug, pin)); }, [slug, pin]);
+  const load = useCallback(async () => {
+    const [facts, detailed] = await Promise.all([
+      fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
+    ]);
+    setFactsResult(facts);
+    setRawCount(detailed.length);
+    setOrders(detailed);
+    setLoadedAt(Date.now());
+  }, [slug, pin]);
 
   // Show what we have at once, then refresh from couriers and Razorpay and re-read.
   const refresh = useCallback(async (alive = () => true) => {
-    const first = await fetchOrders(slug, pin);
+    const [firstFacts, first] = await Promise.all([
+      fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
+    ]);
     if (!alive()) return;
+    setFactsResult(firstFacts);
+    setRawCount(first.length);
     setOrders(first);
+    setLoadedAt(Date.now());
     const jobs = [];
     if (hasCourier) jobs.push(syncDeliveryStatuses(slug, pin));
     if (razorpayConnected) {
@@ -88,7 +118,13 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     setSyncing(true);
     await Promise.allSettled(jobs);
     if (!alive()) return;
-    setOrders(await fetchOrders(slug, pin));
+    const [freshFacts, fresh] = await Promise.all([
+      fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
+    ]);
+    setFactsResult(freshFacts);
+    setRawCount(fresh.length);
+    setOrders(fresh);
+    setLoadedAt(Date.now());
     setSyncing(false);
     setCheckedAt(new Date());
   }, [slug, pin, hasCourier, razorpayConnected]);
@@ -99,7 +135,22 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     return () => { live = false; };
   }, [refresh]);
 
-  const p = useMemo(() => (orders ? buildPayments(orders, { days: range }) : null), [orders, range]);
+  // Accounting: built ONLY from a successful facts read. On failure the rows
+  // are empty and this computes zeroes, which is why the render below refuses
+  // to show them.
+  const acc = useMemo(
+    () => buildPaymentsMetrics(factsResult?.ok ? factsResult.data : [], {
+      now: loadedAt, days: range,
+    }),
+    [factsResult, loadedAt, range],
+  );
+  const accountingOk = factsResult?.ok === true;
+  // Worklists: detailed rows, capped, never summed.
+  const lists = useMemo(
+    () => buildPaymentsLists(orders || [], { periodKeys: periodKeys(loadedAt, range) }),
+    [orders, loadedAt, range],
+  );
+  const listsCapped = isAtDetailedCap(rawCount);
 
   async function sendLink(o) {
     setBusy(o.id); setNote('');
@@ -127,7 +178,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     }
   }
 
-  if (!p) {
+  if (orders === null || factsResult === null) {
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
@@ -138,6 +189,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     );
   }
 
+  const yesterdayKey = periodKeys(loadedAt, 2)[0] ?? null;
   const rangeLabel = RANGES.find((r) => r.days === range)?.label.toLowerCase();
   const inWords = rangeLabel === 'today' ? 'today' : `in ${rangeLabel}`;
 
@@ -176,17 +228,69 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         })}
       </div>
 
+      {/* Money. A failed read shows a retry, never a row of zeroes - the
+          worklists below stay usable either way. */}
+      {!accountingOk ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3" role="alert">
+          <Wallet size={18} className="text-amber-500 flex-shrink-0" />
+          <div className="min-w-0 flex-grow">
+            <p className="text-sm font-bold text-gray-900">Money figures unavailable</p>
+            <p className="text-xs text-gray-500 mt-0.5">Your payments are safe &mdash; this screen couldn&rsquo;t reach them.</p>
+          </div>
+          <button type="button" onClick={() => refresh()}
+                  className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform"
+                  style={{ backgroundColor: themeColor }}>
+            Try again
+          </button>
+        </div>
+      ) : (<>
       <div className="grid grid-cols-2 gap-3">
-        <Tile label={`Received ${inWords}`} value={formatINR(Math.round(p.received.total))}
-              sub={`${formatINR(Math.round(p.received.online))} online · ${formatINR(Math.round(p.received.cod))} COD`} tone="text-emerald-700" />
-        <Tile label="COD still to collect" value={formatINR(Math.round(p.codDue.amount))}
-              sub={`${p.codDue.count} order${p.codDue.count === 1 ? '' : 's'} on the way`} tone="text-amber-700" />
-        <Tile label={`COD collected ${inWords}`} value={formatINR(Math.round(p.received.cod))}
-              sub={`${p.received.codCount} delivered · automatic`} />
-        <Tile label={`Returned ${inWords}`} value={formatINR(Math.round(p.returned.amount))}
-              sub={`${p.returned.count} COD order${p.returned.count === 1 ? '' : 's'} not collected`}
-              tone={p.returned.count ? 'text-rose-700' : 'text-gray-900'} />
+        {/* FLOWS - dated by the event itself, and only inside the period. */}
+        <Tile label={`Received ${inWords}`} value={formatINR(Math.round(acc.period.received.amount))}
+              sub={`${acc.period.received.count} payment${acc.period.received.count === 1 ? '' : 's'} with a recorded date`}
+              tone="text-emerald-700" />
+        <Tile label={`Returned ${inWords}`} value={formatINR(Math.round(acc.period.returned.amount))}
+              sub={`${acc.period.returned.count} order${acc.period.returned.count === 1 ? '' : 's'} came back`}
+              tone={acc.period.returned.count ? 'text-rose-700' : 'text-gray-900'} />
+        {/* BALANCES - current state. These do not move when the period changes. */}
+        <Tile label="Still to collect" value={formatINR(Math.round(acc.balances.outstanding.amount))}
+              sub={`${acc.balances.outstanding.count} order${acc.balances.outstanding.count === 1 ? '' : 's'} · all time`}
+              tone="text-amber-700" />
+        <Tile label="Written off" value={formatINR(Math.round(acc.balances.writtenOff.amount))}
+              sub={`${acc.balances.writtenOff.count} returned · all time`} />
       </div>
+
+      {/* Collected money whose payment date was never recorded. Kept out of
+          every period on purpose: we do not know when it arrived, and saying
+          otherwise would put real money in a month it may not belong to. */}
+      {acc.balances.undatedCollected.amount > 0 && (
+        <p className="text-[11px] text-gray-500 bg-white border border-gray-100 rounded-xl px-3 py-2.5">
+          <span className="font-bold text-gray-700">{formatINR(Math.round(acc.balances.undatedCollected.amount))} collected</span>
+          {' '}&mdash; payment date not recorded, so it is not in any period above
+          ({acc.balances.undatedCollected.count} order{acc.balances.undatedCollected.count === 1 ? '' : 's'}).
+        </p>
+      )}
+
+      {/* All-time reconciliation. Quiet, and deliberately not a fifth headline. */}
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3">
+        <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">All time</p>
+        <dl className="mt-2 space-y-1.5 text-[12.5px]">
+          <div className="flex justify-between gap-3"><dt className="text-gray-500">Collected</dt>
+            <dd className="font-bold text-gray-800 tabular-nums">{formatINR(Math.round(acc.balances.collected.amount))}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-gray-500">Still to collect</dt>
+            <dd className="font-bold text-gray-800 tabular-nums">{formatINR(Math.round(acc.balances.outstanding.amount))}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-gray-500">Written off</dt>
+            <dd className="font-bold text-gray-800 tabular-nums">{formatINR(Math.round(acc.balances.writtenOff.amount))}</dd></div>
+          <div className="flex justify-between gap-3 border-t border-gray-100 pt-1.5"><dt className="font-bold text-gray-700">Gross sales</dt>
+            <dd className="font-extrabold text-gray-900 tabular-nums">{formatINR(Math.round(acc.balances.grossSales))}</dd></div>
+        </dl>
+        <p className="text-[10.5px] text-gray-400 mt-2">
+          {formatINR(Math.round(acc.channels.cod.amount))} cash on delivery ·{' '}
+          {formatINR(Math.round(acc.channels.online.amount))} online ·{' '}
+          {formatINR(Math.round(acc.channels.other.amount))} recorded another way
+        </p>
+      </div>
+      </>)}
 
       {note && (
         <p className="text-xs font-semibold text-gray-700 bg-white border border-gray-100 rounded-xl px-3 py-2.5" role="status">{note}</p>
@@ -230,13 +334,13 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       {/* Needs attention: only what a system cannot finish on its own */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <p className="px-4 py-3 text-sm font-extrabold text-gray-900 border-b border-gray-100">
-          Needs attention {p.attention.length > 0 && <span className="text-gray-400">({p.attention.length})</span>}
+          Needs attention {lists.attention.length > 0 && <span className="text-gray-400">({lists.attention.length})</span>}
         </p>
-        {p.attention.length === 0 ? (
+        {lists.attention.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">Nothing to chase. Payments and deliveries are on track.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {p.attention.map(({ order: o, reason, amount }) => {
+            {lists.attention.map(({ order: o, reason, amount }) => {
               const r = REASON[reason];
               const phone = String(o.customer_phone || '').replace(/\D/g, '').slice(-10);
               const canLink = razorpayConnected && !o.awb && reason !== 'delivery_issue';
@@ -281,42 +385,38 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
             <thead>
               <tr className="text-[10.5px] uppercase tracking-wide text-gray-400">
                 <th className="text-left font-bold px-4 py-2">Day</th>
-                <th className="text-right font-bold px-3 py-2">Online</th>
-                <th className="text-right font-bold px-3 py-2">COD</th>
-                <th className="text-right font-bold px-4 py-2">Total</th>
+                <th className="text-right font-bold px-3 py-2">Payments</th>
+                <th className="text-right font-bold px-4 py-2">Received</th>
               </tr>
             </thead>
             <tbody>
-              {p.ledger.map((d) => (
+              {[...acc.period.daily].reverse().map((d) => (
                 <tr key={d.key} className="border-t border-gray-100">
-                  <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">{dayLabel(d.at)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{d.online ? formatINR(Math.round(d.online)) : '—'}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{d.cod ? formatINR(Math.round(d.cod)) : '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-extrabold text-gray-900">{d.total ? formatINR(Math.round(d.total)) : '—'}</td>
+                  <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">{dayLabel(d.key, acc.period.to, yesterdayKey)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{d.count || '—'}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-extrabold text-gray-900">{d.amount ? formatINR(Math.round(d.amount)) : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {p.received.other > 0 && (
-          <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
-            Totals include {formatINR(Math.round(p.received.other))} you marked paid by UPI or bank transfer.
-          </p>
-        )}
+        <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
+          Only payments with a recorded date appear here.
+        </p>
       </div>
 
       {/* Recent payments */}
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <p className="px-4 py-3 text-sm font-extrabold text-gray-900 border-b border-gray-100">Payments received {inWords}</p>
-        {p.recent.length === 0 ? (
+        {lists.recent.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">No payments in this period yet.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {p.recent.map(({ order: o, kind, at, amount, timeKnown }) => (
+            {lists.recent.map(({ order: o, kind, at, amount }) => (
               <li key={o.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{o.customer_name || 'Customer'}</p>
-                  <p className="text-[11px] text-gray-400 inline-flex items-center gap-1"><Clock size={10} /> {fmtWhen(at, timeKnown)}</p>
+                  <p className="text-[11px] text-gray-400 inline-flex items-center gap-1"><Clock size={10} /> {fmtWhen(at)}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-extrabold text-gray-900 tabular-nums">{formatINR(amount)}</p>
@@ -328,6 +428,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         )}
         <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
           COD is counted as collected when the courier or your delivery marks it delivered, and as returned when it comes back. Nothing to mark.
+          {listsCapped && ` This list reads your newest ${DETAILED_ORDER_CAP} orders; the totals above read all of them.`}
         </p>
       </div>
     </div>
