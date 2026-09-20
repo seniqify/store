@@ -543,16 +543,26 @@ test('checkInvariants actually reports a violation when one exists', () => {
 // must still be untouched, so this guard now names what is still to come rather
 // than being deleted.
 
-test('Orders, Payments and Delivery still do not consume the module', () => {
-  // PR 4 migrated Stats, PR 5 migrated Home. These three are PRs 6-8.
-  for (const f of ['src/components/manage/OrdersTab.jsx',
-                   'src/components/manage/PaymentsTab.jsx',
+test('Payments and Delivery still do not consume the module', () => {
+  // PR 4 migrated Stats, PR 5 Home, PR 6 Orders. These two are PRs 7-8.
+  for (const f of ['src/components/manage/PaymentsTab.jsx',
                    'src/components/manage/DeliveryBoard.jsx',
                    'src/utils/paymentsLedger.js']) {
     const src = readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8');
-    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics/.test(src), false,
+    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics|ordersView/.test(src), false,
       `${f} is migrated by a later PR, not this one`);
   }
+});
+
+test('Orders consumes the model through its own view, and shows no accounting', () => {
+  const tab = readFileSync(fileURLToPath(new URL(
+    '../src/components/manage/OrdersTab.jsx', import.meta.url)), 'utf8');
+  assert.match(tab, /ordersView/, 'Orders is wired to its projection');
+  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(tab), false,
+    'Orders goes through ordersView, never straight to the model');
+  // Orders is an operational list: it must not grow an accounting total.
+  assert.equal(/grossSales|averageOrderValue|money\.outstanding/.test(tab), false,
+    'no accounting aggregate belongs on a screen capped at 500 rows');
 });
 
 test('Stats and Home each consume the model through their own projection', () => {

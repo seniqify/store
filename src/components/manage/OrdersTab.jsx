@@ -6,7 +6,10 @@ import ShipBookModal from './ShipBookModal';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
-import { isPaymentIncomplete, isPaymentUnconfirmed } from '../../utils/orderState';
+import {
+  listableRows, isAtDetailedCap, isOrdersUnpaid, countUnpaid, statusCounts,
+  paymentLabelState, orderDayKey, todayKeys, dayCounts, DETAILED_ORDER_CAP,
+} from '../../utils/ordersView';
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
@@ -91,18 +94,35 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const dateRef = useRef(null);
 
   const [refreshing, setRefreshing] = useState(false);
+  // Rows the backend returned before abandoned ones were dropped - the only way
+  // to tell a full page from a short one.
+  const [rawCount,   setRawCount]   = useState(0);
+  // The clock, read once when rows land rather than during render, so "Today"
+  // does not quietly change meaning between two renders of the same list.
+  const [loadedAt,   setLoadedAt]   = useState(null);
 
   // Initial load shows the skeleton; refresh() updates in place (no flash) so it
   // can run silently on a timer / focus without disrupting the list.
+  // Fetched WITH abandoned rows so the raw page size is visible: get_store_orders
+  // applies its LIMIT before anything is filtered out, so a store that is mostly
+  // abandoned checkouts can be badly truncated while holding far fewer than 500
+  // listable rows. The list itself still shows only what it always did.
+  const take = useCallback(async () => {
+    const raw = await fetchOrders(slug, pin, { includeAbandoned: true });
+    setRawCount(raw.length);
+    setLoadedAt(Date.now());
+    return listableRows(raw);
+  }, [slug, pin]);
+
   const load = useCallback(async () => {
     setOrders(null);
-    setOrders(await fetchOrders(slug, pin));
-  }, [slug, pin]);
+    setOrders(await take());
+  }, [take]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    try { setOrders(await fetchOrders(slug, pin)); } finally { setRefreshing(false); }
-  }, [slug, pin]);
+    try { setOrders(await take()); } finally { setRefreshing(false); }
+  }, [take]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -135,16 +155,20 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     setBusy(false);
   }
 
-  const counts   = (orders || []).reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {});
-  // Unpaid = an order not yet marked paid. Leads carry no payment, so never counted.
-  const unpaidCount = leads ? 0 : (orders || []).filter((o) => !o.paid).length;
+  // Counts over the LOADED list - this screen answers "how many can I open?",
+  // never "what are my books?". Accounting totals live on Home/Stats/Payments.
+  const counts = statusCounts(orders || []);
+  // Unpaid = a real order whose money has not arrived. The SAME predicate runs
+  // the filter below, so the chip's number and the rows it opens cannot diverge.
+  const unpaidCount = countUnpaid(orders || [], { leads });
+  const atCap = isAtDetailedCap(rawCount);
 
-  // Date filtering — collapse the endless list to a single day. Keys are the
-  // LOCAL calendar date (merchant's own timezone) so "Today" means their today.
-  const dateKey  = (iso) => { try { return new Date(iso).toLocaleDateString('en-CA'); } catch { return ''; } };
-  const todayKey = new Date().toLocaleDateString('en-CA');
-  const yestKey  = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('en-CA'); })();
-  const dateCounts = (orders || []).reduce((m, o) => { const k = dateKey(o.created_at); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+  // Date filtering - collapse the endless list to a single day. Keys are the
+  // MERCHANT's civil date (Asia/Kolkata), so "Today" means their today wherever
+  // they happen to be looking from.
+  const dateKey  = (iso) => orderDayKey(iso);
+  const { today: todayKey, yesterday: yestKey } = todayKeys(loadedAt);
+  const dateCounts = dayCounts(orders || []);
   const isSpecificDate = dateFilter !== 'all' && dateFilter !== 'today' && dateFilter !== 'yesterday';
   const matchDate = (o) => {
     if (dateFilter === 'all') return true;
@@ -180,7 +204,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     ? (orders || []).filter(matchQuery)
     : (orders || [])
         .filter((o) => (filter === 'all' ? true : o.status === filter))
-        .filter((o) => (unpaidOnly ? !o.paid : true))
+        .filter((o) => (unpaidOnly ? isOrdersUnpaid(o) : true))
         .filter(matchDate);
 
   // ── Loading ──
@@ -212,6 +236,11 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           <p className="text-xs text-gray-400 mt-0.5">
             {orders.length === 0 ? `No ${noun}s yet` : `${orders.length} total · ${counts.new || 0} new`}
           </p>
+          {atCap && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1.5 inline-block">
+              Showing the newest {DETAILED_ORDER_CAP} {noun}s
+            </p>
+          )}
         </div>
         <button onClick={refresh} disabled={refreshing}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
@@ -399,13 +428,14 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const [linkMsg, setLinkMsg]   = useState('');
   // The customer chose Pay Online and left before paying. Flagged, not hidden:
   // if money did arrive, the seller taps the chip to mark it paid.
-  const payIncomplete = !leads && isPaymentIncomplete(o);
-  // Shipped or delivered online order that Razorpay has not confirmed yet: money
-  // most likely arrived; the automatic Razorpay check confirms it.
-  const payUnconfirmed = !leads && isPaymentUnconfirmed(o);
-  // The courier brought a COD parcel back (or lost it): no money is coming.
-  const codReturned = !leads && !o.paid && String(o.payment_method || '').toLowerCase() === 'cod'
-    && (o.shipment_outcome === 'returned' || o.shipment_outcome === 'lost');
+  // One canonical decision for the payment chip, in a stated precedence. It used
+  // to be decided here with a COD-only return test that read shipment_outcome
+  // alone, so a returned UPI order - or one whose only evidence was a
+  // "Returned To Seller" status string - showed as a plain Unpaid.
+  const payState = paymentLabelState(o, { leads });
+  const payIncomplete  = payState === 'incomplete';
+  const payUnconfirmed = payState === 'unconfirmed';
+  const codReturned    = payState === 'returned';
 
   // Per-order profit (owner-only) — goods revenue minus this order's cost of
   // goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
