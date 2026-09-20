@@ -466,3 +466,165 @@ test('unusable input yields zeroes and never throws', () => {
     assert.equal(d.identityHolds, true);
   }
 });
+
+// ── 28. courier cancellation ────────────────────────────────────────────────
+//
+// A booking the courier called off. It keeps its AWB — only cancelling through
+// PocketLink clears that — so before this it sat in In Flight permanently and
+// its COD read as collectible. It is not a fulfilment state, so it is not in
+// the Delivered + Returned + In Flight identity; it gets its own count and its
+// own place on the board.
+
+const cancelledRow = (over = {}) => row({ awb: 'CX1', shipment_status: 'Cancelled', ...over });
+
+test('a cancelled shipment leaves Delivery Orders entirely', () => {
+  const d = buildDeliveryMetrics([cancelledRow({ id: 'c', total: 1500 })]);
+  assert.equal(d.orders.count, 0, 'not a delivery order');
+  assert.equal(d.inFlight.count, 0, 'and certainly not in flight');
+  assert.equal(d.delivered.count, 0);
+  assert.equal(d.returned.count, 0);
+  assert.equal(d.cancelledShipments.count, 1);
+  assert.equal(d.cancelledShipments.amount, 1500);
+  assert.equal(d.notShipped.count, 0, 'it WAS shipped, so it is not unshipped either');
+  assert.equal(d.identityHolds, true);
+  assert.equal(d.reconciles, true);
+});
+
+test('unpaid COD on a cancelled shipment is not collectible on delivery', () => {
+  const d = buildDeliveryMetrics([
+    cancelledRow({ id: 'c', total: 1500, payment_method: 'cod', paid: false }),
+  ]);
+  assert.equal(d.codOnUndelivered.count, 0);
+  assert.equal(d.codOnUndelivered.amount, 0,
+    'nothing is in flight, so nothing is owed on delivery');
+});
+
+test('a cancelled shipment is not delivered-pending or returned-paid', () => {
+  const d = buildDeliveryMetrics([
+    cancelledRow({ id: 'a', total: 400, paid: false }),
+    cancelledRow({ id: 'b', total: 500, paid: true, paid_at: '2026-09-02T10:00:00.000Z' }),
+  ]);
+  assert.equal(d.deliveredPaymentPending.count, 0);
+  assert.equal(d.returnedPaymentRecorded.count, 0);
+  assert.equal(d.cancelledShipments.count, 2);
+  assert.equal(d.cancelledShipments.amount, 900);
+});
+
+test('BOTH identities hold on the fixture plus cancelled shipments', () => {
+  const rows = [...FIXTURE,
+    cancelledRow({ id: 'k1', total: 1500 }),
+    cancelledRow({ id: 'k2', total: 900 })];
+  const d = buildDeliveryMetrics(rows);
+  const m = d.canonical;
+
+  // active fulfilment
+  assert.equal(d.delivered.count + d.returned.count + d.inFlight.count, d.orders.count);
+  assert.equal(d.delivered.amount + d.returned.amount + d.inFlight.amount, d.orders.amount);
+  assert.equal(d.identityHolds, true);
+
+  // commerce -> fulfilment
+  assert.equal(d.orders.count + d.notShipped.count + d.cancelledShipments.count,
+    m.population.saleOrders.count);
+  assert.equal(d.orders.amount + d.notShipped.amount + d.cancelledShipments.amount,
+    m.population.saleOrders.amount);
+  assert.equal(d.reconciles, true);
+
+  // and the active numbers are exactly the frozen ones
+  assert.equal(d.orders.count, 144);
+  assert.equal(d.inFlight.count, 37);
+  assert.equal(d.codOnUndelivered.amount, 13610);
+  assert.equal(d.cancelledShipments.count, 2);
+});
+
+test('the frozen fixture has no cancelled shipment at all', () => {
+  assert.equal(D.cancelledShipments.count, 0);
+  assert.equal(D.cancelledShipments.amount, 0);
+  assert.equal(D.reconciles, true);
+  // 144 + 38 + 0 = 182, still exact.
+  assert.equal(D.orders.count + D.notShipped.count + D.cancelledShipments.count,
+    D.canonical.population.saleOrders.count);
+});
+
+test('the projection reads the canonical state, it does not re-derive it', () => {
+  const src = code('../src/utils/deliveryMetrics.js');
+  assert.equal(/cancel/i.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '')
+    .replace(/cancelledShipments/g, '')), false,
+    'no second cancellation rule lives in the projection');
+  assert.match(src, /d\.cancelledShipments/, 'it takes the count from the model');
+});
+
+// ── 29. the display mapper ──────────────────────────────────────────────────
+
+test('a failed attempt is never shown as Delivered', () => {
+  for (const s of ['Not Delivered', 'not delivered', 'NOT DELIVERED']) {
+    assert.notEqual(classifyBucket({ shipment_status: s }), 'delivered', s);
+    assert.equal(classifyBucket({ shipment_status: s }), 'attention', s);
+    // and canonical still calls it in flight, because it has not come back
+    assert.equal(shipmentState({ shipment_status: s, awb: 'A' }), 'in_flight', s);
+  }
+});
+
+test('Undelivered and Delivered are unchanged', () => {
+  assert.equal(classifyBucket({ shipment_status: 'Undelivered' }), 'attention');
+  assert.equal(classifyBucket({ shipment_status: 'Delivered' }), 'delivered');
+  assert.equal(classifyBucket({ shipment_status: 'RTO Delivered' }), 'attention');
+});
+
+test('a return that says cancelled is not displayed as a cancellation', () => {
+  // The bucket mapper used to test cancellation first and would have called
+  // these cancelled, contradicting the summary above them on the same screen.
+  for (const s of ['RTO Cancelled', 'RTS Cancelled']) {
+    assert.equal(classifyBucket({ shipment_status: s }), 'attention', s);
+    assert.equal(shipmentState({ shipment_status: s, awb: 'A' }), 'returned', s);
+  }
+  assert.equal(classifyBucket({ shipment_status: 'Cancelled' }), 'cancelled');
+  assert.equal(classifyBucket({ shipment_status: 'cancelled' }), 'cancelled');
+});
+
+test('every other status keeps the bucket it had', () => {
+  const unchanged = {
+    'In Transit': 'transit', 'Bag In Transit': 'transit', 'Item added to Bag': 'transit',
+    'Out For Delivery': 'ofd', 'Assigned For Delivery': 'ofd', dispatched: 'ofd',
+    Manifested: 'pickup', new: 'pickup', 'Not Picked': 'pickup',
+    'Not Contactable': 'attention', 'On Hold': 'attention',
+    'Returned To Seller': 'attention', Lost: 'attention',
+    'Received at RTS DC': 'attention', 'In RTO/RTS Process': 'attention',
+  };
+  for (const [status, bucket] of Object.entries(unchanged)) {
+    assert.equal(classifyBucket({ shipment_status: status }), bucket, status);
+  }
+});
+
+test('the board gives cancelled shipments somewhere to appear', () => {
+  const board = code('../src/components/manage/DeliveryBoard.jsx');
+  assert.match(board, /LIST_BUCKETS/, 'the list covers more than the five live buckets');
+  assert.match(board, /\.\.\.BUCKETS, 'cancelled'/, 'and the extra one is the cancellation');
+  assert.equal(/[^_]BUCKETS\.(reduce|filter|forEach)/.test(board), false,
+    'nothing still iterates the five alone, which is what hid these rows');
+  assert.match(board, /summary\.cancelledShipments/, 'and the summary names them');
+});
+
+test('the wording says the COURIER cancelled, not the customer', () => {
+  const board = code('../src/components/manage/DeliveryBoard.jsx');
+  assert.match(board, /cancelled by the courier/, 'the summary line is explicit');
+  assert.match(board, /order still open/, 'and says the order itself survives');
+  const status = code('../src/utils/deliveryStatus.js');
+  assert.match(status, /label: 'Courier cancelled'/, 'so is the bucket label');
+});
+
+test('cancelled shipments are not added to the active summary identity', () => {
+  const board = code('../src/components/manage/DeliveryBoard.jsx');
+  const card = board.slice(board.indexOf('Shipments'), board.indexOf('syncStale &&'));
+  for (const bit of ['summary.delivered.count', 'summary.inFlight.count', 'summary.returned.count']) {
+    assert.ok(card.includes(bit), `${bit} is still in the three-way card`);
+  }
+  assert.equal(/dl className[^>]*grid-cols-4/.test(card), false,
+    'the identity stays three columns wide');
+});
+
+test('the cancelled summary comes from the uncapped facts, not the capped list', () => {
+  const board = code('../src/components/manage/DeliveryBoard.jsx');
+  assert.match(board, /const summary = buildDeliveryMetrics\(factsResult\?\.ok \? factsResult\.data : \[\]\)/);
+  assert.equal(/buildDeliveryMetrics\(pool|buildDeliveryMetrics\(orders/.test(board), false,
+    'no total, cancelled included, is computed from the capped rows');
+});

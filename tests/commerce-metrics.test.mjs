@@ -142,6 +142,9 @@ test('every delivery order lands in exactly one of delivered / returned / in_fli
     if (kind !== 'sale' && kind !== 'enquiry') continue;
     if (!o.awb) continue;
     const s = shipmentState(o) ?? 'in_flight';
+    // A cancelled booking is not a fulfilment position and is not in
+    // DELIVERY_STATES; it leaves the population rather than joining it.
+    if (s === 'cancelled') continue;
     assert.ok(DELIVERY_STATES.includes(s), `unknown delivery state ${s}`);
     seen[s] += 1;
   }
@@ -657,11 +660,17 @@ test('shipmentState agrees with the SQL classifier on every real courier string'
   for (const { shipment_status, sql_outcome } of COURIER_STRINGS) {
     // SQL returns 'delivered' | 'returned' | 'lost' | '' (null). 'lost' and
     // 'returned' are one state here, because both mean the money is not coming.
-    const expected = sql_outcome === 'delivered' ? 'delivered'
-      : (sql_outcome === 'returned' || sql_outcome === 'lost') ? 'returned'
-        : 'in_flight';
+    //
+    // A NULL outcome is where the two are allowed to differ, and only there:
+    // SQL has no cancellation concept and deliberately keeps none (the column's
+    // CHECK constraint permits delivered/returned/lost only), so JS reads the
+    // status string and may return 'cancelled' where SQL returns nothing. Every
+    // other string must still agree exactly.
+    const expected = sql_outcome === 'delivered' ? ['delivered']
+      : (sql_outcome === 'returned' || sql_outcome === 'lost') ? ['returned']
+        : ['in_flight', 'cancelled'];
     const got = shipmentState(order({ awb: 'A', shipment_status, shipment_outcome: null }));
-    if (got !== expected) disagreements.push(`${JSON.stringify(shipment_status)}: sql=${sql_outcome || 'null'} js=${got}`);
+    if (!expected.includes(got)) disagreements.push(`${JSON.stringify(shipment_status)}: sql=${sql_outcome || 'null'} js=${got}`);
   }
   assert.deepEqual(disagreements, []);
 });
@@ -898,4 +907,172 @@ test('the day buckets a range opens cover every event the range admits', () => {
     'every in-range rupee landed in a day bucket');
   assert.ok(m.flows.byDay.some((d) => d.day === '2026-03-08' && d.sales > 0),
     'the short DST day carries its sales');
+});
+
+// ── J. courier cancellation ─────────────────────────────────────────────────
+//
+// A courier can call a booking off without PocketLink knowing: the merchant
+// cancelling on the courier's own portal, or an auto-cancel of a parcel never
+// picked up. Only the status string arrives — the AWB stays. Before this the
+// row read as in_flight forever (the sweep treats "cancel" as terminal and
+// stops polling it) and its COD counted as collectible on a parcel that had
+// stopped moving.
+//
+// Cancelling THROUGH PocketLink clears the AWB, so those rows never get here.
+
+const cancelled = (over = {}) => order({ awb: 'A1', shipment_status: 'Cancelled', ...over });
+
+test('a courier cancellation is its own state, not in flight', () => {
+  assert.equal(shipmentState(cancelled()), 'cancelled');
+  assert.equal(shipmentState(cancelled({ shipment_status: 'cancelled' })), 'cancelled');
+  assert.equal(shipmentState(cancelled({ shipment_status: 'CANCELLED' })), 'cancelled');
+});
+
+test('cancelled is NOT a delivery state', () => {
+  assert.equal(DELIVERY_STATES.includes('cancelled'), false,
+    'adding it would break Delivered + Returned + In Flight');
+});
+
+test('a return that also says cancelled is a RETURN', () => {
+  // The parcel is coming back. Reading these as cancellations would drop real
+  // returned money out of Written Off, which is why return is tested first.
+  assert.equal(shipmentState(cancelled({ shipment_status: 'RTO Cancelled' })), 'returned');
+  assert.equal(shipmentState(cancelled({ shipment_status: 'RTS Cancelled' })), 'returned');
+  assert.equal(shipmentState(cancelled({ shipment_status: 'RTO Delivered' })), 'returned');
+});
+
+test('an authoritative outcome still beats a cancelled string', () => {
+  assert.equal(shipmentState(cancelled({ shipment_outcome: 'delivered' })), 'delivered');
+  assert.equal(shipmentState(cancelled({ shipment_outcome: 'returned' })), 'returned');
+  assert.equal(shipmentState(cancelled({ shipment_outcome: 'lost' })), 'returned');
+  assert.equal(shipmentState(cancelled({ status: 'delivered' })), 'delivered',
+    'the seller confirming delivery still outranks the courier string');
+});
+
+test('the ordinary states are untouched by the new branch', () => {
+  const cases = [
+    ['Delivered', 'delivered'], ['Not Delivered', 'in_flight'],
+    ['Undelivered', 'in_flight'], ['Lost', 'returned'],
+    ['In Transit', 'in_flight'], ['Manifested', 'in_flight'],
+    ['Out For Delivery', 'in_flight'], ['Returned To Seller', 'returned'],
+  ];
+  for (const [status, expected] of cases) {
+    assert.equal(shipmentState(order({ awb: 'A1', shipment_status: status })), expected, status);
+  }
+});
+
+test('a cancellation with no AWB keeps the old no-shipment answer', () => {
+  // Cancelled through PocketLink: the AWB was cleared, so there is no shipment
+  // at all and the answer must still be null, exactly as it was before.
+  assert.equal(shipmentState(order({ shipment_status: 'Cancelled' })), null);
+  assert.equal(shipmentState(order({ shipment_status: 'Cancelled', awb: '' })), null);
+});
+
+test('THE REGRESSION: a cancelled shipment leaves fulfilment, not commerce', () => {
+  const row = cancelled({ id: 'syn', total: 1500, payment_method: 'cod', paid: false });
+  const before = M(FIXTURE);
+  const after = M([...FIXTURE, row]);
+
+  // the order is untouched
+  assert.equal(classifyOrder(row), 'sale');
+  assert.equal(paymentState(row), 'outstanding', 'a cancelled parcel is not a write-off');
+  assert.equal(after.population.saleOrders.count, before.population.saleOrders.count + 1);
+  assert.equal(after.money.grossSales, before.money.grossSales + 1500);
+  assert.equal(after.money.outstanding.amount, before.money.outstanding.amount + 1500);
+  assert.equal(after.money.writtenOff.amount, before.money.writtenOff.amount,
+    'courier cancellation is NOT a write-off');
+
+  // the shipment is gone from the active board
+  assert.equal(after.delivery.orders.count, before.delivery.orders.count);
+  assert.equal(after.delivery.inFlight.count, before.delivery.inFlight.count);
+  assert.equal(after.delivery.codOnUndelivered.count, before.delivery.codOnUndelivered.count);
+  assert.equal(after.delivery.codOnUndelivered.amount, before.delivery.codOnUndelivered.amount,
+    'unpaid COD on a cancelled parcel is not collectible on delivery');
+
+  // and it is counted somewhere it can still be seen
+  assert.equal(after.delivery.cancelledShipments.count, 1);
+  assert.equal(after.delivery.cancelledShipments.amount, 1500);
+  assert.deepEqual(checkInvariants(after), []);
+});
+
+test('both identities hold with cancelled shipments present', () => {
+  const rows = [...FIXTURE,
+    cancelled({ id: 'k1', total: 1500 }),
+    cancelled({ id: 'k2', total: 800, paid: true, paid_at: '2026-09-04T10:00:00.000Z' }),
+    cancelled({ id: 'k3', total: 600, payment_method: 'online', payment_ref: 'x' })];
+  const m = M(rows);
+  const d = m.delivery;
+
+  // ACTIVE: the fulfilment identity, cancelled deliberately absent
+  assert.equal(d.delivered.count + d.returned.count + d.inFlight.count, d.orders.count);
+  assert.equal(d.delivered.amount + d.returned.amount + d.inFlight.amount, d.orders.amount);
+
+  // COMMERCE -> FULFILMENT: there is nowhere else for a sale order to be
+  assert.equal(d.orders.count + m.population.notShipped.count + d.cancelledShipments.count,
+    m.population.saleOrders.count);
+  assert.equal(d.orders.amount + m.population.notShipped.amount + d.cancelledShipments.amount,
+    m.population.saleOrders.amount);
+
+  assert.equal(d.cancelledShipments.count, 3);
+  assert.equal(d.cancelledShipments.amount, 2900);
+  assert.deepEqual(checkInvariants(m), []);
+});
+
+test('a cancelled shipment on a cancelled ORDER is still excluded once', () => {
+  const row = cancelled({ id: 'z', total: 500, status: 'cancelled' });
+  const m = M([row]);
+  assert.equal(classifyOrder(row), 'cancelled');
+  assert.equal(m.population.saleOrders.count, 0, 'it is not a sale at all');
+  assert.equal(m.delivery.cancelledShipments.count, 0,
+    'and it must not be counted a second time as a cancelled shipment');
+  assert.deepEqual(checkInvariants(m), []);
+});
+
+test('an abandoned cancellation never counts', () => {
+  const m = M([cancelled({ id: 'q', total: 700, status: 'abandoned' })]);
+  assert.equal(m.delivery.cancelledShipments.count, 0);
+  assert.equal(m.population.saleOrders.count, 0);
+});
+
+test('an unpaid ONLINE order that was shipped then cancelled is still a sale', () => {
+  // It carries an AWB, so it is not an abandoned online checkout: the goods
+  // went out. The money is genuinely owed and the shipment genuinely stopped.
+  const row = cancelled({ id: 'w', total: 700, payment_method: 'online', paid: false });
+  assert.equal(isPaymentIncomplete(row), false, 'shipping it settles that question');
+  const m = M([row]);
+  assert.equal(m.population.saleOrders.count, 1);
+  assert.equal(m.money.outstanding.amount, 700);
+  assert.equal(m.delivery.cancelledShipments.count, 1);
+  assert.equal(m.delivery.orders.count, 0);
+  assert.deepEqual(checkInvariants(m), []);
+});
+
+test('the frozen fixture is completely unmoved by this change', () => {
+  const m = M(FIXTURE);
+  assert.equal(m.population.saleOrders.count, 182);
+  assert.equal(m.money.grossSales, 86018);
+  assert.equal(m.money.collected.amount, 45443);
+  assert.equal(m.money.outstanding.amount, 28626);
+  assert.equal(m.money.writtenOff.amount, 11949);
+  assert.equal(m.delivery.orders.count, 144);
+  assert.equal(m.delivery.delivered.count, 79);
+  assert.equal(m.delivery.returned.count, 28);
+  assert.equal(m.delivery.inFlight.count, 37);
+  assert.equal(m.delivery.codOnUndelivered.amount, 13610);
+  assert.equal(m.population.notShipped.count, 38);
+  assert.equal(m.population.notShipped.amount, 17886);
+  assert.equal(m.delivery.cancelledShipments.count, 0, 'no historical row is affected');
+  assert.equal(m.delivery.cancelledShipments.amount, 0);
+  assert.deepEqual(checkInvariants(m), []);
+});
+
+test('no SQL was changed to support this', () => {
+  const sql = readFileSync(fileURLToPath(new URL(
+    '../supabase/payments-automation.sql', import.meta.url)), 'utf8');
+  // The column still admits only the three the trigger can write. JS reads the
+  // status string for cancellation precisely so this constraint can stay put.
+  assert.match(sql, /shipment_outcome in \('delivered', 'returned', 'lost'\)/);
+  const fn = sql.split('shipment_outcome_of')[2] || '';
+  assert.equal(/cancel/i.test(fn.slice(0, 600)), false,
+    'the SQL classifier must not have gained a cancellation branch');
 });

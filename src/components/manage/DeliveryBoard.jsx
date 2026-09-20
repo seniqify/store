@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
-  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter, Search,
+  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter, Search, Ban,
 } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
@@ -11,7 +11,14 @@ import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
 
-const BUCKET_ICON = { attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check };
+const BUCKET_ICON = {
+  attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check, cancelled: Ban,
+};
+
+// The five BUCKETS are the live pipeline. A shipment the courier called off is
+// not in it, but it still has to be findable - before this it fell into a
+// display hole: counted in the header, rendered in no section.
+const LIST_BUCKETS = [...BUCKETS, 'cancelled'];
 
 // UTC courier timestamp → readable IST ("27 Aug, 11:16 AM")
 function fmtTs(ts) {
@@ -134,7 +141,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   // Courier-scoped pool → buckets. Courier + status filters compose.
   const pool = (orders || []).filter((o) => activeCourier === 'all' || courierInfo(o.courier).key === activeCourier);
   const groups = {};
-  BUCKETS.forEach((b) => { groups[b] = []; });
+  LIST_BUCKETS.forEach((b) => { groups[b] = []; });
   pool.forEach((o) => { const b = classifyBucket(o); (groups[b] || (groups[b] = [])).push(o); });
   const count = (b) => (groups[b] || []).length;
   const total = pool.length;
@@ -142,7 +149,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const effFilter = (filter === 'all' || count(filter)) ? filter : 'all';
   // Search narrows the list only; the tiles and counts above still cover the whole board.
   const shown = (b) => (groups[b] || []).filter((o) => matchesShipmentSearch(o, query));
-  const shownTotal = BUCKETS.reduce((n, b) => n + ((effFilter === 'all' || effFilter === b) ? shown(b).length : 0), 0);
+  const shownTotal = LIST_BUCKETS.reduce((n, b) => n + ((effFilter === 'all' || effFilter === b) ? shown(b).length : 0), 0);
 
   // The canonical fulfilment summary. Built from the UNCAPPED facts feed and
   // classified by shipmentState, never by the display buckets above - a bucket
@@ -243,7 +250,8 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
             <div><dt className="text-[10.5px] text-gray-500">Returned</dt>
               <dd className="text-lg font-extrabold text-rose-700 tabular-nums">{summary.returned.count}</dd></div>
           </dl>
-          {(summary.notShipped.count > 0 || summary.deliveredPaymentPending.count > 0) && (
+          {(summary.notShipped.count > 0 || summary.deliveredPaymentPending.count > 0
+            || summary.cancelledShipments.count > 0) && (
             <div className="mt-2.5 pt-2.5 border-t border-gray-100 space-y-1">
               {summary.notShipped.count > 0 && (
                 <p className="text-[11px] text-gray-500">
@@ -261,6 +269,14 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
                 <p className="text-[11px] text-gray-500">
                   <span className="font-bold text-gray-700">{summary.returnedPaymentRecorded.count} returned · payment recorded</span>
                   {' '}&mdash; {formatINR(Math.round(summary.returnedPaymentRecorded.amount))}
+                </p>
+              )}
+              {/* Outside the three counts above on purpose: nothing is moving,
+                  so it is not a fulfilment state. The ORDER is still live. */}
+              {summary.cancelledShipments.count > 0 && (
+                <p className="text-[11px] text-gray-500">
+                  <span className="font-bold text-gray-700">{summary.cancelledShipments.count} cancelled by the courier</span>
+                  {' '}&mdash; {formatINR(Math.round(summary.cancelledShipments.amount))}, order still open
                 </p>
               )}
             </div>
@@ -373,7 +389,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
           })()}
           {statusMenu && (
             <div role="listbox" className="absolute left-0 top-full mt-1.5 z-30 w-60 max-w-[80vw] bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden">
-              {['all', ...BUCKETS.filter((b) => count(b))].map((k) => {
+              {['all', ...LIST_BUCKETS.filter((b) => count(b))].map((k) => {
                 const on = effFilter === k;
                 const Ic = k === 'all' ? ListFilter : BUCKET_ICON[k];
                 const label = k === 'all' ? 'All statuses' : BUCKET_META[k].label;
@@ -422,7 +438,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       ) : (
         <div className="space-y-5">
-          {BUCKETS.filter((b) => shown(b).length && (effFilter === 'all' || effFilter === b)).map((b) => {
+          {LIST_BUCKETS.filter((b) => shown(b).length && (effFilter === 'all' || effFilter === b)).map((b) => {
             const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
             return (
               <section key={b}>

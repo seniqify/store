@@ -76,7 +76,14 @@ export const ORDER_KINDS = Object.freeze([
 /** Where an order's money stands. Mutually exclusive over REVENUE_ORDERS. */
 export const PAYMENT_STATES = Object.freeze(['collected', 'outstanding', 'written_off']);
 
-/** Where a shipment stands. Mutually exclusive over DELIVERY_ORDERS. */
+/**
+ * Where a shipment stands. Mutually exclusive over DELIVERY_ORDERS.
+ *
+ * 'cancelled' is deliberately NOT here. shipmentState() can return it, but a
+ * cancelled booking is not a fulfilment position - it is the absence of one -
+ * so it is excluded from DELIVERY_ORDERS and counted on its own. Adding it here
+ * would break the identity every screen now depends on.
+ */
 export const DELIVERY_STATES = Object.freeze(['delivered', 'returned', 'in_flight']);
 
 /** Courier strings that mean the parcel is coming back, is back, or is gone. */
@@ -91,6 +98,15 @@ const RETURN_RE = /rto|rts|return|lost/;
  */
 const DELIVERED_RE = /\bdelivered\b/;
 const NOT_DELIVERED_RE = /undeliver|not deliver/;
+/**
+ * A courier cancellation: the booking was called off, so the parcel is not
+ * moving and never will. Tested LAST of the three families, because the return
+ * strings win outright - "RTO Cancelled" and "RTS Cancelled" are parcels coming
+ * BACK, not bookings called off, and reading them as cancellations would drop
+ * real returned money out of Written Off. The board's display mapper tests
+ * cancellation first; it decides nothing that is counted.
+ */
+const CANCEL_RE = /cancel/;
 
 // ── classification ───────────────────────────────────────────────────────────
 
@@ -146,6 +162,13 @@ export function classifyOrder(o) {
  * strings contain both: Delhivery's "RTO Delivered" is a parcel that came BACK,
  * and reading it as a delivery would book revenue that never arrived.
  *
+ * CANCELLATION IS EVALUATED LAST, the same rule in reverse: "RTO Cancelled" is
+ * a return, not a cancellation. A cancelled shipment is not a fulfilment state
+ * but the ABSENCE of one, so it is kept out of DELIVERY_STATES and out of
+ * DELIVERY_ORDERS. The ORDER is untouched by it: a courier calling off a
+ * booking says nothing about whether the customer still wants the goods or
+ * still owes for them, which is why paymentState is not consulted here.
+ *
  * Returns null when there is no shipment at all.
  */
 export function shipmentState(o) {
@@ -160,7 +183,12 @@ export function shipmentState(o) {
   if (RETURN_RE.test(raw)) return 'returned';
   if (DELIVERED_RE.test(raw) && !NOT_DELIVERED_RE.test(raw)) return 'delivered';
 
-  return lower(o?.awb) ? 'in_flight' : null;
+  // No shipment at all: unchanged. The cancellation test sits BELOW this line on
+  // purpose, so a booking cancelled through PocketLink - which clears the AWB -
+  // keeps returning null exactly as it did before.
+  if (!lower(o?.awb)) return null;
+
+  return CANCEL_RE.test(raw) ? 'cancelled' : 'in_flight';
 }
 
 /**
@@ -346,6 +374,8 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
   const delivered = emptyMoney();
   const returned = emptyMoney();
   const inFlight = emptyMoney();
+  const cancelledShipments = emptyMoney();
+  const notShipped = emptyMoney();
   const codOnUndelivered = emptyMoney();
 
   // -- flows -----------------------------------------------------------------
@@ -389,7 +419,12 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
     // -- delivery population: a subset of SALE_ORDERS, so a cancelled or
     //    abandoned row can never appear on the board.
     const ship = shipmentState(o);
-    if (lower(o?.awb)) {
+    if (lower(o?.awb) && ship === 'cancelled') {
+      // Booked, then called off at the courier. Counted on its own so the row
+      // stays visible and the sale still reconciles, but kept OUT of the active
+      // fulfilment identity: nothing is in transit, and nothing is owed to it.
+      addTo(cancelledShipments, amount);
+    } else if (lower(o?.awb)) {
       addTo(deliveryOrders, amount);
       if (ship === 'delivered') {
         addTo(delivered, amount);
@@ -402,6 +437,8 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
       } else {
         addTo(inFlight, amount);
       }
+    } else {
+      addTo(notShipped, amount);      // accepted, never handed to a courier
     }
 
     // -- enquiries carry no money: they are counted as orders and nothing else.
@@ -450,6 +487,7 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
       saleOrders: toRupees(saleOrders),
       revenueOrders: toRupees(revenueOrders),
       deliveryOrders: toRupees(deliveryOrders),
+      notShipped: toRupees(notShipped),
       excluded: {
         abandoned: toRupees(kinds.abandoned),
         cancelled: toRupees(kinds.cancelled),
@@ -475,6 +513,7 @@ export function buildCommerceMetrics(orders = [], opts = {}) {
       delivered: toRupees(delivered),
       returned: toRupees(returned),
       inFlight: toRupees(inFlight),
+      cancelledShipments: toRupees(cancelledShipments),
       codOnUndelivered: toRupees(codOnUndelivered),
     },
     flows: {
@@ -523,6 +562,20 @@ export function checkInvariants(m) {
   }
   if (m.delivery.codOnUndelivered.amount > m.money.cod.outstanding.amount) {
     problems.push('COD on undelivered shipments exceeds COD outstanding');
+  }
+
+  // Commerce -> fulfilment. Every sale order is shipped, waiting to be shipped,
+  // or had its booking cancelled at the courier; there is nowhere else to be.
+  // A SECOND identity, deliberately not part of the active one above.
+  const ns = m.population.notShipped;
+  const cs = d.cancelledShipments;
+  if (m.population.saleOrders.count !== d.orders.count + ns.count + cs.count) {
+    problems.push('sale orders: ' + m.population.saleOrders.count + ' != '
+      + d.orders.count + ' + ' + ns.count + ' + ' + cs.count);
+  }
+  if (!eq(m.population.saleOrders.amount, d.orders.amount + ns.amount + cs.amount)) {
+    problems.push('sale money: ' + m.population.saleOrders.amount + ' != '
+      + d.orders.amount + ' + ' + ns.amount + ' + ' + cs.amount);
   }
   return problems;
 }

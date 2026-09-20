@@ -42,6 +42,18 @@
  * returns and paid orders by construction. It is a strict subset of Payments'
  * Outstanding and must never be labelled as if it were the whole of it.
  *
+ * ── CANCELLED SHIPMENTS ─────────────────────────────────────────────────────
+ *
+ * A booking called off at the courier is NOT a fulfilment state, so it is not
+ * in DELIVERY_ORDERS and not in the Delivered + Returned + In Flight identity.
+ * It gets its own count so the row stays visible and the sale still adds up:
+ *
+ *   Delivery Orders + Not shipped yet + Cancelled shipments = Sale Orders
+ *
+ * The order behind it is untouched - still a sale, still in Gross Sales, and
+ * still Outstanding if unpaid. Only the parcel stopped; the debt did not. That
+ * is why this file reports the shipment and Payments still reports the money.
+ *
  * NO DATE RANGES. delivered_at exists on 15 of 80 delivered rows and
  * returned_at on 9 of 29 returned ones, so a "delivered this week" figure would
  * be mostly blind. Current state only, and no timestamp is ever inferred.
@@ -79,7 +91,6 @@ export function buildDeliveryMetrics(facts, { timeZone = 'Asia/Kolkata' } = {}) 
 
   // ── Secondary, row-selected. Everything below takes its eligibility, its
   //    shipment state and its payment state from the canonical helpers.
-  const notShipped = empty();
   const notShippedOutstanding = empty();
   const deliveredPaymentPending = empty();
   const returnedPaymentRecorded = empty();
@@ -91,8 +102,9 @@ export function buildDeliveryMetrics(facts, { timeZone = 'Asia/Kolkata' } = {}) 
     const pay = paymentState(o);
 
     if (!String(o?.awb ?? '').trim()) {
-      // Accepted, not handed to a courier. Outside DELIVERY_ORDERS on purpose.
-      add(notShipped, amount);
+      // Accepted, not handed to a courier. Outside DELIVERY_ORDERS on purpose;
+      // the count itself comes from the model, this only splits out the money
+      // still owed on it.
       if (pay === 'outstanding') add(notShippedOutstanding, amount);
       continue;
     }
@@ -107,6 +119,13 @@ export function buildDeliveryMetrics(facts, { timeZone = 'Asia/Kolkata' } = {}) 
     if (ship === 'returned' && pay === 'collected') add(returnedPaymentRecorded, amount);
   }
 
+  // Delivery Orders + Not shipped + Cancelled = Sale Orders, in count and money.
+  const reconciles =
+    d.orders.count + canonical.population.notShipped.count + d.cancelledShipments.count
+      === canonical.population.saleOrders.count
+    && paise(d.orders.amount) + paise(canonical.population.notShipped.amount)
+       + paise(d.cancelledShipments.amount) === paise(canonical.population.saleOrders.amount);
+
   const identityHolds =
     d.delivered.count + d.returned.count + d.inFlight.count === d.orders.count
     && paise(d.delivered.amount) + paise(d.returned.amount) + paise(d.inFlight.amount)
@@ -119,12 +138,17 @@ export function buildDeliveryMetrics(facts, { timeZone = 'Asia/Kolkata' } = {}) 
     returned: d.returned,
     inFlight: d.inFlight,
     identityHolds,
+    reconciles,
 
     // the one money figure that is about shipments, not about the books
     codOnUndelivered: d.codOnUndelivered,
 
+    // Booked, then called off at the courier. Outside the identity above and
+    // outside codOnUndelivered - there is nothing left in flight to collect on.
+    cancelledShipments: d.cancelledShipments,
+
     // operational queues, deliberately outside the identity above
-    notShipped: done(notShipped),
+    notShipped: canonical.population.notShipped,
     notShippedOutstanding: done(notShippedOutstanding),
     deliveredPaymentPending: done(deliveredPaymentPending),
     returnedPaymentRecorded: done(returnedPaymentRecorded),
