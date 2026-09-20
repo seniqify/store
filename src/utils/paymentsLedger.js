@@ -1,139 +1,107 @@
+/**
+ * Manage → Payments: the OPERATIONAL lists, and nothing else.
+ *
+ * Every money total on this screen — received, still to collect, written off,
+ * gross sales — now comes from src/utils/paymentsMetrics.js over the canonical
+ * model and the uncapped facts feed. What is left here is the two lists that
+ * genuinely need detailed rows, because they show a customer's name and phone
+ * and hand off to WhatsApp: "needs attention" and "payments received".
+ *
+ * Those lists come from get_store_orders and are therefore CAPPED at the newest
+ * 500 rows. That is acceptable for a worklist and unacceptable for accounting,
+ * which is exactly why the two are no longer computed together. Do not add a
+ * total here: a sum over a capped feed is a wrong number with a confident face.
+ *
+ * What was removed, and why:
+ *   paymentKind()  a private ten-value money classifier. Superseded by canonical
+ *                  classifyOrder / paymentState / shipmentState.
+ *   isReturned()   a second return regex. Superseded by shipmentState, which it
+ *                  agreed with on all 29 returned rows of the audited store.
+ *   buildPayments() the money maths, including `paid_at || delivered_at ||
+ *                  created_at` — the fallback that dated 77% of a 30-day
+ *                  "received" figure by order date.
+ */
+import { classifyOrder, paymentState, dayKeyInZone } from './commerceMetrics.js';
 import { isPaymentIncomplete, isPaymentUnconfirmed } from './orderState.js';
 import { classifyBucket } from './deliveryStatus.js';
+// The same backend fact Orders names: get_store_orders returns at most 500 rows.
+import { DETAILED_ORDER_CAP } from './ordersView.js';
 
-/**
- * Manage → Payments: pure money maths over the store's orders. No network, so it
- * is unit-tested in node (tests/payments-ledger.test.mjs).
- *
- * Nothing here needs the seller to mark anything. COD becomes collected when the
- * courier (or the order) says delivered, and returned when the courier says it
- * came back — the database does that (supabase/payments-automation.sql). Online
- * payments are confirmed with Razorpay.
- *
- * Money is dated by when it happened: paid_at for money received, returned_at
- * for returns. Orders from before those times were recorded fall back to their
- * order date.
- */
+export { DETAILED_ORDER_CAP };
 
-const DAY = 86400000;
-
-const ts = (iso) => { const t = new Date(iso).getTime(); return Number.isNaN(t) ? 0 : t; };
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-const startOfDay = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
-/** Local calendar day, the seller's own today. */
-export const dayKey = (ms) => new Date(ms).toLocaleDateString('en-CA');
+/** How collected money actually arrived. paid_via is the record of that; the
+ *  customer's chosen payment_method is not evidence of anything. */
+export function collectedChannel(o) {
+  const via = String(o?.paid_via ?? '').toLowerCase().trim();
+  if (via === 'cod_delivery') return 'cod_collected';
+  if (via === 'razorpay') return 'online';
+  if (via === 'payment_link') return 'link';
+  // A COD order marked paid with no paid_via: the shopkeeper took the cash.
+  if (!via && String(o?.payment_method ?? '').toLowerCase().trim() === 'cod') return 'cod_collected';
+  return 'marked';
+}
 
 export const KIND_LABEL = {
   online:        'Paid online · Razorpay',
   link:          'Paid by payment link',
   cod_collected: 'COD collected on delivery',
-  marked:        'Marked paid by you',
-  cod_due:       'COD to collect',
-  cod_returned:  'Returned · not collected',
-  incomplete:    'Payment not completed',
-  unconfirmed:   'Payment not confirmed yet',
-  unpaid:        'Unpaid',
-  void:          'Cancelled',
+  marked:        'Recorded as paid',
 };
 
-/** Did the courier say this shipment is coming back, came back, or is lost? */
-export function isReturned(o) {
-  if (o?.shipment_outcome === 'returned' || o?.shipment_outcome === 'lost') return true;
-  const raw = String(o?.shipment_status || '');
-  return /rto|rts|return/i.test(raw) || /\blost\b/i.test(raw);
+/** Did the detailed feed hand back a full page? Measured on the raw rows. */
+export function isAtDetailedCap(rawRowCount) {
+  return Number(rawRowCount) >= DETAILED_ORDER_CAP;
 }
-
-/** How an order's money stands. */
-export function paymentKind(o) {
-  if (o?.status === 'cancelled' || o?.status === 'abandoned') return 'void';
-  const method = String(o?.payment_method || '').toLowerCase();
-  if (o?.paid === true) {
-    if (o.paid_via === 'payment_link') return 'link';
-    if (o.paid_via === 'cod_delivery' || method === 'cod') return 'cod_collected';
-    if (method === 'online' && o.payment_ref) return 'online';
-    return 'marked';
-  }
-  if (method === 'cod' && isReturned(o)) return 'cod_returned';
-  if (isPaymentUnconfirmed(o)) return 'unconfirmed';
-  if (isPaymentIncomplete(o)) return 'incomplete';
-  if (method === 'cod') return 'cod_due';
-  return 'unpaid';
-}
-
-const PAID_KINDS = new Set(['online', 'link', 'cod_collected', 'marked']);
 
 /**
- * @param {Array} orders   rows from get_store_orders (abandoned already excluded)
- * @param {{days?: number, now?: number}} opts  range = today and the days before it
+ * The two lists.
+ *
+ * @param {Array}  orders     detailed rows from get_store_orders (capped)
+ * @param {object} opts
+ * @param {Set<string>|Array<string>} opts.periodKeys  merchant civil days in view
+ * @param {string} [opts.timeZone]
  */
-export function buildPayments(orders = [], { days = 1, now = Date.now() } = {}) {
-  const start = startOfDay(now) - (Math.max(1, days) - 1) * DAY;
-  const inRange = (at) => at >= start && at <= now + DAY;
-
-  const received = { online: 0, cod: 0, other: 0, total: 0, onlineCount: 0, codCount: 0, otherCount: 0 };
-  const codDue = { amount: 0, count: 0 };
-  const returned = { amount: 0, count: 0 };
+export function buildPaymentsLists(orders = [], { periodKeys = [], timeZone = 'Asia/Kolkata' } = {}) {
+  const window = periodKeys instanceof Set ? periodKeys : new Set(periodKeys);
   const attention = [];
   const recent = [];
 
-  const ledger = new Map();
-  for (let d = startOfDay(now); d >= start; d -= DAY) {
-    ledger.set(dayKey(d), { key: dayKey(d), at: d, online: 0, cod: 0, other: 0, total: 0 });
-  }
+  for (const o of (Array.isArray(orders) ? orders : [])) {
+    const kind = classifyOrder(o);
+    // Cancelled and abandoned rows are nothing to chase. A payment-incomplete
+    // one is not revenue either, but it IS what a worklist is for, so it stays.
+    if (kind === 'cancelled' || kind === 'abandoned') continue;
+    const amount = Number(o?.total) || 0;
+    const state = kind === 'sale' ? paymentState(o) : 'outstanding';
 
-  for (const o of orders || []) {
-    const total = num(o?.total);
-    if (total <= 0) continue;                 // enquiries carry no money
-    const kind = paymentKind(o);
-    if (kind === 'void') continue;
-
-    if (PAID_KINDS.has(kind)) {
-      const at = ts(o.paid_at) || ts(o.delivered_at) || ts(o.created_at);
-      if (inRange(at)) {
-        const bucket = kind === 'online' || kind === 'link' ? 'online' : kind === 'cod_collected' ? 'cod' : 'other';
-        received[bucket] += total;
-        received[`${bucket}Count`] += 1;
-        received.total += total;
-        const row = ledger.get(dayKey(at));
-        if (row) { row[bucket] += total; row.total += total; }
-        recent.push({ order: o, kind, at, amount: total, timeKnown: Boolean(o.paid_at) });
+    if (state === 'collected') {
+      // Dated by paid_at and nothing else. A payment whose date was never
+      // recorded cannot honestly be placed in a period, so it is not listed
+      // here; its money is reported as undated on the card above.
+      const key = o?.paid_at ? dayKeyInZone(Date.parse(o.paid_at), timeZone) : null;
+      if (key && window.has(key)) {
+        recent.push({ order: o, at: Date.parse(o.paid_at), amount, kind: collectedChannel(o) });
       }
       continue;
     }
 
-    if (kind === 'cod_returned') {
-      const at = ts(o.returned_at) || ts(o.created_at);
-      if (inRange(at)) { returned.amount += total; returned.count += 1; }
-      continue;
-    }
-
-    if (kind === 'cod_due') {
-      codDue.amount += total;
-      codDue.count += 1;
-      // A delivery attempt went wrong (not contactable, undelivered, pending…).
-      if (o.awb && classifyBucket(o) === 'attention') {
-        attention.push({ order: o, reason: 'delivery_issue', amount: total });
-      }
-    }
-
-    if (o.payment_link_id) {
-      attention.push({ order: o, reason: 'link_pending', amount: total });
-    } else if (kind === 'incomplete') {
-      attention.push({ order: o, reason: 'incomplete', amount: total });
-    } else if (kind === 'unconfirmed') {
-      attention.push({ order: o, reason: 'unconfirmed', amount: total });
-    }
+    // ── Needs attention: ONE row per order.
+    // The reasons are tested in the order they were before, and the first that
+    // applies wins. Previously a delivery problem and a pending payment link
+    // were pushed independently, so one order could occupy two rows of the
+    // worklist. A pure projection fix; no reason changed its meaning.
+    const reason =
+      (o?.awb && classifyBucket(o) === 'attention') ? 'delivery_issue'
+      : o?.payment_link_id ? 'link_pending'
+      : isPaymentIncomplete(o) ? 'incomplete'
+      : isPaymentUnconfirmed(o) ? 'unconfirmed'
+      : null;
+    if (reason) attention.push({ order: o, reason, amount });
   }
 
-  attention.sort((a, b) => ts(b.order.created_at) - ts(a.order.created_at));
+  const at = (o) => { const t = Date.parse(o?.created_at); return Number.isNaN(t) ? 0 : t; };
+  attention.sort((a, b) => at(b.order) - at(a.order));
   recent.sort((a, b) => b.at - a.at);
 
-  return {
-    received,
-    codDue,
-    returned,
-    attention,
-    ledger: [...ledger.values()],
-    recent: recent.slice(0, 50),
-  };
+  return { attention, recent: recent.slice(0, 50) };
 }

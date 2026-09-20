@@ -543,15 +543,36 @@ test('checkInvariants actually reports a violation when one exists', () => {
 // must still be untouched, so this guard now names what is still to come rather
 // than being deleted.
 
-test('Payments and Delivery still do not consume the module', () => {
-  // PR 4 migrated Stats, PR 5 Home, PR 6 Orders. These two are PRs 7-8.
-  for (const f of ['src/components/manage/PaymentsTab.jsx',
-                   'src/components/manage/DeliveryBoard.jsx',
-                   'src/utils/paymentsLedger.js']) {
-    const src = readFileSync(fileURLToPath(new URL(`../${f}`, import.meta.url)), 'utf8');
-    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics|ordersView/.test(src), false,
-      `${f} is migrated by a later PR, not this one`);
-  }
+test('Delivery still does not consume the module', () => {
+  // PR 4 migrated Stats, PR 5 Home, PR 6 Orders, PR 7 Payments. Delivery is PR 8.
+  const src = readFileSync(fileURLToPath(new URL(
+    '../src/components/manage/DeliveryBoard.jsx', import.meta.url)), 'utf8');
+  assert.equal(
+    /commerceMetrics|statsMetrics|overviewMetrics|ordersView|paymentsMetrics/.test(src), false,
+    'DeliveryBoard is migrated by PR 8, not this one');
+});
+
+test('Payments consumes the model through its own projection', () => {
+  const tab = readFileSync(fileURLToPath(new URL(
+    '../src/components/manage/PaymentsTab.jsx', import.meta.url)), 'utf8');
+  assert.match(tab, /paymentsMetrics/, 'Payments is wired to its projection');
+  assert.equal(/from '\.\.\/\.\.\/utils\/commerceMetrics'/.test(tab), false,
+    'Payments goes through paymentsMetrics, never straight to the model');
+  // The totals must come from the uncapped feed, never the capped list.
+  assert.match(tab, /fetchOrderFacts/, 'accounting reads the uncapped feed');
+  assert.equal(/buildPaymentsMetrics\(orders/.test(tab), false,
+    'no total is ever computed from the detailed rows');
+});
+
+test('the Payments worklist helper holds no accounting any more', () => {
+  const raw = readFileSync(fileURLToPath(new URL(
+    '../src/utils/paymentsLedger.js', import.meta.url)), 'utf8');
+  // Its own comment names what was deleted, so match against code alone.
+  const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.equal(/\bbuildPayments\s*\(/.test(src), false, 'the money maths is gone');
+  assert.equal(/\bpaymentKind\b|\bisReturned\b/.test(src), false,
+    'and so are its private classifiers');
+  assert.match(src, /export function buildPaymentsLists/, 'it is the worklist helper now');
 });
 
 test('Orders consumes the model through its own view, and shows no accounting', () => {

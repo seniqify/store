@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isPaymentIncomplete, isPaymentUnconfirmed, countsAsSale } from '../src/utils/orderState.js';
-import { paymentKind, buildPayments } from '../src/utils/paymentsLedger.js';
+import { buildPaymentsLists } from '../src/utils/paymentsLedger.js';
+import { buildPaymentsMetrics, periodKeys } from '../src/utils/paymentsMetrics.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 
@@ -48,10 +49,19 @@ test('paid, referenced or COD orders are neither', () => {
 });
 
 test('Payments tab: unconfirmed needs attention with its own label, and is not money received', () => {
-  assert.equal(paymentKind(delivered), 'unconfirmed');
-  const p = buildPayments([delivered], { days: 30 });
-  assert.equal(p.received.total, 0);
-  assert.deepEqual(p.attention.map((a) => a.reason), ['unconfirmed']);
+  // Commerce-metrics PR 7 split this screen: the worklist comes from the
+  // detailed rows, the money from the canonical model. Both still have to treat
+  // this order the same way they did.
+  const now = Date.now();
+  const { attention } = buildPaymentsLists([delivered], { periodKeys: periodKeys(now, 30) });
+  assert.deepEqual(attention.map((a) => a.reason), ['unconfirmed']);
+
+  const p = buildPaymentsMetrics([delivered], { now, days: 30 });
+  assert.equal(p.period.received.amount, 0, 'unconfirmed money has not been received');
+  // It IS still owed, which the old COD-only balance could not say.
+  assert.equal(p.balances.outstanding.amount, 900);
+  assert.equal(p.balances.outstanding.count, 1);
+
   const tab = read('src/components/manage/PaymentsTab.jsx');
   assert.match(tab, /unconfirmed: +\{ label: 'Shipped, Razorpay payment not confirmed yet'/);
 });

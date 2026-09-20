@@ -396,15 +396,19 @@ test('overviewMetrics shapes canonical output but defines no rule', () => {
 
 // ── 15-17. scope ────────────────────────────────────────────────────────────
 
-test('Orders, Payments and Delivery are untouched by this PR', () => {
+test('Home does not leak into the screens migrated after it', () => {
+  // Orders migrated in PR 6 and Payments in PR 7, so they legitimately consume
+  // the model now. What must stay true is that neither borrows HOME's
+  // projection, and that Delivery has not been touched at all.
   for (const f of ['../src/components/manage/OrdersTab.jsx',
                    '../src/components/manage/PaymentsTab.jsx',
-                   '../src/components/manage/DeliveryBoard.jsx',
                    '../src/utils/paymentsLedger.js']) {
-    const src = SRC(f);
-    assert.equal(/commerceMetrics|statsMetrics|overviewMetrics/.test(src), false,
-      `${f} is migrated by a later PR, not this one`);
+    assert.ok(!SRC(f).includes('overviewMetrics'), `${f} must not use the Home projection`);
   }
+  assert.equal(
+    /commerceMetrics|statsMetrics|overviewMetrics|ordersView|paymentsMetrics/
+      .test(SRC('../src/components/manage/DeliveryBoard.jsx')), false,
+    'DeliveryBoard is migrated by PR 8, not yet');
 });
 
 test('Stats is unchanged and still goes through its own projection', () => {
