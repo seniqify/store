@@ -27,11 +27,22 @@ test('only real sales count', () => {
   assert.equal(countsAsSale({ status: 'abandoned', payment_method: 'cod' }), false);
 });
 
-test('every sales total uses the shared rule', () => {
-  assert.match(read('src/utils/overviewStats.js'), /const real\s+= orders\.filter\(countsAsSale\);/);
+test('every sales total uses a shared rule, and never a private one', () => {
+  // Screens not yet migrated share orderState's countsAsSale / isPaymentIncomplete.
   assert.match(read('src/components/manage/AnalyticsTab.jsx'), /const valid\s+= orders\.filter\(\(o\) => o\.status !== 'cancelled' && !isPaymentIncomplete\(o\)\);/);
   assert.match(read('src/utils/customers.js'), /const cancelled = o\.status === 'cancelled' \|\| isPaymentIncomplete\(o\);/);
   assert.match(read('src/pages/Console.jsx'), /const active = orders\.filter\(\(o\) => o\.status !== 'cancelled' && !isPaymentIncomplete\(o\)\);/);
+
+  // Home moved to the canonical model in commerce-metrics PR 5, so it no longer
+  // goes through countsAsSale - it goes through classifyOrder instead. What must
+  // still hold is that it has not grown a rule of its own.
+  const home = read('src/utils/overviewMetrics.js');
+  assert.match(home, /classifyOrder/, 'Home takes eligibility from the canonical classifier');
+  assert.equal(/status\s*!==\s*'cancelled'/.test(home), false, 'and defines no filter of its own');
+  assert.equal(/isPaymentIncomplete/.test(home), false);
+  // The old helper must not still carry a second copy of the rule.
+  assert.equal(/countsAsSale/.test(read('src/utils/overviewStats.js')), false,
+    'overviewStats is stock and reviews only now');
 });
 
 test('the order card never offers Accept for an unpaid online order', () => {

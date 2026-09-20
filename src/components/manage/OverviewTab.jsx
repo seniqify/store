@@ -3,10 +3,15 @@ import {
   ShoppingBag, IndianRupee, ShoppingCart, Package, Star, Wallet,
   Plus, Share2, Download, ChevronRight, Sparkles, RefreshCw,
 } from 'lucide-react';
-import { fetchOrders } from '../../utils/orderService';
+import { fetchOrderFacts } from '../../utils/orderService';
 import { fetchReviews } from '../../utils/reviewService';
-import { buildOverview } from '../../utils/overviewStats';
+import { buildOverviewExtras } from '../../utils/overviewStats';
+import { buildOverviewMetrics, WEEKDAY_LETTERS } from '../../utils/overviewMetrics';
 import { formatINR } from '../../utils/currency';
+
+// The merchant's clock. Every order-derived day boundary on this screen is
+// theirs, not the browser's.
+const STORE_TZ = 'Asia/Kolkata';
 
 /**
  * OverviewTab — the Manage "Home" dashboard.
@@ -18,29 +23,52 @@ import { formatINR } from '../../utils/currency';
  * backend. `onGoTab(key)` switches the active Manage tab.
  */
 export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9488', businessName = '', onGoTab }) {
-  const [orders,  setOrders]  = useState(null);   // null = loading
+  // The facts RESULT, not its rows: { ok, data, reason }. An empty list is a
+  // real answer - this store has taken no orders - and a failed read is not an
+  // answer at all. Home must never show the two the same way.
+  //
+  // Home reads ONLY the uncapped, PII-free facts feed. Every figure it shows
+  // needs nothing but created_at, status, total, paid and the shipment columns,
+  // so it has no reason to touch the capped get_store_orders list at all.
+  const [factsResult, setFactsResult] = useState(null);   // null = loading
   const [reviews, setReviews] = useState([]);
+  // The one clock reading on this screen, taken when the data lands rather than
+  // during render, so the day windows are stable across re-renders.
+  const [loadedAt, setLoadedAt] = useState(null);
 
   const isService = config.businessType === 'service';
 
   const load = useCallback(async () => {
-    setOrders(null);
-    const [ords, revs] = await Promise.all([
-      fetchOrders(slug, pin, { includeAbandoned: true }),
+    setFactsResult(null);
+    const [facts, revs] = await Promise.all([
+      fetchOrderFacts(slug, pin),
       fetchReviews(slug),
     ]);
     setReviews(revs || []);
-    setOrders(ords || []);
+    setFactsResult(facts);
+    setLoadedAt(Date.now());
   }, [slug, pin]);
   useEffect(() => { load(); }, [load]);
 
-  const ov = useMemo(
-    () => (orders ? buildOverview(orders, config, reviews) : null),
-    [orders, reviews, config],
+  // Built only from a SUCCESSFUL read. On failure the rows are empty and this
+  // computes zeroes, which is exactly why the accounting section below refuses
+  // to render them.
+  const acc = useMemo(
+    () => buildOverviewMetrics(factsResult?.ok ? factsResult.data : [], {
+      timeZone: STORE_TZ, now: loadedAt,
+    }),
+    [factsResult, loadedAt],
   );
+  // Stock and reviews come from the store config and the reviews table, not
+  // from orders, so they survive an order-feed failure untouched.
+  const extras = useMemo(
+    () => buildOverviewExtras(config, reviews, loadedAt ?? undefined),
+    [config, reviews, loadedAt],
+  );
+  const accountingOk = factsResult?.ok === true;
 
   // ── Loading skeleton ──
-  if (!ov) {
+  if (factsResult === null) {
     return (
       <div className="space-y-4">
         <div className="h-8 w-48 rounded-lg bg-white border border-gray-100 animate-pulse" />
@@ -56,35 +84,37 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const dateLine = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });
 
-  // Build the attention list (only rows that actually need action), most urgent first.
+  // Build the attention list (only rows that actually need action), most urgent
+  // first. The first three rows are accounting and are omitted entirely when the
+  // order feed failed - an absent row is honest, a zero row is a lie.
   const attention = [];
-  if (ov.newCount > 0)
+  if (accountingOk && acc.newCount > 0)
     attention.push({ key: 'new', emoji: '🟢', tint: 'emerald',
-      title: `${ov.newCount} new ${isService ? (ov.newCount === 1 ? 'lead' : 'leads') : (ov.newCount === 1 ? 'order' : 'orders')}`,
+      title: `${acc.newCount} new ${isService ? (acc.newCount === 1 ? 'lead' : 'leads') : (acc.newCount === 1 ? 'order' : 'orders')}`,
       sub: isService ? 'Respond before they go cold' : 'Accept & notify the customer',
       cta: 'Open', onClick: () => onGoTab?.('orders') });
-  if (ov.toCollect > 0)
+  if (accountingOk && acc.toCollect > 0)
     attention.push({ key: 'collect', emoji: '💰', tint: 'amber',
-      title: `${formatINR(ov.toCollect)} to collect`,
-      sub: `${ov.unpaidCount} unpaid ${ov.unpaidCount === 1 ? 'order' : 'orders'}`,
+      title: `${formatINR(acc.toCollect)} to collect`,
+      sub: `${acc.unpaidCount} unpaid ${acc.unpaidCount === 1 ? 'order' : 'orders'}`,
       cta: 'View', onClick: () => onGoTab?.('orders') });
-  if (!isService && ov.abandonedCount > 0)
+  if (accountingOk && !isService && acc.abandonedCount > 0)
     attention.push({ key: 'abandoned', emoji: '🛒', tint: 'rose',
-      title: `${ov.abandonedCount} abandoned ${ov.abandonedCount === 1 ? 'cart' : 'carts'}`,
-      sub: ov.abandonedValue > 0 ? `${formatINR(ov.abandonedValue)} nearly bought — win back` : 'Win them back',
+      title: `${acc.abandonedCount} abandoned ${acc.abandonedCount === 1 ? 'cart' : 'carts'}`,
+      sub: acc.abandonedValue > 0 ? `${formatINR(acc.abandonedValue)} nearly bought — win back` : 'Win them back',
       cta: 'Recover', onClick: () => onGoTab?.('abandoned') });
-  if (ov.outOfStockCount > 0)
+  if (extras.outOfStockCount > 0)
     attention.push({ key: 'stock', emoji: '📦', tint: 'blue',
-      title: `${ov.outOfStockCount} ${ov.outOfStockCount === 1 ? 'item' : 'items'} out of stock`,
-      sub: ov.outOfStockNames.slice(0, 3).join(', ') || 'Restock to keep selling',
+      title: `${extras.outOfStockCount} ${extras.outOfStockCount === 1 ? 'item' : 'items'} out of stock`,
+      sub: extras.outOfStockNames.slice(0, 3).join(', ') || 'Restock to keep selling',
       cta: 'Fix', onClick: () => onGoTab?.('products') });
-  if (ov.newReviewCount > 0)
+  if (extras.newReviewCount > 0)
     attention.push({ key: 'reviews', emoji: '⭐', tint: 'amber',
-      title: `${ov.newReviewCount} new ${ov.newReviewCount === 1 ? 'review' : 'reviews'}`,
-      sub: ov.latestReview ? `${ov.latestReview.customer_name || 'A customer'} · ${'★'.repeat(Number(ov.latestReview.rating) || 0)}` : 'See what customers said',
+      title: `${extras.newReviewCount} new ${extras.newReviewCount === 1 ? 'review' : 'reviews'}`,
+      sub: extras.latestReview ? `${extras.latestReview.customer_name || 'A customer'} · ${'★'.repeat(Number(extras.latestReview.rating) || 0)}` : 'See what customers said',
       cta: 'Reply', onClick: () => onGoTab?.('reviews') });
 
-  const weekMax = Math.max(...ov.week.map((d) => d.sales), 1);
+  const weekMax = Math.max(...acc.week.map((d) => d.sales), 1);
 
   async function shareStore() {
     const url = `${window.location.origin}/${slug}`;
@@ -109,22 +139,38 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
         </button>
       </div>
 
-      {/* Today snapshot */}
+      {/* Today snapshot - or, if the order feed failed, a compact retry in its
+          place. Never a row of zeroes: the rest of this screen still works. */}
+      {accountingOk ? (
       <div className="grid grid-cols-3 gap-2">
-        <StatTile label="Today" value={formatINR(ov.todaySales)}
-          foot={ov.todayDeltaPct != null
-            ? <span className={ov.todayDeltaPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
-                {ov.todayDeltaPct >= 0 ? '▲' : '▼'} {Math.abs(ov.todayDeltaPct)}% vs yest.
+        <StatTile label="Today" value={formatINR(acc.todaySales)}
+          foot={acc.todayDeltaPct != null
+            ? <span className={acc.todayDeltaPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
+                {acc.todayDeltaPct >= 0 ? '▲' : '▼'} {Math.abs(acc.todayDeltaPct)}% vs yest.
               </span>
             : <span className="text-gray-300">—</span>}
           onClick={() => onGoTab?.('analytics')} />
-        <StatTile label={isService ? 'Leads' : 'Orders'} value={ov.todayCount}
-          foot={ov.newCount > 0 ? <span style={{ color: themeColor }}>{ov.newCount} new</span> : <span className="text-gray-300">today</span>}
+        <StatTile label={isService ? 'Leads' : 'Orders'} value={acc.todayCount}
+          foot={acc.newCount > 0 ? <span style={{ color: themeColor }}>{acc.newCount} new</span> : <span className="text-gray-300">today</span>}
           onClick={() => onGoTab?.('orders')} />
-        <StatTile label="To collect" value={formatINR(ov.toCollect)}
-          foot={ov.unpaidCount > 0 ? <span className="text-amber-600">{ov.unpaidCount} unpaid</span> : <span className="text-emerald-600">all paid</span>}
+        <StatTile label="To collect" value={formatINR(acc.toCollect)}
+          foot={acc.unpaidCount > 0 ? <span className="text-amber-600">{acc.unpaidCount} unpaid</span> : <span className="text-emerald-600">all paid</span>}
           onClick={() => onGoTab?.('orders')} />
       </div>
+      ) : (
+      <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3">
+        <Wallet size={18} className="text-amber-500 flex-shrink-0" />
+        <div className="min-w-0 flex-grow">
+          <p className="text-sm font-bold text-gray-900">Sales figures unavailable</p>
+          <p className="text-xs text-gray-500 mt-0.5">Your orders are safe — this screen couldn&rsquo;t reach them.</p>
+        </div>
+        <button type="button" onClick={load}
+          className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform"
+          style={{ backgroundColor: themeColor }}>
+          Try again
+        </button>
+      </div>
+      )}
 
       {/* Attention + week — stacked on mobile, side-by-side on desktop */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
@@ -151,19 +197,20 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
         )}
       </div>
 
-      {/* This week sparkline */}
+      {/* This week sparkline - seven merchant civil days, oldest to today */}
+      {accountingOk && (
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3.5">
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">This week</span>
-          <span className="text-base font-extrabold text-gray-900 tabular-nums">{formatINR(ov.weekTotal)}</span>
+          <span className="text-base font-extrabold text-gray-900 tabular-nums">{formatINR(acc.weekTotal)}</span>
         </div>
         <div className="mt-3 flex items-end gap-2">
-          {ov.week.map((d, i) => {
-            const isToday = i === ov.week.length - 1;
+          {acc.week.map((d, i) => {
+            const isToday = i === acc.week.length - 1;
             const h = d.sales <= 0 ? 6 : Math.max(12, Math.round((d.sales / weekMax) * 100));
-            const letter = new Date(d.dayStart).toLocaleDateString('en-IN', { weekday: 'narrow' });
+            const letter = WEEKDAY_LETTERS[d.weekday] ?? '';
             return (
-              <div key={d.dayStart} className="flex-1 flex flex-col items-center gap-1.5">
+              <div key={d.key} className="flex-1 flex flex-col items-center gap-1.5">
                 {/* fixed-height track so the bar's % height has something to resolve against */}
                 <div className="w-full h-16 flex items-end">
                   <div className="w-full rounded-t-md transition-all"
@@ -176,6 +223,7 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
           })}
         </div>
       </div>
+      )}
 
       </div>{/* end attention + week grid */}
 
