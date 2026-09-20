@@ -4,8 +4,9 @@ import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
   ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter, Search,
 } from 'lucide-react';
-import { fetchOrders } from '../../utils/orderService';
+import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
+import { buildDeliveryMetrics, isAtDetailedCap, DETAILED_ORDER_CAP } from '../../utils/deliveryMetrics';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -45,8 +46,18 @@ function trackWaLink(o, trackUrl, storeName) {
 }
 
 export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', storeName = '' }) {
+  // TWO feeds, kept apart.
+  //  facts  - get_store_order_facts: UNCAPPED, PII-free. The summary tiles.
+  //  orders - get_store_orders: newest 500, detailed. The shipment list, search
+  //           and drawer, which need a customer's name, phone and address.
+  // No tile is ever computed from the capped rows.
+  const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
+  const [rawCount, setRawCount] = useState(0);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [syncing, setSyncing] = useState(false);
+  // A courier refresh that failed is NOT the same as missing data: the board
+  // keeps whatever it already loaded and says the statuses may be stale.
+  const [syncStale, setSyncStale] = useState(false);
   const [filter, setFilter]   = useState('all');
   const [courier, setCourier]         = useState('all');
   const [courierMenu, setCourierMenu] = useState(false);   // courier dropdown open
@@ -69,8 +80,18 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   }, [courierMenu, statusMenu]);
 
   const grab = useCallback(async () => {
-    const rows = await fetchOrders(slug, pin);
-    return (rows || []).filter((o) => o.awb);   // only booked shipments (they carry an AWB)
+    // includeAbandoned so the raw page size is visible: get_store_orders applies
+    // its LIMIT before anything is filtered, so the list can be truncated while
+    // holding far fewer than 500 shipments.
+    const rows = await fetchOrders(slug, pin, { includeAbandoned: true });
+    setRawCount(rows.length);
+    return rows.filter((o) => o.awb);   // only booked shipments (they carry an AWB)
+  }, [slug, pin]);
+
+  // The accounting feed. Never mixed with the rows above.
+  const grabFacts = useCallback(async () => {
+    const f = await fetchOrderFacts(slug, pin);
+    setFactsResult(f);
   }, [slug, pin]);
 
   // Pull the live courier status for every open shipment, then re-read. This is what
@@ -79,26 +100,31 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const sync = useCallback(async () => {
     setSyncing(true);
     try {
-      await syncDeliveryStatuses(slug, pin);
-      setOrders(await grab());
+      // shippingConnect already reports a failure instead of throwing; the board
+      // used to discard that and show stale statuses as if they were fresh.
+      const r = await syncDeliveryStatuses(slug, pin);
+      setSyncStale(Boolean(r?.error));
+      await Promise.all([grabFacts(), grab().then(setOrders)]);
     } finally { setSyncing(false); }
-  }, [slug, pin, grab]);
+  }, [slug, pin, grab, grabFacts]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setOrders(null);
-      const first = await grab();
+      setFactsResult(null);
+      const [first] = await Promise.all([grab(), grabFacts()]);
       if (!alive) return;
       setOrders(first);                       // stored statuses render instantly
       setSyncing(true);
-      await syncDeliveryStatuses(slug, pin);  // then correct them from the courier
+      const r = await syncDeliveryStatuses(slug, pin);  // then correct them from the courier
       if (!alive) return;
-      setOrders(await grab());
+      setSyncStale(Boolean(r?.error));
+      await Promise.all([grabFacts(), grab().then(setOrders)]);
       setSyncing(false);
     })();
     return () => { alive = false; };
-  }, [slug, pin, grab]);
+  }, [slug, pin, grab, grabFacts]);
 
   // Which couriers appear → drives the selector (hidden for single-courier stores).
   const courierKeys = [...new Set((orders || []).map((o) => courierInfo(o.courier).key))];
@@ -118,12 +144,13 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const shown = (b) => (groups[b] || []).filter((o) => matchesShipmentSearch(o, query));
   const shownTotal = BUCKETS.reduce((n, b) => n + ((effFilter === 'all' || effFilter === b) ? shown(b).length : 0), 0);
 
-  const codToCollect = pool
-    .filter((o) => o.payment_method === 'cod' && !['delivered', 'cancelled'].includes(classifyBucket(o)))
-    .reduce((n, o) => n + (Number(o.total) || 0), 0);
-  const codCollectedAmt = pool
-    .filter((o) => o.payment_method === 'cod' && classifyBucket(o) === 'delivered')
-    .reduce((n, o) => n + (Number(o.total) || 0), 0);
+  // The canonical fulfilment summary. Built from the UNCAPPED facts feed and
+  // classified by shipmentState, never by the display buckets above - a bucket
+  // reads only shipment_status, so a parcel whose shipment_outcome says it came
+  // back still shows as in transit.
+  const summary = buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []);
+  const summaryOk = factsResult?.ok === true;
+  const listCapped = isAtDetailedCap(rawCount);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
   const TRIG = {
@@ -161,13 +188,106 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
           <p className="text-[11px] font-semibold text-gray-500 mt-1.5">In transit / pickup</p>
         </div>
         <div className={stat}>
-          <p className="text-2xl font-extrabold leading-none tabular-nums text-gray-900">{formatINR(codToCollect)}</p>
-          <p className="text-[11px] font-semibold text-gray-500 mt-1.5">COD still to collect</p>
-          {codCollectedAmt > 0 && (
-            <p className="text-[10.5px] font-bold text-emerald-600 mt-1">✓ {formatINR(codCollectedAmt)} collected</p>
+          {summaryOk ? (<>
+            <p className="text-2xl font-extrabold leading-none tabular-nums text-gray-900">
+              {formatINR(Math.round(summary.codOnUndelivered.amount))}
+            </p>
+            {/* The population is in the label on purpose. Payments owns "Still to
+                collect", which covers every method and every unshipped order;
+                this is only COD riding on shipments still in flight. */}
+            <p className="text-[11px] font-semibold text-gray-500 mt-1.5 leading-snug">
+              COD on shipments not yet delivered
+            </p>
+            <p className="text-[10.5px] text-gray-400 mt-0.5">
+              {summary.codOnUndelivered.count} shipment{summary.codOnUndelivered.count === 1 ? '' : 's'}
+            </p>
+          </>) : (
+            <>
+              <p className="text-2xl font-extrabold leading-none text-gray-300">&mdash;</p>
+              <p className="text-[11px] font-semibold text-gray-500 mt-1.5 leading-snug">COD on shipments not yet delivered</p>
+            </>
           )}
         </div>
       </div>
+
+      {/* ── Fulfilment summary: canonical, uncapped, current state ──────────
+          Counts are the point; money is subtext. Delivery Orders is exactly
+          Delivered + Returned + In Flight - orders with no AWB are a separate
+          queue below and are deliberately not in that sum. */}
+      {!summaryOk ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 mb-3 flex items-center gap-3" role="alert">
+          <PackageOpen size={18} className="text-amber-500 flex-shrink-0" />
+          <div className="min-w-0 flex-grow">
+            <p className="text-sm font-bold text-gray-900">Delivery summary unavailable</p>
+            <p className="text-xs text-gray-500 mt-0.5">Your shipments are safe &mdash; the totals couldn&rsquo;t be loaded.</p>
+          </div>
+          <button type="button" onClick={sync} disabled={syncing}
+                  className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform disabled:opacity-50"
+                  style={{ backgroundColor: themeColor }}>
+            Try again
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3 mb-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">Shipments</p>
+            <p className="text-[11px] font-bold text-gray-700 tabular-nums">
+              {summary.orders.count} <span className="font-semibold text-gray-400">· {formatINR(Math.round(summary.orders.amount))}</span>
+            </p>
+          </div>
+          <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+            <div><dt className="text-[10.5px] text-gray-500">Delivered</dt>
+              <dd className="text-lg font-extrabold text-blue-700 tabular-nums">{summary.delivered.count}</dd></div>
+            <div><dt className="text-[10.5px] text-gray-500">In flight</dt>
+              <dd className="text-lg font-extrabold text-amber-700 tabular-nums">{summary.inFlight.count}</dd></div>
+            <div><dt className="text-[10.5px] text-gray-500">Returned</dt>
+              <dd className="text-lg font-extrabold text-rose-700 tabular-nums">{summary.returned.count}</dd></div>
+          </dl>
+          {(summary.notShipped.count > 0 || summary.deliveredPaymentPending.count > 0) && (
+            <div className="mt-2.5 pt-2.5 border-t border-gray-100 space-y-1">
+              {summary.notShipped.count > 0 && (
+                <p className="text-[11px] text-gray-500">
+                  <span className="font-bold text-gray-700">{summary.notShipped.count} not shipped yet</span>
+                  {' '}&mdash; {formatINR(Math.round(summary.notShipped.amount))}, no courier booked
+                </p>
+              )}
+              {summary.deliveredPaymentPending.count > 0 && (
+                <p className="text-[11px] text-gray-500">
+                  <span className="font-bold text-gray-700">{summary.deliveredPaymentPending.count} delivered · payment pending</span>
+                  {' '}&mdash; {formatINR(Math.round(summary.deliveredPaymentPending.amount))}
+                </p>
+              )}
+              {summary.returnedPaymentRecorded.count > 0 && (
+                <p className="text-[11px] text-gray-500">
+                  <span className="font-bold text-gray-700">{summary.returnedPaymentRecorded.count} returned · payment recorded</span>
+                  {' '}&mdash; {formatINR(Math.round(summary.returnedPaymentRecorded.amount))}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* A courier refresh that failed leaves the board showing what it already
+          had. Saying nothing would present stale statuses as fresh ones. */}
+      {syncStale && !syncing && (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 mb-3 flex items-center gap-2" role="status">
+          <AlertTriangle size={13} className="text-amber-500 flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-amber-800 flex-grow">
+            Courier status refresh failed. Showing the last loaded delivery data.
+          </span>
+          <button type="button" onClick={sync} disabled={syncing}
+                  className="text-[11px] font-bold text-amber-900 underline underline-offset-2 disabled:opacity-50">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {listCapped && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mb-2.5">
+          The list below reads your newest {DETAILED_ORDER_CAP} orders; the totals above read all of them.
+        </p>
+      )}
 
       {/* live-sync indicator */}
       <div className="flex items-center gap-1.5 mb-2.5 px-0.5">
