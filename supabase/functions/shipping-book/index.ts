@@ -43,6 +43,173 @@ function toLatin(input: string): string {
 }
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
+// ── booking persistence ─────────────────────────────────────────────────────
+//
+// Booking is two steps that can fail independently: the courier creates a real
+// shipment, then we record it. Everything below exists because the gap between
+// those two is where duplicate parcels come from.
+
+/** The buyer-facing tracking link, by the courier that actually carries it. */
+function trackUrlFor(courier: unknown, awb: unknown): string | null {
+  if (!awb) return null;
+  return String(courier || '').toLowerCase() === 'shadowfax'
+    ? null                                        // Shadowfax has no public page
+    : `https://www.delhivery.com/track/package/${awb}`;
+}
+
+/**
+ * What a conditional attach REPORTED. PURE, so the race is testable.
+ *
+ *   ok     exactly our row moved
+ *   lost   nobody moved: the guard refused the write
+ *   error  the call itself failed, and the report cannot be trusted
+ *
+ * Zero rows is NOT success. That is the whole point: the update is guarded by
+ * `.is('awb', null)`, so "no rows" means the guard refused it.
+ *
+ * Neither failing answer is acted on directly. An error is only a failure to
+ * HEAR the result - the row may well have been written before the connection
+ * broke - so the database is re-read and attachVerdict() decides. Cancelling on
+ * the report alone would kill a parcel the order is already pointing at.
+ */
+function classifyAttach(error: unknown, data: unknown): 'ok' | 'lost' | 'error' {
+  if (error) return 'error';
+  const rows = Array.isArray(data) ? data.length : 0;
+  return rows === 1 ? 'ok' : 'lost';
+}
+
+/**
+ * The order as the database actually has it. `known: false` means we could not
+ * read it back - which is NOT the same as "no AWB", and must never be treated
+ * as one.
+ */
+async function readCurrentShipment(
+  supabase: any, slug: string, orderId: string,
+): Promise<{ known: boolean; awb: string | null; courier: string | null }> {
+  try {
+    const { data, error } = await supabase.from('orders')
+      .select('awb, courier').eq('id', orderId).eq('store_slug', slug).maybeSingle();
+    if (error || !data) return { known: false, awb: null, courier: null };
+    return { known: true, awb: data.awb ?? null, courier: data.courier ?? null };
+  } catch {
+    return { known: false, awb: null, courier: null };
+  }
+}
+
+/**
+ * Given what the database really holds, what happened to OUR shipment? PURE.
+ *
+ *   attached    the order points at our AWB. The write landed after all, and
+ *               cancelling now would orphan the order's own parcel.
+ *   superseded  another AWB is authoritative; ours is the spare
+ *   unattached  the order has no AWB, so ours definitely never landed
+ *   unknown     we could not read the order. Nothing is safe to cancel.
+ *
+ * The write's own report is deliberately not an input: an error means we failed
+ * to HEAR the answer, not that there was no answer.
+ */
+function attachVerdict(
+  ours: unknown, current: { known: boolean; awb: unknown },
+): 'attached' | 'superseded' | 'unattached' | 'unknown' {
+  if (!current || !current.known) return 'unknown';
+  const cur = current.awb === null || current.awb === undefined ? '' : String(current.awb);
+  if (!cur) return 'unattached';
+  return cur === String(ours) ? 'attached' : 'superseded';
+}
+
+/**
+ * Undo a shipment we created but could not record. Deliberately duplicated from
+ * shipping-ops: each edge function deploys on its own, there is no shared
+ * module, and tests/courier-booking-integrity.test.mjs pins the two copies
+ * together so they cannot drift apart.
+ *
+ * Returns only whether it worked plus a SHORT reason. Provider bodies and
+ * tokens never travel further than this function.
+ */
+async function cancelAtCourier(
+  provider: string, awb: string, token: string, mode: string,
+): Promise<{ cancelled: boolean; reason: string }> {
+  try {
+    if (provider === 'shadowfax') {
+      const sBase = mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
+      const cr = await fetch(`${sBase}/v3/clients/orders/cancel/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: awb }),
+      });
+      const cd = await cr.json().catch(() => ({}));
+      const ok = cd?.responseCode === 200 || /cancel/i.test(cd?.responseMsg || '');
+      return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+    }
+    const r = await fetch(`${BASE}/api/p/edit`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ waybill: String(awb), cancellation: 'true' }),
+    });
+    // Delhivery's cancel replies with XML (<status>True</status>), not JSON.
+    const txt = await r.text();
+    const ok = /<status>\s*true\s*<\/status>/i.test(txt) || /cancell?ed/i.test(txt) || /"status"\s*:\s*true/i.test(txt);
+    return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+  } catch {
+    return { cancelled: false, reason: 'could not reach the courier to cancel' };
+  }
+}
+
+/**
+ * The merchant-facing answer once the verdict is in. PURE. Never called for
+ * 'attached', which is an ordinary success and is returned by the caller.
+ *
+ *   unknown     we cannot say whether our parcel is attached, so nothing was
+ *               cancelled and nothing may be retried blindly
+ *   superseded  another AWB won; ours is cancelled and we report theirs
+ *   unattached  ours never landed; cancelled, so booking may be retried
+ *
+ * A failed cancellation always wins over all of it: a live parcel nothing
+ * points at is the one thing the merchant must be told about plainly.
+ */
+function bookingConflict(
+  verdict: 'superseded' | 'unattached' | 'unknown', undone: boolean, ourAwb: string,
+  current: { awb?: unknown; courier?: unknown } | null,
+): Record<string, unknown> {
+  if (verdict === 'unknown') {
+    return {
+      error: 'A shipment was created with the courier, but this order could not be read back to '
+        + 'confirm whether it was attached. Do not book again - check '
+        + `${ourAwb} in your courier panel first.`,
+      needsReconciliation: true,
+      attachUnknown: true,
+      orphanAwb: ourAwb,
+    };
+  }
+  if (!undone) {
+    return {
+      error: 'A shipment was created with the courier but could not be attached to this order, '
+        + 'and cancelling it did not go through. Do not book again - cancel '
+        + `${ourAwb} in your courier panel first.`,
+      needsReconciliation: true,
+      orphanAwb: ourAwb,
+    };
+  }
+  if (verdict === 'superseded') {
+    const awb = current?.awb ?? null;
+    return {
+      awb, alreadyBooked: true, courier: current?.courier ?? null,
+      trackUrl: trackUrlFor(current?.courier, awb),
+      note: 'This order was already booked a moment ago. The duplicate shipment was cancelled.',
+    };
+  }
+  return { error: 'Could not save the shipment, so it was cancelled with the courier. Please try booking again.' };
+}
+
+/** We never learned whether the courier made a parcel. Never guess, never retry. */
+function bookingUnknown(): Record<string, unknown> {
+  return {
+    error: 'The courier did not answer, so we cannot tell whether a shipment was created. '
+      + 'Check your courier panel before booking this order again.',
+    bookingUnknown: true,
+  };
+}
+
 // Owner-only (PIN-checked): create a Delhivery shipment for an order and store the
 // AWB. Does NOT schedule a pickup (that's a separate explicit step) — booking just
 // manifests the shipment and gets the tracking number + label.
@@ -85,10 +252,18 @@ serve(async (req) => {
 
     const { data: order } = await supabase
       .from('orders')
-      .select('id, awb, customer_name, customer_phone, destination, pincode, total, payment_method, item_count, items')
+      .select('id, awb, courier, customer_name, customer_phone, destination, pincode, total, payment_method, item_count, items')
       .eq('id', orderId).eq('store_slug', slug).maybeSingle();
     if (!order) return json({ error: 'Order not found' });
-    if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: order.courier === 'shadowfax' ? null : `https://www.delhivery.com/track/package/${order.awb}` });
+    // An order that already has a shipment is never booked again here. The
+    // courier is read from the row now - it used not to be selected at all, so
+    // every Shadowfax parcel was handed a Delhivery tracking link.
+    if (order.awb) {
+      return json({
+        awb: order.awb, alreadyBooked: true, courier: order.courier ?? null,
+        trackUrl: trackUrlFor(order.courier, order.awb),
+      });
+    }
 
     // ── Shadowfax booking (isolated; the Delhivery code below is untouched) ──
     if (acct.provider === 'shadowfax') {
@@ -150,11 +325,16 @@ serve(async (req) => {
         })),
       };
 
-      const sRes  = await fetch(`${sBase}/v3/clients/orders/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let sRes: Response;
+      try {
+        sRes = await fetch(`${sBase}/v3/clients/orders/`, {
+          method: 'POST',
+          headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        return json(bookingUnknown());
+      }
       const sData = await sRes.json().catch(() => ({}));
       const sAwb  = sData?.data?.awb_number;
       if (!sAwb || sData?.message !== 'Success') {
@@ -164,9 +344,26 @@ serve(async (req) => {
         return json({ error: `Shadowfax could not book this shipment: ${reason}` });
       }
 
-      await supabase.from('orders')
+      // Attach ONLY while the order still has no AWB. Two requests can both have
+      // read null a moment ago; only one of them may win here.
+      const sAttach = await supabase.from('orders')
         .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new', shipping_cost: shipCost })
-        .eq('id', order.id).eq('store_slug', slug);
+        .eq('id', order.id).eq('store_slug', slug).is('awb', null)
+        .select('id');
+      if (classifyAttach(sAttach.error, sAttach.data) !== 'ok') {
+        // Ask the database what it really holds before touching the courier. An
+        // error may just be a lost reply to a write that landed.
+        const cur = await readCurrentShipment(supabase, slug, order.id);
+        const verdict = attachVerdict(sAwb, cur);
+        if (verdict !== 'attached') {
+          // Nothing is cancelled while the verdict is unknown.
+          const undo = verdict === 'unknown'
+            ? { cancelled: false, reason: '' }
+            : await cancelAtCourier('shadowfax', sAwb, acct.api_token, String(acct.mode || ''));
+          return json(bookingConflict(verdict, undo.cancelled, sAwb, cur));
+        }
+        // 'attached': the row already points at our AWB. Fall through to success.
+      }
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
       // a rider automatically, so there's no separate pickup call (unlike Delhivery).
@@ -230,11 +427,16 @@ serve(async (req) => {
       pickup_location: { name: acct.pickup_name || (store.config?.businessName || slug) },
     }));
 
-    const res = await fetch(`${BASE}/api/cmu/create.json`, {
-      method: 'POST',
-      headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: payload,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/cmu/create.json`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload,
+      });
+    } catch {
+      return json(bookingUnknown());
+    }
     const data = await res.json().catch(() => ({}));
     const pkg = data?.packages?.[0];
     const awb = pkg?.waybill;
@@ -243,9 +445,23 @@ serve(async (req) => {
       return json({ error: `Delhivery could not book this shipment: ${reason}` });
     }
 
-    await supabase.from('orders')
+    // Attach ONLY while the order still has no AWB (see classifyAttach).
+    const dAttach = await supabase.from('orders')
       .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested', shipping_cost: shipCost })
-      .eq('id', order.id).eq('store_slug', slug);
+      .eq('id', order.id).eq('store_slug', slug).is('awb', null)
+      .select('id');
+    if (classifyAttach(dAttach.error, dAttach.data) !== 'ok') {
+      const cur = await readCurrentShipment(supabase, slug, order.id);
+      const verdict = attachVerdict(awb, cur);
+      if (verdict !== 'attached') {
+        const undo = verdict === 'unknown'
+          ? { cancelled: false, reason: '' }
+          : await cancelAtCourier('delhivery', String(awb), acct.api_token, String(acct.mode || ''));
+        // No pickup is scheduled below: there is no parcel of ours to collect.
+        return json(bookingConflict(verdict, undo.cancelled, String(awb), cur));
+      }
+      // 'attached': the write landed, the reply did not. Carry on as normal.
+    }
 
     // ── Auto-schedule a pickup so a courier actually comes (else it just sits at
     // "Ready to Ship"). Delhivery allows only ONE open pickup per location per day,
