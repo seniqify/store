@@ -76,6 +76,10 @@
   "sql_outcome": "returned"
  },
  {
+  "shipment_status": "Return to Seller initiated",
+  "sql_outcome": "returned"
+ },
+ {
   "shipment_status": "Returned To Client",
   "sql_outcome": "returned"
  },
