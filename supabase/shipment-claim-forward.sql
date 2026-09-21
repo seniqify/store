@@ -237,17 +237,25 @@ comment on function public.claim_shipment_attempt(text, uuid, text) is
 -- Designed to be RETRIED. An edge function that does not hear the reply may
 -- call again with the same arguments and must not corrupt anything.
 --
---   finalized          -> the attempt and the order now both hold this AWB.
---   already_finalized  -> they already did, with this exact AWB. No writes.
+-- It writes in exactly two situations: neither side holds an AWB (it creates
+-- the pair), or both already hold the requested one (it writes nothing and
+-- says so). EVERY OTHER SHAPE IS A REFUSAL. In particular a half-applied pair
+-- is NOT completed -- see the block above the two updates.
+--
+--   finalized          -> neither side held an AWB; both now hold this one.
+--   already_finalized  -> both already held this exact AWB. No writes.
 --   attempt_not_found  -> no such attempt in this store.
 --   attempt_terminal   -> the attempt is closed. Frozen by B1's trigger.
 --   courier_mismatch   -> the attempt was claimed for the other courier.
 --   attempt_awb_conflict -> the attempt already holds a DIFFERENT AWB.
 --   order_awb_conflict   -> the order already points at a DIFFERENT AWB.
+--   partial_state_attempt_only -> the ledger has this AWB, the order does not.
+--   partial_state_order_only   -> the order has this AWB, the ledger does not.
 --
--- The two conflict outcomes never overwrite. Two different AWBs on one order
--- is evidence that something went wrong upstream, and evidence is not for
--- this function to destroy.
+-- None of the four refusals overwrites anything. Two different AWBs on one
+-- order, or one side of a pair missing, is evidence that something went wrong
+-- upstream -- and evidence is not for this function to destroy or to tidy
+-- away. Each surfaces for reconciliation instead.
 create or replace function public.finalize_shipment_attempt(
   p_attempt_id    bigint,
   p_store_slug    text,
@@ -338,11 +346,44 @@ begin
       'attempt_id', p_attempt_id, 'awb', v_awb, 'order_id', v_order_id);
   end if;
 
+  -- ── A HALF-APPLIED PAIR IS EVIDENCE, NOT WORK TO FINISH ─────────────────
+  -- Past the conflict tests above, each side is now either null or exactly
+  -- v_awb, so reaching here with only ONE side set means the attempt and the
+  -- order disagree about whether this shipment exists.
+  --
+  -- This function is the only thing that creates that pair, and it creates it
+  -- in one transaction. So a half-applied pair CANNOT have been produced by a
+  -- completed call to it. Something else made it: pre-B2B code that attached
+  -- to orders without a ledger row, a hand-run SQL fix, or a transaction that
+  -- committed one side and is still open on the other.
+  --
+  -- Completing it would be a guess dressed as success, and it would erase the
+  -- only signal that any of those happened. Both cases therefore return a
+  -- typed outcome and WRITE NOTHING. There is deliberately no repair RPC:
+  -- resolving one requires knowing which side is the truth, and that is a
+  -- judgement about a real parcel, not a database default.
+  if v_att_awb = v_awb and v_order_awb is null then
+    -- The ledger records this booking; the order does not point at it.
+    return jsonb_build_object(
+      'outcome', 'partial_state_attempt_only',
+      'attempt_id', p_attempt_id, 'awb', v_awb, 'order_id', v_order_id);
+  end if;
+
+  if v_att_awb is null and v_order_awb = v_awb then
+    -- The order points at this booking; the ledger has no record of it.
+    return jsonb_build_object(
+      'outcome', 'partial_state_order_only',
+      'attempt_id', p_attempt_id, 'awb', v_awb, 'order_id', v_order_id);
+  end if;
+
   -- ── The two writes ──────────────────────────────────────────────────────
-  -- Either side may already be done -- a retry after a half-heard reply, or a
-  -- pointer attached by pre-B2B code. Each update is guarded so it is a no-op
-  -- in that case rather than a rewrite. Both are in this function's single
-  -- transaction: if the second raises, the first is rolled back with it.
+  -- Only one case is left: neither side holds an AWB. The pair is created
+  -- here, from nothing, in this function's single transaction -- if the second
+  -- statement raises, the first is rolled back with it.
+  --
+  -- The "awb is null" predicates are PR A's compare-and-set, kept verbatim.
+  -- Under the row lock they are already known to hold; they stay because they
+  -- are the guarantee itself, not a leftover of it.
   update public.shipment_attempts sa
      set awb           = v_awb,
          booked_at     = now(),
@@ -368,10 +409,11 @@ end;
 $function$;
 
 comment on function public.finalize_shipment_attempt(bigint, text, text, text, numeric, text) is
-  'Records a booked AWB on the attempt AND on public.orders in one transaction, '
-  'so the ledger and the current shipment pointer can never disagree. Safe to '
-  'retry with identical arguments. Refuses rather than overwrites when either '
-  'side already holds a different AWB.';
+  'Creates the (attempt, order) shipment pair in one transaction, so the ledger '
+  'and the current shipment pointer can never disagree. Safe to retry with '
+  'identical arguments. Writes only when NEITHER side holds an AWB; reports '
+  'already_finalized when both hold the requested one; refuses everything else, '
+  'including a half-applied pair, which it surfaces rather than completing.';
 
 -- ---------------------------------------------------------------------------
 -- 3. FAIL -- close a claim the courier definitively refused

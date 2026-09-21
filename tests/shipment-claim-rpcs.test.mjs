@@ -159,18 +159,23 @@ function finalize(L, attemptId, slug, courier, awb, cost = null, status = null) 
     return { outcome: 'already_finalized', attempt_id: attemptId, awb: a_awb, order_id: att.order_id };
   }
 
-  if (attAwb === null) {
-    att.awb = a_awb;
-    att.booked_at = NOW;
-    att.shipping_cost = cost ?? att.shipping_cost;
-    att.final_status = norm(status) ?? att.final_status;
+  // A half-applied pair is evidence, not work to finish. No writes.
+  if (attAwb === a_awb && ordAwb === null) {
+    return { outcome: 'partial_state_attempt_only', attempt_id: attemptId, awb: a_awb, order_id: att.order_id };
   }
-  if (ordAwb === null) {
-    o.awb = a_awb;
-    o.courier = c;
-    o.shipment_status = norm(status) ?? o.shipment_status;
-    o.shipping_cost = cost ?? o.shipping_cost;
+  if (attAwb === null && ordAwb === a_awb) {
+    return { outcome: 'partial_state_order_only', attempt_id: attemptId, awb: a_awb, order_id: att.order_id };
   }
+
+  // Only one case is left: neither side holds an AWB. Create the pair.
+  att.awb = a_awb;
+  att.booked_at = NOW;
+  att.shipping_cost = cost ?? att.shipping_cost;
+  att.final_status = norm(status) ?? att.final_status;
+  o.awb = a_awb;
+  o.courier = c;
+  o.shipment_status = norm(status) ?? o.shipment_status;
+  o.shipping_cost = cost ?? o.shipping_cost;
   return { outcome: 'finalized', attempt_id: attemptId, awb: a_awb, order_id: att.order_id };
 }
 
@@ -426,22 +431,61 @@ test('finalize idempotency: same AWB twice is already_finalized and writes nothi
   assert.equal(L.attempts[0].final_status, 'Manifested');
 });
 
-test('finalize idempotency: half-applied — attempt has the AWB, order does not', () => {
+test('finalize: half-applied — ledger has the AWB, order does not — is REFUSED, not repaired', () => {
+  // finalize is the only thing that creates the pair, and it creates it in one
+  // transaction. So this shape was made by something else: pre-B2B code, a
+  // hand-run fix, or an open transaction. Completing it would erase the signal.
   const { L, id } = claimed();
   L.attempts[0].awb = 'AWB-1';
   L.attempts[0].booked_at = NOW;
   const r = finalize(L, id, SLUG, 'delhivery', 'AWB-1', 10, 'Manifested');
-  assert.equal(r.outcome, 'finalized');
-  assert.equal(L.orders[0].awb, 'AWB-1');
+  assert.equal(r.outcome, 'partial_state_attempt_only');
+  assert.equal(r.awb, 'AWB-1');
+  assert.equal(L.orders[0].awb, null);          // the order was NOT repaired
+  assert.equal(L.attempts[0].shipping_cost, null);
 });
 
-test('finalize idempotency: half-applied — order has the AWB, attempt does not', () => {
+test('finalize: half-applied — order has the AWB, ledger does not — is REFUSED, not repaired', () => {
   const { L, id } = claimed();
   L.orders[0].awb = 'AWB-1';
   L.orders[0].courier = 'delhivery';
   const r = finalize(L, id, SLUG, 'delhivery', 'AWB-1', 10, 'Manifested');
-  assert.equal(r.outcome, 'finalized');
-  assert.equal(L.attempts[0].awb, 'AWB-1');
+  assert.equal(r.outcome, 'partial_state_order_only');
+  assert.equal(r.awb, 'AWB-1');
+  assert.equal(L.attempts[0].awb, null);        // the ledger was NOT repaired
+  assert.equal(L.attempts[0].booked_at, null);
+});
+
+test('finalize: a partial state stays partial however many times it is retried', () => {
+  const { L, id } = claimed();
+  L.orders[0].awb = 'AWB-1';
+  const before = JSON.stringify([L.orders, L.attempts]);
+  for (let i = 0; i < 5; i++) {
+    assert.equal(finalize(L, id, SLUG, 'delhivery', 'AWB-1').outcome, 'partial_state_order_only');
+  }
+  assert.equal(JSON.stringify([L.orders, L.attempts]), before);
+});
+
+test('finalize: writes in exactly two shapes — both-null creates, both-set reports', () => {
+  // Every other combination is a refusal. This pins the whole contract.
+  const shapes = [
+    [null,    null,    'finalized',                  true],
+    ['AWB-1', 'AWB-1', 'already_finalized',          false],
+    ['AWB-1', null,    'partial_state_attempt_only', false],
+    [null,    'AWB-1', 'partial_state_order_only',   false],
+    ['AWB-X', null,    'attempt_awb_conflict',       false],
+    [null,    'AWB-X', 'order_awb_conflict',         false],
+  ];
+  for (const [attAwb, ordAwb, expected, writes] of shapes) {
+    const { L, id } = claimed();
+    L.attempts[0].awb = attAwb;
+    L.orders[0].awb = ordAwb;
+    const before = JSON.stringify([L.orders, L.attempts]);
+    const r = finalize(L, id, SLUG, 'delhivery', 'AWB-1', 7, 'Manifested');
+    assert.equal(r.outcome, expected, `${attAwb} / ${ordAwb}`);
+    const changed = JSON.stringify([L.orders, L.attempts]) !== before;
+    assert.equal(changed, writes, `${expected} should ${writes ? '' : 'not '}write`);
+  }
 });
 
 test('finalize: a DIFFERENT AWB on the attempt is refused, not overwritten', () => {
@@ -589,6 +633,7 @@ const modelOutcomes = new Set([
   'open_with_awb', 'open_without_awb', 'race_lost', 'claimed',
   'invalid_awb', 'attempt_not_found', 'attempt_terminal', 'courier_mismatch',
   'attempt_awb_conflict', 'order_awb_conflict', 'already_finalized', 'finalized',
+  'partial_state_attempt_only', 'partial_state_order_only',
   'attempt_has_awb', 'failed',
 ]);
 
@@ -693,6 +738,29 @@ test("source: orders' compare-and-set keeps PR A semantics — writes only while
   const body = FWD_CODE.split('create or replace function')[2];
   assert.match(body, /update public\.orders o[\s\S]*?and o\.awb is null;/);
   assert.match(body, /and o\.store_slug = p_store_slug/);
+});
+
+test('source: both partial-state branches return BEFORE either update statement', () => {
+  // The no-write property must be structural, not a matter of the update
+  // predicates happening to match nothing.
+  const body = FWD_CODE.split('create or replace function')[2].split('$function$;')[0];
+  const firstUpdate = body.indexOf('update public.');
+  assert.ok(firstUpdate > 0);
+  for (const outcome of ['partial_state_attempt_only', 'partial_state_order_only']) {
+    const at = body.indexOf(outcome);
+    assert.ok(at > 0, outcome);
+    assert.ok(at < firstUpdate, `${outcome} is returned after a write`);
+  }
+});
+
+test('source: finalize has exactly two write paths and four refusals', () => {
+  const body = FWD_CODE.split('create or replace function')[2].split('$function$;')[0];
+  const outcomes = [...body.matchAll(/'outcome', '([a-z_]+)'/g)].map((m) => m[1]);
+  for (const o of ['finalized', 'already_finalized', 'attempt_awb_conflict',
+                   'order_awb_conflict', 'partial_state_attempt_only',
+                   'partial_state_order_only']) {
+    assert.ok(outcomes.includes(o), o);
+  }
 });
 
 test('source: finalize writes both rows inside ONE function, so they commit together', () => {
