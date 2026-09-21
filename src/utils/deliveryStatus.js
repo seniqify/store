@@ -8,8 +8,9 @@
 
 export const BUCKETS = ['attention', 'ofd', 'transit', 'pickup', 'delivered'];
 
-// Cancelled shipments clear their AWB, so they don't reach the board; kept here
-// only for completeness / pretty labels.
+// Cancelling THROUGH PocketLink clears the AWB, so those rows leave the board.
+// One cancelled at the courier's own end keeps its AWB and does reach it, which
+// is why 'cancelled' is a real bucket here and not just a pretty label.
 export const BUCKET_META = {
   attention: { label: 'Needs attention',  stripe: '#dc2626', tone: 'red',
                chip: 'bg-red-100 text-red-700',       soft: 'bg-red-50 text-red-700 border-red-100' },
@@ -21,18 +22,23 @@ export const BUCKET_META = {
                chip: 'bg-emerald-100 text-emerald-700', soft: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   delivered: { label: 'Delivered',         stripe: '#2563eb', tone: 'blue',
                chip: 'bg-blue-100 text-blue-700',     soft: 'bg-blue-50 text-blue-700 border-blue-100' },
-  cancelled: { label: 'Cancelled',         stripe: '#9ca3af', tone: 'gray',
+  cancelled: { label: 'Courier cancelled', stripe: '#9ca3af', tone: 'gray',
                chip: 'bg-gray-100 text-gray-500',     soft: 'bg-gray-50 text-gray-500 border-gray-100' },
 };
 
 /** Fold a courier status string into one operational bucket. */
 export function classifyBucket(order) {
   const raw = String(order?.shipment_status || '').toLowerCase().trim();
-  if (/cancel/.test(raw)) return 'cancelled';
-  // A return that also says "delivered" (Delhivery "RTO Delivered") is a return.
+  // A return that also says "delivered" (Delhivery "RTO Delivered") is a return,
+  // and so is one that says "cancelled" ("RTO Cancelled"). Return is tested
+  // FIRST, exactly as canonical shipmentState orders it - this mapper only
+  // decides colours, but it must not contradict the summary above it.
   if (/rto|rts|return|\blost\b/.test(raw)) return 'attention';
-  // "delivered" but never "undelivered" (\b stops the match inside undelivered)
-  if (/\bdelivered\b/.test(raw)) return 'delivered';
+  if (/cancel/.test(raw)) return 'cancelled';
+  // "delivered", but never "undelivered" OR "not delivered". The word boundary
+  // alone refuses "undelivered" and does NOT refuse "Not Delivered", which is a
+  // failed attempt, not a delivery - so it carries canonical's explicit guard.
+  if (/\bdelivered\b/.test(raw) && !/undeliver|not deliver/.test(raw)) return 'delivered';
   // NDR / exception / return — anything that needs the owner to act
   if (/not contactable|\bnc\b|undeliver|not deliver|unreachable|reattempt|re-attempt|not available|\bcnr\b|\bnpr\b|address|refus|failed|\bhold\b|held|\bpending\b|exception|\brto\b|return to origin|returned|lost|\bnpr\b/.test(raw)) return 'attention';
   // out for delivery (Delhivery calls it "Dispatched")
