@@ -43,6 +43,117 @@ function toLatin(input: string): string {
 }
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
+// ── booking persistence ─────────────────────────────────────────────────────
+//
+// Booking is two steps that can fail independently: the courier creates a real
+// shipment, then we record it. Everything below exists because the gap between
+// those two is where duplicate parcels come from.
+
+/** The buyer-facing tracking link, by the courier that actually carries it. */
+function trackUrlFor(courier: unknown, awb: unknown): string | null {
+  if (!awb) return null;
+  return String(courier || '').toLowerCase() === 'shadowfax'
+    ? null                                        // Shadowfax has no public page
+    : `https://www.delhivery.com/track/package/${awb}`;
+}
+
+/**
+ * What a conditional attach actually did. PURE, so the race is testable.
+ *
+ *   ok     exactly our row moved
+ *   lost   nobody moved: the order already holds an AWB, so another request
+ *          won and OURS is now a live parcel nothing points at
+ *   error  the write itself failed, and we cannot tell what landed
+ *
+ * Zero rows is NOT success. That is the whole point: the update is guarded by
+ * `.is('awb', null)`, so "no rows" means the guard refused it.
+ */
+function classifyAttach(error: unknown, data: unknown): 'ok' | 'lost' | 'error' {
+  if (error) return 'error';
+  const rows = Array.isArray(data) ? data.length : 0;
+  return rows === 1 ? 'ok' : 'lost';
+}
+
+/**
+ * Undo a shipment we created but could not record. Deliberately duplicated from
+ * shipping-ops: each edge function deploys on its own, there is no shared
+ * module, and tests/courier-booking-integrity.test.mjs pins the two copies
+ * together so they cannot drift apart.
+ *
+ * Returns only whether it worked plus a SHORT reason. Provider bodies and
+ * tokens never travel further than this function.
+ */
+async function cancelAtCourier(
+  provider: string, awb: string, token: string, mode: string,
+): Promise<{ cancelled: boolean; reason: string }> {
+  try {
+    if (provider === 'shadowfax') {
+      const sBase = mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
+      const cr = await fetch(`${sBase}/v3/clients/orders/cancel/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: awb }),
+      });
+      const cd = await cr.json().catch(() => ({}));
+      const ok = cd?.responseCode === 200 || /cancel/i.test(cd?.responseMsg || '');
+      return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+    }
+    const r = await fetch(`${BASE}/api/p/edit`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ waybill: String(awb), cancellation: 'true' }),
+    });
+    // Delhivery's cancel replies with XML (<status>True</status>), not JSON.
+    const txt = await r.text();
+    const ok = /<status>\s*true\s*<\/status>/i.test(txt) || /cancell?ed/i.test(txt) || /"status"\s*:\s*true/i.test(txt);
+    return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+  } catch {
+    return { cancelled: false, reason: 'could not reach the courier to cancel' };
+  }
+}
+
+/**
+ * The merchant-facing answer when the AWB we created is not the one on the
+ * order. PURE. Two outcomes, and neither of them is "success":
+ *
+ *   compensated   our extra parcel is cancelled, so the order is intact and we
+ *                 report the AWB it really holds
+ *   orphan        a real shipment exists that nothing points at. Say so plainly
+ *                 and hand over the number - a retry here books a THIRD parcel.
+ */
+function bookingConflict(
+  kind: 'lost' | 'error', undone: boolean, ourAwb: string,
+  current: { awb?: unknown; courier?: unknown } | null,
+): Record<string, unknown> {
+  if (undone) {
+    if (kind === 'lost') {
+      const awb = current?.awb ?? null;
+      return {
+        awb, alreadyBooked: true, courier: current?.courier ?? null,
+        trackUrl: trackUrlFor(current?.courier, awb),
+        note: 'This order was already booked a moment ago. The duplicate shipment was cancelled.',
+      };
+    }
+    return { error: 'Could not save the shipment, so it was cancelled with the courier. Please try booking again.' };
+  }
+  return {
+    error: 'A shipment was created with the courier but could not be attached to this order, '
+      + 'and cancelling it did not go through. Do not book again - cancel '
+      + `${ourAwb} in your courier panel first.`,
+    needsReconciliation: true,
+    orphanAwb: ourAwb,
+  };
+}
+
+/** We never learned whether the courier made a parcel. Never guess, never retry. */
+function bookingUnknown(): Record<string, unknown> {
+  return {
+    error: 'The courier did not answer, so we cannot tell whether a shipment was created. '
+      + 'Check your courier panel before booking this order again.',
+    bookingUnknown: true,
+  };
+}
+
 // Owner-only (PIN-checked): create a Delhivery shipment for an order and store the
 // AWB. Does NOT schedule a pickup (that's a separate explicit step) — booking just
 // manifests the shipment and gets the tracking number + label.
@@ -85,10 +196,18 @@ serve(async (req) => {
 
     const { data: order } = await supabase
       .from('orders')
-      .select('id, awb, customer_name, customer_phone, destination, pincode, total, payment_method, item_count, items')
+      .select('id, awb, courier, customer_name, customer_phone, destination, pincode, total, payment_method, item_count, items')
       .eq('id', orderId).eq('store_slug', slug).maybeSingle();
     if (!order) return json({ error: 'Order not found' });
-    if (order.awb) return json({ awb: order.awb, alreadyBooked: true, trackUrl: order.courier === 'shadowfax' ? null : `https://www.delhivery.com/track/package/${order.awb}` });
+    // An order that already has a shipment is never booked again here. The
+    // courier is read from the row now - it used not to be selected at all, so
+    // every Shadowfax parcel was handed a Delhivery tracking link.
+    if (order.awb) {
+      return json({
+        awb: order.awb, alreadyBooked: true, courier: order.courier ?? null,
+        trackUrl: trackUrlFor(order.courier, order.awb),
+      });
+    }
 
     // ── Shadowfax booking (isolated; the Delhivery code below is untouched) ──
     if (acct.provider === 'shadowfax') {
@@ -150,11 +269,16 @@ serve(async (req) => {
         })),
       };
 
-      const sRes  = await fetch(`${sBase}/v3/clients/orders/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let sRes: Response;
+      try {
+        sRes = await fetch(`${sBase}/v3/clients/orders/`, {
+          method: 'POST',
+          headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        return json(bookingUnknown());
+      }
       const sData = await sRes.json().catch(() => ({}));
       const sAwb  = sData?.data?.awb_number;
       if (!sAwb || sData?.message !== 'Success') {
@@ -164,9 +288,21 @@ serve(async (req) => {
         return json({ error: `Shadowfax could not book this shipment: ${reason}` });
       }
 
-      await supabase.from('orders')
+      // Attach ONLY while the order still has no AWB. Two requests can both have
+      // read null a moment ago; only one of them may win here.
+      const sAttach = await supabase.from('orders')
         .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new', shipping_cost: shipCost })
-        .eq('id', order.id).eq('store_slug', slug);
+        .eq('id', order.id).eq('store_slug', slug).is('awb', null)
+        .select('id');
+      const sState = classifyAttach(sAttach.error, sAttach.data);
+      if (sState !== 'ok') {
+        // Our parcel is real and the order does not point at it. Take it back.
+        const undo = await cancelAtCourier('shadowfax', sAwb, acct.api_token, String(acct.mode || ''));
+        const { data: cur } = sState === 'lost'
+          ? await supabase.from('orders').select('awb, courier').eq('id', order.id).eq('store_slug', slug).maybeSingle()
+          : { data: null };
+        return json(bookingConflict(sState, undo.cancelled, sAwb, cur));
+      }
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
       // a rider automatically, so there's no separate pickup call (unlike Delhivery).
@@ -230,11 +366,16 @@ serve(async (req) => {
       pickup_location: { name: acct.pickup_name || (store.config?.businessName || slug) },
     }));
 
-    const res = await fetch(`${BASE}/api/cmu/create.json`, {
-      method: 'POST',
-      headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: payload,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/cmu/create.json`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload,
+      });
+    } catch {
+      return json(bookingUnknown());
+    }
     const data = await res.json().catch(() => ({}));
     const pkg = data?.packages?.[0];
     const awb = pkg?.waybill;
@@ -243,9 +384,20 @@ serve(async (req) => {
       return json({ error: `Delhivery could not book this shipment: ${reason}` });
     }
 
-    await supabase.from('orders')
+    // Attach ONLY while the order still has no AWB (see classifyAttach).
+    const dAttach = await supabase.from('orders')
       .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested', shipping_cost: shipCost })
-      .eq('id', order.id).eq('store_slug', slug);
+      .eq('id', order.id).eq('store_slug', slug).is('awb', null)
+      .select('id');
+    const dState = classifyAttach(dAttach.error, dAttach.data);
+    if (dState !== 'ok') {
+      const undo = await cancelAtCourier('delhivery', String(awb), acct.api_token, String(acct.mode || ''));
+      const { data: cur } = dState === 'lost'
+        ? await supabase.from('orders').select('awb, courier').eq('id', order.id).eq('store_slug', slug).maybeSingle()
+        : { data: null };
+      // No pickup is scheduled below: there is no parcel of ours to collect.
+      return json(bookingConflict(dState, undo.cancelled, String(awb), cur));
+    }
 
     // ── Auto-schedule a pickup so a courier actually comes (else it just sits at
     // "Ready to Ship"). Delhivery allows only ONE open pickup per location per day,
