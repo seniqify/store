@@ -58,20 +58,63 @@ function trackUrlFor(courier: unknown, awb: unknown): string | null {
 }
 
 /**
- * What a conditional attach actually did. PURE, so the race is testable.
+ * What a conditional attach REPORTED. PURE, so the race is testable.
  *
  *   ok     exactly our row moved
- *   lost   nobody moved: the order already holds an AWB, so another request
- *          won and OURS is now a live parcel nothing points at
- *   error  the write itself failed, and we cannot tell what landed
+ *   lost   nobody moved: the guard refused the write
+ *   error  the call itself failed, and the report cannot be trusted
  *
  * Zero rows is NOT success. That is the whole point: the update is guarded by
  * `.is('awb', null)`, so "no rows" means the guard refused it.
+ *
+ * Neither failing answer is acted on directly. An error is only a failure to
+ * HEAR the result - the row may well have been written before the connection
+ * broke - so the database is re-read and attachVerdict() decides. Cancelling on
+ * the report alone would kill a parcel the order is already pointing at.
  */
 function classifyAttach(error: unknown, data: unknown): 'ok' | 'lost' | 'error' {
   if (error) return 'error';
   const rows = Array.isArray(data) ? data.length : 0;
   return rows === 1 ? 'ok' : 'lost';
+}
+
+/**
+ * The order as the database actually has it. `known: false` means we could not
+ * read it back - which is NOT the same as "no AWB", and must never be treated
+ * as one.
+ */
+async function readCurrentShipment(
+  supabase: any, slug: string, orderId: string,
+): Promise<{ known: boolean; awb: string | null; courier: string | null }> {
+  try {
+    const { data, error } = await supabase.from('orders')
+      .select('awb, courier').eq('id', orderId).eq('store_slug', slug).maybeSingle();
+    if (error || !data) return { known: false, awb: null, courier: null };
+    return { known: true, awb: data.awb ?? null, courier: data.courier ?? null };
+  } catch {
+    return { known: false, awb: null, courier: null };
+  }
+}
+
+/**
+ * Given what the database really holds, what happened to OUR shipment? PURE.
+ *
+ *   attached    the order points at our AWB. The write landed after all, and
+ *               cancelling now would orphan the order's own parcel.
+ *   superseded  another AWB is authoritative; ours is the spare
+ *   unattached  the order has no AWB, so ours definitely never landed
+ *   unknown     we could not read the order. Nothing is safe to cancel.
+ *
+ * The write's own report is deliberately not an input: an error means we failed
+ * to HEAR the answer, not that there was no answer.
+ */
+function attachVerdict(
+  ours: unknown, current: { known: boolean; awb: unknown },
+): 'attached' | 'superseded' | 'unattached' | 'unknown' {
+  if (!current || !current.known) return 'unknown';
+  const cur = current.awb === null || current.awb === undefined ? '' : String(current.awb);
+  if (!cur) return 'unattached';
+  return cur === String(ours) ? 'attached' : 'superseded';
 }
 
 /**
@@ -113,36 +156,49 @@ async function cancelAtCourier(
 }
 
 /**
- * The merchant-facing answer when the AWB we created is not the one on the
- * order. PURE. Two outcomes, and neither of them is "success":
+ * The merchant-facing answer once the verdict is in. PURE. Never called for
+ * 'attached', which is an ordinary success and is returned by the caller.
  *
- *   compensated   our extra parcel is cancelled, so the order is intact and we
- *                 report the AWB it really holds
- *   orphan        a real shipment exists that nothing points at. Say so plainly
- *                 and hand over the number - a retry here books a THIRD parcel.
+ *   unknown     we cannot say whether our parcel is attached, so nothing was
+ *               cancelled and nothing may be retried blindly
+ *   superseded  another AWB won; ours is cancelled and we report theirs
+ *   unattached  ours never landed; cancelled, so booking may be retried
+ *
+ * A failed cancellation always wins over all of it: a live parcel nothing
+ * points at is the one thing the merchant must be told about plainly.
  */
 function bookingConflict(
-  kind: 'lost' | 'error', undone: boolean, ourAwb: string,
+  verdict: 'superseded' | 'unattached' | 'unknown', undone: boolean, ourAwb: string,
   current: { awb?: unknown; courier?: unknown } | null,
 ): Record<string, unknown> {
-  if (undone) {
-    if (kind === 'lost') {
-      const awb = current?.awb ?? null;
-      return {
-        awb, alreadyBooked: true, courier: current?.courier ?? null,
-        trackUrl: trackUrlFor(current?.courier, awb),
-        note: 'This order was already booked a moment ago. The duplicate shipment was cancelled.',
-      };
-    }
-    return { error: 'Could not save the shipment, so it was cancelled with the courier. Please try booking again.' };
+  if (verdict === 'unknown') {
+    return {
+      error: 'A shipment was created with the courier, but this order could not be read back to '
+        + 'confirm whether it was attached. Do not book again - check '
+        + `${ourAwb} in your courier panel first.`,
+      needsReconciliation: true,
+      attachUnknown: true,
+      orphanAwb: ourAwb,
+    };
   }
-  return {
-    error: 'A shipment was created with the courier but could not be attached to this order, '
-      + 'and cancelling it did not go through. Do not book again - cancel '
-      + `${ourAwb} in your courier panel first.`,
-    needsReconciliation: true,
-    orphanAwb: ourAwb,
-  };
+  if (!undone) {
+    return {
+      error: 'A shipment was created with the courier but could not be attached to this order, '
+        + 'and cancelling it did not go through. Do not book again - cancel '
+        + `${ourAwb} in your courier panel first.`,
+      needsReconciliation: true,
+      orphanAwb: ourAwb,
+    };
+  }
+  if (verdict === 'superseded') {
+    const awb = current?.awb ?? null;
+    return {
+      awb, alreadyBooked: true, courier: current?.courier ?? null,
+      trackUrl: trackUrlFor(current?.courier, awb),
+      note: 'This order was already booked a moment ago. The duplicate shipment was cancelled.',
+    };
+  }
+  return { error: 'Could not save the shipment, so it was cancelled with the courier. Please try booking again.' };
 }
 
 /** We never learned whether the courier made a parcel. Never guess, never retry. */
@@ -294,14 +350,19 @@ serve(async (req) => {
         .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new', shipping_cost: shipCost })
         .eq('id', order.id).eq('store_slug', slug).is('awb', null)
         .select('id');
-      const sState = classifyAttach(sAttach.error, sAttach.data);
-      if (sState !== 'ok') {
-        // Our parcel is real and the order does not point at it. Take it back.
-        const undo = await cancelAtCourier('shadowfax', sAwb, acct.api_token, String(acct.mode || ''));
-        const { data: cur } = sState === 'lost'
-          ? await supabase.from('orders').select('awb, courier').eq('id', order.id).eq('store_slug', slug).maybeSingle()
-          : { data: null };
-        return json(bookingConflict(sState, undo.cancelled, sAwb, cur));
+      if (classifyAttach(sAttach.error, sAttach.data) !== 'ok') {
+        // Ask the database what it really holds before touching the courier. An
+        // error may just be a lost reply to a write that landed.
+        const cur = await readCurrentShipment(supabase, slug, order.id);
+        const verdict = attachVerdict(sAwb, cur);
+        if (verdict !== 'attached') {
+          // Nothing is cancelled while the verdict is unknown.
+          const undo = verdict === 'unknown'
+            ? { cancelled: false, reason: '' }
+            : await cancelAtCourier('shadowfax', sAwb, acct.api_token, String(acct.mode || ''));
+          return json(bookingConflict(verdict, undo.cancelled, sAwb, cur));
+        }
+        // 'attached': the row already points at our AWB. Fall through to success.
       }
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
@@ -389,14 +450,17 @@ serve(async (req) => {
       .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested', shipping_cost: shipCost })
       .eq('id', order.id).eq('store_slug', slug).is('awb', null)
       .select('id');
-    const dState = classifyAttach(dAttach.error, dAttach.data);
-    if (dState !== 'ok') {
-      const undo = await cancelAtCourier('delhivery', String(awb), acct.api_token, String(acct.mode || ''));
-      const { data: cur } = dState === 'lost'
-        ? await supabase.from('orders').select('awb, courier').eq('id', order.id).eq('store_slug', slug).maybeSingle()
-        : { data: null };
-      // No pickup is scheduled below: there is no parcel of ours to collect.
-      return json(bookingConflict(dState, undo.cancelled, String(awb), cur));
+    if (classifyAttach(dAttach.error, dAttach.data) !== 'ok') {
+      const cur = await readCurrentShipment(supabase, slug, order.id);
+      const verdict = attachVerdict(awb, cur);
+      if (verdict !== 'attached') {
+        const undo = verdict === 'unknown'
+          ? { cancelled: false, reason: '' }
+          : await cancelAtCourier('delhivery', String(awb), acct.api_token, String(acct.mode || ''));
+        // No pickup is scheduled below: there is no parcel of ours to collect.
+        return json(bookingConflict(verdict, undo.cancelled, String(awb), cur));
+      }
+      // 'attached': the write landed, the reply did not. Carry on as normal.
     }
 
     // ── Auto-schedule a pickup so a courier actually comes (else it just sits at

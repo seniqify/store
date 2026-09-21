@@ -131,7 +131,7 @@ test('no blind overwrite survives anywhere in the booking path', () => {
 
 test('losing the race returns the AUTHORITATIVE AWB, never ours', () => {
   const { bookingConflict, trackUrlFor } = load(['bookingConflict', 'trackUrlFor']);
-  const r = bookingConflict('lost', true, 'SF-OURS', { awb: 'SF-WINNER', courier: 'shadowfax' });
+  const r = bookingConflict('superseded', true, 'SF-OURS', { awb: 'SF-WINNER', courier: 'shadowfax' });
   assert.equal(r.awb, 'SF-WINNER', 'the AWB on the order is the one that counts');
   assert.equal(r.alreadyBooked, true);
   assert.equal(r.trackUrl, null, 'and a Shadowfax winner gets no Delhivery link');
@@ -144,7 +144,7 @@ test('losing the race returns the AUTHORITATIVE AWB, never ours', () => {
 
 test('a persistence error with a successful undo is a plain, retryable failure', () => {
   const { bookingConflict } = load(['bookingConflict']);
-  const r = bookingConflict('error', true, 'DL-OURS', null);
+  const r = bookingConflict('unattached', true, 'DL-OURS', null);
   assert.match(r.error, /cancelled with the courier/);
   assert.match(r.error, /try booking again/);
   assert.equal(r.awb, undefined, 'no AWB is claimed');
@@ -153,7 +153,7 @@ test('a persistence error with a successful undo is a plain, retryable failure',
 
 test('COMPENSATION FAILURE is never dressed up as success or as a simple retry', () => {
   const { bookingConflict } = load(['bookingConflict']);
-  for (const kind of ['lost', 'error']) {
+  for (const kind of ['superseded', 'unattached']) {
     const r = bookingConflict(kind, false, 'DL-ORPHAN', { awb: 'DL-WINNER', courier: 'delhivery' });
     assert.equal(r.alreadyBooked, undefined, `${kind}: not reported as a normal booking`);
     assert.equal(r.needsReconciliation, true, `${kind}: the merchant is told it needs sorting out`);
@@ -211,13 +211,20 @@ test('a refused or unreachable cancel reports failure, and leaks nothing', async
   assert.equal(r.reason.includes('secret'), false);
 });
 
-test('both providers compensate, and neither overwrites the winning AWB', () => {
-  for (const [name, marker] of [['shadowfax', 'sState'], ['delhivery', 'dState']]) {
-    const at = BOOK.indexOf(`const ${marker} = classifyAttach(`);
-    const block = BOOK.slice(at, at + 700);
-    assert.match(block, new RegExp(`if \\(${marker} !== 'ok'\\)`), `${name}: anything but ok is handled`);
-    assert.match(block, /cancelAtCourier\(/, `${name}: the duplicate parcel is taken back`);
-    assert.match(block, /bookingConflict\(/, `${name}: and the answer says so`);
+test('both providers re-read the order BEFORE deciding anything', () => {
+  for (const [name, marker] of [['shadowfax', 'sAttach'], ['delhivery', 'dAttach']]) {
+    const at = BOOK.indexOf(`classifyAttach(${marker}.error, ${marker}.data) !== 'ok'`);
+    assert.notEqual(at, -1, `${name}: a non-ok attach is still handled`);
+    const block = BOOK.slice(at, at + 900);
+    const read = block.indexOf('readCurrentShipment(');
+    const cancel = block.indexOf('cancelAtCourier(');
+    assert.ok(read > -1, `${name}: the database is re-read`);
+    assert.ok(cancel > -1, `${name}: compensation is still available`);
+    assert.ok(read < cancel, `${name}: and the re-read happens FIRST`);
+    assert.match(block, /attachVerdict\(/, `${name}: the verdict decides, not the write's report`);
+    assert.match(block, /verdict !== 'attached'/, `${name}: an attached AWB is left alone`);
+    assert.match(block, /verdict === 'unknown'/, `${name}: and an unknown verdict cancels nothing`);
+    assert.match(block, /bookingConflict\(/, `${name}: the answer says what happened`);
     assert.equal(/\.update\(/.test(block), false, `${name}: the order is never written again here`);
   }
 });
@@ -263,6 +270,112 @@ test('the cancel calls match shipping-ops, which owns the cancel action', () => 
   assert.match(BOOK, opsOk, 'and shipping-book uses the identical test');
 });
 
+// ── the error path: an unheard answer is not a failed write ─────────────────
+//
+// A client/network error after the row was committed used to cancel our AWB
+// while the order still pointed at it — PocketLink tracking a parcel it had
+// just killed. The write's own report is no longer an input to that decision;
+// the database is.
+
+const verdictOf = () => load(['attachVerdict']).attachVerdict;
+
+test('COMMITTED-BUT-ERROR: the write landed, so nothing may be cancelled', () => {
+  const attachVerdict = verdictOf();
+  assert.equal(attachVerdict('DL-A', { known: true, awb: 'DL-A', courier: 'delhivery' }), 'attached');
+  assert.equal(attachVerdict(12345, { known: true, awb: '12345', courier: 'delhivery' }), 'attached',
+    'an AWB is compared as text, whatever the courier handed back');
+});
+
+test('the attached verdict is the one case that never reaches compensation', () => {
+  // bookingConflict has no 'attached' branch at all, and both call sites gate
+  // on `verdict !== 'attached'` before they can reach cancelAtCourier.
+  assert.equal(/'attached'/.test(BOOK.slice(BOOK.indexOf('function bookingConflict'),
+    BOOK.indexOf('function bookingUnknown'))), false,
+    'bookingConflict cannot answer for an attached shipment');
+  for (const marker of ['sAttach', 'dAttach']) {
+    const at = BOOK.indexOf(`classifyAttach(${marker}.error, ${marker}.data) !== 'ok'`);
+    const block = BOOK.slice(at, at + 900);
+    const gate = block.indexOf("verdict !== 'attached'");
+    const cancel = block.indexOf('cancelAtCourier(');
+    assert.ok(gate > -1 && gate < cancel, `${marker}: attached short-circuits before any cancel`);
+  }
+});
+
+test('ANOTHER AWB WON: compensate ours, report theirs, never overwrite', () => {
+  const attachVerdict = verdictOf();
+  const { bookingConflict } = load(['bookingConflict', 'trackUrlFor']);
+  assert.equal(attachVerdict('DL-OURS', { known: true, awb: 'DL-WINNER', courier: 'delhivery' }), 'superseded');
+  const r = bookingConflict('superseded', true, 'DL-OURS', { awb: 'DL-WINNER', courier: 'delhivery' });
+  assert.equal(r.awb, 'DL-WINNER');
+  assert.equal(r.alreadyBooked, true);
+  assert.equal(r.trackUrl, 'https://www.delhivery.com/track/package/DL-WINNER');
+  assert.equal(JSON.stringify(r).includes('DL-OURS'), false, 'ours is gone, not reported');
+});
+
+test('DB STILL NULL: ours definitely never landed, so cancel it', () => {
+  const attachVerdict = verdictOf();
+  const { bookingConflict } = load(['bookingConflict']);
+  assert.equal(attachVerdict('DL-OURS', { known: true, awb: null, courier: null }), 'unattached');
+  assert.equal(attachVerdict('DL-OURS', { known: true, awb: '', courier: null }), 'unattached',
+    'an empty string is no AWB either');
+  const r = bookingConflict('unattached', true, 'DL-OURS', { awb: null, courier: null });
+  assert.match(r.error, /cancelled with the courier/);
+  assert.match(r.error, /try booking again/, 'nothing is live, so retrying is safe here');
+  assert.equal(r.needsReconciliation, undefined);
+});
+
+test('RE-READ FAILED: cancel nothing, claim nothing, promise nothing', () => {
+  const attachVerdict = verdictOf();
+  const { bookingConflict } = load(['bookingConflict']);
+  for (const cur of [{ known: false, awb: null }, { known: false, awb: 'DL-A' }, null, undefined]) {
+    assert.equal(attachVerdict('DL-OURS', cur), 'unknown', 'an unreadable order is never "no AWB"');
+  }
+  const r = bookingConflict('unknown', false, 'DL-OURS', null);
+  assert.equal(r.attachUnknown, true);
+  assert.equal(r.needsReconciliation, true);
+  assert.equal(r.orphanAwb, 'DL-OURS');
+  assert.equal(r.alreadyBooked, undefined, 'no booking is claimed');
+  assert.match(r.error, /could not be read back/);
+  assert.match(r.error, /Do not book again/);
+  assert.equal(/try booking again|please try again/i.test(r.error), false,
+    'a blind retry could book a second live parcel');
+});
+
+test('an unknown verdict cannot reach the courier at all', () => {
+  for (const marker of ['sAttach', 'dAttach']) {
+    const at = BOOK.indexOf(`classifyAttach(${marker}.error, ${marker}.data) !== 'ok'`);
+    const block = BOOK.slice(at, at + 900);
+    assert.match(block, /verdict === 'unknown'\s*\n?\s*\?\s*\{ cancelled: false/,
+      `${marker}: unknown short-circuits the cancel into a non-result`);
+  }
+});
+
+test('compensation failure still wins over every verdict', () => {
+  const { bookingConflict } = load(['bookingConflict']);
+  for (const v of ['superseded', 'unattached']) {
+    const r = bookingConflict(v, false, 'SF-ORPHAN', { awb: 'SF-WINNER', courier: 'shadowfax' });
+    assert.equal(r.needsReconciliation, true, `${v}: a live orphan is always surfaced`);
+    assert.equal(r.orphanAwb, 'SF-ORPHAN');
+    assert.equal(r.alreadyBooked, undefined, `${v}: never dressed up as a booking`);
+    assert.match(r.error, /Do not book again/);
+  }
+});
+
+test('the decision tree is total: every verdict has exactly one answer', () => {
+  const { bookingConflict } = load(['bookingConflict', 'trackUrlFor']);
+  const seen = new Set();
+  for (const v of ['superseded', 'unattached', 'unknown']) {
+    for (const undone of [true, false]) {
+      const r = bookingConflict(v, undone, 'X1', { awb: 'Y1', courier: 'delhivery' });
+      assert.ok(r && (r.error || r.alreadyBooked), `${v}/${undone} answers something`);
+      // An answer is either a booking or a problem, never silently both.
+      assert.equal(Boolean(r.error) && Boolean(r.alreadyBooked), false, `${v}/${undone} is unambiguous`);
+      seen.add(`${v}:${undone}`);
+    }
+  }
+  assert.equal(seen.size, 6);
+});
+
 // ── scope guards ────────────────────────────────────────────────────────────
 
 test('this PR does not begin rebooking', () => {
@@ -272,14 +385,20 @@ test('this PR does not begin rebooking', () => {
   assert.equal(/rebook/i.test(code), false, 'no rebooking action in the code itself');
   assert.equal(/shipment_attempts/.test(BOOK), false, 'no attempt history table');
   assert.match(BOOK, /if \(order\.awb\) \{/, 'an existing AWB still blocks booking outright');
-  assert.equal(/awb: null/.test(BOOK), false, 'and booking never clears an AWB');
+  const writes = BOOK.match(/\.update\(\{[^}]*\}\)/g) || [];
+  for (const w of writes) {
+    assert.equal(/awb:\s*null/.test(w), false, 'and booking never clears an AWB');
+  }
 });
 
 test('authorization and tenancy are untouched', () => {
   assert.match(BOOK, /verify_store_pin/, 'the PIN gate stays');
-  const pin = BOOK.indexOf('verify_store_pin');
-  const order = BOOK.indexOf(".from('orders')");
-  assert.ok(pin < order, 'and it runs before any order is read');
+  // Measured inside the handler: readCurrentShipment is a top-level helper that
+  // also touches orders, and it is declared above serve() by definition.
+  const handler = BOOK.slice(BOOK.indexOf('serve(async (req)'));
+  const pin = handler.indexOf('verify_store_pin');
+  const order = handler.indexOf(".from('orders')");
+  assert.ok(pin > -1 && order > -1 && pin < order, 'and it runs before any order is read');
   const reads = BOOK.match(/\.eq\('id', order(?:Id|\.id)\)[^\n]*/g) || [];
   assert.ok(reads.length >= 4, 'every order touch is still addressed by id');
   for (const r of reads) assert.match(r, /store_slug/, 'and scoped to the store');
