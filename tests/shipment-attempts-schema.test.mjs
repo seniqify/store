@@ -323,10 +323,33 @@ test('verification proves shape, volume, state and non-interference', () => {
     assert.ok(VER.includes(bit), `verify covers: ${bit}`);
   }
   // A write VERB, not the words inside a check label ("ON DELETE RESTRICT").
+  // A write VERB, not the words inside a check label ("ON DELETE RESTRICT").
   const body = VER.replace(/--.*$/gm, '');
   assert.equal(/^\s*(insert|update|delete|create|alter|drop|truncate|grant|revoke)\b/im.test(body), false,
     'the verify script is strictly read-only');
   assert.equal((body.match(/;/g) || []).length, 1, 'and is one single statement');
+});
+
+test('verification is POST-APPLY ONLY, and says so', () => {
+  // It selects from the table directly, so Postgres resolves the relation when
+  // it plans the query: run before the migration it errors, it does not report.
+  // Claiming otherwise once put a "FAIL - not applied" row in the script that
+  // could never be reached.
+  const body = VER.replace(/--.*$/gm, '');
+  assert.match(body, /from public\.shipment_attempts/,
+    'it reads the table directly, which is what makes it post-apply only');
+
+  const header = VER.slice(0, VER.indexOf('with tbl as'));
+  assert.match(header, /POST-APPLY ONLY/, 'the contract is stated in the header');
+  assert.match(header, /relation "public\.shipment_attempts" does not exist/,
+    'and the exact error a premature run produces');
+  assert.match(header, /intentional/, 'stated as deliberate, not a defect');
+  assert.match(header, /preflight/, 'and points at the real pre-apply check');
+
+  assert.equal(/safe on production before and after/i.test(VER), false,
+    'the false pre-apply claim must not come back');
+  assert.equal(/FAIL - not applied/.test(VER), false,
+    'nor the unreachable row it implied');
 });
 
 // ── 12. the fixture gained the one production string it lacked ──────────────

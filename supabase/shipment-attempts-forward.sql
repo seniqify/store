@@ -240,4 +240,7 @@ where (o.awb is not null or o.courier is not null)
 
 commit;
 
--- Next: supabase/shipment-attempts-verify.sql (read-only, production-safe).
+-- Next: supabase/shipment-attempts-verify.sql -- read-only, and POST-APPLY
+-- ONLY: it reads the table directly, so running it before this migration
+-- errors rather than reporting. The pre-apply check is the production
+-- preflight, which validates the data while the table still does not exist.

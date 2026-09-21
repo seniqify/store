@@ -1,12 +1,22 @@
 -- ===========================================================================
 --  Shipment attempts ledger -- VERIFICATION
 --
---  READ-ONLY. One single SELECT. Writes nothing. Safe on production before and
---  after applying shipment-attempts-forward.sql. After applying, every row
---  must read PASS except rows labelled (info).
+--  READ-ONLY. One single SELECT. Writes nothing.
 --
---  Before applying, the S1 rows read FAIL (the table does not exist yet) and
---  everything else reads 0 -- that is the expected "not applied" shape.
+--  POST-APPLY ONLY. Run this AFTER shipment-attempts-forward.sql has succeeded.
+--  Every row must then read PASS except rows labelled (info).
+--
+--  If public.shipment_attempts does not exist, this script does NOT report a
+--  friendly failure -- it errors with
+--      relation "public.shipment_attempts" does not exist
+--  because Postgres resolves the relation when it plans the query, before any
+--  check can run. That is intentional and is the honest contract: a missing
+--  table means the migration did not apply, and the error says so.
+--
+--  The PRE-apply check is a different script: the production preflight, which
+--  validates the data against every constraint this migration is about to
+--  create (duplicate AWBs, courier vocabulary, backfill population, cost
+--  profile) while the table still does not exist.
 -- ===========================================================================
 
 with tbl as (
@@ -30,11 +40,14 @@ expected as (
 select * from (
 
   -- == S1. the object exists and is locked down ============================
+  -- Reaching this row at all means the table exists: the query would not have
+  -- planned otherwise. It is kept as an explicit statement of that fact.
   select 110 as seq, 'S1 object' as grp, 'S1.1 table exists' as check_name,
-    case when (select t from tbl) is not null then 'PASS' else 'FAIL - not applied' end as result
+    case when (select t from tbl) is not null then 'PASS'
+         else 'FAIL - unreachable, a missing table errors at plan time' end as result
   union all select 111,'S1 object','S1.2 RLS enabled',
     coalesce((select case when c.relrowsecurity then 'PASS' else 'FAIL - RLS is off' end
-                from pg_class c where c.oid = (select t from tbl)), 'FAIL - no table')
+                from pg_class c where c.oid = (select t from tbl)), 'FAIL')
   union all select 112,'S1 object','S1.3 no policy grants browser access',
     coalesce((select case when count(*) = 0 then 'PASS'
                           else 'FAIL - ' || count(*)::text || ' policy(ies) exist' end
