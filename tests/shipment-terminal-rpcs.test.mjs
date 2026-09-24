@@ -66,6 +66,20 @@ class Ledger {
   byId(slug, id) {
     return this.attempts.find((a) => a.id === id && a.store_slug === slug) || null;
   }
+  /**
+   * The real UPDATE: its WHERE clause is re-evaluated at write time, so it
+   * yields a ROW COUNT rather than a promise that the write landed.
+   * `onBeforeWrite` lets a test mutate the row in that gap, the way a
+   * concurrent transaction would. Returns what GET DIAGNOSTICS reports.
+   */
+  updateAttempt(att, patch, predicate) {
+    if (this.onBeforeWrite) { const f = this.onBeforeWrite; this.onBeforeWrite = null; f(); }
+    // Predicate first: a row the WHERE no longer selects is never handed to the
+    // trigger, so it is zero rows -- not an exception.
+    if (!predicate(att)) return 0;
+    this.write(att, patch);
+    return 1;
+  }
   /** B1: closed attempts are permanent. Any write to one raises 42501. */
   write(att, patch) {
     if (att.end_reason !== null) {
@@ -114,7 +128,14 @@ function cancelCurrent(L, slug, orderId, courier, awb, finalStatus = null) {
   if (orderAwb !== null && orderAwb !== a) return { outcome: 'awb_mismatch', awb: orderAwb };
 
   const status = (norm(finalStatus) ?? 'Cancelled').slice(0, 200);
-  L.write(att, { end_reason: 'cancelled', ended_at: NOW, final_status: status });
+  const rows = L.updateAttempt(
+    att,
+    { end_reason: 'cancelled', ended_at: NOW, final_status: status },
+    (a) => a.end_reason === null,
+  );
+  // Checked BEFORE the pointer is cleared. A pointer cleared against an
+  // attempt that did not close is the half-applied shape this must never make.
+  if (rows !== 1) return { outcome: 'transition_race', attempt_id: att.id, rows };
 
   if (orderAwb === null) {
     return { outcome: 'cancelled_pointer_was_clear', attempt_id: att.id, awb: a, order_id: orderId };
@@ -161,12 +182,18 @@ function supersede(L, attemptId, slug, courier, awb, finalStatus = null) {
   }
 
   const status = (norm(finalStatus) ?? 'Cancelled').slice(0, 200);
+  let rows;
   try {
-    L.write(att, { awb: a, end_reason: 'superseded', ended_at: NOW, final_status: status });
+    rows = L.updateAttempt(
+      att,
+      { awb: a, end_reason: 'superseded', ended_at: NOW, final_status: status },
+      (x) => x.end_reason === null && norm(x.awb) === null,
+    );
   } catch (e) {
     if (e.code === '23505') return { outcome: 'awb_already_recorded', awb: a };
     throw e;
   }
+  if (rows !== 1) return { outcome: 'transition_race', attempt_id: attemptId, rows };
   return { outcome: 'superseded', attempt_id: attemptId, awb: a, order_id: att.order_id };
 }
 
@@ -363,6 +390,75 @@ test('cancel: works identically for Shadowfax', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// EXECUTED — row count: success requires a row that actually moved
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('rowcount: cancel CANNOT clear orders.awb when the attempt UPDATE moves 0 rows', () => {
+  // Something closes the attempt between the read and the write. The UPDATE's
+  // own WHERE (end_reason is null) then selects nothing. The pointer must not
+  // move: an order with no AWB whose attempt never closed is the half-applied
+  // shape the whole programme exists to eliminate.
+  const L = booked();
+  L.onBeforeWrite = () => { L.attempts[0].end_reason = 'delivered'; };
+  const r = cancelCurrent(L, SLUG, OID, 'delhivery', AWB);
+  assert.equal(r.outcome, 'transition_race');
+  assert.equal(r.rows, 0);
+  assert.equal(L.orders[0].awb, AWB);
+  assert.equal(L.orders[0].shipment_status, 'In Transit');
+  assert.equal(L.attempts[0].end_reason, 'delivered');   // not overwritten
+});
+
+test('rowcount: cancel reports transition_race, never cancelled, on 0 rows', () => {
+  for (const steal of ['cancelled', 'superseded', 'failed', 'returned']) {
+    const L = booked();
+    L.onBeforeWrite = () => { L.attempts[0].end_reason = steal; };
+    const r = cancelCurrent(L, SLUG, OID, 'delhivery', AWB);
+    assert.equal(r.outcome, 'transition_race', steal);
+    assert.equal(L.orders[0].awb, AWB, steal);
+  }
+});
+
+test('rowcount: supersede CANNOT report success when its UPDATE moves 0 rows', () => {
+  const L = loser();
+  L.onBeforeWrite = () => { L.attempts[0].end_reason = 'cancelled'; };
+  const r = supersede(L, 1, SLUG, 'delhivery', 'AWB-X');
+  assert.equal(r.outcome, 'transition_race');
+  assert.equal(r.rows, 0);
+  assert.equal(L.attempts[0].end_reason, 'cancelled');
+  assert.equal(L.attempts[0].awb, null);                 // AWB-X never recorded
+});
+
+test('rowcount: supersede refuses when an AWB appears in the gap', () => {
+  // The UPDATE also requires awb is null, so a concurrently-attached AWB makes
+  // it zero rows rather than an overwrite.
+  const L = loser();
+  L.onBeforeWrite = () => { L.attempts[0].awb = 'AWB-OTHER'; };
+  const r = supersede(L, 1, SLUG, 'delhivery', 'AWB-X');
+  assert.equal(r.outcome, 'transition_race');
+  assert.equal(L.attempts[0].awb, 'AWB-OTHER');
+  assert.equal(L.attempts[0].end_reason, null);
+});
+
+test('rowcount: success on BOTH paths requires exactly one mutated row', () => {
+  const runs = [
+    () => { const L = booked(); return [cancelCurrent(L, SLUG, OID, 'delhivery', AWB), L]; },
+    () => { const L = loser();  return [supersede(L, 1, SLUG, 'delhivery', 'AWB-X'), L]; },
+  ];
+  for (const run of runs) {
+    const [ok, L] = run();
+    assert.ok(['cancelled', 'superseded'].includes(ok.outcome));
+    assert.equal(L.attempts.filter((a) => a.ended_at === NOW).length, 1);
+  }
+});
+
+test('rowcount: an undisturbed transition still reports rows = 1 and succeeds', () => {
+  const L = booked();
+  L.onBeforeWrite = () => { /* nothing changes */ };
+  assert.equal(cancelCurrent(L, SLUG, OID, 'delhivery', AWB).outcome, 'cancelled');
+  assert.equal(L.orders[0].awb, null);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // EXECUTED — the rebook proof
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -554,6 +650,7 @@ const modelOutcomes = new Set([
   'attempt_state_mismatch', 'awb_mismatch', 'cancelled', 'cancelled_pointer_was_clear',
   'superseded', 'already_superseded', 'attempt_terminal', 'attempt_awb_conflict',
   'attempt_has_awb', 'order_still_points_here', 'awb_already_recorded',
+  'transition_race',
 ]);
 
 test('drift: every outcome the SQL returns is modelled here', () => {
@@ -649,6 +746,37 @@ test('source: supersede leaves booked_at out of its UPDATE entirely', () => {
 test('source: supersede guards the (courier, awb) unique index', () => {
   const body = FWD_CODE.split('create or replace function')[2];
   assert.match(body, /exception\s*\n\s*when unique_violation then/);
+});
+
+test('source: both transitions read row_count after their closing UPDATE', () => {
+  assert.equal([...FWD_CODE.matchAll(/get diagnostics v_rows = row_count;/g)].length, 2);
+  assert.equal([...FWD_CODE.matchAll(/if v_rows <> 1 then/g)].length, 2);
+  assert.equal([...FWD_CODE.matchAll(/'outcome', 'transition_race'/g)].length, 2);
+  assert.equal([...FWD_CODE.matchAll(/v_rows\s+integer;/g)].length, 2);
+});
+
+test("source: cancel's row_count check sits BETWEEN its two UPDATEs", () => {
+  // The ordering is the guarantee: the pointer may only be cleared once the
+  // attempt is known to have closed.
+  const body = FWD_CODE.split('create or replace function')[1].split('$function$;')[0];
+  const attUpdate = body.indexOf('update public.shipment_attempts');
+  const check     = body.indexOf('get diagnostics v_rows = row_count;');
+  const ordUpdate = body.indexOf('update public.orders');
+  assert.ok(attUpdate > 0 && check > attUpdate, 'row_count must follow the attempt UPDATE');
+  assert.ok(ordUpdate > check, 'the orders UPDATE must follow the row_count check');
+});
+
+test("source: supersede's row_count check precedes its success return", () => {
+  const body = FWD_CODE.split('create or replace function')[2].split('$function$;')[0];
+  const check   = body.indexOf('get diagnostics v_rows = row_count;');
+  const success = body.indexOf("'outcome', 'superseded'");
+  assert.ok(check > 0 && success > check, 'success must not be reported before the count');
+});
+
+test('source: unique_violation handling is unchanged', () => {
+  const body = FWD_CODE.split('create or replace function')[2];
+  assert.match(body, /exception\s*\n\s*when unique_violation then/);
+  assert.equal([...FWD_CODE.matchAll(/'outcome', 'awb_already_recorded'/g)].length, 1);
 });
 
 test('source: the terminal guard refuses delivered/returned/lost before any write', () => {

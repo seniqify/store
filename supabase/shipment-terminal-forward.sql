@@ -98,6 +98,9 @@ begin;
 --   courier_mismatch             -> it does, but under the other courier.
 --   awb_mismatch                 -> the order points at a DIFFERENT AWB.
 --   order_not_found              -> no such order in this store.
+--   transition_race              -> the closing UPDATE moved no row, so the
+--                                   attempt changed underneath us. The pointer
+--                                   is NOT cleared. Shared with supersede.
 --   invalid_awb / invalid_courier
 create or replace function public.cancel_current_shipment(
   p_store_slug   text,
@@ -119,6 +122,7 @@ declare
   v_att_cour  text;
   v_end       text;
   v_status    text;
+  v_rows      integer;
 begin
   v_courier := nullif(btrim(lower(coalesce(p_courier, ''))), '');
   v_awb     := nullif(btrim(coalesce(p_awb, '')), '');
@@ -229,6 +233,22 @@ begin
    where sa.id = v_att_id
      and sa.end_reason is null;
 
+  -- The predicate above is not decoration: it is re-checked by the database at
+  -- write time, so if anything closed this attempt between the read and here,
+  -- ZERO rows move. Reading row_count is what turns that into a refusal rather
+  -- than a silent success -- and, critically, it is checked BEFORE the order's
+  -- pointer is cleared. Clearing a pointer whose attempt did not close is the
+  -- exact half-applied shape this programme exists to eliminate.
+  --
+  -- The row lock should make this unreachable. "Should be unreachable" is not
+  -- "is unreachable", and the cost of being wrong here is a live parcel that
+  -- nothing points at.
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    return jsonb_build_object(
+      'outcome', 'transition_race', 'attempt_id', v_att_id, 'rows', v_rows);
+  end if;
+
   if v_order_awb is null then
     -- The pointer was already clear but the ledger was still open. This is the
     -- PR2 ROLLOUT-WINDOW RECOVERY: an old shipping-ops instance cancels at the
@@ -294,6 +314,8 @@ comment on function public.cancel_current_shipment(text, uuid, text, text, text)
 --   order_still_points_here-> orders.awb IS this AWB. We did not lose; closing
 --                             as superseded would be false.
 --   awb_already_recorded   -> another attempt already owns (courier, awb).
+--   transition_race        -> the closing UPDATE moved no row. Nothing is
+--                             reported as superseded. Shared with cancel.
 --   courier_mismatch / invalid_awb / invalid_courier
 create or replace function public.supersede_shipment_attempt(
   p_attempt_id   bigint,
@@ -316,6 +338,7 @@ declare
   v_att_cour  text;
   v_end       text;
   v_status    text;
+  v_rows      integer;
 begin
   v_courier := nullif(btrim(lower(coalesce(p_courier, ''))), '');
   v_awb     := nullif(btrim(coalesce(p_awb, '')), '');
@@ -413,12 +436,23 @@ begin
      where sa.id = p_attempt_id
        and sa.end_reason is null
        and sa.awb is null;
+
+    get diagnostics v_rows = row_count;
   exception
     when unique_violation then
       -- shipment_attempts_courier_awb_idx: some other attempt already owns
       -- this (courier, awb). Two ledger rows must never claim one parcel.
       return jsonb_build_object('outcome', 'awb_already_recorded', 'awb', v_awb);
   end;
+
+  -- Same reasoning as in cancel_current_shipment: the WHERE clause is
+  -- re-evaluated at write time, so an attempt that was closed or given an AWB
+  -- between the read and here moves zero rows. Success is only reported for a
+  -- row this statement actually mutated.
+  if v_rows <> 1 then
+    return jsonb_build_object(
+      'outcome', 'transition_race', 'attempt_id', p_attempt_id, 'rows', v_rows);
+  end if;
 
   return jsonb_build_object(
     'outcome', 'superseded',
