@@ -657,8 +657,7 @@ test("drift: the terminal gate reads the status exactly as B1's derivation does"
   assert.ok(at(/outcome === 'delivered'/) < at(/rto\|rts\|return/));
 });
 
-test('scope: shipping-book is untouched -- still no claim, still PR A', () => {
-  assert.equal(BOOK.includes('claim_shipment_attempt'), false);
-  assert.equal(BOOK.includes('cancel_current_shipment'), false);
-  assert.ok(BOOK.includes('function cancelAtCourier('));
+test('scope: shipping-book books (B2B) but never cancels a current shipment', () => {
+  assert.equal(BOOK.includes('cancel_current_shipment'), false, 'cancellation stays in shipping-ops');
+  assert.ok(BOOK.includes('function cancelAtCourier('), 'shipping-book only cancels its own duplicates');
 });

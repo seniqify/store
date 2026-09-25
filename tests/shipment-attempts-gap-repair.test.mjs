@@ -621,6 +621,8 @@ test('scope: PR2 -- shipping-ops clears the AWB only through cancel_current_ship
   assert.ok(OPS.includes("rpc('cancel_current_shipment'"));
 });
 
-test('scope: shipping-book still books without a claim -- B2B is not started', () => {
-  assert.ok(!BOOK.includes('claim_shipment_attempt'));
+test('scope: B2B -- shipping-book claims every new booking, so new gaps stop', () => {
+  // Every booking now writes its ledger row through the claim. Bookings made by
+  // old instances during the deploy are what the repair's second run catches.
+  assert.ok(BOOK.includes("'claim_shipment_attempt'"));
 });

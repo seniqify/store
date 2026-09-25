@@ -872,22 +872,22 @@ test('rollback: documents the runtime-first ordering and the leave-installed opt
 
 // ── scope ───────────────────────────────────────────────────────────────────
 
-test('scope: shipping-ops calls cancel_current_shipment (PR2); supersede waits for B2B', () => {
+test('scope: cancel belongs to shipping-ops (PR2), supersede to shipping-book (B2B)', () => {
   assert.ok(OPS.includes("rpc('cancel_current_shipment'"), 'PR2 wired shipping-ops to the cancel RPC');
-  assert.ok(!OPS.includes('supersede_shipment_attempt'), 'supersede belongs to B2B');
-  for (const [name] of FNS) assert.ok(!BOOK.includes(name), `shipping-book: ${name} -- B2B not started`);
+  assert.ok(!OPS.includes('supersede_shipment_attempt'), 'shipping-ops never supersedes');
+  assert.ok(BOOK.includes("'supersede_shipment_attempt'"), 'B2B records a cancelled duplicate');
+  assert.ok(!BOOK.includes('cancel_current_shipment'), 'shipping-book never cancels a current shipment');
 });
 
 test('scope: shipping-ops no longer clears the AWB directly -- the RPC is the only path', () => {
   assert.equal([...OPS.matchAll(/update\(\{ awb: null, shipment_status: 'Cancelled' \}\)/g)].length, 0);
 });
 
-test('scope: shipping-book still holds every PR A protection and no claim call', () => {
-  for (const fn of ['classifyAttach', 'readCurrentShipment', 'attachVerdict',
-                    'cancelAtCourier', 'bookingConflict', 'bookingUnknown']) {
-    assert.ok(BOOK.includes(fn), fn);
+test('scope: B2B -- shipping-book claims before it books, and keeps its cleanup', () => {
+  for (const fn of ['readCurrentShipment', 'cancelAtCourier', 'bookingUnknown']) {
+    assert.ok(BOOK.includes(`function ${fn}(`), fn);
   }
-  assert.ok(!BOOK.includes('claim_shipment_attempt'));
+  assert.ok(BOOK.includes("'claim_shipment_attempt'"));
 });
 
 test('scope: B2A and B1 migration files are not referenced for modification', () => {
