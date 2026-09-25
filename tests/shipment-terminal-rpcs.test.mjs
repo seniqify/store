@@ -807,11 +807,12 @@ test('source: the trust boundary is documented, and no cancelled boolean is acce
   for (const [, args] of FNS) assert.ok(!args.includes('boolean'));
 });
 
-test('source: the live shipping-ops defect is documented but NOT fixed here', () => {
+test('source: the shipping-ops defect is documented here, and PR2 has fixed it', () => {
   assert.match(FWD, /cannot be cancelled/);
   assert.match(FWD, /PR2/);
-  // and the defect is still present in the runtime, untouched by this PR
-  assert.ok(OPS.includes('/cancel/i.test(cd?.responseMsg'));
+  // PR2 replaced the loose success test with explicit confirmation only
+  assert.ok(!OPS.includes('/cancel/i.test(cd?.responseMsg'));
+  assert.ok(OPS.includes('function shadowfaxCancelConfirmed('));
 });
 
 // ── verify ──────────────────────────────────────────────────────────────────
@@ -871,15 +872,14 @@ test('rollback: documents the runtime-first ordering and the leave-installed opt
 
 // ── scope ───────────────────────────────────────────────────────────────────
 
-test('scope: no edge function calls either new RPC — PR1 is inert', () => {
-  for (const [name] of FNS) {
-    assert.ok(!OPS.includes(name), `shipping-ops: ${name}`);
-    assert.ok(!BOOK.includes(name), `shipping-book: ${name}`);
-  }
+test('scope: shipping-ops calls cancel_current_shipment (PR2); supersede waits for B2B', () => {
+  assert.ok(OPS.includes("rpc('cancel_current_shipment'"), 'PR2 wired shipping-ops to the cancel RPC');
+  assert.ok(!OPS.includes('supersede_shipment_attempt'), 'supersede belongs to B2B');
+  for (const [name] of FNS) assert.ok(!BOOK.includes(name), `shipping-book: ${name} -- B2B not started`);
 });
 
-test('scope: shipping-ops still has exactly its two original AWB-clearing writes', () => {
-  assert.equal([...OPS.matchAll(/update\(\{ awb: null, shipment_status: 'Cancelled' \}\)/g)].length, 2);
+test('scope: shipping-ops no longer clears the AWB directly -- the RPC is the only path', () => {
+  assert.equal([...OPS.matchAll(/update\(\{ awb: null, shipment_status: 'Cancelled' \}\)/g)].length, 0);
 });
 
 test('scope: shipping-book still holds every PR A protection and no claim call', () => {

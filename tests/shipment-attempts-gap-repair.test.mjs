@@ -616,9 +616,9 @@ test('scope: no edge function references the repair', () => {
   for (const src of [OPS, BOOK]) assert.ok(!/gap-repair|gap_repair/.test(src));
 });
 
-test('scope: shipping-ops still clears the AWB exactly as before -- PR2 is not started', () => {
-  assert.equal([...OPS.matchAll(/update\(\{ awb: null, shipment_status: 'Cancelled' \}\)/g)].length, 2);
-  assert.ok(!OPS.includes('cancel_current_shipment'));
+test('scope: PR2 -- shipping-ops clears the AWB only through cancel_current_shipment', () => {
+  assert.equal([...OPS.matchAll(/update\(\{ awb: null, shipment_status: 'Cancelled' \}\)/g)].length, 0);
+  assert.ok(OPS.includes("rpc('cancel_current_shipment'"));
 });
 
 test('scope: shipping-book still books without a claim -- B2B is not started', () => {

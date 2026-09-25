@@ -252,7 +252,7 @@ test('both create calls are wrapped so a throw cannot be mistaken for a refusal'
 
 // ── anti-drift: the duplicated cancel logic ─────────────────────────────────
 
-test('the cancel calls match shipping-ops, which owns the cancel action', () => {
+test('the cancel calls match shipping-ops; the success test diverges until B2B', () => {
   // Each edge function deploys alone, so this logic is duplicated on purpose.
   // Pinning the two copies is what keeps the duplication honest.
   for (const bit of [
@@ -265,9 +265,16 @@ test('the cancel calls match shipping-ops, which owns the cancel action', () => 
   }
   assert.match(BOOK, /request_id: awb/);
   assert.match(BOOK, /waybill: String\(awb\), cancellation: 'true'/);
-  const opsOk = /cd\?\.responseCode === 200 \|\| \/cancel\/i\.test\(cd\?\.responseMsg \|\| ''\)/;
-  assert.match(OPS, opsOk, 'shipping-ops success test');
-  assert.match(BOOK, opsOk, 'and shipping-book uses the identical test');
+  // The SUCCESS test is where the two copies now deliberately differ. PR2
+  // hardened shipping-ops to explicit confirmation only. shipping-book's
+  // compensation copy, cancelAtCourier, keeps the old loose test until B2B
+  // rewrites shipping-book -- a KNOWN, recorded divergence. When B2B adopts the
+  // strict test, replace the last two assertions with an identity pin.
+  const loose = /cd\?\.responseCode === 200 \|\| \/cancel\/i\.test\(cd\?\.responseMsg \|\| ''\)/;
+  assert.doesNotMatch(OPS, loose, 'shipping-ops no longer accepts a message that merely mentions cancel');
+  assert.match(OPS, /function shadowfaxCancelConfirmed\(/);
+  assert.match(OPS, /function delhiveryCancelConfirmed\(/);
+  assert.match(BOOK, loose, 'KNOWN DIVERGENCE until B2B: shipping-book compensation still uses the loose test');
 });
 
 // ── the error path: an unheard answer is not a failed write ─────────────────
