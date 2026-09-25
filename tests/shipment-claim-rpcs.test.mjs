@@ -863,16 +863,19 @@ test('rollback: warns that it must run BEFORE B1 rollback and AFTER reverting B2
 
 // ── scope ───────────────────────────────────────────────────────────────────
 
-test('scope: shipping-book does not call any B2A function — B2A is inert', () => {
-  for (const [name] of FNS) assert.ok(!BOOK.includes(name), name);
+test('scope: B2B -- shipping-book books through all three B2A functions', () => {
+  for (const [name] of FNS) assert.ok(BOOK.includes(`'${name}'`), `shipping-book calls ${name}`);
 });
 
-test('scope: shipping-book still holds every PR A protection', () => {
-  for (const fn of ['classifyAttach', 'readCurrentShipment', 'attachVerdict',
-                    'cancelAtCourier', 'bookingConflict', 'bookingUnknown']) {
-    assert.ok(BOOK.includes(fn), fn);
+test('scope: B2B keeps what PR A established, with the attach now inside finalize', () => {
+  // PR A's conditional attach (.is('awb', null)) moved into
+  // finalize_shipment_attempt's own "and o.awb is null"; its compensation
+  // became the strict duplicate cleanup plus supersede.
+  for (const fn of ['readCurrentShipment', 'cancelAtCourier', 'bookingUnknown', 'trackUrlFor']) {
+    assert.ok(BOOK.includes(`function ${fn}(`), fn);
   }
-  assert.ok(BOOK.includes(".is('awb', null)"));
+  assert.match(FWD, /and o\.awb is null;/, 'the attach is still conditional -- in the RPC');
+  assert.ok(!/\.update\(/.test(BOOK.replace(/\/\/.*$/gm, '')), 'and shipping-book writes no row itself');
 });
 
 test('scope: no B2A file references a runtime module', () => {

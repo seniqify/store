@@ -43,11 +43,29 @@ function toLatin(input: string): string {
 }
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
-// ── booking persistence ─────────────────────────────────────────────────────
+// ── booking ─────────────────────────────────────────────────────────────────
 //
-// Booking is two steps that can fail independently: the courier creates a real
-// shipment, then we record it. Everything below exists because the gap between
-// those two is where duplicate parcels come from.
+// Booking is the one shipment operation that makes something in the outside
+// world: a real parcel, often a real pickup. Two requests for one order must
+// never both reach the courier, and a parcel that exists must never go
+// unrecorded. So every booking walks one path, bookShipment, in this order:
+//
+//   1. everything that can fail LOCALLY fails first -- PIN, store, account,
+//      order, address, pincode -- before any claim exists;
+//   2. claim_shipment_attempt lets exactly ONE request per order through (a
+//      row lock plus the one-open-attempt index). Every other request is
+//      turned away having spoken to nobody;
+//   3. the courier's create call runs exactly once and is never retried, with
+//      a reference that is a pure function of (order, attempt number);
+//   4. its answer is classified strictly: CREATED (an explicit AWB), REJECTED
+//      (provably nothing created), or UNKNOWN (everything else);
+//   5. CREATED -> finalize_shipment_attempt writes the AWB to the attempt AND
+//      the order, together. REJECTED -> fail_shipment_attempt releases the
+//      claim. UNKNOWN -> the claim stays OPEN and blocks the order until a
+//      person checks the courier panel. An open claim is the safe state: it
+//      costs a manual check. Releasing it wrongly costs a duplicate parcel.
+//
+// shipping-book never writes orders.awb itself. The RPCs are the only writers.
 
 /** The buyer-facing tracking link, by the courier that actually carries it. */
 function trackUrlFor(courier: unknown, awb: unknown): string | null {
@@ -55,27 +73,6 @@ function trackUrlFor(courier: unknown, awb: unknown): string | null {
   return String(courier || '').toLowerCase() === 'shadowfax'
     ? null                                        // Shadowfax has no public page
     : `https://www.delhivery.com/track/package/${awb}`;
-}
-
-/**
- * What a conditional attach REPORTED. PURE, so the race is testable.
- *
- *   ok     exactly our row moved
- *   lost   nobody moved: the guard refused the write
- *   error  the call itself failed, and the report cannot be trusted
- *
- * Zero rows is NOT success. That is the whole point: the update is guarded by
- * `.is('awb', null)`, so "no rows" means the guard refused it.
- *
- * Neither failing answer is acted on directly. An error is only a failure to
- * HEAR the result - the row may well have been written before the connection
- * broke - so the database is re-read and attachVerdict() decides. Cancelling on
- * the report alone would kill a parcel the order is already pointing at.
- */
-function classifyAttach(error: unknown, data: unknown): 'ok' | 'lost' | 'error' {
-  if (error) return 'error';
-  const rows = Array.isArray(data) ? data.length : 0;
-  return rows === 1 ? 'ok' : 'lost';
 }
 
 /**
@@ -97,117 +94,522 @@ async function readCurrentShipment(
 }
 
 /**
- * Given what the database really holds, what happened to OUR shipment? PURE.
- *
- *   attached    the order points at our AWB. The write landed after all, and
- *               cancelling now would orphan the order's own parcel.
- *   superseded  another AWB is authoritative; ours is the spare
- *   unattached  the order has no AWB, so ours definitely never landed
- *   unknown     we could not read the order. Nothing is safe to cancel.
- *
- * The write's own report is deliberately not an input: an error means we failed
- * to HEAR the answer, not that there was no answer.
+ * One RPC call. Returns its JSON result, or null when no usable answer was
+ * HEARD: a thrown error, an error result, or a result without an outcome.
+ * null means "we do not know", never "it did not happen".
  */
-function attachVerdict(
-  ours: unknown, current: { known: boolean; awb: unknown },
-): 'attached' | 'superseded' | 'unattached' | 'unknown' {
-  if (!current || !current.known) return 'unknown';
-  const cur = current.awb === null || current.awb === undefined ? '' : String(current.awb);
-  if (!cur) return 'unattached';
-  return cur === String(ours) ? 'attached' : 'superseded';
+async function askRpc(
+  supabase: any, fn: string, args: Record<string, unknown>,
+): Promise<Record<string, any> | null> {
+  try {
+    const { data, error } = await supabase.rpc(fn, args);
+    if (error || !data || typeof data !== 'object' || typeof data.outcome !== 'string') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+// ── the courier-side reference ──────────────────────────────────────────────
+//
+// Each courier is sent a per-booking reference and REJECTS one it has seen
+// before (Delhivery: "Duplicate order id"; Shadowfax: a duplicate
+// client_order_id). Until B2B it came from Date.now(), so every attempt sent a
+// new one and the courier's duplicate check could never catch a repeat.
+//
+// It is now a pure function of (order id, attempt number): the same attempt
+// always sends the same reference, so the courier's own duplicate check stands
+// behind the claim as a second guard. A new attempt -- possible only after the
+// previous one was provably released -- sends a new one.
+//
+// The formats are EXACTLY the shapes production already sends and both
+// couriers already accept; only the source of the variable part changes:
+//   Delhivery  8 chars, [0-9A-Z]. Live since 637d008 (2026-08-14), "verified
+//              against the live label": it must stay short, because a longer
+//              reference's barcode garbled the label's return address.
+//   Shadowfax  20 chars, [0-9a-z]. Live since 1ff601f (2026-08-20), the first
+//              Shadowfax booking, and unchanged since.
+
+/** The order id as 32 lowercase hex characters, or '' if it is not a UUID. PURE. */
+function orderHex(orderId: unknown): string {
+  const h = String(orderId ?? '').replace(/-/g, '').toLowerCase();
+  return /^[0-9a-f]{32}$/.test(h) ? h : '';
+}
+
+/** 32-bit FNV-1a. PURE, and identical in Deno and Node. */
+function fnv1a32(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
 }
 
 /**
- * Undo a shipment we created but could not record. Deliberately duplicated from
- * shipping-ops: each edge function deploys on its own, there is no shared
- * module, and tests/courier-booking-integrity.test.mjs pins the two copies
- * together so they cannot drift apart.
+ * Delhivery's `order` reference. PURE.
  *
- * Returns only whether it worked plus a SHORT reason. Provider bodies and
- * tokens never travel further than this function.
+ * The last 4 hex of the order id, then 4 base36 characters computed from
+ * (order id, attempt number), uppercased: exactly 8 characters, [0-9A-Z] --
+ * the shape production has sent since 2026-08-14. The first four still match
+ * the tail of the order number printed on the delivery slip, as they always
+ * have. For one order, every attempt gets a different token by construction:
+ * it is (hash + attempt) modulo 36^4. '' when no valid reference can be made.
+ */
+function delhiveryReference(orderId: unknown, attemptNo: unknown): string {
+  const hex = orderHex(orderId);
+  const n = Number(attemptNo);
+  if (!hex || !Number.isInteger(n) || n < 1) return '';
+  const token = ((fnv1a32(hex) + n) % 1679616).toString(36).padStart(4, '0');
+  const ref = (hex.slice(-4) + token).toUpperCase();
+  return /^[0-9A-Z]{8}$/.test(ref) ? ref : '';
+}
+
+/**
+ * Shadowfax's client_order_id. PURE.
+ *
+ * The last 12 hex of the order id, then the attempt number in base36 padded to
+ * 8 digits: exactly 20 characters, [0-9a-z] -- the shape production has sent
+ * since 2026-08-20. It can never equal a reference sent before B2B: those
+ * ended in Date.now().toString(36), 8 digits that have not started with '0'
+ * since 1972; these start with '0' for every attempt below 36^7.
+ * '' when no valid reference can be made.
+ */
+function shadowfaxReference(orderId: unknown, attemptNo: unknown): string {
+  const hex = orderHex(orderId);
+  const n = Number(attemptNo);
+  if (!hex || !Number.isInteger(n) || n < 1 || n >= 78364164096) return '';
+  const ref = hex.slice(-12) + n.toString(36).padStart(8, '0');
+  return /^[0-9a-z]{20}$/.test(ref) ? ref : '';
+}
+
+// ── what the courier's create call said ─────────────────────────────────────
+
+/** A JSON object parsed from a body, or null. PURE. */
+function jsonObject(bodyText: unknown): Record<string, any> | null {
+  try {
+    const v = JSON.parse(String(bodyText ?? ''));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The reason a courier gave, read only from its named message fields -- never
+ * the raw body -- and bounded. PURE.
+ */
+function createReason(bodyText: unknown): string {
+  const b = jsonObject(bodyText);
+  if (!b) return '';
+  const pkg = Array.isArray(b.packages) ? b.packages[0] : null;
+  const parts: string[] = [];
+  const add = (v: unknown) => {
+    if (Array.isArray(v)) v.forEach(add);
+    else if (typeof v === 'string' && v.trim()) parts.push(v);
+    else if (v && typeof v === 'object') parts.push(JSON.stringify(v));
+  };
+  add(b.errors);
+  add(pkg?.remarks);
+  add(b.rmk);
+  add(b.error);
+  if (typeof b.message === 'string' && b.message !== 'Success') add(b.message);
+  return parts.join('; ').replace(/[\u0000-\u001f<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+/** Does a courier's message say this reference already exists? PURE. */
+function mentionsDuplicate(text: unknown): boolean {
+  return /duplicate|already exists?|already been (used|taken|created|booked)|exists already|must be unique|not unique|unique constraint/i
+    .test(String(text ?? ''));
+}
+
+/** A 4xx meaning "refused, not processed": not a timeout, conflict or rate limit. PURE. */
+function isRefusalStatus(status: number): boolean {
+  return status >= 400 && status < 500 && ![408, 409, 425, 429].includes(status);
+}
+
+/**
+ * Shadowfax's answer to a create. PURE.
+ *
+ *   CREATED   HTTP 2xx, a JSON object, message 'Success' and an awb_number --
+ *             the success test production has always used, plus the 2xx.
+ *   REJECTED  a 4xx refusal with no AWB and no duplicate-reference message:
+ *             the request was refused, so nothing was created.
+ *   UNKNOWN   everything else. A duplicate-reference message is UNKNOWN: the
+ *             first create under this reference may have succeeded with its
+ *             answer lost. So is a 2xx without an AWB -- nothing in this repo
+ *             shows that such an answer means nothing was created -- and so is
+ *             an AWB beside anything short of a clean success.
+ */
+function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult {
+  const b = jsonObject(bodyText);
+  const reason = createReason(bodyText);
+  const raw = b?.data?.awb_number;
+  const awb = raw === null || raw === undefined ? '' : String(raw).trim();
+  if (b ? mentionsDuplicate(reason) : mentionsDuplicate(bodyText)) {
+    return { kind: 'unknown', reason, duplicate: true };
+  }
+  const ok = status >= 200 && status < 300;
+  if (awb) {
+    if (ok && b?.message === 'Success') return { kind: 'created', awb, status: String(b?.data?.status || 'new') };
+    return { kind: 'unknown', reason: reason || 'an AWB came back without a clean success', duplicate: false };
+  }
+  if (isRefusalStatus(status)) return { kind: 'rejected', reason: reason || `HTTP ${status}` };
+  return { kind: 'unknown', reason: reason || (status ? `HTTP ${status}` : 'no answer'), duplicate: false };
+}
+
+/**
+ * Delhivery's answer to a create. PURE.
+ *
+ *   CREATED   HTTP 2xx, a JSON object and packages[0].waybill -- the success
+ *             test production has always used, plus the 2xx.
+ *   REJECTED  a 4xx refusal with no waybill and no duplicate-reference message.
+ *   UNKNOWN   everything else, including a 2xx with no waybill: its remarks are
+ *             shown to the merchant, but nothing in this repo shows that such
+ *             an answer means nothing was created. "Duplicate order id" is
+ *             UNKNOWN: the first create under this reference may have
+ *             succeeded with its answer lost.
+ */
+function classifyDelhiveryCreate(status: number, bodyText: string): CreateResult {
+  const b = jsonObject(bodyText);
+  const reason = createReason(bodyText);
+  const pkg = Array.isArray(b?.packages) ? b?.packages[0] : null;
+  const raw = pkg?.waybill;
+  const awb = raw === null || raw === undefined ? '' : String(raw).trim();
+  if (b ? mentionsDuplicate(reason) : mentionsDuplicate(bodyText)) {
+    return { kind: 'unknown', reason, duplicate: true };
+  }
+  const ok = status >= 200 && status < 300;
+  if (awb) {
+    if (ok && b) return { kind: 'created', awb, status: String(pkg?.status || 'Manifested') };
+    return { kind: 'unknown', reason: reason || 'a waybill came back without a clean success', duplicate: false };
+  }
+  if (isRefusalStatus(status)) return { kind: 'rejected', reason: reason || `HTTP ${status}` };
+  return { kind: 'unknown', reason: reason || (status ? `HTTP ${status}` : 'no answer'), duplicate: false };
+}
+
+type CreateResult =
+  | { kind: 'created'; awb: string; status: string }
+  | { kind: 'rejected'; reason: string }
+  | { kind: 'unknown'; reason: string; duplicate: boolean };
+
+// ── cleaning up a duplicate ─────────────────────────────────────────────────
+//
+// The two tests below are COPIED from shipping-ops, which owns cancellation.
+// Each edge function deploys alone, so the copy is deliberate, and a test pins
+// the two byte-for-byte. A courier refusal that merely mentions "cancel" is
+// not a cancellation.
+
+/**
+ * Did Shadowfax CONFIRM the cancellation? PURE.
+ *
+ * Only when the HTTP call succeeded, the body is a JSON object, and its
+ * responseCode is the number 200. The message is never evidence of success:
+ * the old test accepted anything matching /cancel/i, and "Order cannot be
+ * cancelled" matches. A 200 beside a message saying the cancellation did not
+ * happen is contradictory, and contradictory is not confirmed.
+ */
+function shadowfaxCancelConfirmed(httpOk: boolean, bodyText: string): boolean {
+  if (!httpOk) return false;
+  let body: any;
+  try { body = JSON.parse(String(bodyText ?? '')); } catch { return false; }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  if (body.responseCode !== 200) return false;
+  const msg = typeof body.responseMsg === 'string' ? body.responseMsg : '';
+  return !/\b(cannot|can't|could not|unable|not allowed|not cancel\w*|failed|invalid|denied|rejected)\b/i.test(msg);
+}
+
+/**
+ * Did Delhivery CONFIRM the cancellation? PURE.
+ *
+ * Only when the HTTP call succeeded AND one of two explicit answers is there:
+ *   A. the body is valid JSON whose `status` is the boolean true, or
+ *   B. the body is not JSON and carries <status>True</status>, with no other
+ *      <status> value beside it.
+ * Never on loose text -- refusals say "cancelled" too ("Cannot be cancelled").
+ * A JSON-looking fragment inside non-JSON text is not JSON, and the string
+ * "true" is not the boolean.
+ */
+function delhiveryCancelConfirmed(httpOk: boolean, bodyText: string): boolean {
+  if (!httpOk) return false;
+  const text = String(bodyText ?? '');
+  let parsed: unknown;
+  let isJson = true;
+  try { parsed = JSON.parse(text); } catch { isJson = false; }
+  if (isJson) {
+    return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      && (parsed as { status?: unknown }).status === true;
+  }
+  const values = [...text.matchAll(/<status>\s*([^<]*?)\s*<\/status>/gi)].map((m) => m[1].toLowerCase());
+  return values.length > 0 && values.every((v) => v === 'true');
+}
+
+/**
+ * Cancel a DUPLICATE this request created, after another shipment won the
+ * order. cancelled: true ONLY on the courier's explicit confirmation. Provider
+ * bodies never travel further than this function.
  */
 async function cancelAtCourier(
+  fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
   provider: string, awb: string, token: string, mode: string,
 ): Promise<{ cancelled: boolean; reason: string }> {
   try {
     if (provider === 'shadowfax') {
       const sBase = mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
-      const cr = await fetch(`${sBase}/v3/clients/orders/cancel/`, {
+      const cr = await fetchFn(`${sBase}/v3/clients/orders/cancel/`, {
         method: 'POST',
         headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ request_id: awb }),
       });
-      const cd = await cr.json().catch(() => ({}));
-      const ok = cd?.responseCode === 200 || /cancel/i.test(cd?.responseMsg || '');
-      return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+      const ok = shadowfaxCancelConfirmed(!!cr?.ok, await cr.text());
+      return { cancelled: ok, reason: ok ? '' : 'the courier did not confirm the cancellation' };
     }
-    const r = await fetch(`${BASE}/api/p/edit`, {
+    const r = await fetchFn(`${BASE}/api/p/edit`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ waybill: String(awb), cancellation: 'true' }),
     });
-    // Delhivery's cancel replies with XML (<status>True</status>), not JSON.
-    const txt = await r.text();
-    const ok = /<status>\s*true\s*<\/status>/i.test(txt) || /cancell?ed/i.test(txt) || /"status"\s*:\s*true/i.test(txt);
-    return { cancelled: ok, reason: ok ? '' : 'courier refused the cancellation' };
+    const ok = delhiveryCancelConfirmed(!!r?.ok, await r.text());
+    return { cancelled: ok, reason: ok ? '' : 'the courier did not confirm the cancellation' };
   } catch {
     return { cancelled: false, reason: 'could not reach the courier to cancel' };
   }
 }
 
-/**
- * The merchant-facing answer once the verdict is in. PURE. Never called for
- * 'attached', which is an ordinary success and is returned by the caller.
- *
- *   unknown     we cannot say whether our parcel is attached, so nothing was
- *               cancelled and nothing may be retried blindly
- *   superseded  another AWB won; ours is cancelled and we report theirs
- *   unattached  ours never landed; cancelled, so booking may be retried
- *
- * A failed cancellation always wins over all of it: a live parcel nothing
- * points at is the one thing the merchant must be told about plainly.
- */
-function bookingConflict(
-  verdict: 'superseded' | 'unattached' | 'unknown', undone: boolean, ourAwb: string,
-  current: { awb?: unknown; courier?: unknown } | null,
+// ── the merchant's answers ──────────────────────────────────────────────────
+
+/** We never learned whether the courier made a parcel. Never guess, never retry. PURE. */
+function bookingUnknown(
+  courierName?: string, reference?: string, said?: string, duplicate?: boolean,
 ): Record<string, unknown> {
-  if (verdict === 'unknown') {
+  const who = courierName || 'The courier';
+  return {
+    error: (duplicate
+      ? `${who} says this booking's reference already exists, so a shipment may already have been created. `
+      : `${who} did not give a clear answer, so we cannot tell whether a shipment was created. `)
+      + (said ? `${who} said: "${said}". ` : '')
+      + `Check your courier panel${reference ? ` for reference ${reference}` : ''} before booking this order again. `
+      + 'The order stays locked until it is checked.',
+    bookingUnknown: true,
+    needsReconciliation: true,
+    ...(reference ? { reference } : {}),
+  };
+}
+
+/** The claim was refused, so the courier was never contacted. */
+async function claimRefused(
+  supabase: any, slug: string, orderId: string, claim: Record<string, any>,
+): Promise<Record<string, unknown>> {
+  switch (claim.outcome) {
+    case 'already_booked': {
+      const cur = await readCurrentShipment(supabase, slug, orderId);
+      const awb = claim.awb ?? cur.awb ?? null;
+      return { awb, alreadyBooked: true, courier: cur.courier, trackUrl: trackUrlFor(cur.courier, awb) };
+    }
+    case 'open_with_awb':
+      return {
+        error: `This order already has a shipment (${claim.awb}) that is not attached to it yet. Check it in your courier panel before booking again.`,
+        needsReconciliation: true,
+        awb: claim.awb ?? null,
+      };
+    case 'open_without_awb':
+      return {
+        error: 'A booking for this order is already in progress, or its result was never confirmed. Check your courier panel before trying again.',
+        bookingInProgress: true,
+        needsReconciliation: true,
+      };
+    case 'order_not_bookable':
+      return { error: 'This order is cancelled, so it cannot be shipped.' };
+    case 'order_not_found':
+      return { error: 'Order not found' };
+    case 'invalid_courier':
+      return { error: 'Courier not connected' };
+    case 'race_lost':
+      return { error: 'Another booking for this order just started. Refresh in a moment to see it.' };
+    default:
+      return { error: 'Could not start this booking, so nothing was sent to the courier.' };
+  }
+}
+
+/** The courier made a parcel; PocketLink could not hear whether it was saved. PURE. */
+function finalizeUnheard(courierName: string, awb: string): Record<string, unknown> {
+  return {
+    error: `${courierName} created shipment ${awb}, but PocketLink could not confirm it was saved to this order. `
+      + `Refresh the order: if it shows ${awb}, the booking is complete. Do not book again.`,
+    needsReconciliation: true,
+    attachUnknown: true,
+    createdAwb: awb,
+  };
+}
+
+/** The courier made a parcel the database would not attach. PURE. */
+function finalizeRefused(courierName: string, awb: string, outcome: string): Record<string, unknown> {
+  return {
+    error: `${courierName} created shipment ${awb}, but it could not be attached to this order. `
+      + `Do not book again -- check ${awb} in your ${courierName} panel and contact support.`,
+    needsReconciliation: true,
+    orphanAwb: awb,
+    outcome,
+  };
+}
+
+/**
+ * Our parcel lost: another shipment owns the order. Cancel ours at the courier
+ * and, ONLY on an explicit confirmation, record it as superseded. Anything
+ * short of that leaves our claim OPEN -- blocking -- and says so plainly.
+ */
+async function settleDuplicate(
+  deps: { supabase: any; fetch: (url: string, init?: RequestInit) => Promise<Response> },
+  c: { slug: string; orderId: string; provider: 'shadowfax' | 'delhivery'; token: string; mode: string },
+  courierName: string, attemptId: unknown, ourAwb: string, winnerAwb: unknown,
+): Promise<Record<string, unknown>> {
+  const undo = await cancelAtCourier(deps.fetch, c.provider, ourAwb, c.token, c.mode);
+  if (!undo.cancelled) {
     return {
-      error: 'A shipment was created with the courier, but this order could not be read back to '
-        + 'confirm whether it was attached. Do not book again - check '
-        + `${ourAwb} in your courier panel first.`,
+      error: `This order was already booked, and a duplicate ${courierName} shipment (${ourAwb}) was created `
+        + `that could not be confirmed as cancelled. Cancel ${ourAwb} in your ${courierName} panel. Do not book again.`,
       needsReconciliation: true,
-      attachUnknown: true,
       orphanAwb: ourAwb,
     };
   }
-  if (!undone) {
+  const args = {
+    p_attempt_id: attemptId, p_store_slug: c.slug, p_courier: c.provider,
+    p_awb: ourAwb, p_final_status: 'Cancelled (duplicate)',
+  };
+  let sup = await askRpc(deps.supabase, 'supersede_shipment_attempt', args);
+  if (!sup) sup = await askRpc(deps.supabase, 'supersede_shipment_attempt', args);   // exactly one retry
+  if (sup && (sup.outcome === 'superseded' || sup.outcome === 'already_superseded')) {
+    const cur = await readCurrentShipment(deps.supabase, c.slug, c.orderId);
+    const awb = winnerAwb ?? cur.awb ?? null;
     return {
-      error: 'A shipment was created with the courier but could not be attached to this order, '
-        + 'and cancelling it did not go through. Do not book again - cancel '
-        + `${ourAwb} in your courier panel first.`,
-      needsReconciliation: true,
-      orphanAwb: ourAwb,
-    };
-  }
-  if (verdict === 'superseded') {
-    const awb = current?.awb ?? null;
-    return {
-      awb, alreadyBooked: true, courier: current?.courier ?? null,
-      trackUrl: trackUrlFor(current?.courier, awb),
+      awb, alreadyBooked: true, courier: cur.courier, trackUrl: trackUrlFor(cur.courier, awb),
       note: 'This order was already booked a moment ago. The duplicate shipment was cancelled.',
     };
   }
-  return { error: 'Could not save the shipment, so it was cancelled with the courier. Please try booking again.' };
+  return {
+    error: `This order was already booked. The duplicate ${courierName} shipment (${ourAwb}) was cancelled `
+      + 'with the courier, but PocketLink could not record that. Contact support before booking again.',
+    needsReconciliation: true,
+    duplicateCancelled: true,
+    outcome: sup ? String(sup.outcome) : 'unheard',
+  };
 }
 
-/** We never learned whether the courier made a parcel. Never guess, never retry. */
-function bookingUnknown(): Record<string, unknown> {
-  return {
-    error: 'The courier did not answer, so we cannot tell whether a shipment was created. '
-      + 'Check your courier panel before booking this order again.',
-    bookingUnknown: true,
+/**
+ * Book one shipment: claim, create, then finalize / fail / settle. The ONLY
+ * code that contacts a courier's create endpoint or changes a booking's
+ * record. Its dependencies are passed in, so the whole flow runs in tests.
+ */
+async function bookShipment(
+  deps: { supabase: any; fetch: (url: string, init?: RequestInit) => Promise<Response> },
+  c: {
+    slug: string; orderId: string; provider: 'shadowfax' | 'delhivery';
+    token: string; mode: string; shipCost: number | null;
+    /** The create request, given the deterministic reference. */
+    request: (reference: string) => { url: string; init: RequestInit };
+  },
+): Promise<{ booked: boolean; reply: Record<string, unknown>; awb?: string }> {
+  const name = c.provider === 'shadowfax' ? 'Shadowfax' : 'Delhivery';
+
+  // 1. CLAIM. The only permission to contact the courier. A claim whose answer
+  //    was not heard is NOT retried: a second call could not tell our own open
+  //    claim from another request's. Nothing has been sent anywhere yet.
+  const claim = await askRpc(deps.supabase, 'claim_shipment_attempt', {
+    p_store_slug: c.slug, p_order_id: c.orderId, p_courier: c.provider,
+  });
+  if (!claim) {
+    return { booked: false, reply: { error: 'Could not start this booking, so nothing was sent to the courier. Please try again in a moment.' } };
+  }
+  if (claim.outcome !== 'claimed') {
+    return { booked: false, reply: await claimRefused(deps.supabase, c.slug, c.orderId, claim) };
+  }
+  const attemptId = claim.attempt_id;
+  const attemptNo = Number(claim.attempt_no);
+
+  // 2. The reference, from (order, attempt). If it cannot be built, nothing has
+  //    been sent, so releasing the claim is provably safe.
+  const reference = c.provider === 'shadowfax'
+    ? shadowfaxReference(c.orderId, attemptNo)
+    : delhiveryReference(c.orderId, attemptNo);
+  if (!reference) {
+    await askRpc(deps.supabase, 'fail_shipment_attempt', {
+      p_attempt_id: attemptId, p_store_slug: c.slug, p_final_status: 'booking reference could not be built',
+    });
+    return { booked: false, reply: { error: 'Could not prepare this booking, so nothing was sent to the courier.' } };
+  }
+
+  // 3. CREATE -- exactly once. It is never retried, whatever it answers.
+  const { url, init } = c.request(reference);
+  let status = 0;
+  let body = '';
+  try {
+    const res = await deps.fetch(url, init);
+    status = Number(res?.status) || 0;
+    body = await res.text();
+  } catch {
+    return { booked: false, reply: bookingUnknown(name, reference) };
+  }
+  const created: CreateResult = c.provider === 'shadowfax'
+    ? classifyShadowfaxCreate(status, body)
+    : classifyDelhiveryCreate(status, body);
+
+  // 4a. UNKNOWN: the claim stays OPEN, so this order stays blocked. No fail, no
+  //     retry, no new reference.
+  if (created.kind === 'unknown') {
+    return { booked: false, reply: bookingUnknown(name, reference, created.reason, created.duplicate) };
+  }
+
+  // 4b. REJECTED: provably nothing was created, so the claim may be released.
+  if (created.kind === 'rejected') {
+    const args = {
+      p_attempt_id: attemptId, p_store_slug: c.slug,
+      p_final_status: (created.reason || 'rejected by the courier').slice(0, 200),
+    };
+    let failed = await askRpc(deps.supabase, 'fail_shipment_attempt', args);
+    if (!failed) failed = await askRpc(deps.supabase, 'fail_shipment_attempt', args);   // exactly one retry
+    const released = !!failed && (failed.outcome === 'failed'
+      || (failed.outcome === 'attempt_terminal' && failed.end_reason === 'failed'));
+    return {
+      booked: false,
+      reply: released
+        ? { error: `${name} could not book this shipment: ${created.reason}` }
+        : {
+          error: `${name} could not book this shipment: ${created.reason}. This order is locked until support `
+            + 'releases it -- please contact support before trying again.',
+          needsReconciliation: true,
+        },
+    };
+  }
+
+  // 4c. CREATED: the AWB lands on the attempt and the order together. The
+  //     courier is not contacted again; an unheard answer is asked for ONCE
+  //     more with identical arguments -- finalize is idempotent.
+  const awb = created.awb;
+  const args = {
+    p_attempt_id: attemptId, p_store_slug: c.slug, p_courier: c.provider,
+    p_awb: awb, p_shipping_cost: c.shipCost, p_final_status: created.status,
   };
+  let fin = await askRpc(deps.supabase, 'finalize_shipment_attempt', args);
+  if (!fin) fin = await askRpc(deps.supabase, 'finalize_shipment_attempt', args);   // exactly one retry
+  if (!fin) return { booked: false, reply: finalizeUnheard(name, awb) };
+
+  switch (fin.outcome) {
+    case 'finalized':
+    case 'already_finalized':
+      return { booked: true, awb, reply: { awb, status: created.status } };
+    case 'order_awb_conflict':
+      return { booked: false, reply: await settleDuplicate(deps, c, name, attemptId, awb, fin.awb) };
+    case 'attempt_not_found':
+    case 'attempt_terminal':
+    case 'courier_mismatch':
+    case 'attempt_awb_conflict':
+    case 'partial_state_attempt_only':
+    case 'partial_state_order_only':
+    case 'invalid_awb':
+      return { booked: false, reply: finalizeRefused(name, awb, fin.outcome) };
+    default:
+      return { booked: false, reply: finalizeRefused(name, awb, 'unrecognised') };
+  }
 }
 
 // Owner-only (PIN-checked): create a Delhivery shipment for an order and store the
@@ -264,6 +666,12 @@ serve(async (req) => {
         trackUrl: trackUrlFor(order.courier, order.awb),
       });
     }
+    // The courier reference is built from the order id, so an id that cannot
+    // make one is refused here -- locally, before any claim exists.
+    if (!orderHex(order.id)) return json({ error: 'This order cannot be booked: its id is not in the expected format.' });
+
+    // Everything bookShipment touches is passed in, so the whole flow is testable.
+    const deps = { supabase, fetch: (url: string, init?: RequestInit) => fetch(url, init) };
 
     // ── Shadowfax booking (isolated; the Delhivery code below is untouched) ──
     if (acct.provider === 'shadowfax') {
@@ -293,14 +701,13 @@ serve(async (req) => {
         pincode:        Number(String(acct.pickup_pincode || '').replace(/\D/g, '')),
       };
 
-      // A per-booking unique client_order_id — Shadowfax rejects duplicate COIDs, so a
-      // cancel→rebook needs a fresh one. The webhook maps back by AWB, not COID.
-      const coid = (String(order.id ?? '').replace(/-/g, '').slice(-12) + Date.now().toString(36)).slice(0, 40);
-
+      // client_order_id is filled in AFTER the claim, from (order id, attempt
+      // number) -- see shadowfaxReference. Shadowfax rejects duplicate COIDs; the
+      // webhook maps back by AWB, not COID.
       const payload = {
         order_type: 'marketplace',
         order_details: {
-          client_order_id: coid,
+          client_order_id: '',
           actual_weight:   sWeight,
           product_value:   Math.round(sValue),
           payment_mode:    sCOD ? 'COD' : 'Prepaid',
@@ -325,49 +732,27 @@ serve(async (req) => {
         })),
       };
 
-      let sRes: Response;
-      try {
-        sRes = await fetch(`${sBase}/v3/clients/orders/`, {
-          method: 'POST',
-          headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        return json(bookingUnknown());
-      }
-      const sData = await sRes.json().catch(() => ({}));
-      const sAwb  = sData?.data?.awb_number;
-      if (!sAwb || sData?.message !== 'Success') {
-        const reason = typeof sData?.errors === 'string' ? sData.errors
-          : Array.isArray(sData?.errors) ? sData.errors.join('; ')
-          : (sData?.errors ? JSON.stringify(sData.errors) : JSON.stringify(sData).slice(0, 200));
-        return json({ error: `Shadowfax could not book this shipment: ${reason}` });
-      }
-
-      // Attach ONLY while the order still has no AWB. Two requests can both have
-      // read null a moment ago; only one of them may win here.
-      const sAttach = await supabase.from('orders')
-        .update({ awb: sAwb, courier: 'shadowfax', shipment_status: sData?.data?.status || 'new', shipping_cost: shipCost })
-        .eq('id', order.id).eq('store_slug', slug).is('awb', null)
-        .select('id');
-      if (classifyAttach(sAttach.error, sAttach.data) !== 'ok') {
-        // Ask the database what it really holds before touching the courier. An
-        // error may just be a lost reply to a write that landed.
-        const cur = await readCurrentShipment(supabase, slug, order.id);
-        const verdict = attachVerdict(sAwb, cur);
-        if (verdict !== 'attached') {
-          // Nothing is cancelled while the verdict is unknown.
-          const undo = verdict === 'unknown'
-            ? { cancelled: false, reason: '' }
-            : await cancelAtCourier('shadowfax', sAwb, acct.api_token, String(acct.mode || ''));
-          return json(bookingConflict(verdict, undo.cancelled, sAwb, cur));
-        }
-        // 'attached': the row already points at our AWB. Fall through to success.
-      }
+      // Claim, create once, then finalize / fail / settle -- see bookShipment.
+      const booked = await bookShipment(deps, {
+        slug, orderId: order.id, provider: 'shadowfax', token: acct.api_token,
+        mode: String(acct.mode || ''), shipCost,
+        request: (reference) => {
+          payload.order_details.client_order_id = reference;
+          return {
+            url: `${sBase}/v3/clients/orders/`,
+            init: {
+              method: 'POST',
+              headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            },
+          };
+        },
+      });
+      if (!booked.booked) return json(booked.reply);
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
       // a rider automatically, so there's no separate pickup call (unlike Delhivery).
-      return json({ awb: sAwb, status: sData?.data?.status || 'new', trackUrl: null, pickup: { scheduled: true, covered: true } });
+      return json({ ...booked.reply, trackUrl: null, pickup: { scheduled: true, covered: true } });
     }
 
     const items = Array.isArray(order.items) ? order.items : [];
@@ -407,10 +792,10 @@ serve(async (req) => {
       phone:        String(pick(details.phone, order.customer_phone) || '').replace(/\D/g, '').slice(-10),
       // Short but UNIQUE order reference. A long UUID makes the label's order
       // barcode so wide it overlaps/garbles the return address; but Delhivery
-      // rejects duplicate refs ("Duplicate order id"), and a plain last-6 collides
-      // and breaks re-booking after a cancel. So: 4 chars of the order id + a
-      // per-booking base36 token → ~8 chars, unique every time, still a tidy label.
-      order:        (String(order.id ?? '').replace(/-/g, '').slice(-4) + Date.now().toString(36).slice(-4)).toUpperCase(),
+      // rejects duplicate refs ("Duplicate order id"). Filled in AFTER the claim,
+      // from (order id, attempt number) -- see delhiveryReference: the same 8
+      // characters, [0-9A-Z], still a tidy label.
+      order:        '',
       payment_mode: isCOD ? 'COD' : 'Prepaid',
       cod_amount:   isCOD ? Number(pick(details.cod_amount, order.total)) || 0 : 0,
       total_amount: Number(pick(details.total_amount, order.total)) || 0,
@@ -422,46 +807,28 @@ serve(async (req) => {
       ...(L && B && Hh ? { shipment_length: L, shipment_width: B, shipment_height: Hh } : {}),
     };
 
-    const payload = 'format=json&data=' + encodeURIComponent(JSON.stringify({
-      shipments: [shipment],
-      pickup_location: { name: acct.pickup_name || (store.config?.businessName || slug) },
-    }));
-
-    let res: Response;
-    try {
-      res = await fetch(`${BASE}/api/cmu/create.json`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: payload,
-      });
-    } catch {
-      return json(bookingUnknown());
-    }
-    const data = await res.json().catch(() => ({}));
-    const pkg = data?.packages?.[0];
-    const awb = pkg?.waybill;
-    if (!awb) {
-      const reason = pkg?.remarks?.join?.('; ') || data?.rmk || data?.error || JSON.stringify(data).slice(0, 200);
-      return json({ error: `Delhivery could not book this shipment: ${reason}` });
-    }
-
-    // Attach ONLY while the order still has no AWB (see classifyAttach).
-    const dAttach = await supabase.from('orders')
-      .update({ awb, courier: 'delhivery', shipment_status: pkg?.status || 'Manifested', shipping_cost: shipCost })
-      .eq('id', order.id).eq('store_slug', slug).is('awb', null)
-      .select('id');
-    if (classifyAttach(dAttach.error, dAttach.data) !== 'ok') {
-      const cur = await readCurrentShipment(supabase, slug, order.id);
-      const verdict = attachVerdict(awb, cur);
-      if (verdict !== 'attached') {
-        const undo = verdict === 'unknown'
-          ? { cancelled: false, reason: '' }
-          : await cancelAtCourier('delhivery', String(awb), acct.api_token, String(acct.mode || ''));
-        // No pickup is scheduled below: there is no parcel of ours to collect.
-        return json(bookingConflict(verdict, undo.cancelled, String(awb), cur));
-      }
-      // 'attached': the write landed, the reply did not. Carry on as normal.
-    }
+    // Claim, create once, then finalize / fail / settle -- see bookShipment.
+    const booked = await bookShipment(deps, {
+      slug, orderId: order.id, provider: 'delhivery', token: acct.api_token,
+      mode: String(acct.mode || ''), shipCost,
+      request: (reference) => {
+        shipment.order = reference;
+        return {
+          url: `${BASE}/api/cmu/create.json`,
+          init: {
+            method: 'POST',
+            headers: { Authorization: `Token ${acct.api_token}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'format=json&data=' + encodeURIComponent(JSON.stringify({
+              shipments: [shipment],
+              pickup_location: { name: acct.pickup_name || (store.config?.businessName || slug) },
+            })),
+          },
+        };
+      },
+    });
+    // No pickup is scheduled unless the parcel is booked AND recorded as ours.
+    if (!booked.booked) return json(booked.reply);
+    const awb = booked.awb;
 
     // ── Auto-schedule a pickup so a courier actually comes (else it just sits at
     // "Ready to Ship"). Delhivery allows only ONE open pickup per location per day,
@@ -491,7 +858,7 @@ serve(async (req) => {
       pickup = { scheduled: false, reason: 'pickup request failed' };
     }
 
-    return json({ awb, status: pkg?.status || 'Manifested', trackUrl: `https://www.delhivery.com/track/package/${awb}`, pickup });
+    return json({ ...booked.reply, trackUrl: `https://www.delhivery.com/track/package/${awb}`, pickup });
   } catch (err) {
     return json({ error: (err as Error).message });
   }
