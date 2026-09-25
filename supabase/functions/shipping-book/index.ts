@@ -58,7 +58,9 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 //   3. the courier's create call runs exactly once and is never retried, with
 //      a reference that is a pure function of (order, attempt number);
 //   4. its answer is classified strictly: CREATED (an explicit AWB), REJECTED
-//      (provably nothing created), or UNKNOWN (everything else);
+//      (a refusal shape PROVEN, for that courier, to mean nothing was created
+//      -- none is proven yet, and HTTP status alone never is), or UNKNOWN
+//      (everything else, including every answer without an AWB);
 //   5. CREATED -> finalize_shipment_attempt writes the AWB to the attempt AND
 //      the order, together. REJECTED -> fail_shipment_attempt releases the
 //      claim. UNKNOWN -> the claim stays OPEN and blocks the order until a
@@ -223,23 +225,27 @@ function mentionsDuplicate(text: unknown): boolean {
     .test(String(text ?? ''));
 }
 
-/** A 4xx meaning "refused, not processed": not a timeout, conflict or rate limit. PURE. */
-function isRefusalStatus(status: number): boolean {
-  return status >= 400 && status < 500 && ![408, 409, 425, 429].includes(status);
-}
+// A reply WITHOUT an AWB never proves, by itself, that nothing was created --
+// whatever its HTTP status. Only a refusal shape PROVEN for one courier may
+// release a claim: its exact HTTP status AND exact named fields, captured from
+// that courier's staging system together with a panel check that no shipment
+// exists -- never the status alone. No shape has been proven for either
+// courier (no staging evidence has been captured), so neither classifier
+// returns REJECTED: every reply without an AWB is UNKNOWN, and its claim stays
+// open until a person checks the courier panel. Promoting a proven shape is a
+// deliberate change to one classifier, with the captured reply as its test.
 
 /**
  * Shadowfax's answer to a create. PURE.
  *
  *   CREATED   HTTP 2xx, a JSON object, message 'Success' and an awb_number --
  *             the success test production has always used, plus the 2xx.
- *   REJECTED  a 4xx refusal with no AWB and no duplicate-reference message:
- *             the request was refused, so nothing was created.
- *   UNKNOWN   everything else. A duplicate-reference message is UNKNOWN: the
+ *   REJECTED  never, today: no Shadowfax refusal shape is proven (see above).
+ *   UNKNOWN   everything else -- including EVERY reply without an AWB, a 4xx
+ *             as much as a 2xx. A duplicate-reference message is UNKNOWN: the
  *             first create under this reference may have succeeded with its
- *             answer lost. So is a 2xx without an AWB -- nothing in this repo
- *             shows that such an answer means nothing was created -- and so is
- *             an AWB beside anything short of a clean success.
+ *             answer lost. So is an AWB beside anything short of a clean
+ *             success.
  */
 function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult {
   const b = jsonObject(bodyText);
@@ -254,7 +260,6 @@ function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult
     if (ok && b?.message === 'Success') return { kind: 'created', awb, status: String(b?.data?.status || 'new') };
     return { kind: 'unknown', reason: reason || 'an AWB came back without a clean success', duplicate: false };
   }
-  if (isRefusalStatus(status)) return { kind: 'rejected', reason: reason || `HTTP ${status}` };
   return { kind: 'unknown', reason: reason || (status ? `HTTP ${status}` : 'no answer'), duplicate: false };
 }
 
@@ -263,12 +268,12 @@ function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult
  *
  *   CREATED   HTTP 2xx, a JSON object and packages[0].waybill -- the success
  *             test production has always used, plus the 2xx.
- *   REJECTED  a 4xx refusal with no waybill and no duplicate-reference message.
- *   UNKNOWN   everything else, including a 2xx with no waybill: its remarks are
- *             shown to the merchant, but nothing in this repo shows that such
- *             an answer means nothing was created. "Duplicate order id" is
- *             UNKNOWN: the first create under this reference may have
- *             succeeded with its answer lost.
+ *   REJECTED  never, today: no Delhivery refusal shape is proven (see above).
+ *   UNKNOWN   everything else -- including EVERY reply without a waybill, a
+ *             4xx as much as a 2xx whose package carries remarks: the remarks
+ *             are shown to the merchant, but they are not proof. "Duplicate
+ *             order id" is UNKNOWN: the first create under this reference may
+ *             have succeeded with its answer lost.
  */
 function classifyDelhiveryCreate(status: number, bodyText: string): CreateResult {
   const b = jsonObject(bodyText);
@@ -284,7 +289,6 @@ function classifyDelhiveryCreate(status: number, bodyText: string): CreateResult
     if (ok && b) return { kind: 'created', awb, status: String(pkg?.status || 'Manifested') };
     return { kind: 'unknown', reason: reason || 'a waybill came back without a clean success', duplicate: false };
   }
-  if (isRefusalStatus(status)) return { kind: 'rejected', reason: reason || `HTTP ${status}` };
   return { kind: 'unknown', reason: reason || (status ? `HTTP ${status}` : 'no answer'), duplicate: false };
 }
 
@@ -559,7 +563,10 @@ async function bookShipment(
     return { booked: false, reply: bookingUnknown(name, reference, created.reason, created.duplicate) };
   }
 
-  // 4b. REJECTED: provably nothing was created, so the claim may be released.
+  // 4b. REJECTED: a refusal shape PROVEN for this courier to mean nothing was
+  //     created, so the claim may be released. No shape is proven yet, so no
+  //     courier answer reaches this branch today (see the classifiers); it is
+  //     kept, and tested, for the day one is.
   if (created.kind === 'rejected') {
     const args = {
       p_attempt_id: attemptId, p_store_slug: c.slug,

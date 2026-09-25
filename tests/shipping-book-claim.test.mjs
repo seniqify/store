@@ -8,7 +8,9 @@
 //   with a reference that is a pure function of (order, attempt)
 //     CREATED  -> finalize_shipment_attempt (one retry if unheard)
 //                 order_awb_conflict -> strict cancel -> supersede ONLY on proof
-//     REJECTED -> fail_shipment_attempt (only for a provable refusal)
+//     REJECTED -> fail_shipment_attempt -- only for a refusal shape PROVEN per
+//                 courier. None is proven, so no real reply is REJECTED today:
+//                 every reply without an AWB, whatever its status, is UNKNOWN
 //     UNKNOWN  -> the claim stays OPEN and blocks the order
 //
 // Everything here is EXECUTED: the .ts is transformed to JS and the real flow
@@ -59,13 +61,13 @@ function load(names, scope = {}) {
 }
 
 const BASE = 'https://track.delhivery.com';
-const F = load([
+const FLOW = [
   'trackUrlFor', 'readCurrentShipment', 'askRpc', 'orderHex', 'fnv1a32', 'delhiveryReference',
-  'shadowfaxReference', 'jsonObject', 'createReason', 'mentionsDuplicate', 'isRefusalStatus',
-  'classifyShadowfaxCreate', 'classifyDelhiveryCreate', 'shadowfaxCancelConfirmed',
+  'shadowfaxReference', 'jsonObject', 'createReason', 'mentionsDuplicate', 'shadowfaxCancelConfirmed',
   'delhiveryCancelConfirmed', 'cancelAtCourier', 'bookingUnknown', 'claimRefused',
   'finalizeUnheard', 'finalizeRefused', 'settleDuplicate', 'bookShipment',
-], { BASE });
+];
+const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], { BASE });
 
 // ── a stateful fake database that honours the RPC contracts ─────────────────
 
@@ -340,30 +342,211 @@ test('UNKNOWN: Delhivery 2xx with remarks but no waybill is not treated as a ref
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DEFINITIVE REJECTION -- the only path to fail_shipment_attempt
+// NO AWB => UNKNOWN, WHATEVER THE HTTP STATUS
+//
+// HTTP status alone never proves that nothing was created, and no refusal
+// shape is proven for either courier: no staging evidence has been captured.
+// So a generic 4xx -- 400, 401, 403, 404, 422 -- is UNKNOWN like every other
+// reply without an AWB: no fail, the claim stays open, the order stays
+// blocked. The bodies below are illustrative, not captured courier replies.
 // ═══════════════════════════════════════════════════════════════════════════
 
-for (const [provider, create] of [
-  ['shadowfax', { status: 400, body: { message: 'Failure', errors: ['Pincode not serviceable'] } }],
-  ['delhivery', { status: 422, body: { rmk: 'Invalid weight' } }],
-]) {
-  test(`REJECTED (${provider} 4xx refusal): fail_shipment_attempt releases the claim`, async () => {
-    const { reply, db, courier } = await book({ courier: fakeCourier({ create }), c: ctx({ provider }) });
-    assert.equal(courier.seen.create.length, 1);
-    assert.equal(calls(db, 'fail_shipment_attempt').length, 1);
-    assert.equal(calls(db, 'finalize_shipment_attempt').length, 0);
-    assert.equal(db.state.attempts[0].end_reason, 'failed');
-    assert.match(reply.error, /could not book this shipment/);
-    assert.equal(reply.needsReconciliation, undefined, 'a clean refusal needs no reconciliation');
+const GENERIC_4XX = [400, 401, 403, 404, 422];
+const NO_AWB_BODIES = [
+  { message: 'Failure', errors: ['Pincode not serviceable'] },
+  { errors: { pincode: ['Invalid pincode'] } },
+  { detail: 'Invalid token.' },
+  { success: false, rmk: 'Bad request', packages: [{ status: 'Fail', waybill: '', remarks: ['Invalid weight'] }] },
+  { error: 'Forbidden' },
+  {},
+  'Not Found',
+  '<html><body>Bad Request</body></html>',
+  '',
+];
+const asText = (b) => (typeof b === 'string' ? b : JSON.stringify(b));
+const CLASSIFY = { shadowfax: F.classifyShadowfaxCreate, delhivery: F.classifyDelhiveryCreate };
+
+for (const status of GENERIC_4XX) {
+  for (const provider of ['shadowfax', 'delhivery']) {
+    test(`generic HTTP ${status} without an AWB (${provider}) => UNKNOWN: no fail, the claim stays OPEN`, async () => {
+      for (const body of NO_AWB_BODIES) {
+        const got = CLASSIFY[provider](status, asText(body));
+        assert.equal(got.kind, 'unknown', `${status} ${asText(body)}`);
+        assert.equal(got.duplicate, false, `${status} ${asText(body)}`);
+      }
+      const db = ledgerDb();
+      const create = { status, body: NO_AWB_BODIES[0] };
+      const { out, reply, courier } = await book({ db, courier: fakeCourier({ create }), c: ctx({ provider }) });
+      assert.equal(out.booked, false);
+      assert.equal(courier.seen.create.length, 1, 'the create is never retried');
+      assert.equal(calls(db, 'fail_shipment_attempt').length, 0, 'a generic 4xx never calls fail');
+      assert.equal(db.state.attempts[0].end_reason, null, 'the claim stays open');
+      assert.equal(reply.bookingUnknown, true);
+      assert.equal(reply.needsReconciliation, true);
+      assert.match(reply.error, /Pincode not serviceable/, 'the merchant still sees what the courier said');
+      const next = fakeCourier();
+      const again = await book({ db, courier: next, c: ctx({ provider }) });
+      assert.equal(next.seen.create.length, 0, 'the order stays blocked: no second parcel');
+      assert.equal(again.reply.bookingInProgress, true);
+    });
+  }
+}
+
+test('EVERY HTTP status 0-599 without an AWB => UNKNOWN, for both couriers', () => {
+  let n = 0;
+  for (let status = 0; status < 600; status++) {
+    for (const provider of ['shadowfax', 'delhivery']) {
+      for (const body of NO_AWB_BODIES) {
+        assert.equal(CLASSIFY[provider](status, asText(body)).kind, 'unknown', `${provider} ${status} ${asText(body)}`);
+        n++;
+      }
+    }
+  }
+  assert.equal(n, 600 * 2 * NO_AWB_BODIES.length);
+});
+
+test('a duplicate-reference reply is UNKNOWN at EVERY status -- even beside an AWB', () => {
+  const dup = {
+    shadowfax: [
+      { errors: 'client_order_id already exists' }, { message: 'Duplicate client_order_id' },
+      { message: 'Success', data: { awb_number: 'SF1' }, errors: ['Duplicate client_order_id'] },
+      'duplicate client_order_id',
+    ],
+    delhivery: [
+      { rmk: 'Duplicate order id' }, { packages: [{ waybill: '', remarks: ['Duplicate order id'] }] },
+      { packages: [{ waybill: 'DL1', remarks: ['Duplicate order id'] }] },
+      'Duplicate order id',
+    ],
+  };
+  for (let status = 0; status < 600; status++) {
+    for (const provider of ['shadowfax', 'delhivery']) {
+      for (const body of dup[provider]) {
+        const got = CLASSIFY[provider](status, asText(body));
+        assert.equal(got.kind, 'unknown', `${provider} ${status} ${asText(body)}`);
+        assert.equal(got.duplicate, true, `${provider} ${status} ${asText(body)}`);
+      }
+    }
+  }
+});
+
+test('a duplicate at any status never calls fail, and says the reference already exists', async () => {
+  for (const status of [200, 400, 401, 403, 404, 409, 422, 500]) {
+    for (const [provider, body] of [
+      ['shadowfax', { errors: 'client_order_id already exists' }],
+      ['delhivery', { packages: [{ waybill: '', remarks: ['Duplicate order id'] }] }],
+    ]) {
+      const { reply, db } = await book({ courier: fakeCourier({ create: { status, body } }), c: ctx({ provider }) });
+      assert.equal(calls(db, 'fail_shipment_attempt').length, 0, `${provider} ${status}`);
+      assert.equal(db.state.attempts[0].end_reason, null, `${provider} ${status}`);
+      assert.match(reply.error, /reference already exists/, `${provider} ${status}`);
+    }
+  }
+});
+
+const REJECTION_LOOKING_2XX = [
+  ['shadowfax', 200, { message: 'Failure', errors: ['Invalid pincode'] }],
+  ['shadowfax', 201, { message: 'Failure', errors: 'Order could not be created' }],
+  ['shadowfax', 200, { message: 'Success', data: { awb_number: '' } }],
+  ['delhivery', 200, { success: false, rmk: 'Rejected', packages: [{ status: 'Fail', waybill: '', remarks: ['Non serviceable pincode'] }] }],
+  ['delhivery', 200, { success: false, error: 'Invalid request' }],
+  ['delhivery', 202, { packages: [] }],
+];
+
+for (const [provider, status, body] of REJECTION_LOOKING_2XX) {
+  test(`a ${status} that LOOKS like a rejection, without an AWB (${provider}) => UNKNOWN, no fail`, async () => {
+    assert.equal(CLASSIFY[provider](status, asText(body)).kind, 'unknown');
+    const { reply, db } = await book({ courier: fakeCourier({ create: { status, body } }), c: ctx({ provider }) });
+    assert.equal(calls(db, 'fail_shipment_attempt').length, 0);
+    assert.equal(db.state.attempts[0].end_reason, null, 'the claim stays open');
+    assert.equal(reply.bookingUnknown, true);
   });
 }
 
-test('REJECTED: a released claim permits a NEW claim, with a NEW reference, only via the RPCs', async () => {
+test('5 simultaneous requests while the courier answers a generic 400 => ONE create, and no release', async () => {
   const db = ledgerDb();
-  const first = fakeCourier({ create: { status: 400, body: { errors: 'Bad address' } } });
-  await book({ db, courier: first });
+  const courier = fakeCourier({ create: { status: 400, body: { errors: 'Invalid pincode' } } });
+  const outs = await Promise.all(Array.from({ length: 5 }, () =>
+    F.bookShipment({ supabase: db, fetch: courier.fetch }, ctx())));
+  assert.equal(courier.seen.create.length, 1, 'one courier create, however many clicks');
+  assert.equal(outs.filter((o) => o.reply.bookingUnknown).length, 1, 'the one that reached the courier');
+  assert.equal(outs.filter((o) => o.reply.bookingInProgress).length, 4, 'the rest were turned away by the claim');
+  assert.equal(calls(db, 'fail_shipment_attempt').length, 0);
+  assert.equal(db.state.attempts.length, 1);
+  assert.equal(db.state.attempts[0].end_reason, null, 'and the claim still blocks the order');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REJECTED -- reached ONLY through a refusal shape PROVEN for one courier
+//
+// None is proven, so with the REAL classifiers no reply reaches this branch;
+// the first test below runs every reply in this file through them and counts
+// zero fail_shipment_attempt calls. The branch is kept for the day a shape is
+// evidenced, so its mechanics stay tested -- through a STAND-IN Shadowfax
+// classifier that "proves" exactly one test-only shape and defers every other
+// reply to the real one. Delhivery keeps its real classifier throughout.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PROVEN_TEST_ONLY = { status: 400, body: { test_only_proven_refusal: true, errors: ['Pincode not serviceable'] } };
+const S = load(FLOW, {
+  BASE,
+  classifyShadowfaxCreate: (status, body) => (
+    status === PROVEN_TEST_ONLY.status && body === JSON.stringify(PROVEN_TEST_ONLY.body)
+      ? { kind: 'rejected', reason: 'Pincode not serviceable' }
+      : F.classifyShadowfaxCreate(status, body)),
+  classifyDelhiveryCreate: F.classifyDelhiveryCreate,
+});
+async function bookProven({ db = ledgerDb(), courier = fakeCourier(), c = ctx() } = {}) {
+  const out = await S.bookShipment({ supabase: db, fetch: courier.fetch }, c);
+  return { out, reply: out.reply, db, courier };
+}
+
+const EVERY_REPLY = [
+  ...['shadowfax', 'delhivery'].flatMap((p) => UNKNOWN_CREATES.map(([, create]) => [p, create])),
+  ...['shadowfax', 'delhivery'].flatMap((p) => GENERIC_4XX.flatMap((status) =>
+    NO_AWB_BODIES.map((body) => [p, { status, body }]))),
+  ...REJECTION_LOOKING_2XX.map(([p, status, body]) => [p, { status, body }]),
+  ['shadowfax', SFX_CREATED], ['delhivery', DLV_CREATED],
+  ['shadowfax', PROVEN_TEST_ONLY], ['delhivery', PROVEN_TEST_ONLY],
+];
+
+test('with the REAL classifiers, NO reply calls fail_shipment_attempt -- not even the test-only shape', async () => {
+  const failed = [];
+  for (const [provider, create] of EVERY_REPLY) {
+    const { db } = await book({ courier: fakeCourier({ create }), c: ctx({ provider }) });
+    if (calls(db, 'fail_shipment_attempt').length) failed.push(provider);
+  }
+  assert.ok(EVERY_REPLY.length > 100, `${EVERY_REPLY.length} replies`);
+  assert.deepEqual(failed, []);
+});
+
+test('with one shape proven for Shadowfax, ONLY that exact reply to Shadowfax calls fail', async () => {
+  const failed = [];
+  for (const [provider, create] of EVERY_REPLY) {
+    const { db } = await bookProven({ courier: fakeCourier({ create }), c: ctx({ provider }) });
+    if (calls(db, 'fail_shipment_attempt').length) failed.push([provider, create]);
+  }
+  assert.deepEqual(failed, [['shadowfax', PROVEN_TEST_ONLY]], 'the same reply to Delhivery is not proof');
+});
+
+test('REJECTED (proven shape): fail_shipment_attempt releases the claim', async () => {
+  const { reply, db, courier } = await bookProven({ courier: fakeCourier({ create: PROVEN_TEST_ONLY }) });
+  assert.equal(courier.seen.create.length, 1);
+  const fail = calls(db, 'fail_shipment_attempt');
+  assert.equal(fail.length, 1);
+  assert.deepEqual(fail[0].args, { p_attempt_id: db.state.attempts[0].id, p_store_slug: 'store-a',
+    p_final_status: 'Pincode not serviceable' });
+  assert.equal(calls(db, 'finalize_shipment_attempt').length, 0);
+  assert.equal(db.state.attempts[0].end_reason, 'failed');
+  assert.match(reply.error, /could not book this shipment: Pincode not serviceable/);
+  assert.equal(reply.needsReconciliation, undefined, 'a proven refusal needs no reconciliation');
+});
+
+test('REJECTED (proven shape): a released claim permits a NEW claim, with a NEW reference, only via the RPCs', async () => {
+  const db = ledgerDb();
+  const first = fakeCourier({ create: PROVEN_TEST_ONLY });
+  await bookProven({ db, courier: first });
   const second = fakeCourier();
-  const { out } = await book({ db, courier: second });
+  const { out } = await bookProven({ db, courier: second });
   assert.equal(out.booked, true);
   assert.equal(db.state.attempts.length, 2);
   assert.equal(db.state.attempts[1].attempt_no, 2);
@@ -371,13 +554,26 @@ test('REJECTED: a released claim permits a NEW claim, with a NEW reference, only
   assert.equal(db.log.writes.length, 0, 'the lifecycle moved only through RPCs');
 });
 
-test('REJECTED: an unheard fail RPC is retried once, and never assumed', async () => {
-  const create = { status: 400, body: { errors: 'Bad address' } };
+test('REJECTED (proven shape): an unheard fail RPC is retried once, and never assumed', async () => {
   const db = ledgerDb({ script: { fail_shipment_attempt: [new Error('a'), new Error('b')] } });
-  const { reply, courier } = await book({ db, courier: fakeCourier({ create }) });
+  const { reply, courier } = await bookProven({ db, courier: fakeCourier({ create: PROVEN_TEST_ONLY }) });
   assert.equal(calls(db, 'fail_shipment_attempt').length, 2);
   assert.equal(courier.seen.create.length, 1);
   assert.equal(reply.needsReconciliation, true, 'the order may still be locked');
+});
+
+test('REJECTED (proven shape): only a failed attempt counts as released', async () => {
+  const answers = [
+    [{ outcome: 'attempt_terminal', end_reason: 'failed' }, true],
+    [{ outcome: 'attempt_terminal', end_reason: 'superseded' }, false],
+    [{ outcome: 'attempt_has_awb', awb: 'X1' }, false],
+    [{ outcome: 'attempt_not_found' }, false],
+  ];
+  for (const [data, released] of answers) {
+    const db = ledgerDb({ script: { fail_shipment_attempt: [{ data, error: null }] } });
+    const { reply } = await bookProven({ db, courier: fakeCourier({ create: PROVEN_TEST_ONLY }) });
+    assert.equal(reply.needsReconciliation, released ? undefined : true, JSON.stringify(data));
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -651,12 +847,12 @@ test('if a claim cannot yield a reference, the claim is released and NOTHING is 
 // The create classifiers, as pure functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('Shadowfax classifier: created / rejected / unknown', () => {
-  const k = (s, b) => F.classifyShadowfaxCreate(s, typeof b === 'string' ? b : JSON.stringify(b)).kind;
+test('Shadowfax classifier: created / unknown -- REJECTED is never returned', () => {
+  const k = (s, b) => F.classifyShadowfaxCreate(s, asText(b)).kind;
   assert.equal(k(200, SFX_CREATED.body), 'created');
   assert.equal(k(201, SFX_CREATED.body), 'created');
-  assert.equal(k(400, { errors: 'Invalid pincode' }), 'rejected');
-  assert.equal(k(401, 'unauthorised'), 'rejected');
+  assert.equal(k(400, { errors: 'Invalid pincode' }), 'unknown', 'a 4xx without an AWB is not proof');
+  assert.equal(k(401, 'unauthorised'), 'unknown', 'nor is a 401');
   assert.equal(k(200, { errors: 'Invalid pincode' }), 'unknown');
   assert.equal(k(500, { errors: 'x' }), 'unknown');
   assert.equal(k(0, ''), 'unknown');
@@ -664,15 +860,32 @@ test('Shadowfax classifier: created / rejected / unknown', () => {
   assert.equal(k(400, 'duplicate'), 'unknown', 'a non-JSON body is scanned for duplicates too');
 });
 
-test('Delhivery classifier: created / rejected / unknown', () => {
-  const k = (s, b) => F.classifyDelhiveryCreate(s, typeof b === 'string' ? b : JSON.stringify(b)).kind;
+test('Delhivery classifier: created / unknown -- REJECTED is never returned', () => {
+  const k = (s, b) => F.classifyDelhiveryCreate(s, asText(b)).kind;
   assert.equal(k(200, DLV_CREATED.body), 'created');
   assert.equal(k(200, { packages: [{ waybill: 12345 }] }), 'created', 'a numeric waybill is still a waybill');
-  assert.equal(k(400, { rmk: 'bad request' }), 'rejected');
+  assert.equal(k(400, { rmk: 'bad request' }), 'unknown', 'a 4xx without a waybill is not proof');
+  assert.equal(k(422, { rmk: 'Invalid weight' }), 'unknown', 'nor is a 422');
   assert.equal(k(200, { packages: [{ waybill: '', remarks: ['x'] }] }), 'unknown');
   assert.equal(k(200, { packages: [{ waybill: '', remarks: ['Duplicate order id'] }] }), 'unknown');
   assert.equal(k(502, 'gateway'), 'unknown');
   assert.equal(k(500, { packages: [{ waybill: 'DL1' }] }), 'unknown', 'a waybill on a 5xx is not a clean success');
+});
+
+test('CREATED: an explicit AWB on a clean 2xx success, exactly as before', () => {
+  const sfx = (s, b) => F.classifyShadowfaxCreate(s, asText(b));
+  const dlv = (s, b) => F.classifyDelhiveryCreate(s, asText(b));
+  assert.deepEqual(sfx(200, SFX_CREATED.body), { kind: 'created', awb: 'SFAWB0001', status: 'new' });
+  assert.deepEqual(sfx(201, { message: 'Success', data: { awb_number: ' SF7 ' } }), { kind: 'created', awb: 'SF7', status: 'new' });
+  assert.deepEqual(sfx(200, { message: 'Success', data: { awb_number: 'SF8', status: 'pickup_scheduled' } }),
+    { kind: 'created', awb: 'SF8', status: 'pickup_scheduled' });
+  assert.deepEqual(dlv(200, DLV_CREATED.body), { kind: 'created', awb: 'DLAWB0001', status: 'Success' });
+  assert.deepEqual(dlv(200, { packages: [{ waybill: 12345 }] }), { kind: 'created', awb: '12345', status: 'Manifested' });
+  // an AWB beside anything short of a clean success is still UNKNOWN
+  assert.equal(sfx(400, { message: 'Success', data: { awb_number: 'SF9' } }).kind, 'unknown');
+  assert.equal(sfx(200, { message: 'Pending', data: { awb_number: 'SF9' } }).kind, 'unknown');
+  assert.equal(dlv(500, { packages: [{ waybill: 'DL1' }] }).kind, 'unknown');
+  assert.equal(dlv(200, 'waybill DL1').kind, 'unknown', 'a non-JSON body is not a clean success');
 });
 
 test('a success body that merely echoes the word "duplicate" in data is not misread', () => {
@@ -731,6 +944,20 @@ test('source: local validation happens before any claim, in both branches', () =
   assert.ok(pin > 0 && pin < guard && guard < idCheck, 'PIN, then the AWB guard, then the id check');
   assert.ok(idCheck < sfxPin && sfxPin < sfxBook, 'Shadowfax: pincode validated before bookShipment');
   assert.ok(dlvPin > sfxBook && dlvPin < dlvBook, 'Delhivery: pincode validated before bookShipment');
+});
+
+test('source: HTTP status alone can never release a claim', () => {
+  assert.equal(/isRefusalStatus/.test(BOOK), false, 'the generic 4xx rule is gone');
+  for (const name of ['classifyShadowfaxCreate', 'classifyDelhiveryCreate']) {
+    const start = BOOK_CODE.indexOf(`function ${name}(`);
+    const body = BOOK_CODE.slice(start, BOOK_CODE.indexOf('\n}\n', start));
+    assert.ok(start > 0 && body.length > 200, name);
+    assert.equal(/'rejected'/.test(body), false, `${name} returns no REJECTED: no refusal shape is proven`);
+    assert.equal(/\b4\d\d\b|status\s*>=\s*4|status\s*<\s*5/.test(body), false, `${name} reads no 4xx status`);
+  }
+  // fail_shipment_attempt: once for a reference that cannot be built (nothing
+  // was sent), and in the REJECTED branch with its one retry. Nowhere else.
+  assert.equal([...BOOK_CODE.matchAll(/'fail_shipment_attempt'/g)].length, 3);
 });
 
 test('source: shipping-book writes no order row itself, and never names the ledger table', () => {
