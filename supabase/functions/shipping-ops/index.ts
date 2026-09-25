@@ -147,6 +147,23 @@ async function pointerNow(
   }
 }
 
+/**
+ * One call to cancel_current_shipment. Returns its outcome, or null when no
+ * usable answer was HEARD: a thrown error, an error result, no data, or data
+ * without an outcome. null is "we do not know", never "it did not happen".
+ */
+async function callCancelRpc(
+  supabase: any, args: Record<string, unknown>,
+): Promise<{ outcome: string } | null> {
+  try {
+    const { data, error } = await supabase.rpc('cancel_current_shipment', args);
+    if (error || !data || typeof data.outcome !== 'string') return null;
+    return { outcome: data.outcome };
+  } catch {
+    return null;
+  }
+}
+
 /** The courier cancelled; PocketLink's record could not be made to match. PURE. */
 function recordNotUpdated(courierName: string, outcome: string): Record<string, unknown> {
   return {
@@ -163,18 +180,21 @@ function recordNotUpdated(courierName: string, outcome: string): Record<string, 
  * The merchant's answer once the courier HAS confirmed and
  * cancel_current_shipment has replied. PURE.
  *
- * Every outcome the RPC can return is named here. Exactly three are success.
- * Each refusal wrote nothing, and nothing is written in its place: the parcel
- * is cancelled at the courier while PocketLink's record still shows it, and a
- * person has to reconcile that. An outcome this code does not know is never
- * treated as success.
+ * Every outcome the RPC can return is named here. Two are success outright.
+ * already_cancelled is NOT success on its own -- the RPC returns it without
+ * touching orders.awb, so only cancelShipment, after reading the pointer back
+ * clear, may turn it into one. Each refusal wrote nothing, and nothing is
+ * written in its place: the parcel is cancelled at the courier while
+ * PocketLink's record still shows it, and a person has to reconcile that. An
+ * outcome this code does not know is never treated as success.
  */
 function cancelOutcomeReply(outcome: unknown, courierName: string): Record<string, unknown> {
   switch (outcome) {
-    case 'cancelled':                    // attempt closed and pointer cleared
+    case 'cancelled':                    // attempt closed and pointer cleared, together
     case 'cancelled_pointer_was_clear':  // attempt closed; the pointer was already clear
-    case 'already_cancelled':            // a repeat of a cancellation that already landed
       return { cancelled: true, outcome };
+    case 'already_cancelled':            // changed nothing; see cancelShipment
+      return recordNotUpdated(courierName, 'already_cancelled_unverified');
     case 'shipment_already_terminal':
     case 'attempt_state_mismatch':
     case 'attempt_not_found':
@@ -257,28 +277,43 @@ async function cancelShipment(
     };
   }
 
-  // 3. The only write.
-  let rpc: { data: any; error: unknown };
-  try {
-    rpc = await deps.supabase.rpc('cancel_current_shipment', {
-      p_store_slug:   c.slug,
-      p_order_id:     c.orderId,
-      p_courier:      c.provider,
-      p_awb:          awb,
-      p_final_status: 'Cancelled',
-    });
-  } catch (e) {
-    rpc = { data: null, error: e };
-  }
-  if (rpc?.error || !rpc?.data) {
-    // An error is a failure to HEAR the answer, not proof there was none. Read
-    // the order back: a cleared pointer means the write landed. Nothing is
-    // written here either way.
+  // 3. The only write. The courier has confirmed and is NEVER asked again.
+  //    cancel_current_shipment is idempotent, so an unheard answer is safe to
+  //    ask for ONE more time with identical arguments:
+  //      - the first call committed but its reply was lost -> already_cancelled
+  //      - the first call did not commit -> the retry makes the transition
+  //      - an old shipping-ops instance cleared the pointer meanwhile, leaving
+  //        the attempt open -> the retry closes it (cancelled_pointer_was_clear)
+  const args = {
+    p_store_slug:   c.slug,
+    p_order_id:     c.orderId,
+    p_courier:      c.provider,
+    p_awb:          awb,
+    p_final_status: 'Cancelled',
+  };
+  let heard = await callCancelRpc(deps.supabase, args);
+  if (!heard) heard = await callCancelRpc(deps.supabase, args);   // exactly one retry, never more
+
+  if (!heard) {
+    // Two unheard answers. The order is read for context only: a cleared AWB is
+    // NOT proof the ledger closed -- during a rolling deploy an old
+    // shipping-ops instance clears orders.awb without touching the ledger.
+    // Nothing is written either way.
     const now = await pointerNow(deps.supabase, c.slug, c.orderId);
-    if (now.known && now.awb === null) return { cancelled: true, outcome: 'recorded' };
-    return recordNotUpdated(name, now.known ? 'unheard_not_recorded' : 'unheard');
+    return recordNotUpdated(name,
+      !now.known ? 'unheard' : now.awb === null ? 'unheard_pointer_clear' : 'unheard_pointer_set');
   }
-  return cancelOutcomeReply(rpc.data?.outcome, name);
+
+  if (heard.outcome === 'already_cancelled') {
+    // The ledger already says cancelled, but this reply changed nothing -- the
+    // RPC returns it without touching orders.awb. Only a pointer read back as
+    // clear makes it a success the merchant can see.
+    const now = await pointerNow(deps.supabase, c.slug, c.orderId);
+    if (now.known && now.awb === null) return { cancelled: true, outcome: 'already_cancelled' };
+    return recordNotUpdated(name, now.known ? 'already_cancelled_awb_retained' : 'already_cancelled_unverified');
+  }
+
+  return cancelOutcomeReply(heard.outcome, name);
 }
 
 serve(async (req) => {

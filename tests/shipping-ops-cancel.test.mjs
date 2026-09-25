@@ -64,11 +64,16 @@ const {
   terminalEvidence, shadowfaxCancelConfirmed, delhiveryCancelConfirmed, providerSays,
   cancelOutcomeReply, cancelShipment,
 } = load(['terminalEvidence', 'shadowfaxCancelConfirmed', 'delhiveryCancelConfirmed', 'providerSays',
-  'pointerNow', 'recordNotUpdated', 'cancelOutcomeReply', 'cancelShipment'], { BASE });
+  'pointerNow', 'callCancelRpc', 'recordNotUpdated', 'cancelOutcomeReply', 'cancelShipment'], { BASE });
 
-/** A database that records every RPC, read and write. */
+/**
+ * A database that records every RPC, read and write. `rpc` is one answer used
+ * for every call, or an ARRAY of answers used in order (an Error is thrown),
+ * so a retry can be scripted call by call.
+ */
 function fakeDb({ rpc = { data: { outcome: 'cancelled' }, error: null },
                   pointer = { data: { awb: null }, error: null } } = {}) {
+  const queue = Array.isArray(rpc) ? [...rpc] : null;
   const log = { rpc: [], reads: [], writes: [] };
   const from = (table) => {
     const chain = {
@@ -91,8 +96,9 @@ function fakeDb({ rpc = { data: { outcome: 'cancelled' }, error: null },
     from,
     rpc: async (name, args) => {
       log.rpc.push({ name, args });
-      if (rpc instanceof Error) throw rpc;
-      return rpc;
+      const next = queue ? (queue.length ? queue.shift() : new Error('no more RPC answers scripted')) : rpc;
+      if (next instanceof Error) throw next;
+      return next;
     },
   };
 }
@@ -352,12 +358,13 @@ test('flow: staging Shadowfax accounts cancel against staging', async () => {
 // 5. Every RPC outcome, named
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SUCCESS = ['cancelled', 'cancelled_pointer_was_clear', 'already_cancelled'];
+const SUCCESS = ['cancelled', 'cancelled_pointer_was_clear'];
+const CONDITIONAL = ['already_cancelled'];   // success only once the pointer reads clear
 const REFUSAL = ['shipment_already_terminal', 'attempt_state_mismatch', 'attempt_not_found',
   'courier_mismatch', 'awb_mismatch', 'order_not_found', 'invalid_awb', 'invalid_courier',
   'transition_race'];
 
-test('every RPC outcome: success is exactly three, each refusal is reconciliation', async () => {
+test('every RPC outcome: two are success outright, each refusal is reconciliation', async () => {
   for (const outcome of [...SUCCESS, ...REFUSAL]) {
     const db = fakeDb({ rpc: { data: { outcome }, error: null } });
     const { reply } = await run({ db });
@@ -400,38 +407,172 @@ test('drift: the replies name exactly the outcomes cancel_current_shipment can r
   const body = B2A1.slice(B2A1.indexOf('create or replace function public.cancel_current_shipment'),
     B2A1.indexOf('create or replace function public.supersede_shipment_attempt'));
   const sql = new Set([...body.matchAll(/'outcome',\s*'([a-z_]+)'/g)].map((m) => m[1]));
-  assert.deepEqual([...sql].sort(), [...SUCCESS, ...REFUSAL].sort());
+  assert.deepEqual([...sql].sort(), [...SUCCESS, ...CONDITIONAL, ...REFUSAL].sort());
   for (const o of sql) assert.ok(OPS.includes(`case '${o}':`), `shipping-ops names ${o}`);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6. Race safety -- an unheard RPC answer
+// 6. Race safety -- an unheard RPC answer is asked for ONCE more
 // ═══════════════════════════════════════════════════════════════════════════
+// The courier has already confirmed by the time the RPC runs, and is never
+// asked again. cancel_current_shipment is idempotent, so a lost answer is safe
+// to request once more. A cleared AWB is never, by itself, proof: during a
+// rolling deploy an old shipping-ops instance clears orders.awb without
+// closing the ledger.
 
-test('an RPC error re-reads the order: a cleared pointer means the write landed', async () => {
-  const db = fakeDb({ rpc: new Error('socket hang up'), pointer: { data: { awb: null }, error: null } });
+const heard = (outcome) => ({ data: { outcome }, error: null });
+const CLEAR = { data: { awb: null }, error: null };
+const RETAINED = { data: { awb: 'SF123' }, error: null };
+/** Every shape of "no usable answer". */
+const UNHEARD = [
+  new Error('socket hang up'),
+  { data: null, error: { message: 'boom' } },
+  { data: null, error: null },
+  { data: {}, error: null },
+  { data: { outcome: 7 }, error: null },
+];
+
+test('RPC unheard, then cancelled on the retry => success', async () => {
+  for (const first of UNHEARD) {
+    const db = fakeDb({ rpc: [first, heard('cancelled')] });
+    const { reply, courier } = await run({ db });
+    assert.equal(reply.cancelled, true, JSON.stringify(first));
+    assert.equal(db.log.rpc.length, 2, 'exactly one retry');
+    assert.deepEqual(db.log.rpc[1], db.log.rpc[0], 'with identical arguments');
+    assert.equal(courier.calls.length, 1, 'the courier is never asked again');
+    assert.equal(db.log.writes.length, 0);
+  }
+});
+
+test('RPC unheard, then already_cancelled with the pointer clear => success (the first call had landed)', async () => {
+  const db = fakeDb({ rpc: [new Error('reply lost'), heard('already_cancelled')], pointer: CLEAR });
+  const { reply, courier } = await run({ db });
+  assert.equal(reply.cancelled, true);
+  assert.equal(reply.outcome, 'already_cancelled');
+  assert.equal(db.log.rpc.length, 2);
+  assert.equal(db.log.reads.length, 1, 'the pointer was checked');
+  assert.equal(courier.calls.length, 1);
+  assert.equal(db.log.writes.length, 0);
+});
+
+test('RPC unheard, then cancelled_pointer_was_clear => success (an old instance had cleared the pointer)', async () => {
+  const db = fakeDb({ rpc: [new Error('timeout'), heard('cancelled_pointer_was_clear')] });
+  const { reply, courier } = await run({ db });
+  assert.equal(reply.cancelled, true);
+  assert.equal(db.log.rpc.length, 2);
+  assert.equal(courier.calls.length, 1);
+  assert.equal(db.log.writes.length, 0);
+});
+
+test('two unheard RPC answers + a CLEARED pointer => reconciliation, NOT success', async () => {
+  // The defect the review found: a cleared AWB used to be read as "recorded".
+  const db = fakeDb({ rpc: [new Error('a'), new Error('b')], pointer: CLEAR });
+  const { reply, courier } = await run({ db });
+  assert.equal(reply.cancelled, false);
+  assert.equal(reply.needsReconciliation, true);
+  assert.equal(reply.courierCancelled, true);
+  assert.equal(reply.outcome, 'unheard_pointer_clear');
+  assert.equal(db.log.rpc.length, 2, 'never a third call');
+  assert.equal(courier.calls.length, 1);
+  assert.equal(db.log.writes.length, 0);
+});
+
+test('two unheard RPC answers + the pointer retained => reconciliation', async () => {
+  const db = fakeDb({ rpc: [new Error('a'), { data: null, error: null }], pointer: RETAINED });
+  const { reply, courier } = await run({ db });
+  assert.equal(reply.cancelled, false);
+  assert.equal(reply.needsReconciliation, true);
+  assert.equal(reply.outcome, 'unheard_pointer_set');
+  assert.equal(db.log.rpc.length, 2);
+  assert.equal(courier.calls.length, 1);
+  assert.equal(db.log.writes.length, 0);
+});
+
+test('two unheard RPC answers + an unreadable order => reconciliation', async () => {
+  for (const pointer of [new Error('down'), { data: null, error: { message: 'x' } }]) {
+    const db = fakeDb({ rpc: [new Error('a'), new Error('b')], pointer });
+    const { reply } = await run({ db });
+    assert.equal(reply.cancelled, false);
+    assert.equal(reply.needsReconciliation, true);
+    assert.equal(reply.outcome, 'unheard');
+    assert.equal(db.log.writes.length, 0);
+  }
+});
+
+test('a HEARD refusal is never retried -- only an unheard answer is', async () => {
+  for (const o of REFUSAL) {
+    const db = fakeDb({ rpc: [heard(o), heard('cancelled')] });
+    const { reply } = await run({ db });
+    assert.equal(db.log.rpc.length, 1, o);
+    assert.equal(reply.cancelled, false, o);
+  }
+});
+
+// ── already_cancelled changed nothing, so it needs the pointer's word ──────
+
+test('already_cancelled + pointer clear => success', async () => {
+  const db = fakeDb({ rpc: heard('already_cancelled'), pointer: CLEAR });
   const { reply } = await run({ db });
   assert.equal(reply.cancelled, true);
   assert.equal(db.log.reads.length, 1);
   assert.equal(db.log.writes.length, 0);
 });
 
-test('an RPC error with the pointer still set is reconciliation, not a retry', async () => {
-  const db = fakeDb({ rpc: new Error('timeout'), pointer: { data: { awb: 'SF123' }, error: null } });
+test('already_cancelled + the AWB retained => reconciliation, not success', async () => {
+  const db = fakeDb({ rpc: heard('already_cancelled'), pointer: RETAINED });
   const { reply } = await run({ db });
   assert.equal(reply.cancelled, false);
   assert.equal(reply.needsReconciliation, true);
-  assert.equal(db.log.rpc.length, 1, 'no blind retry');
-  assert.equal(db.log.writes.length, 0, 'no direct pointer clear');
+  assert.equal(reply.outcome, 'already_cancelled_awb_retained');
+  assert.equal(db.log.writes.length, 0);
 });
 
-test('an RPC error with an unreadable order is reconciliation', async () => {
+test('already_cancelled + an unreadable pointer => reconciliation', async () => {
   for (const pointer of [new Error('down'), { data: null, error: { message: 'x' } }]) {
-    const db = fakeDb({ rpc: { data: null, error: { message: 'boom' } }, pointer });
+    const db = fakeDb({ rpc: heard('already_cancelled'), pointer });
     const { reply } = await run({ db });
     assert.equal(reply.cancelled, false);
     assert.equal(reply.needsReconciliation, true);
+    assert.equal(reply.outcome, 'already_cancelled_unverified');
     assert.equal(db.log.writes.length, 0);
+  }
+});
+
+test('already_cancelled is not success on its own -- the reply table never says so', () => {
+  assert.equal(cancelOutcomeReply('already_cancelled', 'Shadowfax').cancelled, false);
+});
+
+// ── across every scenario ───────────────────────────────────────────────────
+
+const SCENARIOS = [
+  ['cancelled', { rpc: heard('cancelled') }],
+  ['pointer was clear', { rpc: heard('cancelled_pointer_was_clear') }],
+  ['already_cancelled, clear', { rpc: heard('already_cancelled'), pointer: CLEAR }],
+  ['already_cancelled, retained', { rpc: heard('already_cancelled'), pointer: RETAINED }],
+  ['already_cancelled, unreadable', { rpc: heard('already_cancelled'), pointer: new Error('x') }],
+  ['unheard then cancelled', { rpc: [new Error('a'), heard('cancelled')] }],
+  ['unheard then already_cancelled', { rpc: [new Error('a'), heard('already_cancelled')], pointer: CLEAR }],
+  ['unheard then pointer-was-clear', { rpc: [new Error('a'), heard('cancelled_pointer_was_clear')] }],
+  ['unheard twice, clear', { rpc: [new Error('a'), new Error('b')], pointer: CLEAR }],
+  ['unheard twice, retained', { rpc: [new Error('a'), new Error('b')], pointer: RETAINED }],
+  ['unheard twice, unreadable', { rpc: [new Error('a'), new Error('b')], pointer: new Error('x') }],
+  ...REFUSAL.map((o) => [o, { rpc: heard(o) }]),
+];
+
+test('the courier is called exactly ONCE in every RPC scenario, retried or not', async () => {
+  for (const [label, opts] of SCENARIOS) {
+    const { courier } = await run({ db: fakeDb(opts) });
+    assert.equal(courier.calls.length, 1, label);
+  }
+});
+
+test('no fallback order write in ANY scenario, and never more than two RPC calls', async () => {
+  for (const [label, opts] of SCENARIOS) {
+    const db = fakeDb(opts);
+    await run({ db });
+    assert.equal(db.log.writes.length, 0, label);
+    assert.ok(db.log.rpc.length <= 2, label);
+    assert.ok(db.log.rpc.every((r) => r.name === 'cancel_current_shipment'), label);
   }
 });
 
