@@ -92,16 +92,37 @@ select * from (
                      and not exists (select 1 from public.shipment_attempts a
                                       where a.order_id = o.id))::text
   -- The repair copies the order's AWB and only writes orders that have one, so
-  -- it can never produce an AWB-less row. The only AWB-less rows that may
-  -- exist are B1's two historical in-app cancellations (terminal 'cancelled',
-  -- no end time) and, once B2B is live, claims (which carry claimed_at).
+  -- it can never produce an AWB-less row. Exactly two AWB-less shapes are
+  -- legitimate:
+  --   1. one of B1's two historical in-app cancellations -- terminal
+  --      'cancelled', no end time, never claimed
+  --   2. a B2B claim -- it carries claimed_at
+  -- Every other AWB-less row FAILS.
+  --
+  -- NULL-SAFE ON PURPOSE. Each accepted shape is written so it is TRUE or
+  -- FALSE and never NULL. A plain "end_reason = 'cancelled'" is NULL when
+  -- end_reason is NULL, NOT (NULL) is still NULL, and WHERE drops the row --
+  -- which would let an unclaimed, AWB-less OPEN row (the shape that blocks
+  -- every future booking for its order) pass this check unseen.
   union all select 113,'R repair','R4 every AWB-less ledger row is one of B1''s historical cancellations or a claim',
     case when (select count(*) from public.shipment_attempts a
                 where a.awb is null
-                  and a.claimed_at is null
-                  and not (a.end_reason = 'cancelled' and a.ended_at is null)) = 0
+                  and not (
+                        (a.end_reason is not distinct from 'cancelled'
+                         and a.ended_at is null
+                         and a.claimed_at is null)
+                     or a.claimed_at is not null
+                  )) = 0
          then 'PASS'
-         else 'FAIL - an AWB-less row was written by something other than B1' end
+         else 'FAIL - ' || (select count(*) from public.shipment_attempts a
+                             where a.awb is null
+                               and not (
+                                     (a.end_reason is not distinct from 'cancelled'
+                                      and a.ended_at is null
+                                      and a.claimed_at is null)
+                                  or a.claimed_at is not null
+                               ))::text
+              || ' AWB-less row(s) are neither a B1 cancellation nor a claim' end
   union all select 114,'R repair','R5 AWB-less ledger rows (B1 wrote 2)',
     '(info) ' || (select count(*) from public.shipment_attempts where awb is null)::text
   union all select 115,'R repair','R6 every OPEN attempt holding an AWB matches its order''s AWB',

@@ -22,6 +22,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8')
   .replace(/\r\n/g, '\n');
@@ -477,6 +478,134 @@ test('verify: names all five RPCs it checks', () => {
 test('verify: no string literal hides a semicolon', () => {
   const lits = [...VERIFY_CODE.matchAll(/'(?:[^']|'')*'/g)].map((m) => m[0]);
   assert.ok(lits.every((s) => !s.includes(';')));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXECUTED — R4 under SQL's three-valued logic
+// ═══════════════════════════════════════════════════════════════════════════
+// Postgres evaluates a WHERE clause in three values: TRUE, FALSE and UNKNOWN
+// (NULL), and keeps a row only when the clause is TRUE. JavaScript's own
+// booleans would hide exactly the defect being fixed, so R4 is evaluated here
+// with SQL's rules instead.
+const T = true, F = false, U = null;
+const and3 = (...xs) => (xs.includes(F) ? F : xs.includes(U) ? U : T);
+const or3  = (...xs) => (xs.includes(T) ? T : xs.includes(U) ? U : F);
+const not3 = (x) => (x === U ? U : !x);
+const eq3  = (x, y) => (x == null || y == null ? U : x === y);      // SQL  =
+const isNull = (x) => x == null;                                    // SQL  IS NULL  -- never UNKNOWN
+const notDistinct = (x, y) => (x == null ? y == null : y != null && x === y); // IS NOT DISTINCT FROM
+const whereKeeps = (v) => v === T;
+
+/** R4 as first written -- the defect. */
+const r4Before = (a) => and3(
+  isNull(a.awb),
+  isNull(a.claimed_at),
+  not3(and3(eq3(a.end_reason, 'cancelled'), isNull(a.ended_at))),
+);
+
+/** R4 as fixed -- transcribed from shipment-attempts-gap-verify.sql. */
+const r4 = (a) => and3(
+  isNull(a.awb),
+  not3(or3(
+    and3(notDistinct(a.end_reason, 'cancelled'), isNull(a.ended_at), isNull(a.claimed_at)),
+    !isNull(a.claimed_at),
+  )),
+);
+
+const row = (over) => ({ awb: null, claimed_at: null, end_reason: null, ended_at: null, ...over });
+
+test('R4: an AWB-less, unclaimed row with end_reason NULL is in the FAIL population', () => {
+  const malformed = row({});
+  assert.equal(whereKeeps(r4(malformed)), true);
+});
+
+test('R4: ...which the original predicate silently dropped as UNKNOWN', () => {
+  // The defect, reproduced: NOT (NULL AND TRUE) is NULL, and WHERE drops NULL.
+  const malformed = row({});
+  assert.equal(r4Before(malformed), U);
+  assert.equal(whereKeeps(r4Before(malformed)), false);
+});
+
+test("R4: B1's historical cancellation is still accepted", () => {
+  assert.equal(whereKeeps(r4(row({ end_reason: 'cancelled' }))), false);
+});
+
+test('R4: a B2B claim is still accepted -- open, failed, or closed any other way', () => {
+  for (const end_reason of [null, 'failed', 'cancelled', 'superseded']) {
+    const claim = row({ claimed_at: '2026-09-26T10:00:00Z', end_reason,
+      ended_at: end_reason ? '2026-09-26T10:05:00Z' : null });
+    assert.equal(whereKeeps(r4(claim)), false, String(end_reason));
+  }
+});
+
+test('R4: the ambiguous shape -- AWB-less, unclaimed, "delivered" -- would FAIL', () => {
+  // What re-running B1 unchanged would have written for the excluded order.
+  const frozen = row({ end_reason: 'delivered', ended_at: '2026-09-24T10:00:00Z' });
+  assert.equal(whereKeeps(r4(frozen)), true);
+});
+
+test("R4: a cancellation WITH an end time is not B1's shape, and FAILS", () => {
+  assert.equal(whereKeeps(r4(row({ end_reason: 'cancelled', ended_at: '2026-09-26T10:00:00Z' }))), true);
+});
+
+test('R4: rows that carry an AWB are never in its population', () => {
+  for (const end_reason of [null, 'delivered', 'cancelled']) {
+    assert.equal(whereKeeps(r4(row({ awb: 'X1', end_reason }))), false, String(end_reason));
+  }
+});
+
+test('R4: the fixed predicate is never UNKNOWN, for any combination of its columns', () => {
+  let cases = 0;
+  for (const awb of [null, 'X1']) {
+    for (const claimed_at of [null, '2026-09-26T10:00:00Z']) {
+      for (const end_reason of [null, 'cancelled', 'delivered', 'returned', 'lost',
+                                'failed', 'superseded', 'unknown']) {
+        for (const ended_at of [null, '2026-09-26T10:05:00Z']) {
+          const v = r4({ awb, claimed_at, end_reason, ended_at });
+          assert.notEqual(v, U, JSON.stringify({ awb, claimed_at, end_reason, ended_at }));
+          cases++;
+        }
+      }
+    }
+  }
+  assert.equal(cases, 64);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOURCE-PINNED — R4's SQL, and the repair left untouched
+// ═══════════════════════════════════════════════════════════════════════════
+
+const R4_WHERE = squash(`
+                where a.awb is null
+                  and not (
+                        (a.end_reason is not distinct from 'cancelled'
+                         and a.ended_at is null
+                         and a.claimed_at is null)
+                     or a.claimed_at is not null
+                  )`);
+
+test('source: R4 uses the NULL-safe predicate, for its check and for its FAIL count', () => {
+  assert.equal(squash(VERIFY_CODE).split(R4_WHERE).length - 1, 2);
+});
+
+test('source: the NULL-unsafe original is gone', () => {
+  assert.ok(!/not \(a\.end_reason = 'cancelled'/.test(VERIFY_CODE));
+  assert.ok(!/a\.end_reason = 'cancelled'/.test(VERIFY_CODE));
+});
+
+test('source: R4 is transcribed faithfully -- every operand of the model is in the SQL', () => {
+  for (const frag of ['a.awb is null', "a.end_reason is not distinct from 'cancelled'",
+                      'a.ended_at is null', 'a.claimed_at is null', 'a.claimed_at is not null']) {
+    assert.ok(R4_WHERE.includes(frag), frag);
+  }
+});
+
+test('source: the reviewed repair SQL is byte-for-byte unchanged', () => {
+  // Pinned to the version reviewed in PR #25. The repair writes production
+  // ledger history that can never be edited; changing it must be a deliberate,
+  // reviewed act that updates this hash in the same commit.
+  const sha = createHash('sha256').update(REPAIR).digest('hex');
+  assert.equal(sha, '407a77f2aaf04ff852c6943fb22f8220f16883bafed876da404ebb1a788c6faa');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
