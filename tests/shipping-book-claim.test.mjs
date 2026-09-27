@@ -9,8 +9,9 @@
 //     CREATED  -> finalize_shipment_attempt (one retry if unheard)
 //                 order_awb_conflict -> strict cancel -> supersede ONLY on proof
 //     REJECTED -> fail_shipment_attempt -- only for a refusal shape PROVEN per
-//                 courier. None is proven, so no real reply is REJECTED today:
-//                 every reply without an AWB, whatever its status, is UNKNOWN
+//                 courier. Proven today: Shadowfax's three documented
+//                 refusals (API Blueprint, POST /v3/clients/orders/). None for
+//                 Delhivery. Every other reply without an AWB is UNKNOWN
 //     UNKNOWN  -> the claim stays OPEN and blocks the order
 //
 // Everything here is EXECUTED: the .ts is transformed to JS and the real flow
@@ -64,6 +65,7 @@ const BASE = 'https://track.delhivery.com';
 const FLOW = [
   'trackUrlFor', 'readCurrentShipment', 'askRpc', 'orderHex', 'fnv1a32', 'delhiveryReference',
   'shadowfaxReference', 'jsonObject', 'createReason', 'mentionsDuplicate', 'shadowfaxCancelConfirmed',
+  'shadowfaxReplyAwb', 'hasShadowfaxErrors', 'isShadowfaxRefusal', 'createLog',
   'delhiveryCancelConfirmed', 'cancelAtCourier', 'bookingUnknown', 'claimRefused',
   'finalizeUnheard', 'finalizeRefused', 'settleDuplicate', 'bookShipment',
 ];
@@ -287,7 +289,7 @@ const UNKNOWN_CREATES = [
   ['HTTP 500', { status: 500, body: { message: 'Internal error' } }],
   ['HTTP 502, HTML', { status: 502, body: '<html>Bad Gateway</html>' }],
   ['HTTP 200, not JSON', { status: 200, body: 'OK' }],
-  ['HTTP 200, no AWB', { status: 200, body: { message: 'Failure', errors: 'Pincode not serviceable' } }],
+  ['HTTP 200, "Failure" with no errors', { status: 200, body: { message: 'Failure' } }],
   ['an AWB without a clean success', { status: 200, body: { message: 'Pending', data: { awb_number: 'SF9' } } }],
   ['an AWB on a 4xx', { status: 400, body: { message: 'Success', data: { awb_number: 'SF9' } } }],
   ['a duplicate reference, 400', { status: 400, body: { errors: 'client_order_id already exists' } }],
@@ -344,11 +346,12 @@ test('UNKNOWN: Delhivery 2xx with remarks but no waybill is not treated as a ref
 // ═══════════════════════════════════════════════════════════════════════════
 // NO AWB => UNKNOWN, WHATEVER THE HTTP STATUS
 //
-// HTTP status alone never proves that nothing was created, and no refusal
-// shape is proven for either courier: no staging evidence has been captured.
-// So a generic 4xx -- 400, 401, 403, 404, 422 -- is UNKNOWN like every other
-// reply without an AWB: no fail, the claim stays open, the order stays
-// blocked. The bodies below are illustrative, not captured courier replies.
+// HTTP status alone never proves that nothing was created. The only proven
+// refusal shapes are Shadowfax's documented ones (tested in their own section
+// below); none of the bodies here is one of them. So a generic 4xx -- 400,
+// 401, 403, 404, 422 -- is UNKNOWN like every other reply without an AWB: no
+// fail, the claim stays open, the order stays blocked. The bodies below are
+// illustrative, not captured courier replies.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const GENERIC_4XX = [400, 401, 403, 404, 422];
@@ -392,17 +395,25 @@ for (const status of GENERIC_4XX) {
   }
 }
 
-test('EVERY HTTP status 0-599 without an AWB => UNKNOWN, for both couriers', () => {
+test('EVERY HTTP status 0-599 without an AWB => UNKNOWN, for both couriers -- except Shadowfax\'s documented 200 "Failure"', () => {
   let n = 0;
+  const rejected = [];
   for (let status = 0; status < 600; status++) {
     for (const provider of ['shadowfax', 'delhivery']) {
       for (const body of NO_AWB_BODIES) {
-        assert.equal(CLASSIFY[provider](status, asText(body)).kind, 'unknown', `${provider} ${status} ${asText(body)}`);
+        // NO_AWB_BODIES[0] is { message: 'Failure', errors: [...] }: Shadowfax's
+        // documented validation refusal -- but only at exactly HTTP 200, and only
+        // from Shadowfax.
+        const want = provider === 'shadowfax' && status === 200 && body === NO_AWB_BODIES[0] ? 'rejected' : 'unknown';
+        const got = CLASSIFY[provider](status, asText(body)).kind;
+        assert.equal(got, want, `${provider} ${status} ${asText(body)}`);
+        if (got === 'rejected') rejected.push(`${provider} ${status}`);
         n++;
       }
     }
   }
   assert.equal(n, 600 * 2 * NO_AWB_BODIES.length);
+  assert.deepEqual(rejected, ['shadowfax 200'], `exactly one of ${n} combinations releases a claim`);
 });
 
 test('a duplicate-reference reply is UNKNOWN at EVERY status -- even beside an AWB', () => {
@@ -443,9 +454,11 @@ test('a duplicate at any status never calls fail, and says the reference already
   }
 });
 
+// Shadowfax's documented 200 "Failure" IS a refusal (see "Shadowfax's documented
+// refusals" below). These look close to it but are NOT the documented shape.
 const REJECTION_LOOKING_2XX = [
-  ['shadowfax', 200, { message: 'Failure', errors: ['Invalid pincode'] }],
   ['shadowfax', 201, { message: 'Failure', errors: 'Order could not be created' }],
+  ['shadowfax', 200, { message: 'failure', errors: ['Invalid pincode'] }],
   ['shadowfax', 200, { message: 'Success', data: { awb_number: '' } }],
   ['delhivery', 200, { success: false, rmk: 'Rejected', packages: [{ status: 'Fail', waybill: '', remarks: ['Non serviceable pincode'] }] }],
   ['delhivery', 200, { success: false, error: 'Invalid request' }],
@@ -478,13 +491,56 @@ test('5 simultaneous requests while the courier answers a generic 400 => ONE cre
 // ═══════════════════════════════════════════════════════════════════════════
 // REJECTED -- reached ONLY through a refusal shape PROVEN for one courier
 //
-// None is proven, so with the REAL classifiers no reply reaches this branch;
-// the first test below runs every reply in this file through them and counts
-// zero fail_shipment_attempt calls. The branch is kept for the day a shape is
-// evidenced, so its mechanics stay tested -- through a STAND-IN Shadowfax
-// classifier that "proves" exactly one test-only shape and defers every other
-// reply to the real one. Delhivery keeps its real classifier throughout.
+// Proven today: Shadowfax's documented refusals, copied verbatim from its
+// published API Blueprint for POST /v3/clients/orders/
+// (sfxunifiedapi.docs.apiary.io). With the REAL classifiers exactly those
+// replies -- sent by Shadowfax, never by Delhivery -- reach this branch; the
+// first test below runs every reply in this file through them and checks that.
+// The branch's mechanics are also tested through a STAND-IN Shadowfax
+// classifier that additionally "proves" one test-only shape. Delhivery keeps
+// its real classifier throughout.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Shadowfax's documented refusals, verbatim: nothing was created.
+const SFX_DOCUMENTED_REFUSALS = [
+  ['validation, errors as a string',
+    { status: 200, body: { message: 'Failure', errors: 'Customer Contact number is Required' } }, 'Customer Contact number is Required'],
+  ['validation, errors as a list',
+    { status: 200, body: { message: 'Failure', errors: ['Customer contact is not valid'] } }, 'Customer contact is not valid'],
+  ['validation, RTO contact',
+    { status: 200, body: { message: 'Failure', errors: ['RTO Contact Number is Invalid'] } }, 'RTO Contact Number is Invalid'],
+  ['validation, errors per field',
+    { status: 200, body: { message: 'Failure', errors: { order_details: { client_order_id: ['This field is required.'] } }, data: {} } },
+    'This field is required.'],
+  ['pending invoices',
+    { status: 400, body: { message: 'Cannot place an Order: Please clear your pending invoices to start placing order again' } },
+    'Please clear your pending invoices'],
+  ['authentication',
+    { status: 401, body: { status: 'FAILED', errorCode: 'Authentication credentials not provided', message: 'Authentication credentials not provided' } },
+    'Authentication credentials not provided'],
+];
+
+// Documented or near replies that must NOT release a claim.
+const SFX_NOT_REFUSALS = [
+  ['the documented DUPLICATE (names an existing AWB)',
+    { status: 200, body: { message: 'Failure', errors: 'Order for COID : Test warhosue32x0232 is already created with AWB : SF325110257MY', COID: 'Test warhosue32x0232', AWB: 'SF325110257MY' } }],
+  ['the documented "awb number already exists"',
+    { status: 200, body: { message: 'Failure', errors: { order_details: { awb_number: ['order with this awb number already exists.'] } } } }],
+  ['the documented 500', { status: 500, body: { message: 'Internal Server Error' } }],
+  ['"Failure" beside an awb_number', { status: 200, body: { message: 'Failure', errors: ['x'], data: { awb_number: 'SF1' } } }],
+  ['"Failure" beside a top-level AWB', { status: 200, body: { message: 'Failure', errors: 'x', AWB: 'SF1' } }],
+  ['"Failure" beside a COID', { status: 200, body: { message: 'Failure', errors: 'x', COID: 'c1' } }],
+  ['"Failure" with an empty errors string', { status: 200, body: { message: 'Failure', errors: '  ' } }],
+  ['"Failure" with an empty errors list', { status: 200, body: { message: 'Failure', errors: [] } }],
+  ['"Failure" with empty per-field errors', { status: 200, body: { message: 'Failure', errors: { order_details: { client_order_id: [] } } } }],
+  ['"Failure" with errors null', { status: 200, body: { message: 'Failure', errors: null } }],
+  ['"Failure" on a 400', { status: 400, body: { message: 'Failure', errors: ['Customer contact is not valid'] } }],
+  ['"Failure" on a 422', { status: 422, body: { message: 'Failure', errors: ['Customer contact is not valid'] } }],
+  ['the invoices message on a 200', { status: 200, body: { message: 'Cannot place an Order: Please clear your pending invoices to start placing order again' } }],
+  ['the invoices message beside an AWB', { status: 400, body: { message: 'Cannot place an Order: x', data: { awb_number: 'SF1' } } }],
+  ['a 401 without status FAILED', { status: 401, body: { detail: 'Invalid token.' } }],
+  ['status FAILED on a 400', { status: 400, body: { status: 'FAILED', message: 'x' } }],
+];
 
 const PROVEN_TEST_ONLY = { status: 400, body: { test_only_proven_refusal: true, errors: ['Pincode not serviceable'] } };
 const S = load(FLOW, {
@@ -507,25 +563,122 @@ const EVERY_REPLY = [
   ...REJECTION_LOOKING_2XX.map(([p, status, body]) => [p, { status, body }]),
   ['shadowfax', SFX_CREATED], ['delhivery', DLV_CREATED],
   ['shadowfax', PROVEN_TEST_ONLY], ['delhivery', PROVEN_TEST_ONLY],
+  ...['shadowfax', 'delhivery'].flatMap((p) => SFX_DOCUMENTED_REFUSALS.map(([, create]) => [p, create])),
+  ...['shadowfax', 'delhivery'].flatMap((p) => SFX_NOT_REFUSALS.map(([, create]) => [p, create])),
 ];
+const DOCUMENTED = SFX_DOCUMENTED_REFUSALS.map(([, create]) => create);
 
-test('with the REAL classifiers, NO reply calls fail_shipment_attempt -- not even the test-only shape', async () => {
+test('with the REAL classifiers, ONLY Shadowfax\'s documented refusals call fail_shipment_attempt -- not the test-only shape, not Delhivery', async () => {
   const failed = [];
   for (const [provider, create] of EVERY_REPLY) {
     const { db } = await book({ courier: fakeCourier({ create }), c: ctx({ provider }) });
-    if (calls(db, 'fail_shipment_attempt').length) failed.push(provider);
+    if (calls(db, 'fail_shipment_attempt').length) failed.push([provider, create]);
   }
   assert.ok(EVERY_REPLY.length > 100, `${EVERY_REPLY.length} replies`);
-  assert.deepEqual(failed, []);
+  assert.deepEqual(failed, DOCUMENTED.map((create) => ['shadowfax', create]),
+    'exactly the documented Shadowfax refusals; the same bodies from Delhivery are not proof');
 });
 
-test('with one shape proven for Shadowfax, ONLY that exact reply to Shadowfax calls fail', async () => {
+test('with one more shape proven for Shadowfax, ONLY that reply and the documented refusals to Shadowfax call fail', async () => {
   const failed = [];
   for (const [provider, create] of EVERY_REPLY) {
     const { db } = await bookProven({ courier: fakeCourier({ create }), c: ctx({ provider }) });
     if (calls(db, 'fail_shipment_attempt').length) failed.push([provider, create]);
   }
-  assert.deepEqual(failed, [['shadowfax', PROVEN_TEST_ONLY]], 'the same reply to Delhivery is not proof');
+  assert.deepEqual(failed, [['shadowfax', PROVEN_TEST_ONLY], ...DOCUMENTED.map((create) => ['shadowfax', create])],
+    'the same replies to Delhivery are not proof');
+});
+
+// ── Shadowfax's documented refusals, end to end ────────────────────────────
+
+for (const [label, create, text] of SFX_DOCUMENTED_REFUSALS) {
+  test(`Shadowfax documented refusal (${label}): the claim is released and the merchant can fix and book again`, async () => {
+    const db = ledgerDb();
+    const first = fakeCourier({ create });
+    const { reply, courier } = await book({ db, courier: first });
+    assert.equal(courier.seen.create.length, 1, 'one create, never retried');
+    const fail = calls(db, 'fail_shipment_attempt');
+    assert.equal(fail.length, 1);
+    assert.equal(fail[0].args.p_attempt_id, db.state.attempts[0].id);
+    assert.ok(fail[0].args.p_final_status.includes(text), fail[0].args.p_final_status);
+    assert.equal(calls(db, 'finalize_shipment_attempt').length, 0);
+    assert.equal(db.state.attempts[0].end_reason, 'failed', 'the claim is released');
+    assert.equal(db.state.attempts[0].awb, null);
+    assert.ok(reply.error.startsWith('Shadowfax could not book this shipment: '), reply.error);
+    assert.ok(reply.error.includes(text), 'the merchant sees Shadowfax\'s reason');
+    assert.equal(reply.bookingUnknown, undefined, 'not an unknown');
+    assert.equal(reply.needsReconciliation, undefined, 'nothing to reconcile');
+    // After fixing the order, booking again works: attempt 2, a NEW reference.
+    const second = fakeCourier();
+    const { out } = await book({ db, courier: second });
+    assert.equal(out.booked, true);
+    assert.equal(db.state.attempts[1].attempt_no, 2);
+    assert.notEqual(referenceSent(second), referenceSent(first));
+    assert.equal(db.log.writes.length, 0, 'the lifecycle moved only through RPCs');
+  });
+}
+
+for (const [label, create] of SFX_NOT_REFUSALS) {
+  test(`Shadowfax not a refusal (${label}): UNKNOWN, the claim stays OPEN, no fail`, async () => {
+    assert.equal(F.classifyShadowfaxCreate(create.status, asText(create.body)).kind, 'unknown', label);
+    const { reply, db } = await book({ courier: fakeCourier({ create }) });
+    assert.equal(calls(db, 'fail_shipment_attempt').length, 0);
+    assert.equal(db.state.attempts[0].end_reason, null, 'the claim stays open');
+    assert.equal(reply.bookingUnknown, true);
+  });
+}
+
+test('the documented DUPLICATE is read as a duplicate: it names a parcel that may be ours', () => {
+  const [, dup] = SFX_NOT_REFUSALS[0];
+  const got = F.classifyShadowfaxCreate(dup.status, asText(dup.body));
+  assert.equal(got.kind, 'unknown');
+  assert.equal(got.duplicate, true);
+});
+
+test('Delhivery never gets the Shadowfax proof: every documented Shadowfax refusal body is UNKNOWN from Delhivery', () => {
+  for (const [label, create] of SFX_DOCUMENTED_REFUSALS) {
+    assert.equal(F.classifyDelhiveryCreate(create.status, asText(create.body)).kind, 'unknown', label);
+  }
+});
+
+// ── the log line kept for reconciliation ───────────────────────────────────
+
+async function withConsoleLog(fn) {
+  const lines = [];
+  const orig = console.log;
+  console.log = (...a) => lines.push(a.join(' '));
+  try { await fn(); } finally { console.log = orig; }
+  return lines;
+}
+
+test('every create that does not book writes exactly one log line; a booking writes none', async () => {
+  const cases = [
+    [SFX_DOCUMENTED_REFUSALS[1][1], 'rejected', 200],
+    [{ status: 500, body: { message: 'Internal Server Error' } }, 'unknown', 500],
+    [new Error('timed out'), 'unknown', 0],
+  ];
+  for (const [create, outcome, httpStatus] of cases) {
+    const lines = await withConsoleLog(() => book({ courier: fakeCourier({ create }) }));
+    assert.equal(lines.length, 1, String(outcome));
+    const rec = JSON.parse(lines[0]);
+    assert.equal(rec.event, 'courier_create_not_booked');
+    assert.equal(rec.courier, 'shadowfax');
+    assert.equal(rec.store, 'store-a');
+    assert.equal(rec.outcome, outcome);
+    assert.equal(rec.http_status, httpStatus);
+    assert.equal(typeof rec.attempt_id, 'number');
+  }
+  assert.deepEqual(await withConsoleLog(() => book()), [], 'a clean booking logs nothing');
+});
+
+test('the log line carries no token and no payload, and masks phone-length numbers', async () => {
+  const create = { status: 200, body: { message: 'Failure', errors: ['Customer contact 9876543210 is not valid'], token: 'tok-SECRET-9' } };
+  const lines = await withConsoleLog(() => book({ courier: fakeCourier({ create }) }));
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].includes('tok-SECRET-9'), false);
+  assert.equal(lines[0].includes('9876543210'), false, lines[0]);
+  assert.match(JSON.parse(lines[0]).reason, /Customer contact 98…10 is not valid/);
+  assert.equal(lines[0].includes('"reference"'), false, 'no request payload');
 });
 
 test('REJECTED (proven shape): fail_shipment_attempt releases the claim', async () => {
@@ -847,13 +1000,16 @@ test('if a claim cannot yield a reference, the claim is released and NOTHING is 
 // The create classifiers, as pure functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('Shadowfax classifier: created / unknown -- REJECTED is never returned', () => {
+test('Shadowfax classifier: created / rejected ONLY for documented refusals / unknown', () => {
   const k = (s, b) => F.classifyShadowfaxCreate(s, asText(b)).kind;
   assert.equal(k(200, SFX_CREATED.body), 'created');
   assert.equal(k(201, SFX_CREATED.body), 'created');
+  assert.equal(k(200, { message: 'Failure', errors: 'Invalid pincode' }), 'rejected', 'the documented validation refusal');
+  assert.deepEqual(F.classifyShadowfaxCreate(200, asText({ message: 'Failure', errors: ['Customer contact is not valid'] })),
+    { kind: 'rejected', reason: 'Customer contact is not valid' }, 'the reason is Shadowfax\'s words, without "Failure"');
   assert.equal(k(400, { errors: 'Invalid pincode' }), 'unknown', 'a 4xx without an AWB is not proof');
-  assert.equal(k(401, 'unauthorised'), 'unknown', 'nor is a 401');
-  assert.equal(k(200, { errors: 'Invalid pincode' }), 'unknown');
+  assert.equal(k(401, 'unauthorised'), 'unknown', 'nor is a 401 that is not the documented shape');
+  assert.equal(k(200, { errors: 'Invalid pincode' }), 'unknown', 'errors without "message": "Failure" is not the documented shape');
   assert.equal(k(500, { errors: 'x' }), 'unknown');
   assert.equal(k(0, ''), 'unknown');
   assert.equal(k(400, { errors: 'Duplicate client_order_id' }), 'unknown');
@@ -948,13 +1104,34 @@ test('source: local validation happens before any claim, in both branches', () =
 
 test('source: HTTP status alone can never release a claim', () => {
   assert.equal(/isRefusalStatus/.test(BOOK), false, 'the generic 4xx rule is gone');
-  for (const name of ['classifyShadowfaxCreate', 'classifyDelhiveryCreate']) {
+  const fnBody = (name) => {
     const start = BOOK_CODE.indexOf(`function ${name}(`);
     const body = BOOK_CODE.slice(start, BOOK_CODE.indexOf('\n}\n', start));
-    assert.ok(start > 0 && body.length > 200, name);
-    assert.equal(/'rejected'/.test(body), false, `${name} returns no REJECTED: no refusal shape is proven`);
-    assert.equal(/\b4\d\d\b|status\s*>=\s*4|status\s*<\s*5/.test(body), false, `${name} reads no 4xx status`);
+    assert.ok(start > 0 && body.length > 150, name);
+    return body;
+  };
+  for (const name of ['classifyShadowfaxCreate', 'classifyDelhiveryCreate']) {
+    assert.equal(/\b4\d\d\b|status\s*>=\s*4|status\s*<\s*5/.test(fnBody(name)), false, `${name} reads no 4xx status`);
   }
+  // Delhivery: no refusal shape is proven, so it never returns REJECTED.
+  assert.equal(/'rejected'/.test(fnBody('classifyDelhiveryCreate')), false, 'Delhivery returns no REJECTED');
+  // Shadowfax: REJECTED only through isShadowfaxRefusal, after the duplicate and
+  // AWB checks.
+  const sfx = fnBody('classifyShadowfaxCreate');
+  assert.equal([...sfx.matchAll(/'rejected'/g)].length, 1, 'one REJECTED return');
+  const dup = sfx.indexOf('mentionsDuplicate');
+  const awbCheck = sfx.indexOf('if (awb)');
+  const refusal = sfx.indexOf('if (isShadowfaxRefusal(status, b))');
+  assert.ok(dup > 0 && dup < awbCheck && awbCheck < refusal && refusal < sfx.indexOf("'rejected'"),
+    'duplicate first, then the AWB, then the documented refusal');
+  // isShadowfaxRefusal: every status it reads is paired with a named field, and
+  // any AWB or COID in the reply rules a refusal out before any status is read.
+  const ref = fnBody('isShadowfaxRefusal');
+  const lines = ref.split('\n').filter((l) => /status\s*===/.test(l));
+  assert.deepEqual(lines.map((l) => (l.match(/status\s*===\s*(\d+)/) || [])[1]), ['200', '400', '401']);
+  for (const l of lines) assert.match(l, /return (typeof )?b\.(message|status)\b/, `a status is never enough alone: ${l.trim()}`);
+  assert.ok(ref.indexOf('shadowfaxReplyAwb(b)') < ref.indexOf('status ==='), 'an AWB anywhere rules it out first');
+  assert.ok(ref.indexOf('b.COID') < ref.indexOf('status ==='), 'so does a COID');
   // fail_shipment_attempt: once for a reference that cannot be built (nothing
   // was sent), and in the REJECTED branch with its one retry. Nowhere else.
   assert.equal([...BOOK_CODE.matchAll(/'fail_shipment_attempt'/g)].length, 3);
