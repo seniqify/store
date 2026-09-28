@@ -215,37 +215,91 @@ function createReason(bodyText: unknown): string {
   add(pkg?.remarks);
   add(b.rmk);
   add(b.error);
-  if (typeof b.message === 'string' && b.message !== 'Success') add(b.message);
+  if (typeof b.message === 'string' && b.message !== 'Success' && b.message !== 'Failure') add(b.message);
   return parts.join('; ').replace(/[\u0000-\u001f<>"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
 }
 
-/** Does a courier's message say this reference already exists? PURE. */
+/**
+ * Does a courier's message say this reference already exists? PURE.
+ * "is already created with AWB" is Shadowfax's documented wording for a COID it
+ * has seen before -- that reply names a parcel, so it must never read as a
+ * refusal.
+ */
 function mentionsDuplicate(text: unknown): boolean {
-  return /duplicate|already exists?|already been (used|taken|created|booked)|exists already|must be unique|not unique|unique constraint/i
+  return /duplicate|already exists?|already (been )?(used|taken|created|booked)|exists already|must be unique|not unique|unique constraint/i
     .test(String(text ?? ''));
 }
 
 // A reply WITHOUT an AWB never proves, by itself, that nothing was created --
 // whatever its HTTP status. Only a refusal shape PROVEN for one courier may
-// release a claim: its exact HTTP status AND exact named fields, captured from
-// that courier's staging system together with a panel check that no shipment
-// exists -- never the status alone. No shape has been proven for either
-// courier (no staging evidence has been captured), so neither classifier
-// returns REJECTED: every reply without an AWB is UNKNOWN, and its claim stays
-// open until a person checks the courier panel. Promoting a proven shape is a
-// deliberate change to one classifier, with the captured reply as its test.
+// release a claim: its exact HTTP status AND exact named fields -- never the
+// status alone. Promoting a proven shape is a deliberate change to one
+// classifier, with the documented reply as its test.
+//
+// Delhivery: no refusal shape is proven, so its classifier never returns
+// REJECTED -- every reply without a waybill is UNKNOWN.
+//
+// Shadowfax: three refusal shapes are proven, taken verbatim from Shadowfax's
+// published API Blueprint for POST /v3/clients/orders/
+// (sfxunifiedapi.docs.apiary.io):
+//   * HTTP 200, "message": "Failure", a non-empty "errors" (a string, a list or
+//     a per-field object) and no AWB -- the documented validation failures,
+//     e.g. "Customer contact is not valid", "RTO Contact Number is Invalid".
+//   * HTTP 400, "message": "Cannot place an Order: ..." and no AWB -- the
+//     documented pending-invoices refusal.
+//   * HTTP 401, "status": "FAILED" and no AWB -- the documented authentication
+//     refusal.
+// Production is consistent with this: on 2026-09-26/27, 7 claims left open by
+// replies without an AWB were checked against the full Shadowfax reports of both
+// accounts, and not one of their references had a shipment (their reply bodies
+// were not kept, which is why a create that does not book is now logged; see
+// createLog). Shadowfax's DUPLICATE reply is also a
+// 200 "Failure", but it names the existing parcel ("Order for COID : X is
+// already created with AWB : Y", plus top-level "COID" and "AWB"), so any reply
+// that mentions a duplicate or carries an AWB or a COID anywhere stays UNKNOWN.
+
+/** Any AWB a Shadowfax reply carries, wherever the docs put one. PURE. */
+function shadowfaxReplyAwb(b: Record<string, any> | null): string {
+  if (!b) return '';
+  for (const v of [b.data?.awb_number, b.data?.AWB, b.data?.awb, b.awb_number, b.AWB, b.awb]) {
+    const s = v === null || v === undefined ? '' : String(v).trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+/** Does a Shadowfax "errors" field actually say something? PURE. */
+function hasShadowfaxErrors(e: unknown): boolean {
+  if (typeof e === 'string') return e.trim() !== '';
+  if (Array.isArray(e)) return e.some(hasShadowfaxErrors);
+  if (e && typeof e === 'object') return Object.values(e).some(hasShadowfaxErrors);
+  return false;
+}
+
+/**
+ * Is this one of Shadowfax's documented refusals (see above)? PURE.
+ * A refusal says nothing was created, so its claim may be released.
+ */
+function isShadowfaxRefusal(status: number, b: Record<string, any> | null): boolean {
+  if (!b || shadowfaxReplyAwb(b) || b.COID !== undefined || b.coid !== undefined) return false;
+  if (status === 200) return b.message === 'Failure' && hasShadowfaxErrors(b.errors);
+  if (status === 400) return typeof b.message === 'string' && b.message.startsWith('Cannot place an Order');
+  if (status === 401) return b.status === 'FAILED';
+  return false;
+}
 
 /**
  * Shadowfax's answer to a create. PURE.
  *
  *   CREATED   HTTP 2xx, a JSON object, message 'Success' and an awb_number --
  *             the success test production has always used, plus the 2xx.
- *   REJECTED  never, today: no Shadowfax refusal shape is proven (see above).
- *   UNKNOWN   everything else -- including EVERY reply without an AWB, a 4xx
- *             as much as a 2xx. A duplicate-reference message is UNKNOWN: the
- *             first create under this reference may have succeeded with its
- *             answer lost. So is an AWB beside anything short of a clean
- *             success.
+ *   REJECTED  exactly the documented refusal shapes (isShadowfaxRefusal):
+ *             nothing was created, so the claim is released and the merchant
+ *             sees Shadowfax's reason and can fix the order and book again.
+ *   UNKNOWN   everything else -- a 5xx, a timeout, an undocumented shape, a
+ *             duplicate-reference message (the first create under this
+ *             reference may have succeeded with its answer lost), and an AWB
+ *             beside anything short of a clean success.
  */
 function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult {
   const b = jsonObject(bodyText);
@@ -259,6 +313,9 @@ function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult
   if (awb) {
     if (ok && b?.message === 'Success') return { kind: 'created', awb, status: String(b?.data?.status || 'new') };
     return { kind: 'unknown', reason: reason || 'an AWB came back without a clean success', duplicate: false };
+  }
+  if (isShadowfaxRefusal(status, b)) {
+    return { kind: 'rejected', reason: reason || `Shadowfax refused the booking (HTTP ${status})` };
   }
   return { kind: 'unknown', reason: reason || (status ? `HTTP ${status}` : 'no answer'), duplicate: false };
 }
@@ -381,6 +438,25 @@ async function cancelAtCourier(
 }
 
 // ── the merchant's answers ──────────────────────────────────────────────────
+
+/**
+ * One Edge Function log line for a create that did not book, so the courier's
+ * actual answer is kept for reconciliation. No token, no request payload; the
+ * reason is the already-bounded createReason with long digit runs (phone
+ * numbers) masked. PURE.
+ */
+function createLog(
+  courier: string, store: string, attemptId: unknown, httpStatus: number, created: CreateResult,
+): string {
+  const reason = 'reason' in created ? created.reason : '';
+  return JSON.stringify({
+    event: 'courier_create_not_booked',
+    courier, store, attempt_id: attemptId, http_status: httpStatus,
+    outcome: created.kind,
+    duplicate: created.kind === 'unknown' ? created.duplicate : false,
+    reason: String(reason ?? '').replace(/\d{7,}/g, (d) => `${d.slice(0, 2)}…${d.slice(-2)}`).slice(0, 160),
+  });
+}
 
 /** We never learned whether the courier made a parcel. Never guess, never retry. PURE. */
 function bookingUnknown(
@@ -551,11 +627,13 @@ async function bookShipment(
     status = Number(res?.status) || 0;
     body = await res.text();
   } catch {
+    console.log(createLog(c.provider, c.slug, attemptId, 0, { kind: 'unknown', reason: 'no answer', duplicate: false }));
     return { booked: false, reply: bookingUnknown(name, reference) };
   }
   const created: CreateResult = c.provider === 'shadowfax'
     ? classifyShadowfaxCreate(status, body)
     : classifyDelhiveryCreate(status, body);
+  if (created.kind !== 'created') console.log(createLog(c.provider, c.slug, attemptId, status, created));
 
   // 4a. UNKNOWN: the claim stays OPEN, so this order stays blocked. No fail, no
   //     retry, no new reference.
@@ -564,9 +642,9 @@ async function bookShipment(
   }
 
   // 4b. REJECTED: a refusal shape PROVEN for this courier to mean nothing was
-  //     created, so the claim may be released. No shape is proven yet, so no
-  //     courier answer reaches this branch today (see the classifiers); it is
-  //     kept, and tested, for the day one is.
+  //     created, so the claim may be released. Today only Shadowfax's
+  //     documented refusals reach this branch (see isShadowfaxRefusal);
+  //     Delhivery never does.
   if (created.kind === 'rejected') {
     const args = {
       p_attempt_id: attemptId, p_store_slug: c.slug,
