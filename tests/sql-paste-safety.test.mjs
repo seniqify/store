@@ -41,6 +41,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/order-facts-ROLLBACK.sql',
   'supabase/paid-at-guard-forward.sql',
   'supabase/paid-at-guard-ROLLBACK.sql',
+  'supabase/custom-domains-forward.sql',
+  'supabase/custom-domains-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
