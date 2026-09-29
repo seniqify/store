@@ -24,6 +24,7 @@ import { fetchProductSales, proofFor } from '../utils/salesService';
 import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
 import { resolveCategory, categoryLinkId } from '../../api/_categoryLink.js';
+import { storePath } from '../utils/storeUrls';
 
 /**
  * Home — the main storefront page.
@@ -151,7 +152,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
     setCatsOpen(false);
     if (productId) { setLocalCategory(id); scrollToProducts(); return; }
     const cat = (categories || []).find((c) => c.id === id);
-    const to = id === 'all' ? `/${config.slug}` : `/${config.slug}/c/${categoryLinkId(cat)}`;
+    const to = id === 'all' ? storePath(config.slug) : storePath(config.slug, { categoryId: categoryLinkId(cat) });
     // replace: true — browsing categories must not stack history entries
     // between the shop and wherever the shopper came from.
     if (config.slug && to !== window.location.pathname) navigate(to, { replace: true });
@@ -428,7 +429,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                     const rp     = salesMap ? proofFor(salesMap.get(p.name)) : null;
                     return (
                       <div key={p.id} className="flex-shrink-0 w-[146px] bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-                        <button type="button" onClick={() => navigate(`/${config.slug}/p/${p.id}`)} className="block w-full text-left">
+                        <button type="button" onClick={() => navigate(storePath(config.slug, { productId: p.id }))} className="block w-full text-left">
                           <div className="h-28 bg-gray-50 relative">
                             {img
                               ? <img src={img} alt={p.name} loading="lazy" className="w-full h-full object-cover" />
@@ -484,7 +485,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
               onIncrease={increaseQty}
               onDecrease={decreaseQty}
               onSetQty={setQty}
-              onOpenDetail={(id) => navigate(`/${config.slug}/p/${id}`)}
+              onOpenDetail={(id) => navigate(storePath(config.slug, { productId: id }))}
               activeCategory={activeCategory}
               onCategoryChange={selectCategory}
               categoryRailClassName="hidden"   /* category nav now lives in the pills above */
@@ -620,9 +621,9 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
           product={detailProduct}
           rating={heroRating}
           itemCount={itemCount}
-          onClose={() => navigate(`/${config.slug}`)}
+          onClose={() => navigate(storePath(config.slug))}
           onAddToCart={handleAddToCart}
-          onViewCart={() => { navigate(`/${config.slug}`); setCartOpen(true); }}
+          onViewCart={() => { navigate(storePath(config.slug)); setCartOpen(true); }}
           premium={premium}
           config={config}
         />

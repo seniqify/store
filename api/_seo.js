@@ -49,7 +49,17 @@ const TYPE_SCHEMA = {
 // shared more than any other kind — a seller sends one item to a customer — and
 // until now they previewed as the whole shop, so the customer saw a generic card
 // instead of the thing being sold.
-export function storeSeo(config, slug, origin, rating = null, section = null, item = null) {
+//
+// Two bases, kept apart on purpose:
+//   origin     the site serving the page: site-relative images, the /api/og card,
+//              the marketplace breadcrumb.
+//   storeBase  where THIS store lives, with no trailing slash: the canonical,
+//              og:url, JSON-LD url/@id and the store breadcrumb. Defaults to
+//              {origin}/{slug}, the only form that exists today. A verified custom
+//              domain will be passed here instead (e.g. https://brand.com), and
+//              product/category URLs follow it as {storeBase}/p/{id},
+//              {storeBase}/c/{id} — the shapes src/utils/storeUrls.js builds.
+export function storeSeo(config, slug, origin, rating = null, section = null, item = null, { storeBase = `${origin}/${slug}` } = {}) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
   const city    = config.city || '';
@@ -95,9 +105,9 @@ export function storeSeo(config, slug, origin, rating = null, section = null, it
     item || !sample ? '' : `Shop ${sample}${productNames.length > 4 ? ' & more' : ''}.`,
     'Order directly on WhatsApp — no app needed.',
   ].filter(Boolean).join(' ').slice(0, 300);
-  const url = item ? `${origin}/${slug}/p/${item.id}`
-    : section ? `${origin}/${slug}/c/${categoryLinkId(section)}`
-    : `${origin}/${slug}`;
+  const url = item ? `${storeBase}/p/${item.id}`
+    : section ? `${storeBase}/c/${categoryLinkId(section)}`
+    : storeBase;
   // For a category, a photo of something IN that category beats the shop cover —
   // it shows what the link opens. Otherwise the owner's cover photo wins, and
   // failing that a dynamic branded card (their logo/emoji + name + brand colour,
@@ -204,7 +214,7 @@ export function storeSeo(config, slug, origin, rating = null, section = null, it
   // show a trail that matches the URL.
   const trail = [
     { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` },
-    { '@type': 'ListItem', position: 2, name, item: `${origin}/${slug}` },
+    { '@type': 'ListItem', position: 2, name, item: storeBase },
   ];
   if (section) trail.push({ '@type': 'ListItem', position: 3, name: section.label, item: url });
   if (item)    trail.push({ '@type': 'ListItem', position: 3, name: item.name, item: url });
@@ -212,11 +222,11 @@ export function storeSeo(config, slug, origin, rating = null, section = null, it
 
   const ld = { '@context': 'https://schema.org', '@graph': [business, ...productNodes, breadcrumb] };
 
-  return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null };
+  return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null, storeBase };
 }
 
 export function storeBody(config, slug, origin, seo) {
-  const wa = seo.wa ? `https://wa.me/${seo.wa}` : `${origin}/${slug}`;
+  const wa = seo.wa ? `https://wa.me/${seo.wa}` : (seo.storeBase || `${origin}/${slug}`);
   const items = seo.products
     .map((p) => `<li>${esc(p.name)}${p.price ? ` — ₹${esc(p.price)}` : ''}</li>`)
     .join('');

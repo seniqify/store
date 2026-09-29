@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { formatINR } from '../utils/currency';
 import { buildTimeline, heroStyle, courierName } from '../utils/orderTimeline';
 import { confirmPaymentLinkByToken } from '../utils/paymentLinks';
+import { storePath } from '../utils/storeUrls';
 
 /**
  * OrderTracking — the buyer's page for one order, served at two routes:
@@ -319,7 +320,7 @@ export default function OrderTracking() {
 
         {/* Delivered is the best moment we'll ever get to ask for a review. */}
         {delivered && store.slug && (
-          <a href={`/${store.slug}?review=1#reviews`}
+          <a href={`${storePath(store.slug)}?review=1#reviews`}
              className={`${card} block text-center hover:border-gray-200 transition`}>
             <p className="text-[13px] font-bold text-gray-900">How was your order?</p>
             <div className="flex items-center justify-center gap-1 my-2">
@@ -332,7 +333,7 @@ export default function OrderTracking() {
         {/* Actions */}
         <div className="space-y-2 pt-1">
           {delivered && store.slug && (
-            <Link to={`/${store.slug}`}
+            <Link to={storePath(store.slug)}
               className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-white
                          text-sm font-bold active:scale-[0.98] transition"
               style={{ background: brand }}>
@@ -347,7 +348,7 @@ export default function OrderTracking() {
             </a>
           )}
           {!delivered && store.slug && (
-            <Link to={`/${store.slug}`}
+            <Link to={storePath(store.slug)}
               className="block text-center text-[12px] font-semibold text-gray-400 py-1.5 hover:text-gray-600">
               Continue shopping
             </Link>

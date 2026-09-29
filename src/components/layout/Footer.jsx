@@ -5,6 +5,7 @@ import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
 import { isValidUpiVpa } from '../../utils/upiLink';
 import { showBrandBadge, effectivePlan } from '../../utils/planLimits';
+import { managePath } from '../../utils/storeUrls';
 
 /**
  * Footer — reads the active business config from context.
@@ -256,7 +257,7 @@ export default function Footer() {
           {slug && (
             <>
               <span className="text-gray-700">·</span>
-              <Link to={`/${slug}/manage`}
+              <Link to={managePath(slug)}
                     className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-300 transition-colors duration-150">
                 <Settings size={11} />
                 <span>Manage</span>

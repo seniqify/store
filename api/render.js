@@ -1,5 +1,7 @@
 // Server-renders SEO head + crawlable content for store pages and the marketplace,
-// then lets the React SPA hydrate on top. Any failure → serve the normal SPA shell.
+// then lets the React SPA hydrate on top. Any failure after the base HTML is in
+// hand → serve the normal SPA shell. A host that is not PocketLink's gets a
+// neutral 404; a base HTML that cannot be fetched gets a 503 (never a redirect).
 import { esc, storeSeo, storeBody, marketplaceSeo, marketplaceBody } from './_seo.js';
 import { resolveCategory } from './_categoryLink.js';
 
@@ -10,11 +12,75 @@ const RESERVED = new Set([
   'icons.svg', 'pocketlink-logo.svg', 'assets', 'api', 'manage',
 ]);
 
-async function getBaseHtml(host) {
-  const r = await fetch(`https://${host}/index.html`, { headers: { 'x-pl-render': '1' } });
+// ── Which hosts this renderer serves ─────────────────────────────────────────
+// Custom merchant domains are NOT enabled yet. Until they are, only PocketLink's
+// own hosts and this project's Vercel deployment URLs may render anything, and
+// no other host can choose a store — through its path or through ?path.
+export const PL_ORIGIN = 'https://www.pocketlink.store';
+const PL_HOSTS = new Set(['www.pocketlink.store', 'pocketlink.store', 'market.pocketlink.store']);
+// This project's deployment and branch-preview URLs on Vercel.
+const DEPLOYMENT_SUFFIX = '-seniqifys-projects.vercel.app';
+
+/** A Host header as a bare hostname: lowercase, no port, no trailing dot. */
+export function normalizeHost(raw) {
+  return String(raw ?? '').trim().toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+}
+
+function isDeploymentHost(host) {
+  return host.endsWith(DEPLOYMENT_SUFFIX)
+    || (Boolean(process.env.VERCEL_URL) && host === normalizeHost(process.env.VERCEL_URL))
+    || (Boolean(process.env.VERCEL_BRANCH_URL) && host === normalizeHost(process.env.VERCEL_BRANCH_URL));
+}
+
+/** May this host be served as PocketLink? */
+export function isTrustedHost(host) {
+  return PL_HOSTS.has(host) || isDeploymentHost(host);
+}
+
+/**
+ * Where the SPA's base HTML is fetched from. Never the raw request host: a
+ * PocketLink host always uses the main site, and a deployment URL uses itself
+ * so a preview renders its OWN build. Only called for trusted hosts.
+ */
+export function baseHtmlOrigin(host) {
+  return isDeploymentHost(host) ? `https://${host}` : PL_ORIGIN;
+}
+
+async function getBaseHtml(origin) {
+  const r = await fetch(`${origin}/index.html`, { headers: { 'x-pl-render': '1' } });
   if (!r.ok) throw new Error('base html ' + r.status);
   return await r.text();
 }
+
+// A host that is not PocketLink's: no store, no SPA, nothing to index.
+const NOT_CONNECTED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/><title>Not a PocketLink shop</title></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:15vh auto;padding:0 24px;color:#111;text-align:center">
+<h1 style="font-size:20px">This address is not connected to a PocketLink shop.</h1>
+<p><a href="${PL_ORIGIN}/">Go to PocketLink</a></p></body></html>`;
+
+function sendNotConnected(res) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  res.status(404).send(NOT_CONNECTED_HTML);
+}
+
+// The base HTML could not be fetched. Answer here instead of redirecting to the
+// same URL, which could loop for as long as the fetch keeps failing.
+const UNAVAILABLE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/><title>Please try again</title></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:15vh auto;padding:0 24px;color:#111;text-align:center">
+<h1 style="font-size:20px">This page could not load just now.</h1>
+<p><a href="">Try again</a></p></body></html>`;
+
+function sendUnavailable(res) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Retry-After', '5');
+  res.status(503).send(UNAVAILABLE_HTML);
+}
+
+// Every canonical <link>, whatever its attribute order or quoting.
+const CANONICAL_TAG = /<link\b[^>]*\brel=["']?canonical["']?[^>]*>/gi;
 
 function injectHead(html, { title, description, url, image, ld }) {
   if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
@@ -33,6 +99,9 @@ function injectHead(html, { title, description, url, image, ld }) {
   setMeta('name', 'twitter:description', description);
   setMeta('name', 'twitter:image', image);
 
+  // Exactly ONE canonical: drop the base page's own (index.html points at the
+  // home page) before adding this page's.
+  html = html.replace(CANONICAL_TAG, '');
   const inject =
     `<link rel="canonical" href="${esc(url)}"/>\n` +
     `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n</head>`;
@@ -69,15 +138,19 @@ function storeSplash(config) {
 }
 
 export default async function handler(req, res) {
-  const host   = req.headers.host || 'www.pocketlink.store';
+  const host = normalizeHost(req.headers.host) || 'www.pocketlink.store';
+  // Not a PocketLink host: never render a store, whatever the path or ?path says.
+  if (!isTrustedHost(host)) {
+    sendNotConnected(res);
+    return;
+  }
   const origin = `https://${host}`;
 
   let base;
   try {
-    base = await getBaseHtml(host);
+    base = await getBaseHtml(baseHtmlOrigin(host));
   } catch {
-    res.setHeader('Location', origin + (req.url || '/'));
-    res.status(302).end();
+    sendUnavailable(res);
     return;
   }
 
@@ -175,7 +248,9 @@ export default async function handler(req, res) {
         const item = productId
           ? (config.products || []).find((p) => p && String(p.id).toLowerCase() === productId) || null
           : null;
-        const seo = storeSeo(config, slug, origin, rating, section, item);
+        // Where this store lives. Today always {origin}/{slug}; a verified custom
+        // domain will be passed here instead, without touching _seo.js again.
+        const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase: `${origin}/${slug}` });
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —
         // no second DB fetch, no "Loading page…" screen. (Escape </script>.)
