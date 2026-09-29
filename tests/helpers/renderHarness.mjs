@@ -74,8 +74,30 @@ export function makeFetch(baseHtml, { supabaseDown = false, baseDown = false } =
   return { fetchImpl, seen };
 }
 
+/** Vercel's system variables naming this project's own URLs (see api/render.js). */
+export const VERCEL_HOST_VARS = ['VERCEL_URL', 'VERCEL_BRANCH_URL', 'VERCEL_PROJECT_PRODUCTION_URL'];
+
+/**
+ * Run fn with the VERCEL_* host variables set to EXACTLY `env` — any not named
+ * are unset — then restore them. Keeps every test independent of the machine
+ * (or Vercel build) the suite runs on.
+ */
+export async function withVercelEnv(env, fn) {
+  const prev = Object.fromEntries(VERCEL_HOST_VARS.map((k) => [k, process.env[k]]));
+  for (const k of VERCEL_HOST_VARS) {
+    if (env?.[k] === undefined) delete process.env[k]; else process.env[k] = env[k];
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const k of VERCEL_HOST_VARS) {
+      if (prev[k] === undefined) delete process.env[k]; else process.env[k] = prev[k];
+    }
+  }
+}
+
 /** Run render.js's handler for one request; returns { status, headers, body }. */
-export async function runHandler(handler, { host, url }, fetchImpl) {
+export async function runHandler(handler, { host, url, env }, fetchImpl) {
   const prevFetch = globalThis.fetch;
   const prevEnv = { url: process.env.VITE_SUPABASE_URL, anon: process.env.VITE_SUPABASE_ANON_KEY };
   process.env.VITE_SUPABASE_URL = SB_URL;
@@ -89,7 +111,7 @@ export async function runHandler(handler, { host, url }, fetchImpl) {
     end: (b) => { if (b !== undefined) out.body = String(b); return res; },
   };
   try {
-    await handler({ headers: host === undefined ? {} : { host }, url }, res);
+    await withVercelEnv(env, () => handler({ headers: host === undefined ? {} : { host }, url }, res));
   } finally {
     globalThis.fetch = prevFetch;
     process.env.VITE_SUPABASE_URL = prevEnv.url;
@@ -99,7 +121,8 @@ export async function runHandler(handler, { host, url }, fetchImpl) {
 }
 
 const WWW = 'www.pocketlink.store';
-const PREVIEW = 'store-git-custom-domains-seniqifys-projects.vercel.app';
+// This branch's preview URL. Vercel names it in VERCEL_BRANCH_URL on that deployment.
+export const PREVIEW = 'store-git-custom-domains-seniqifys-projects.vercel.app';
 const r = (path) => `/api/render?path=${path}`;
 
 /** Every route render.js serves on a PocketLink host (name → request + fetch options). */
@@ -126,7 +149,8 @@ export const POCKETLINK_CASES = [
   { name: 'no host header',            host: undefined, url: r('/krupaagarbattiwork') },
   { name: 'apex host',                 host: 'pocketlink.store', url: r('/krupaagarbattiwork') },
   { name: 'market host, marketplace',  host: 'market.pocketlink.store', url: r('/marketplace') },
-  { name: 'preview deployment',        host: PREVIEW, url: r('/krupaagarbattiwork/p/prod-1') },
+  { name: 'preview deployment',        host: PREVIEW, url: r('/krupaagarbattiwork/p/prod-1'),
+    env: { VERCEL_BRANCH_URL: PREVIEW } },
 ];
 
 /** The static canonical index.html ships with (the duplicate this PR removes). */

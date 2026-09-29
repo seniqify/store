@@ -14,22 +14,27 @@ const RESERVED = new Set([
 
 // ── Which hosts this renderer serves ─────────────────────────────────────────
 // Custom merchant domains are NOT enabled yet. Until they are, only PocketLink's
-// own hosts and this project's Vercel deployment URLs may render anything, and
-// no other host can choose a store — through its path or through ?path.
+// own hosts and THIS project's own Vercel URLs may render anything, and no other
+// host can choose a store — through its path or through ?path.
 export const PL_ORIGIN = 'https://www.pocketlink.store';
 const PL_HOSTS = new Set(['www.pocketlink.store', 'pocketlink.store', 'market.pocketlink.store']);
-// This project's deployment and branch-preview URLs on Vercel.
-const DEPLOYMENT_SUFFIX = '-seniqifys-projects.vercel.app';
 
 /** A Host header as a bare hostname: lowercase, no port, no trailing dot. */
 export function normalizeHost(raw) {
   return String(raw ?? '').trim().toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 }
 
+// This project's own Vercel URLs, from Vercel's system environment variables —
+// set by Vercel for this deployment, never by the request:
+//   VERCEL_URL                     this deployment's generated URL
+//   VERCEL_BRANCH_URL              this deployment's git-branch URL (previews)
+//   VERCEL_PROJECT_PRODUCTION_URL  the project's production domain
+// Only an EXACT match is trusted. A hostname is never trusted for merely ending
+// in the team's vercel.app suffix: every project in the team shares that suffix.
 function isDeploymentHost(host) {
-  return host.endsWith(DEPLOYMENT_SUFFIX)
-    || (Boolean(process.env.VERCEL_URL) && host === normalizeHost(process.env.VERCEL_URL))
-    || (Boolean(process.env.VERCEL_BRANCH_URL) && host === normalizeHost(process.env.VERCEL_BRANCH_URL));
+  if (!host) return false;
+  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]
+    .some((v) => Boolean(v) && normalizeHost(v) === host);
 }
 
 /** May this host be served as PocketLink? */
@@ -39,10 +44,12 @@ export function isTrustedHost(host) {
 
 /**
  * Where the SPA's base HTML is fetched from. Never the raw request host: a
- * PocketLink host always uses the main site, and a deployment URL uses itself
- * so a preview renders its OWN build. Only called for trusted hosts.
+ * PocketLink host always uses the main site, and one of this project's Vercel
+ * URLs uses itself so a preview renders its OWN build. Only called for trusted
+ * hosts; anything else falls back to the main site.
  */
 export function baseHtmlOrigin(host) {
+  if (PL_HOSTS.has(host)) return PL_ORIGIN;
   return isDeploymentHost(host) ? `https://${host}` : PL_ORIGIN;
 }
 

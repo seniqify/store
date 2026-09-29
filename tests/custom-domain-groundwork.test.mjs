@@ -3,9 +3,10 @@
 //
 //   * every server-rendered page carries exactly ONE canonical (index.html's
 //     static home-page canonical used to sit beside the page's own);
-//   * only PocketLink's hosts (and this project's Vercel deployment URLs) can
-//     render anything — no other host can choose a store, through its path or
-//     through ?path;
+//   * only PocketLink's hosts (and this deployment's own Vercel URLs, named
+//     exactly by Vercel's system env vars) can render anything — no other host,
+//     not even another project under the team's vercel.app suffix, can choose a
+//     store, through its path or through ?path;
 //   * the SPA's base HTML always comes from a trusted origin, never from the raw
 //     request host, and a failed fetch never redirects to itself;
 //   * _seo.js takes an explicit storeBase; src/utils/storeUrls.js builds the
@@ -24,7 +25,7 @@ import { storeSeo, storeBody } from '../api/_seo.js';
 import { categoryLinkId } from '../api/_categoryLink.js';
 import { storePath, storeUrl, managePath } from '../src/utils/storeUrls.js';
 import {
-  makeFetch, runHandler, POCKETLINK_CASES, STORE, STATIC_CANONICAL, canonicals, canonicalHref,
+  makeFetch, runHandler, withVercelEnv, POCKETLINK_CASES, PREVIEW, STORE, STATIC_CANONICAL, canonicals, canonicalHref,
 } from './helpers/renderHarness.mjs';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
@@ -134,7 +135,11 @@ test('a canonical in any attribute order or quoting is replaced, not duplicated'
 const HOSTILE_HOSTS = [
   'brand.com', 'shop.brand.com', 'BRAND.COM:443', 'brand.com.',
   'pocketlink.store.evil.com', 'evilpocketlink.store', 'www.pocketlink.store.attacker.net', 'xpocketlink.store',
-  'someone-else.vercel.app', 'store.vercel.app', 'seniqifys-projects.vercel.app.evil.com',
+  'someone-else.vercel.app', 'store.vercel.app', 'store-9zzzz.vercel.app', 'seniqifys-projects.vercel.app.evil.com',
+  // Every project in the team shares its vercel.app suffix, so the suffix alone never grants trust.
+  'otherproject-git-main-seniqifys-projects.vercel.app', 'otherproject-seniqifys-projects.vercel.app',
+  'otherproject-abc123-seniqifys-projects.vercel.app', 'store-abc123-seniqifys-projects.vercel.app',
+  '-seniqifys-projects.vercel.app',
   'localhost', '127.0.0.1', '[::1]',
 ];
 const STORE_URLS = [
@@ -158,16 +163,17 @@ for (const host of HOSTILE_HOSTS) {
   });
 }
 
-test('host normalisation: case, port and trailing dot never change which host it is', () => {
+test('host normalisation: case, port and trailing dot never change which host it is', () => withVercelEnv({}, () => {
   assert.equal(normalizeHost('WWW.PocketLink.Store:443'), 'www.pocketlink.store');
   assert.equal(normalizeHost('www.pocketlink.store.'), 'www.pocketlink.store');
   assert.equal(normalizeHost(undefined), '');
   assert.equal(isTrustedHost('www.pocketlink.store'), true);
   assert.equal(isTrustedHost('pocketlink.store'), true);
   assert.equal(isTrustedHost('market.pocketlink.store'), true);
-  assert.equal(isTrustedHost('store-abc123-seniqifys-projects.vercel.app'), true);
+  assert.equal(isTrustedHost(''), false);
+  assert.equal(isTrustedHost(PREVIEW), false, 'a vercel.app URL is only trusted when Vercel names it');
   for (const h of HOSTILE_HOSTS) assert.equal(isTrustedHost(normalizeHost(h)), false, h);
-});
+}));
 
 test('a PocketLink host written with odd case and a port is still served, canonical on the clean host', async () => {
   const out = await render({ host: 'WWW.POCKETLINK.STORE:443', url: r('/krupaagarbattiwork') });
@@ -187,32 +193,121 @@ test('base HTML is fetched from www.pocketlink.store for every PocketLink host',
   }
 });
 
-test("a deployment URL renders its OWN build: base HTML from that deployment, never another host", async () => {
-  const preview = 'store-git-custom-domains-seniqifys-projects.vercel.app';
-  const out = await render({ host: preview, url: r('/krupaagarbattiwork') });
-  assert.equal(out.seen[0], `https://${preview}/index.html`);
-  assert.equal(baseHtmlOrigin(preview), `https://${preview}`);
-  assert.equal(baseHtmlOrigin('www.pocketlink.store'), PL_ORIGIN);
-  assert.equal(baseHtmlOrigin('pocketlink.store'), PL_ORIGIN);
+// ═══════════════════════════════════════════════════════════════════════════
+// Deployment hosts: only the EXACT URLs Vercel names for this deployment
+// ═══════════════════════════════════════════════════════════════════════════
+
+// What Vercel sets on a preview of this project (VERCEL_PROJECT_PRODUCTION_URL
+// is the project's production domain, set even on previews).
+const DEPLOYMENT_URL = 'store-8f2k1abcd-seniqifys-projects.vercel.app';
+const PROJECT_PROD_URL = 'store-seniqifys-projects.vercel.app';
+const ALL_OURS = { VERCEL_URL: DEPLOYMENT_URL, VERCEL_BRANCH_URL: PREVIEW, VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL };
+
+async function assertServedFromItself(host, env) {
+  const out = await render({ host, url: r('/krupaagarbattiwork'), env });
+  assert.equal(out.status, 200, host);
+  assert.equal(out.seen[0], `https://${host}/index.html`, 'a deployment renders its OWN build');
+  assert.equal(canonicalHref(canonicals(out.body)[0]), `https://${host}/krupaagarbattiwork`);
+  assert.equal(await withVercelEnv(env, () => isTrustedHost(host)), true);
+  assert.equal(await withVercelEnv(env, () => baseHtmlOrigin(host)), `https://${host}`);
+}
+
+async function assertNotConnected(host, env) {
+  const out = await render({ host, url: r('/krupaagarbattiwork'), env });
+  assert.equal(out.status, 404, host);
+  assert.deepEqual(out.seen, [], `${host}: nothing is fetched`);
+  assert.match(out.body, /not connected to a PocketLink shop/);
+  assert.equal(await withVercelEnv(env, () => isTrustedHost(normalizeHost(host))), false, host);
+}
+
+test('the exact current VERCEL_URL is trusted (and renders its own build)', async () => {
+  await assertServedFromItself(DEPLOYMENT_URL, { VERCEL_URL: DEPLOYMENT_URL });
+  // Vercel's value is normalised the same way as the Host header.
+  await assertServedFromItself(DEPLOYMENT_URL, { VERCEL_URL: 'Store-8F2K1ABCD-Seniqifys-Projects.vercel.app' });
 });
 
-test('VERCEL_URL / VERCEL_BRANCH_URL (set by Vercel, not the client) are trusted deployment hosts', async () => {
-  const prev = { u: process.env.VERCEL_URL, b: process.env.VERCEL_BRANCH_URL };
-  process.env.VERCEL_URL = 'store-8f2k1.vercel.app';
-  process.env.VERCEL_BRANCH_URL = 'store-git-main-other.vercel.app';
-  try {
-    for (const host of ['store-8f2k1.vercel.app', 'store-git-main-other.vercel.app']) {
-      const out = await render({ host, url: r('/krupaagarbattiwork') });
-      assert.equal(out.status, 200);
-      assert.equal(out.seen[0], `https://${host}/index.html`);
-    }
-    const other = await render({ host: 'store-9zzzz.vercel.app', url: r('/krupaagarbattiwork') });
-    assert.equal(other.status, 404, 'a different vercel.app host is still not ours');
-  } finally {
-    if (prev.u === undefined) delete process.env.VERCEL_URL; else process.env.VERCEL_URL = prev.u;
-    if (prev.b === undefined) delete process.env.VERCEL_BRANCH_URL; else process.env.VERCEL_BRANCH_URL = prev.b;
+test('the exact VERCEL_BRANCH_URL is trusted (and renders its own build)', async () => {
+  await assertServedFromItself(PREVIEW, { VERCEL_BRANCH_URL: PREVIEW });
+});
+
+test('the exact VERCEL_PROJECT_PRODUCTION_URL is trusted (and renders its own build)', async () => {
+  await assertServedFromItself(PROJECT_PROD_URL, { VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL });
+});
+
+test('with all three set, each is trusted — and only those three', async () => {
+  for (const host of [DEPLOYMENT_URL, PREVIEW, PROJECT_PROD_URL]) await assertServedFromItself(host, ALL_OURS);
+});
+
+test('each variable trusts only its own host: VERCEL_URL alone does not trust the branch URL, and so on', async () => {
+  await assertNotConnected(PREVIEW, { VERCEL_URL: DEPLOYMENT_URL, VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL });
+  await assertNotConnected(DEPLOYMENT_URL, { VERCEL_BRANCH_URL: PREVIEW, VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL });
+  await assertNotConnected(PROJECT_PROD_URL, { VERCEL_URL: DEPLOYMENT_URL, VERCEL_BRANCH_URL: PREVIEW });
+});
+
+test('another project under the same -seniqifys-projects.vercel.app suffix is NOT trusted', async () => {
+  const siblings = [
+    'otherproject-git-main-seniqifys-projects.vercel.app',   // another project's branch URL
+    'otherproject-seniqifys-projects.vercel.app',            // another project's production URL
+    'otherproject-8f2k1abcd-seniqifys-projects.vercel.app',  // another project's deployment URL
+    'store-zzzz9999-seniqifys-projects.vercel.app',          // not THIS deployment of this project
+    'store-git-other-branch-seniqifys-projects.vercel.app',  // not THIS deployment's branch
+    '-seniqifys-projects.vercel.app',
+  ];
+  for (const env of [{}, ALL_OURS]) {
+    for (const host of siblings) await assertNotConnected(host, env);
   }
 });
+
+test('near-misses of a trusted Vercel URL are NOT trusted', async () => {
+  for (const host of [
+    `x${PREVIEW}`, `evil-${PREVIEW}`, `sub.${PREVIEW}`, `${PREVIEW}.evil.com`,
+    PREVIEW.replace('.vercel.app', '.vercel.app.evil.com'), PREVIEW.replace('vercel.app', 'vercel.com'),
+  ]) await assertNotConnected(host, ALL_OURS);
+});
+
+test('arbitrary vercel.app hosts remain rejected, with or without Vercel env', async () => {
+  for (const env of [{}, ALL_OURS]) {
+    for (const host of ['someone-else.vercel.app', 'store.vercel.app', 'store-9zzzz.vercel.app', 'vercel.app']) {
+      await assertNotConnected(host, env);
+    }
+  }
+});
+
+test('every hostile host is still rejected when Vercel names this deployment', async () => {
+  for (const host of HOSTILE_HOSTS) {
+    for (const url of STORE_URLS) {
+      const out = await render({ host, url, env: ALL_OURS });
+      assert.equal(out.status, 404, `${host} ${url}`);
+      assert.deepEqual(out.seen, []);
+    }
+  }
+});
+
+test('empty VERCEL_* values trust nothing', async () => {
+  const empty = { VERCEL_URL: '', VERCEL_BRANCH_URL: '', VERCEL_PROJECT_PRODUCTION_URL: '' };
+  assert.equal(await withVercelEnv(empty, () => isTrustedHost('')), false);
+  await assertNotConnected(PREVIEW, empty);
+});
+
+test('a PocketLink production domain named by VERCEL_PROJECT_PRODUCTION_URL still takes base HTML from www', async () => {
+  // In production Vercel sets this to the project's shortest custom domain.
+  for (const prod of ['pocketlink.store', 'www.pocketlink.store']) {
+    for (const host of ['www.pocketlink.store', 'pocketlink.store', 'market.pocketlink.store']) {
+      const out = await render({ host, url: r('/krupaagarbattiwork'), env: { VERCEL_PROJECT_PRODUCTION_URL: prod } });
+      assert.equal(out.status, 200);
+      assert.equal(out.seen[0], 'https://www.pocketlink.store/index.html', `${host} (prod=${prod})`);
+      assert.equal(await withVercelEnv({ VERCEL_PROJECT_PRODUCTION_URL: prod }, () => baseHtmlOrigin(host)), PL_ORIGIN);
+    }
+  }
+});
+
+test('base HTML origin: PocketLink hosts use the main site; only a Vercel-named host uses itself', () => withVercelEnv(ALL_OURS, () => {
+  assert.equal(baseHtmlOrigin('www.pocketlink.store'), PL_ORIGIN);
+  assert.equal(baseHtmlOrigin('pocketlink.store'), PL_ORIGIN);
+  assert.equal(baseHtmlOrigin('market.pocketlink.store'), PL_ORIGIN);
+  assert.equal(baseHtmlOrigin(PREVIEW), `https://${PREVIEW}`);
+  assert.equal(baseHtmlOrigin('otherproject-git-main-seniqifys-projects.vercel.app'), PL_ORIGIN);
+}));
 
 test('a failed base-HTML fetch answers 503 — no redirect to itself, nothing cached', async () => {
   for (const url of [r('/krupaagarbattiwork'), r('/marketplace'), r('/start')]) {
