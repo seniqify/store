@@ -11,8 +11,8 @@
 --                                    set_primary, disconnect). Hash only.
 --   public.store_domain_events       append-only audit trail.
 --   2 public read RPCs               resolve_store_host, store_primary_host
---   12 server-only RPCs              domain_* (service_role only)
---   5 internal helpers + 3 triggers  callable by nobody but their owner
+--   13 server-only RPCs              domain_* (service_role only)
+--   6 internal helpers + 3 triggers  callable by nobody but their owner
 --
 --  WHAT THIS DOES NOT DO
 --   NOTHING CALLS ANY OF THIS YET. No Vercel API, no middleware, no hostname
@@ -42,7 +42,22 @@
 --      frozen. Enforced by a BEFORE UPDATE trigger.
 --   6. Vercel is never recorded as holding a name before its TXT proof:
 --      a pending row's vercel_state is always 'none'.
---   7. No plaintext OTP is ever stored. code_hash must be 64 hex characters
+--   7. A HOSTNAME IS NEVER FREED WHILE VERCEL MAY STILL HOLD IT. A group can
+--      only reach 'expired' or 'disconnected' when every row's vercel_state
+--      is 'none' or 'removed' (CHECK), and 'removed' must have settled for
+--      2 minutes (see store_domain_vercel_clear). Until then the group sits in
+--      'disconnecting' -- still inside the ownership index -- whatever the
+--      cause: a merchant, an admin, or a TTL. A Vercel DELETE can only be
+--      authorised ('removing') for a group in 'disconnecting', i.e. while that
+--      group still owns the name exclusively; an ended group is frozen and
+--      can record nothing. So an old group's cleanup can never be authorised
+--      once another group could own the name.
+--   8. 'ready' MEANS SERVABLE. The server reports Vercel's raw facts
+--      (attached to this project / verified / misconfigured) and the database
+--      derives vercel_state; only 'configured' -- attached AND verified AND
+--      not misconfigured -- passes. A CHECK makes a 'ready' group with any
+--      other row state impossible, and a regression demotes it to 'verified'.
+--   9. No plaintext OTP is ever stored. code_hash must be 64 hex characters
 --      (an HMAC-SHA256 the server computes with a secret the database never
 --      sees); a 6-digit code cannot be written into it.
 --
@@ -50,13 +65,20 @@
 --    pending --> verified --> ready --> connected <--> misconfigured
 --      |            |           |          |                |
 --      |            +-----------+----------+-> disconnecting +--> disconnected
---      +--> disconnected (cancel)              (Vercel removal)
+--      |            (TTL, Vercel holds a name) -> disconnecting --> expired
+--      +--> disconnected (cancel) / expired (TTL; never on Vercel)
 --    pending                                   72 hours from claim
 --    verified / ready                          7 days from verification
 --    misconfigured                             30 days, then auto-release
 --    connected / disconnecting                 none
 --    expired / disconnected                    terminal; hostname reclaimable
 --    OTP challenge                             10 minutes, 5 attempts
+--
+--  TXT AT ACTIVATION. The record need not stay published once connected, but
+--  domain_activate requires the token the server has JUST read from DNS
+--  (p_proved_token), exactly as verification does: PR-C must re-check TXT
+--  immediately before activating, and a stale or missing proof is refused
+--  without spending the merchant's code.
 --
 --   No partial-index predicate mentions now(). TTLs are expires_at values
 --   compared in functions, never in an index.
@@ -109,10 +131,12 @@ begin
        and p.proname in (
          'store_domain_normalize', 'store_domain_hostname_problem',
          'store_domain_log', 'store_domain_expire_if_stale',
-         'store_domain_consume_challenge', 'store_domains_guard_update',
+         'store_domain_consume_challenge', 'store_domain_vercel_clear',
+         'store_domains_guard_update',
          'store_domains_check_group', 'store_domain_events_append_only',
          'resolve_store_host', 'store_primary_host',
-         'domain_claim', 'domain_mark_verified', 'domain_set_vercel_state',
+         'domain_claim', 'domain_mark_verified', 'domain_vercel_intent',
+         'domain_vercel_observe',
          'domain_mark_ready', 'domain_challenge_create', 'domain_activate',
          'domain_set_primary', 'domain_begin_disconnect',
          'domain_finish_disconnect', 'domain_expire_stale',
@@ -184,9 +208,24 @@ create table if not exists public.store_domains (
   -- store or an ownership change always starts a new group with a new token.
   txt_token     text        not null,
 
-  -- What Vercel holds for THIS hostname. Recorded by PR-C around each Vercel
-  -- call; per row, because apex and www are separate Vercel domains.
+  -- What Vercel holds for THIS hostname; per row, because apex and www are
+  -- separate Vercel domains. Written only by domain_vercel_intent (before a
+  -- Vercel call) and domain_vercel_observe (the database derives the state
+  -- from Vercel's raw facts):
+  --   none                    never sent to Vercel
+  --   adding                  add authorised; the POST may be in flight
+  --   attached_unverified     in this project, Vercel verified = false
+  --   attached_misconfigured  verified, but DNS config misconfigured = true
+  --   configured              attached + verified + misconfigured = false.
+  --                           The ONLY state that can serve and issue TLS.
+  --   removing                DELETE authorised (disconnecting groups only)
+  --   removed                 confirmed absent from the project
   vercel_state  text        not null default 'none',
+  -- When vercel_state last changed, or a DELETE was last (re)authorised.
+  -- A name is not released until 2 minutes after this, so a DELETE that was
+  -- authorised earlier cannot still be in flight when another group can own
+  -- the name.
+  vercel_state_at timestamptz,
 
   expires_at    timestamptz,
 
@@ -213,8 +252,8 @@ create table if not exists public.store_domains (
     check (status in ('pending', 'verified', 'ready', 'connected', 'misconfigured',
                       'disconnecting', 'disconnected', 'expired')),
   constraint store_domains_vercel_state_known
-    check (vercel_state in ('none', 'adding', 'pending_verification', 'added',
-                            'removing', 'removed')),
+    check (vercel_state in ('none', 'adding', 'attached_unverified', 'attached_misconfigured',
+                            'configured', 'removing', 'removed')),
   constraint store_domains_end_reason_known
     check (end_reason is null or end_reason in
             ('pending_ttl', 'verify_ttl', 'misconfigured_ttl', 'lost_race',
@@ -246,9 +285,14 @@ create table if not exists public.store_domains (
   constraint store_domains_expired_reason
     check (status <> 'expired'
            or end_reason in ('pending_ttl', 'verify_ttl', 'misconfigured_ttl', 'lost_race')),
+  -- 'disconnecting' is the one cleanup state, entered by a person (merchant /
+  -- admin / system) or by a TTL; end_reason keeps the cause, never conflating
+  -- the two. A TTL cleanup ends as 'expired', a requested one 'disconnected'.
   constraint store_domains_disconnect_reason
-    check (status not in ('disconnecting', 'disconnected')
-           or end_reason in ('merchant', 'admin', 'system')),
+    check (status <> 'disconnecting'
+           or end_reason in ('merchant', 'admin', 'system', 'verify_ttl', 'misconfigured_ttl')),
+  constraint store_domains_disconnected_reason
+    check (status <> 'disconnected' or end_reason in ('merchant', 'admin', 'system')),
   constraint store_domains_ended_at_iff_terminal
     check ((status in ('disconnected', 'expired')) = (ended_at is not null)),
   constraint store_domains_ttl_statuses_expire
@@ -263,7 +307,19 @@ create table if not exists public.store_domains (
     check (status not in ('connected', 'misconfigured') or activated_at is not null),
   -- Vercel is never asked for a name whose ownership is unproven.
   constraint store_domains_pending_not_on_vercel
-    check (status <> 'pending' or vercel_state = 'none')
+    check (status <> 'pending' or vercel_state = 'none'),
+  -- A group only leaves the ownership index once Vercel holds none of it.
+  constraint store_domains_ended_off_vercel
+    check (status not in ('disconnected', 'expired') or vercel_state in ('none', 'removed')),
+  -- A Vercel DELETE is only ever authorised by the group that still owns the
+  -- name exclusively and is giving it up.
+  constraint store_domains_removing_only_when_disconnecting
+    check (vercel_state <> 'removing' or status = 'disconnecting'),
+  -- 'ready' means every name is attached, verified and correctly configured.
+  constraint store_domains_ready_is_configured
+    check (status <> 'ready' or vercel_state = 'configured'),
+  constraint store_domains_vercel_state_at_set
+    check (vercel_state = 'none' or vercel_state_at is not null)
 );
 
 comment on table public.store_domains is
@@ -358,9 +414,10 @@ create index if not exists store_domain_events_group_idx
 create index if not exists store_domain_events_store_idx
   on public.store_domain_events (store_slug, created_at);
 
--- Lifecycle guard: identity never changes, statuses only move forward along
--- the lifecycle, and an ended row is frozen except for the Vercel cleanup
--- record (vercel_state, last_error).
+-- Lifecycle guard: identity never changes, statuses only move along the
+-- lifecycle, and an ended row is frozen COMPLETELY -- an ended group left
+-- Vercel before it ended (store_domains_ended_off_vercel), so there is nothing
+-- left for it to record, and nothing it may authorise.
 create or replace function public.store_domains_guard_update()
 returns trigger
 language plpgsql
@@ -375,24 +432,19 @@ begin
   end if;
 
   if old.status in ('disconnected', 'expired') then
-    if (new.status, new.role, new.end_reason, new.expires_at, new.verified_at, new.activated_at,
-        new.ended_at, new.consecutive_health_failures, new.last_checked_at)
-       is distinct from
-       (old.status, old.role, old.end_reason, old.expires_at, old.verified_at, old.activated_at,
-        old.ended_at, old.consecutive_health_failures, old.last_checked_at) then
-      raise exception 'store_domains: an ended group is frozen (only vercel_state and last_error may change)'
-        using errcode = 'check_violation';
-    end if;
-    return new;
+    raise exception 'store_domains: an ended group is frozen'
+      using errcode = 'check_violation';
   end if;
 
+  -- ready -> verified: a name regressed on Vercel before activation.
+  -- disconnecting -> expired: a TTL cleanup finished.
   if new.status is distinct from old.status and not (
        (old.status = 'pending'       and new.status in ('verified', 'expired', 'disconnected'))
     or (old.status = 'verified'      and new.status in ('ready', 'disconnecting', 'disconnected', 'expired'))
-    or (old.status = 'ready'         and new.status in ('connected', 'disconnecting', 'disconnected', 'expired'))
+    or (old.status = 'ready'         and new.status in ('verified', 'connected', 'disconnecting', 'disconnected', 'expired'))
     or (old.status = 'connected'     and new.status in ('misconfigured', 'disconnecting', 'disconnected'))
     or (old.status = 'misconfigured' and new.status in ('connected', 'disconnecting', 'disconnected', 'expired'))
-    or (old.status = 'disconnecting' and new.status = 'disconnected')
+    or (old.status = 'disconnecting' and new.status in ('disconnected', 'expired'))
   ) then
     raise exception 'store_domains: % -> % is not a permitted transition', old.status, new.status
       using errcode = 'check_violation';
@@ -550,10 +602,40 @@ as $fn$
   values (p_group_id, p_store_slug, p_event, p_actor, coalesce(p_detail, '{}'::jsonb));
 $fn$;
 
+-- TRUE when the group may give up its names: Vercel holds none of them
+-- ('none' or 'removed' on every row), AND every 'removed' has settled for
+-- 2 minutes. The settle window covers a DELETE authorised earlier by a retried
+-- or delayed worker: PR-C's Vercel calls time out well inside it, so by the
+-- time the name can pass to another group no DELETE for it can still land.
+create or replace function public.store_domain_vercel_clear(p_group_id uuid)
+returns boolean
+language sql
+stable
+set search_path = public, pg_temp
+as $fn$
+  select not exists (
+    select 1 from public.store_domains d
+     where d.group_id = p_group_id
+       and (d.vercel_state not in ('none', 'removed')
+            or (d.vercel_state = 'removed'
+                and d.vercel_state_at > now() - interval '2 minutes')))
+$fn$;
+
 -- Expire a group whose TTL has passed. Locks the group's rows in kind order
--- (the order every RPC uses), re-reads under the lock, and ends the group only
--- if it is still in a TTL status and still past expires_at. Returns the
--- end_reason written, or NULL if nothing was stale.
+-- (the order every RPC uses), re-reads under the lock, and acts only if it is
+-- still in a TTL status and still past expires_at. Returns the TTL reason, or
+-- NULL if nothing was stale.
+--
+--   pending                  -> expired at once. A pending group has never
+--                               been sent to Vercel (CHECK), so freeing it is
+--                               always safe.
+--   verified / ready /       -> expired at once ONLY if Vercel holds none of
+--   misconfigured               its names (store_domain_vercel_clear).
+--                               Otherwise -> 'disconnecting' with the TTL as
+--                               end_reason: still inside the ownership index,
+--                               so the names stay exclusive until PR-C has
+--                               removed them and domain_finish_disconnect
+--                               ends the group as 'expired'.
 create or replace function public.store_domain_expire_if_stale(p_group_id uuid)
 returns text
 language plpgsql
@@ -564,6 +646,7 @@ declare
   v_expires timestamptz;
   v_slug    text;
   v_reason  text;
+  v_vercel  jsonb;
 begin
   perform 1 from public.store_domains d
    where d.group_id = p_group_id
@@ -588,14 +671,25 @@ begin
                 else 'verify_ttl'
               end;
 
-  -- Leaving the ownership index never waits on another group, so one
-  -- statement for both rows is safe here.
-  update public.store_domains d
-     set status = 'expired', end_reason = v_reason, ended_at = now()
-   where d.group_id = p_group_id;
+  if v_status = 'pending' or public.store_domain_vercel_clear(p_group_id) then
+    -- Leaving the ownership index never waits on another group, so one
+    -- statement for both rows is safe here.
+    update public.store_domains d
+       set status = 'expired', end_reason = v_reason, ended_at = now()
+     where d.group_id = p_group_id;
+    perform public.store_domain_log(p_group_id, v_slug, 'expired', 'system',
+      jsonb_build_object('from', v_status, 'reason', v_reason));
+    return v_reason;
+  end if;
 
-  perform public.store_domain_log(p_group_id, v_slug, 'expired', 'system',
-    jsonb_build_object('from', v_status, 'reason', v_reason));
+  -- Vercel may still hold a name: keep it exclusive while it is cleaned up.
+  update public.store_domains d
+     set status = 'disconnecting', end_reason = v_reason, expires_at = null
+   where d.group_id = p_group_id;
+  select jsonb_object_agg(d.hostname, d.vercel_state) into v_vercel
+    from public.store_domains d where d.group_id = p_group_id;
+  perform public.store_domain_log(p_group_id, v_slug, 'expiry_cleanup_started', 'system',
+    jsonb_build_object('from', v_status, 'reason', v_reason, 'vercel', v_vercel));
   return v_reason;
 end
 $fn$;
@@ -842,8 +936,14 @@ begin
 
   if exists (select 1 from public.store_domains d
               where d.hostname = any (v_hosts)
-                and d.status in ('verified', 'ready', 'connected', 'misconfigured', 'disconnecting')) then
+                and d.status in ('verified', 'ready', 'connected', 'misconfigured')) then
     return jsonb_build_object('outcome', 'hostname_in_use');
+  end if;
+  -- The holder is giving the name up but Vercel cleanup is not confirmed yet.
+  -- Retryable; nothing is created meanwhile.
+  if exists (select 1 from public.store_domains d
+              where d.hostname = any (v_hosts) and d.status = 'disconnecting') then
+    return jsonb_build_object('outcome', 'hostname_releasing');
   end if;
 
   v_group := pg_catalog.gen_random_uuid();
@@ -892,6 +992,11 @@ $fn$;
 --     expired / end_reason 'lost_race', and the caller gets outcome
 --     'lost_race' -- deterministic, and final: a retry answers 'not_pending'.
 --
+--     One exception: if the only conflicting holder is 'disconnecting' -- a
+--     group giving the name up while Vercel cleanup is confirmed -- nobody has
+--     won against this claim. It stays pending, nothing is written, and the
+--     outcome is 'hostname_releasing': retry after the cleanup.
+--
 --     Rows are updated one at a time in kind order (apex before www) so two
 --     groups sharing both names always enter the index in the same order and
 --     cannot deadlock each other.
@@ -922,7 +1027,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select d.status, d.txt_token into v_status, v_token
@@ -965,6 +1072,13 @@ begin
     end loop;
   exception
     when unique_violation then
+      if not exists (select 1 from public.store_domains d
+                      where d.hostname = any (v_hosts) and d.group_id <> p_group_id
+                        and d.status in ('verified', 'ready', 'connected', 'misconfigured')) then
+        perform public.store_domain_log(p_group_id, p_store_slug, 'verify_deferred', 'system',
+          jsonb_build_object('hostnames', to_jsonb(v_hosts), 'reason', 'hostname_releasing'));
+        return jsonb_build_object('outcome', 'hostname_releasing', 'group_id', p_group_id);
+      end if;
       update public.store_domains d
          set status = 'expired', end_reason = 'lost_race', ended_at = now()
        where d.group_id = p_group_id;
@@ -979,16 +1093,22 @@ begin
 end
 $fn$;
 
--- 6.3 Record what Vercel holds for one hostname. Adding states are refused
---     until ownership is proven; removal states are accepted in every status
---     but pending, including ended groups, so the reconciler can record its
---     cleanup.
-create or replace function public.domain_set_vercel_state(
+-- 6.3 Vercel INTENT -- called immediately BEFORE a Vercel call, which PR-C
+--     must not make unless this returns outcome 'ok'.
+--       'add'    -> 'adding'. Only for a group that has proved ownership and
+--                   is not being released. A name already attached is left
+--                   alone ('already_attached').
+--       'remove' -> 'removing'. Only for a group in 'disconnecting' -- the
+--                   one state in which the group still owns the name
+--                   exclusively AND is giving it up. Re-authorising renews
+--                   vercel_state_at, so every DELETE attempt, retries
+--                   included, must come back here first.
+--     An ended group can authorise nothing ('group_ended').
+create or replace function public.domain_vercel_intent(
   p_group_id   uuid,
   p_store_slug text,
   p_hostname   text,
-  p_state      text,
-  p_error      text default null
+  p_intent     text
 )
 returns jsonb
 language plpgsql
@@ -997,12 +1117,13 @@ set search_path = public, pg_temp
 as $fn$
 declare
   v_host   text := public.store_domain_normalize(p_hostname);
-  v_state  text := lower(btrim(coalesce(p_state, '')));
+  v_intent text := lower(btrim(coalesce(p_intent, '')));
   v_status text;
   v_old    text;
+  v_next   text;
 begin
-  if v_state not in ('adding', 'pending_verification', 'added', 'removing', 'removed') then
-    return jsonb_build_object('outcome', 'invalid_state');
+  if v_intent not in ('add', 'remove') then
+    return jsonb_build_object('outcome', 'invalid_intent');
   end if;
 
   perform 1 from public.store_domains d
@@ -1013,9 +1134,10 @@ begin
     return jsonb_build_object('outcome', 'not_found');
   end if;
 
-  if v_state in ('adding', 'pending_verification', 'added')
-     and public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+  if v_intent = 'add' and public.store_domain_expire_if_stale(p_group_id) is not null then
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select d.status, d.vercel_state into v_status, v_old
@@ -1025,28 +1147,133 @@ begin
     return jsonb_build_object('outcome', 'hostname_not_in_group');
   end if;
 
-  -- A pending group has never been sent to Vercel, so there is nothing to
-  -- record for it in either direction.
-  if v_status = 'pending'
-     or (v_state in ('adding', 'pending_verification', 'added')
-         and v_status not in ('verified', 'ready', 'connected', 'misconfigured')) then
-    return jsonb_build_object('outcome', 'not_verified', 'status', v_status);
+  if v_status in ('disconnected', 'expired') then
+    return jsonb_build_object('outcome', 'group_ended', 'status', v_status);
+  end if;
+
+  if v_intent = 'add' then
+    if v_status not in ('verified', 'ready', 'connected', 'misconfigured') then
+      return jsonb_build_object('outcome', 'not_allowed', 'status', v_status);
+    end if;
+    if v_old in ('attached_unverified', 'attached_misconfigured', 'configured') then
+      return jsonb_build_object('outcome', 'already_attached', 'vercel_state', v_old);
+    end if;
+    v_next := 'adding';
+  else
+    if v_status <> 'disconnecting' then
+      return jsonb_build_object('outcome', 'not_disconnecting', 'status', v_status);
+    end if;
+    if v_old in ('none', 'removed') then
+      return jsonb_build_object('outcome', 'nothing_to_remove', 'vercel_state', v_old);
+    end if;
+    v_next := 'removing';
   end if;
 
   update public.store_domains d
-     set vercel_state = v_state,
-         last_error   = left(nullif(btrim(coalesce(p_error, '')), ''), 500)
+     set vercel_state = v_next, vercel_state_at = now(), last_error = null
    where d.group_id = p_group_id and d.hostname = v_host;
 
-  if v_old is distinct from v_state then
-    perform public.store_domain_log(p_group_id, p_store_slug, 'vercel_state', 'system',
-      jsonb_build_object('hostname', v_host, 'from', v_old, 'to', v_state));
-  end if;
-  return jsonb_build_object('outcome', 'ok', 'hostname', v_host, 'vercel_state', v_state);
+  perform public.store_domain_log(p_group_id, p_store_slug, 'vercel_intent', 'system',
+    jsonb_build_object('hostname', v_host, 'intent', v_intent, 'from', v_old, 'to', v_next));
+  return jsonb_build_object('outcome', 'ok', 'hostname', v_host, 'vercel_state', v_next);
 end
 $fn$;
 
--- 6.4 verified -> ready, once Vercel holds every hostname of the group.
+-- 6.4 Vercel OBSERVATION -- what Vercel reported for one hostname, as raw
+--     facts; the database derives the state, so the server cannot label a
+--     merely attached or misconfigured domain as ready:
+--       p_attached      the hostname is in THIS PocketLink Vercel project
+--                       (false = confirmed absent; NULL = unknown, refused)
+--       p_verified      Vercel's "verified" for the project domain
+--       p_misconfigured Vercel's "misconfigured" from the config check
+--     attached = false                                  -> removed
+--     attached, verified not true                       -> attached_unverified
+--     attached, verified, misconfigured not false       -> attached_misconfigured
+--     attached, verified, misconfigured = false         -> configured
+--     Anything other than 'configured' on a 'ready' group demotes the group
+--     to 'verified' in the same call (ready is never left stale).
+create or replace function public.domain_vercel_observe(
+  p_group_id      uuid,
+  p_store_slug    text,
+  p_hostname      text,
+  p_attached      boolean,
+  p_verified      boolean,
+  p_misconfigured boolean,
+  p_error         text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_host   text := public.store_domain_normalize(p_hostname);
+  v_status text;
+  v_old    text;
+  v_next   text;
+begin
+  if p_attached is null then
+    return jsonb_build_object('outcome', 'invalid_observation');
+  end if;
+
+  perform 1 from public.store_domains d
+   where d.group_id = p_group_id and d.store_slug = p_store_slug
+   order by d.kind
+     for update;
+  if not found then
+    return jsonb_build_object('outcome', 'not_found');
+  end if;
+
+  select d.status, d.vercel_state into v_status, v_old
+    from public.store_domains d
+   where d.group_id = p_group_id and d.hostname = v_host;
+  if not found then
+    return jsonb_build_object('outcome', 'hostname_not_in_group');
+  end if;
+
+  if v_status in ('disconnected', 'expired') then
+    return jsonb_build_object('outcome', 'group_ended', 'status', v_status);
+  end if;
+  if v_status = 'pending' then
+    return jsonb_build_object('outcome', 'not_verified', 'status', v_status);
+  end if;
+
+  v_next := case
+              when not p_attached              then 'removed'
+              when p_verified is not true      then 'attached_unverified'
+              when p_misconfigured is not false then 'attached_misconfigured'
+              else 'configured'
+            end;
+
+  -- Demote first: store_domains_ready_is_configured forbids a ready row that
+  -- is not configured, even for an instant.
+  if v_status = 'ready' and v_next <> 'configured' then
+    update public.store_domains d set status = 'verified' where d.group_id = p_group_id;
+    perform public.store_domain_log(p_group_id, p_store_slug, 'ready_revoked', 'system',
+      jsonb_build_object('hostname', v_host, 'vercel_state', v_next));
+  end if;
+
+  update public.store_domains d
+     set vercel_state    = v_next,
+         vercel_state_at = case when v_next is distinct from v_old then now() else d.vercel_state_at end,
+         last_error      = left(nullif(btrim(coalesce(p_error, '')), ''), 500)
+   where d.group_id = p_group_id and d.hostname = v_host;
+
+  if v_next is distinct from v_old then
+    perform public.store_domain_log(p_group_id, p_store_slug, 'vercel_observed', 'system',
+      jsonb_build_object('hostname', v_host, 'from', v_old, 'to', v_next, 'attached', p_attached,
+                         'verified', p_verified, 'misconfigured', p_misconfigured));
+  end if;
+  return jsonb_build_object('outcome', 'ok', 'hostname', v_host, 'vercel_state', v_next,
+                            'status', case when v_status = 'ready' and v_next <> 'configured'
+                                           then 'verified' else v_status end);
+end
+$fn$;
+
+-- 6.5 verified -> ready. THE GATE: every hostname of the group must be
+--     'configured' -- attached to this project, verified by Vercel and
+--     reporting misconfigured = false -- as last observed. Any other state
+--     (including a mere successful add, 'adding') is refused.
 create or replace function public.domain_mark_ready(
   p_group_id   uuid,
   p_store_slug text
@@ -1069,7 +1296,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select d.status into v_status
@@ -1084,7 +1313,7 @@ begin
   end if;
 
   if exists (select 1 from public.store_domains d
-              where d.group_id = p_group_id and d.vercel_state <> 'added') then
+              where d.group_id = p_group_id and d.vercel_state <> 'configured') then
     select jsonb_object_agg(d.hostname, d.vercel_state) into v_states
       from public.store_domains d where d.group_id = p_group_id;
     return jsonb_build_object('outcome', 'vercel_not_ready', 'vercel', v_states);
@@ -1097,7 +1326,7 @@ begin
 end
 $fn$;
 
--- 6.5 Create a step-up challenge. The SERVER generates the code, sends it to
+-- 6.6 Create a step-up challenge. The SERVER generates the code, sends it to
 --     the store owner's WhatsApp, and passes only HMAC-SHA256(secret, code)
 --     here. Refused unless the action is possible right now for exactly this
 --     hostname, so a code is never sent for something that cannot happen.
@@ -1140,7 +1369,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select max(d.status), count(*) into v_status, v_rows
@@ -1185,11 +1416,18 @@ begin
 end
 $fn$;
 
--- 6.6 ready -> connected. Requires a valid 'activate' challenge for the
---     group's primary hostname, consumed in the same transaction.
+-- 6.7 ready -> connected. Requires, in this order, so a refusal never spends
+--     the merchant's code:
+--       * status 'ready' and every hostname still 'configured';
+--       * p_proved_token: the group's TXT token as the server has JUST read it
+--         from DNS. PR-C must re-check TXT immediately before this call; the
+--         record need not stay published after connection;
+--       * a valid 'activate' challenge for the primary hostname, consumed in
+--         the same transaction.
 create or replace function public.domain_activate(
   p_group_id     uuid,
   p_store_slug   text,
+  p_proved_token text,
   p_challenge_id uuid,
   p_code_hash    text
 )
@@ -1201,6 +1439,7 @@ as $fn$
 declare
   v_status  text;
   v_primary text;
+  v_token   text;
   v_check   text;
   v_states  jsonb;
 begin
@@ -1213,10 +1452,12 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
-  select d.status, d.hostname into v_status, v_primary
+  select d.status, d.hostname, d.txt_token into v_status, v_primary, v_token
     from public.store_domains d
    where d.group_id = p_group_id and d.role = 'primary';
 
@@ -1226,11 +1467,18 @@ begin
       'status', v_status);
   end if;
 
+  -- store_domains_ready_is_configured already guarantees this; re-checked
+  -- here so the gate reads in one place.
   if exists (select 1 from public.store_domains d
-              where d.group_id = p_group_id and d.vercel_state <> 'added') then
+              where d.group_id = p_group_id and d.vercel_state <> 'configured') then
     select jsonb_object_agg(d.hostname, d.vercel_state) into v_states
       from public.store_domains d where d.group_id = p_group_id;
     return jsonb_build_object('outcome', 'vercel_not_ready', 'vercel', v_states);
+  end if;
+
+  if p_proved_token is null or p_proved_token <> v_token then
+    perform public.store_domain_log(p_group_id, p_store_slug, 'activate_token_mismatch', 'system', '{}'::jsonb);
+    return jsonb_build_object('outcome', 'token_mismatch');
   end if;
 
   v_check := public.store_domain_consume_challenge(
@@ -1250,7 +1498,7 @@ begin
 end
 $fn$;
 
--- 6.7 Swap primary and redirect within an apex/www group. Requires a valid
+-- 6.8 Swap primary and redirect within an apex/www group. Requires a valid
 --     'set_primary' challenge naming the hostname that becomes primary. The
 --     old primary is demoted first: the per-store unique index never sees two.
 create or replace function public.domain_set_primary(
@@ -1282,7 +1530,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select max(d.status), count(*), max(d.hostname) filter (where d.role = 'primary')
@@ -1323,7 +1573,7 @@ begin
 end
 $fn$;
 
--- 6.8 Begin a disconnect.
+-- 6.9 Begin a disconnect.
 --       pending                          -> disconnected at once. Cancelling
 --                                           an unproven claim needs no code:
 --                                           it holds nothing.
@@ -1332,7 +1582,9 @@ $fn$;
 --                                           'disconnect' challenge; admin and
 --                                           system do not.
 --                                           If Vercel holds nothing for the
---                                           group: disconnected at once.
+--                                           group and any removal has settled
+--                                           (store_domain_vercel_clear):
+--                                           disconnected at once.
 --                                           Otherwise: disconnecting, and the
 --                                           names stay exclusive until PR-C
 --                                           has removed them from Vercel and
@@ -1369,7 +1621,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select d.status, d.hostname into v_status, v_primary
@@ -1400,9 +1654,7 @@ begin
     end if;
   end if;
 
-  if not exists (select 1 from public.store_domains d
-                  where d.group_id = p_group_id
-                    and d.vercel_state not in ('none', 'removed')) then
+  if public.store_domain_vercel_clear(p_group_id) then
     update public.store_domains d
        set status = 'disconnected', end_reason = v_actor, ended_at = now()
      where d.group_id = p_group_id;
@@ -1425,7 +1677,11 @@ begin
 end
 $fn$;
 
--- 6.9 disconnecting -> disconnected, once Vercel holds none of the names.
+-- 6.10 End a 'disconnecting' group once Vercel holds none of its names and
+--      the last change has settled (2 minutes). The cause decides the end:
+--      a requested disconnect (merchant / admin / system) -> 'disconnected';
+--      a TTL cleanup (verify_ttl / misconfigured_ttl)     -> 'expired'.
+--      Only now do the names leave the ownership index.
 create or replace function public.domain_finish_disconnect(
   p_group_id   uuid,
   p_store_slug text
@@ -1437,8 +1693,10 @@ set search_path = public, pg_temp
 as $fn$
 declare
   v_status  text;
-  v_actor   text;
+  v_reason  text;
+  v_end     text;
   v_pending jsonb;
+  v_wait    integer;
 begin
   perform 1 from public.store_domains d
    where d.group_id = p_group_id and d.store_slug = p_store_slug
@@ -1448,13 +1706,13 @@ begin
     return jsonb_build_object('outcome', 'not_found');
   end if;
 
-  select d.status, d.end_reason into v_status, v_actor
+  select d.status, d.end_reason into v_status, v_reason
     from public.store_domains d
    where d.group_id = p_group_id and d.role = 'primary';
 
   if v_status <> 'disconnecting' then
     return jsonb_build_object(
-      'outcome', case when v_status = 'disconnected' then 'already_disconnected'
+      'outcome', case when v_status in ('disconnected', 'expired') then 'already_ended'
                       else 'not_disconnecting' end,
       'status', v_status);
   end if;
@@ -1466,21 +1724,32 @@ begin
     return jsonb_build_object('outcome', 'vercel_not_removed', 'vercel', v_pending);
   end if;
 
+  if not public.store_domain_vercel_clear(p_group_id) then
+    select ceil(extract(epoch from max(d.vercel_state_at) + interval '2 minutes' - now()))::integer
+      into v_wait
+      from public.store_domains d where d.group_id = p_group_id;
+    return jsonb_build_object('outcome', 'vercel_settling', 'retry_after_seconds', greatest(v_wait, 1));
+  end if;
+
+  v_end := case when v_reason in ('verify_ttl', 'misconfigured_ttl') then 'expired' else 'disconnected' end;
+
   update public.store_domains d
-     set status = 'disconnected', ended_at = now()
+     set status = v_end, ended_at = now()
    where d.group_id = p_group_id;
 
-  perform public.store_domain_log(p_group_id, p_store_slug, 'disconnected', v_actor,
-    jsonb_build_object('from', 'disconnecting'));
-  return jsonb_build_object('outcome', 'disconnected', 'group_id', p_group_id);
+  perform public.store_domain_log(p_group_id, p_store_slug, v_end,
+    case when v_end = 'expired' then 'system' else v_reason end,
+    jsonb_build_object('from', 'disconnecting', 'reason', v_reason));
+  return jsonb_build_object('outcome', v_end, 'group_id', p_group_id, 'reason', v_reason);
 end
 $fn$;
 
--- 6.10 TTL sweep: pending after 72h, verified/ready 7 days after
---      verification, misconfigured after 30 days. Returns what it ended and
---      what Vercel still holds for each, for the reconciler to clean up.
---      Reclaiming a hostname does not depend on this running: every RPC that
---      meets a stale group expires it on the spot.
+-- 6.11 TTL sweep: pending after 72h, verified/ready 7 days after
+--      verification, misconfigured after 30 days. Each stale group either
+--      ends ('expired') or, if Vercel may still hold a name, moves to
+--      'disconnecting' for cleanup; the result says which, and what Vercel
+--      holds, for the reconciler. Every RPC that meets a stale group applies
+--      the same rule on the spot, so nothing depends on the sweep running.
 create or replace function public.domain_expire_stale(p_limit integer default 200)
 returns jsonb
 language plpgsql
@@ -1507,6 +1776,8 @@ begin
       v_n := v_n + 1;
       v_out := v_out || jsonb_build_array(jsonb_build_object(
         'group_id', v_g.group_id, 'store_slug', v_g.store_slug, 'reason', v_reason,
+        'status', (select d.status from public.store_domains d
+                    where d.group_id = v_g.group_id and d.role = 'primary'),
         'vercel', (select jsonb_object_agg(d.hostname, d.vercel_state)
                      from public.store_domains d where d.group_id = v_g.group_id)));
     end if;
@@ -1515,7 +1786,7 @@ begin
 end
 $fn$;
 
--- 6.11 Record one health check of a connected group. One success resets the
+-- 6.12 Record one health check of a connected group. One success resets the
 --      count (and restores a misconfigured group); the second consecutive
 --      failure marks it misconfigured with the 30-day release clock. The
 --      hourly cadence belongs to the PR-C scheduler; this only counts.
@@ -1548,7 +1819,9 @@ begin
   end if;
 
   if public.store_domain_expire_if_stale(p_group_id) is not null then
-    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id);
+    return jsonb_build_object('outcome', 'expired', 'group_id', p_group_id,
+      'status', (select d.status from public.store_domains d
+                  where d.group_id = p_group_id and d.role = 'primary'));
   end if;
 
   select d.status, d.consecutive_health_failures into v_status, v_fail
@@ -1560,6 +1833,15 @@ begin
   end if;
 
   if p_ok then
+    -- A healthy verdict must agree with what Vercel last reported: every name
+    -- 'configured'. This is also the gate for a misconfigured group to route
+    -- again, the same one activation had to pass.
+    if exists (select 1 from public.store_domains d
+                where d.group_id = p_group_id and d.vercel_state <> 'configured') then
+      return jsonb_build_object('outcome', 'vercel_not_configured',
+        'vercel', (select jsonb_object_agg(d.hostname, d.vercel_state)
+                     from public.store_domains d where d.group_id = p_group_id));
+    end if;
     update public.store_domains d
        set status = 'connected', expires_at = null, consecutive_health_failures = 0,
            last_checked_at = now(), last_error = null
@@ -1589,7 +1871,7 @@ begin
 end
 $fn$;
 
--- 6.12 Let the server record an external step (a Vercel call, a DNS lookup)
+-- 6.13 Let the server record an external step (a Vercel call, a DNS lookup)
 --      in the same audit trail. Cannot forge a lifecycle event the RPCs
 --      write themselves, and refuses a detail that contains the group's TXT
 --      token or any of its code hashes.
@@ -1614,10 +1896,12 @@ begin
   if v_event !~ '^[a-z][a-z0-9_]{2,47}$' then
     return jsonb_build_object('outcome', 'invalid_event');
   end if;
-  if v_event in ('claimed', 'verified', 'lost_race', 'verify_token_mismatch', 'vercel_state',
-                 'ready', 'challenge_created', 'challenge_consumed', 'challenge_failed',
-                 'activated', 'primary_changed', 'disconnect_started', 'disconnected',
-                 'expired', 'health_failed', 'misconfigured', 'health_recovered') then
+  if v_event in ('claimed', 'verified', 'lost_race', 'verify_token_mismatch', 'verify_deferred',
+                 'vercel_intent', 'vercel_observed', 'ready', 'ready_revoked',
+                 'challenge_created', 'challenge_consumed', 'challenge_failed',
+                 'activated', 'activate_token_mismatch', 'primary_changed',
+                 'disconnect_started', 'disconnected', 'expiry_cleanup_started', 'expired',
+                 'health_failed', 'misconfigured', 'health_recovered') then
     return jsonb_build_object('outcome', 'reserved_event');
   end if;
   if v_actor not in ('merchant', 'admin', 'system') then
@@ -1687,10 +1971,12 @@ grant execute on function public.store_primary_host(text) to anon, authenticated
 -- Server RPCs: service_role only.
 revoke all on function public.domain_claim(text, text, text)                        from public, anon, authenticated;
 revoke all on function public.domain_mark_verified(uuid, text, text)                from public, anon, authenticated;
-revoke all on function public.domain_set_vercel_state(uuid, text, text, text, text) from public, anon, authenticated;
+revoke all on function public.domain_vercel_intent(uuid, text, text, text)          from public, anon, authenticated;
+revoke all on function public.domain_vercel_observe(uuid, text, text, boolean, boolean, boolean, text)
+  from public, anon, authenticated;
 revoke all on function public.domain_mark_ready(uuid, text)                         from public, anon, authenticated;
 revoke all on function public.domain_challenge_create(text, uuid, text, text, text) from public, anon, authenticated;
-revoke all on function public.domain_activate(uuid, text, uuid, text)               from public, anon, authenticated;
+revoke all on function public.domain_activate(uuid, text, text, uuid, text)         from public, anon, authenticated;
 revoke all on function public.domain_set_primary(uuid, text, text, uuid, text)      from public, anon, authenticated;
 revoke all on function public.domain_begin_disconnect(uuid, text, text, uuid, text) from public, anon, authenticated;
 revoke all on function public.domain_finish_disconnect(uuid, text)                  from public, anon, authenticated;
@@ -1700,10 +1986,12 @@ revoke all on function public.domain_event_append(uuid, text, text, text, jsonb)
 
 grant execute on function public.domain_claim(text, text, text)                        to service_role;
 grant execute on function public.domain_mark_verified(uuid, text, text)                to service_role;
-grant execute on function public.domain_set_vercel_state(uuid, text, text, text, text) to service_role;
+grant execute on function public.domain_vercel_intent(uuid, text, text, text)          to service_role;
+grant execute on function public.domain_vercel_observe(uuid, text, text, boolean, boolean, boolean, text)
+  to service_role;
 grant execute on function public.domain_mark_ready(uuid, text)                         to service_role;
 grant execute on function public.domain_challenge_create(text, uuid, text, text, text) to service_role;
-grant execute on function public.domain_activate(uuid, text, uuid, text)               to service_role;
+grant execute on function public.domain_activate(uuid, text, text, uuid, text)         to service_role;
 grant execute on function public.domain_set_primary(uuid, text, text, uuid, text)      to service_role;
 grant execute on function public.domain_begin_disconnect(uuid, text, text, uuid, text) to service_role;
 grant execute on function public.domain_finish_disconnect(uuid, text)                  to service_role;
@@ -1717,6 +2005,7 @@ revoke all on function public.store_domain_normalize(text)                  from
 revoke all on function public.store_domain_hostname_problem(text)           from public, anon, authenticated, service_role;
 revoke all on function public.store_domain_log(uuid, text, text, text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.store_domain_expire_if_stale(uuid)            from public, anon, authenticated, service_role;
+revoke all on function public.store_domain_vercel_clear(uuid)               from public, anon, authenticated, service_role;
 revoke all on function public.store_domain_consume_challenge(uuid, text, uuid, text, text, text)
   from public, anon, authenticated, service_role;
 revoke all on function public.store_domains_guard_update()                  from public, anon, authenticated, service_role;

@@ -28,10 +28,11 @@ with
     ('store_primary_host',             'public.store_primary_host(text)',                                  'public_read'),
     ('domain_claim',                   'public.domain_claim(text,text,text)',                              'server'),
     ('domain_mark_verified',           'public.domain_mark_verified(uuid,text,text)',                      'server'),
-    ('domain_set_vercel_state',        'public.domain_set_vercel_state(uuid,text,text,text,text)',         'server'),
+    ('domain_vercel_intent',           'public.domain_vercel_intent(uuid,text,text,text)',                 'server'),
+    ('domain_vercel_observe',          'public.domain_vercel_observe(uuid,text,text,boolean,boolean,boolean,text)', 'server'),
     ('domain_mark_ready',              'public.domain_mark_ready(uuid,text)',                              'server'),
     ('domain_challenge_create',        'public.domain_challenge_create(text,uuid,text,text,text)',         'server'),
-    ('domain_activate',                'public.domain_activate(uuid,text,uuid,text)',                      'server'),
+    ('domain_activate',                'public.domain_activate(uuid,text,text,uuid,text)',                 'server'),
     ('domain_set_primary',             'public.domain_set_primary(uuid,text,text,uuid,text)',              'server'),
     ('domain_begin_disconnect',        'public.domain_begin_disconnect(uuid,text,text,uuid,text)',         'server'),
     ('domain_finish_disconnect',       'public.domain_finish_disconnect(uuid,text)',                       'server'),
@@ -43,6 +44,7 @@ with
     ('store_domain_log',               'public.store_domain_log(uuid,text,text,text,jsonb)',               'internal'),
     ('store_domain_expire_if_stale',   'public.store_domain_expire_if_stale(uuid)',                        'internal'),
     ('store_domain_consume_challenge', 'public.store_domain_consume_challenge(uuid,text,uuid,text,text,text)', 'internal'),
+    ('store_domain_vercel_clear',      'public.store_domain_vercel_clear(uuid)',                           'internal'),
     ('store_domains_guard_update',     'public.store_domains_guard_update()',                              'internal'),
     ('store_domains_check_group',      'public.store_domains_check_group()',                               'internal'),
     ('store_domain_events_append_only','public.store_domain_events_append_only()',                        'internal')),
@@ -135,13 +137,13 @@ select 'V05', 'V05 service_role: SELECT on store_domains and store_domain_events
                             from t, aclexplode(t.acl) a where a.grantee = to_regrole('service_role')) end
 
 union all
-select 'V06', 'V06 all 22 functions exist',
+select 'V06', 'V06 all 24 functions exist',
   case when not (select yes from installed) then 'N/A - not installed'
-       when (select count(*) from f where f.oid is not null) = 22 then 'PASS'
+       when (select count(*) from f where f.oid is not null) = 24 then 'PASS'
        else 'FAIL - missing ' || (select string_agg(f.name, ', ') from f where f.oid is null) end
 
 union all
-select 'V07', 'V07 SECURITY DEFINER on exactly the 14 RPCs; helpers and triggers are INVOKER',
+select 'V07', 'V07 SECURITY DEFINER on exactly the 15 RPCs; helpers and triggers are INVOKER',
   case when not (select yes from installed) then 'N/A - not installed'
        when not exists (select 1 from f where f.oid is not null
                           and f.prosecdef <> (f.cls in ('public_read', 'server')))
@@ -227,6 +229,18 @@ select 'V13', 'V13 store_domain_challenges has no column that could hold a plain
                        and c.conname = 'store_domain_challenges_hash_only')
          then 'PASS'
        else 'FAIL - challenge columns changed' end
+
+union all
+select 'V15', 'V15 Vercel-safety CHECKs present: ended_off_vercel, removing_only_when_disconnecting, ready_is_configured',
+  case when not (select yes from installed) then 'N/A - not installed'
+       when (select count(*) from pg_constraint c
+              where c.conrelid = to_regclass('public.store_domains')
+                and c.contype = 'c'
+                and c.conname in ('store_domains_ended_off_vercel',
+                                  'store_domains_removing_only_when_disconnecting',
+                                  'store_domains_ready_is_configured')) = 3
+         then 'PASS'
+       else 'FAIL - a Vercel-safety CHECK is missing' end
 
 union all
 select 'V14', 'V14 rows by status (info; empty until PR-C)',

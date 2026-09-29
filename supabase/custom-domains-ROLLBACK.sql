@@ -1,7 +1,7 @@
 -- ===========================================================================
 --  Custom merchant domains -- PR-B  --  UNDO
 --
---  Drops the three tables and the 22 functions PR-B created. Nothing else.
+--  Drops the three tables and the 24 functions PR-B created. Nothing else.
 --  public.stores is not touched: dropping store_domains / challenges / events
 --  removes the internal FK triggers their REFERENCES added, which is the only
 --  trace PR-B left on it.
@@ -60,10 +60,11 @@ drop function if exists public.resolve_store_host(text);
 drop function if exists public.store_primary_host(text);
 drop function if exists public.domain_claim(text, text, text);
 drop function if exists public.domain_mark_verified(uuid, text, text);
-drop function if exists public.domain_set_vercel_state(uuid, text, text, text, text);
+drop function if exists public.domain_vercel_intent(uuid, text, text, text);
+drop function if exists public.domain_vercel_observe(uuid, text, text, boolean, boolean, boolean, text);
 drop function if exists public.domain_mark_ready(uuid, text);
 drop function if exists public.domain_challenge_create(text, uuid, text, text, text);
-drop function if exists public.domain_activate(uuid, text, uuid, text);
+drop function if exists public.domain_activate(uuid, text, text, uuid, text);
 drop function if exists public.domain_set_primary(uuid, text, text, uuid, text);
 drop function if exists public.domain_begin_disconnect(uuid, text, text, uuid, text);
 drop function if exists public.domain_finish_disconnect(uuid, text);
@@ -72,6 +73,7 @@ drop function if exists public.domain_health_update(uuid, text, boolean, text);
 drop function if exists public.domain_event_append(uuid, text, text, text, jsonb);
 drop function if exists public.store_domain_consume_challenge(uuid, text, uuid, text, text, text);
 drop function if exists public.store_domain_expire_if_stale(uuid);
+drop function if exists public.store_domain_vercel_clear(uuid);
 drop function if exists public.store_domain_log(uuid, text, text, text, jsonb);
 
 -- Tables (their triggers, indexes, constraints and FK triggers go with them).

@@ -45,11 +45,33 @@ async function verified(slug, host, kind = 'apex') {
   assert.equal(v.outcome, 'verified', JSON.stringify(v));
   return c;
 }
+// What PR-C does with Vercel, as the database sees it: authorise, call, report.
+const intent = (slug, c, host, what) => rpc(db, 'domain_vercel_intent', c.group_id, slug, host, what);
+const observe = (slug, c, host, attached, verified = true, misconfigured = false) =>
+  rpc(db, 'domain_vercel_observe', c.group_id, slug, host, attached, verified, misconfigured, null);
+/** Add to Vercel and report it fully verified and configured. */
+async function configure(slug, c, host) {
+  const i = await intent(slug, c, host, 'add');
+  assert.ok(['ok', 'already_attached'].includes(i.outcome), JSON.stringify(i));
+  const o = await observe(slug, c, host, true, true, false);
+  assert.equal(o.vercel_state, 'configured', JSON.stringify(o));
+}
+/** Authorise and confirm removal of every name Vercel holds for a disconnecting group. */
+async function removeAll(slug, c) {
+  for (const h of c.hostnames) {
+    const i = await intent(slug, c, h, 'remove');
+    if (i.outcome === 'nothing_to_remove') continue;
+    assert.equal(i.outcome, 'ok', JSON.stringify(i));
+    assert.equal((await observe(slug, c, h, false)).vercel_state, 'removed');
+  }
+}
+/** Let the 2-minute settle window pass. */
+const settle = (groupId) => db.query(
+  `update public.store_domains set vercel_state_at = vercel_state_at - interval '3 minutes'
+    where group_id = $1 and vercel_state_at is not null`, [groupId]);
 async function ready(slug, host, kind = 'apex') {
   const c = await verified(slug, host, kind);
-  for (const h of c.hostnames) {
-    assert.equal((await rpc(db, 'domain_set_vercel_state', c.group_id, slug, h, 'added', null)).outcome, 'ok');
-  }
+  for (const h of c.hostnames) await configure(slug, c, h);
   assert.equal((await rpc(db, 'domain_mark_ready', c.group_id, slug)).outcome, 'ready');
   return c;
 }
@@ -58,10 +80,13 @@ async function challenge(slug, groupId, action, target, code = CODE) {
   assert.equal(ch.outcome, 'created', JSON.stringify(ch));
   return ch.challenge_id;
 }
+/** Activation, with the TXT token PR-C has just re-read from DNS. */
+const activate = (slug, c, id, code = CODE, token = c.txt_token) =>
+  rpc(db, 'domain_activate', c.group_id, slug, token, id, code === null ? null : codeHash(code));
 async function connected(slug, host, kind = 'apex') {
   const c = await ready(slug, host, kind);
   const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
-  const a = await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE));
+  const a = await activate(slug, c, id);
   assert.equal(a.outcome, 'connected', JSON.stringify(a));
   return c;
 }
@@ -84,8 +109,9 @@ const FN = {
   public_read: ['resolve_store_host(text)', 'store_primary_host(text)'],
   server: [
     'domain_claim(text,text,text)', 'domain_mark_verified(uuid,text,text)',
-    'domain_set_vercel_state(uuid,text,text,text,text)', 'domain_mark_ready(uuid,text)',
-    'domain_challenge_create(text,uuid,text,text,text)', 'domain_activate(uuid,text,uuid,text)',
+    'domain_vercel_intent(uuid,text,text,text)',
+    'domain_vercel_observe(uuid,text,text,boolean,boolean,boolean,text)', 'domain_mark_ready(uuid,text)',
+    'domain_challenge_create(text,uuid,text,text,text)', 'domain_activate(uuid,text,text,uuid,text)',
     'domain_set_primary(uuid,text,text,uuid,text)', 'domain_begin_disconnect(uuid,text,text,uuid,text)',
     'domain_finish_disconnect(uuid,text)', 'domain_expire_stale(integer)',
     'domain_health_update(uuid,text,boolean,text)', 'domain_event_append(uuid,text,text,text,jsonb)',
@@ -93,7 +119,8 @@ const FN = {
   internal: [
     'store_domain_normalize(text)', 'store_domain_hostname_problem(text)',
     'store_domain_log(uuid,text,text,text,jsonb)', 'store_domain_expire_if_stale(uuid)',
-    'store_domain_consume_challenge(uuid,text,uuid,text,text,text)', 'store_domains_guard_update()',
+    'store_domain_consume_challenge(uuid,text,uuid,text,text,text)', 'store_domain_vercel_clear(uuid)',
+    'store_domains_guard_update()',
     'store_domains_check_group()', 'store_domain_events_append_only()',
   ],
 };
@@ -322,11 +349,11 @@ test('a browser role calling a server RPC is refused; service_role calling a hel
   }
 });
 
-test('SECURITY DEFINER is on exactly the 14 RPCs, and every function pins search_path', async () => {
+test('SECURITY DEFINER is on exactly the 15 RPCs, and every function pins search_path', async () => {
   const rows = (await db.query(`
     select p.proname, p.prosecdef, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = any ($1)`, [NEW_FN_NAMES])).rows;
-  assert.equal(rows.length, 22);
+  assert.equal(rows.length, 24);
   const definer = rows.filter((r) => r.prosecdef).map((r) => r.proname).sort();
   assert.deepEqual(definer, [...FN.public_read, ...FN.server].map((s) => s.split('(')[0]).sort());
   for (const r of rows) {
@@ -369,12 +396,12 @@ test('resolve_store_host / store_primary_host answer only once a group is connec
   await hidden('pending');
   await rpc(db, 'domain_mark_verified', c.group_id, slug, c.txt_token);
   await hidden('verified');
-  for (const h of c.hostnames) await rpc(db, 'domain_set_vercel_state', c.group_id, slug, h, 'added', null);
+  for (const h of c.hostnames) await configure(slug, c, h);
   await rpc(db, 'domain_mark_ready', c.group_id, slug);
   await hidden('ready');
 
   const id = await challenge(slug, c.group_id, 'activate', host);
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE))).outcome, 'connected');
+  assert.equal((await activate(slug, c, id, CODE)).outcome, 'connected');
   for (const role of ['anon', 'authenticated', 'service_role']) {
     assert.deepEqual(await resolve(host, role), [{ store_slug: slug, primary_host: host }], role);
     assert.deepEqual(await resolve(www, role), [{ store_slug: slug, primary_host: host }], `${role}: redirect row`);
@@ -395,7 +422,8 @@ test('resolve_store_host / store_primary_host answer only once a group is connec
   assert.equal((await rpc(db, 'domain_begin_disconnect', c.group_id, slug, 'merchant', d, codeHash(CODE))).outcome,
     'disconnecting');
   await hidden('disconnecting');
-  for (const h of c.hostnames) await rpc(db, 'domain_set_vercel_state', c.group_id, slug, h, 'removed', null);
+  await removeAll(slug, c);
+  await settle(c.group_id);
   assert.equal((await rpc(db, 'domain_finish_disconnect', c.group_id, slug)).outcome, 'disconnected');
   await hidden('disconnected');
 });
@@ -692,8 +720,11 @@ test('the lifecycle guard: only permitted transitions, identity is immutable, an
   const e = await refused(upd(`status = 'pending', end_reason = null, ended_at = null`));
   assert.equal(e.code, '23514');
   assert.match(e.message, /ended group is frozen/);
-  // The cleanup record may still move.
-  await upd(`vercel_state = 'removed'`);
+  // Completely: an ended group can record (or authorise) nothing on Vercel.
+  for (const set of [`vercel_state = 'removed', vercel_state_at = now()`, `last_error = 'x'`]) {
+    const e2 = await refused(upd(set));
+    assert.match(e2.message, /ended group is frozen/, set);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -707,14 +738,21 @@ test('disconnect frees the hostname -- but only once Vercel has let go of it', a
   const id = await challenge(a, ca.group_id, 'disconnect', host);
   const d = await rpc(db, 'domain_begin_disconnect', ca.group_id, a, 'merchant', id, codeHash(CODE));
   assert.equal(d.outcome, 'disconnecting');
-  assert.deepEqual(d.vercel, { [host]: 'added', [`www.${host}`]: 'added' });
+  assert.deepEqual(d.vercel, { [host]: 'configured', [`www.${host}`]: 'configured' });
 
-  assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'hostname_in_use', 'still exclusive while Vercel holds it');
+  assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'hostname_releasing', 'still exclusive while Vercel holds it');
   assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'vercel_not_removed');
 
-  await rpc(db, 'domain_set_vercel_state', ca.group_id, a, host, 'removed', null);
+  assert.equal((await intent(a, ca, host, 'remove')).outcome, 'ok');
+  assert.equal((await observe(a, ca, host, false)).vercel_state, 'removed');
   assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'vercel_not_removed');
-  await rpc(db, 'domain_set_vercel_state', ca.group_id, a, `www.${host}`, 'removed', null);
+  assert.equal((await intent(a, ca, `www.${host}`, 'remove')).outcome, 'ok');
+  assert.equal((await observe(a, ca, `www.${host}`, false)).vercel_state, 'removed');
+  const s = await rpc(db, 'domain_finish_disconnect', ca.group_id, a);
+  assert.equal(s.outcome, 'vercel_settling', 'a DELETE authorised moments ago could still be in flight');
+  assert.ok(s.retry_after_seconds > 0 && s.retry_after_seconds <= 120);
+  assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'hostname_releasing');
+  await settle(ca.group_id);
   assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'disconnected');
   const rows = await groupRows(db, ca.group_id);
   assert.ok(rows.every((r) => r.status === 'disconnected' && r.end_reason === 'merchant' && r.ended_at));
@@ -751,21 +789,175 @@ test('a merchant disconnect of a proven group needs its code; admin and system d
     'disconnecting');
 });
 
-test('expiry frees the hostname: the sweep ends stale groups and reports what Vercel still holds', async () => {
-  const host = newHost('sweep');
+// ── TTL expiry never frees a name Vercel may still hold (review blocker 1) ──
+
+test('pending TTL still terminates directly (a pending group has never been on Vercel)', async () => {
+  const slug = await newStore();
+  const c = await claim(slug, newHost('pttl'));
+  await expireNow(db, c.group_id);
+  const r = await rpc(db, 'domain_expire_stale', 500);
+  assert.equal(r.groups.find((x) => x.group_id === c.group_id).status, 'expired');
+  assert.deepEqual((await groupRows(db, c.group_id)).map((x) => [x.status, x.end_reason]),
+    [['expired', 'pending_ttl'], ['expired', 'pending_ttl']]);
+});
+
+test('verified TTL with vercel_state none frees the hostname at once', async () => {
+  const host = newHost('vnone');
   const [a, b] = [await newStore(), await newStore()];
   const cb = await claim(b, host);
-  const ca = await ready(a, host);
+  const ca = await verified(a, host);
   await expireNow(db, ca.group_id);
   const r = await rpc(db, 'domain_expire_stale', 500);
-  const mine = r.groups.find((x) => x.group_id === ca.group_id);
-  assert.deepEqual(mine, {
-    group_id: ca.group_id, store_slug: a, reason: 'verify_ttl',
-    vercel: { [host]: 'added', [`www.${host}`]: 'added' },
+  assert.deepEqual(r.groups.find((x) => x.group_id === ca.group_id), {
+    group_id: ca.group_id, store_slug: a, reason: 'verify_ttl', status: 'expired',
+    vercel: { [host]: 'none', [`www.${host}`]: 'none' },
   });
   assert.deepEqual((await groupRows(db, ca.group_id)).map((x) => [x.status, x.end_reason]),
     [['expired', 'verify_ttl'], ['expired', 'verify_ttl']]);
   assert.equal((await rpc(db, 'domain_mark_verified', cb.group_id, b, cb.txt_token)).outcome, 'verified');
+});
+
+/** A group of `stage` (verified+adding / ready / misconfigured) whose names Vercel may hold. */
+async function onVercel(stage, slug, host) {
+  if (stage === 'verified') {
+    const c = await verified(slug, host);
+    assert.equal((await intent(slug, c, host, 'add')).outcome, 'ok', 'a POST may be in flight');
+    return c;
+  }
+  if (stage === 'ready') return ready(slug, host);
+  const c = await connected(slug, host);
+  await rpc(db, 'domain_health_update', c.group_id, slug, false, 'x');
+  await rpc(db, 'domain_health_update', c.group_id, slug, false, 'x');
+  assert.deepEqual(await statusOf(c.group_id), ['misconfigured', 'misconfigured']);
+  return c;
+}
+
+for (const [stage, reason] of [['verified', 'verify_ttl'], ['ready', 'verify_ttl'], ['misconfigured', 'misconfigured_ttl']]) {
+  test(`${stage} TTL with Vercel attached does NOT free the hostname: cleanup keeps it exclusive until removal is confirmed`, async () => {
+    const host = newHost(`t${stage}`);
+    const [a, b, c3] = [await newStore(), await newStore(), await newStore()];
+    const cb = await claim(b, host);                      // an early pending claim by another store
+    const ca = await onVercel(stage, a, host);
+    await expireNow(db, ca.group_id);
+
+    const r = await rpc(db, 'domain_expire_stale', 500);
+    const mine = r.groups.find((x) => x.group_id === ca.group_id);
+    assert.equal(mine.status, 'disconnecting');
+    assert.equal(mine.reason, reason);
+    const rows = await groupRows(db, ca.group_id);
+    assert.ok(rows.every((x) => x.status === 'disconnecting' && x.end_reason === reason && x.ended_at === null),
+      'the TTL is the recorded cause, never a merchant/admin actor');
+
+    // Nobody else can take the name during cleanup -- and nobody else's claim is destroyed by trying.
+    assert.equal((await rpc(db, 'domain_mark_verified', cb.group_id, b, cb.txt_token)).outcome, 'hostname_releasing');
+    assert.deepEqual(await statusOf(cb.group_id), ['pending', 'pending'], 'the early claim survives, still pending');
+    assert.equal((await rpc(db, 'domain_claim', c3, host, 'apex')).outcome, 'hostname_releasing');
+    const e = await refused(inTx(`
+      update public.store_domains set status = 'verified', verified_at = now(), expires_at = now() + interval '1 day'
+       where group_id = '${cb.group_id}'`));
+    assert.equal(e.code, '23505', 'the ownership index still holds the name');
+    assert.deepEqual(await resolve(host), [], 'and it is not routed');
+
+    // The cleanup: authorise, remove, confirm, settle -- then the TTL end.
+    assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'vercel_not_removed');
+    await removeAll(a, ca);
+    assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'vercel_settling');
+    await settle(ca.group_id);
+    const f = await rpc(db, 'domain_finish_disconnect', ca.group_id, a);
+    assert.deepEqual(f, { outcome: 'expired', group_id: ca.group_id, reason });
+    const ended = await groupRows(db, ca.group_id);
+    assert.ok(ended.every((x) => x.status === 'expired' && x.end_reason === reason
+                                && ['none', 'removed'].includes(x.vercel_state)), JSON.stringify(ended));
+    assert.ok(ended.some((x) => x.vercel_state === 'removed'), 'what Vercel held was removed first');
+
+    // After cleanup is confirmed the name is reclaimable: the early pending claim now wins.
+    assert.equal((await rpc(db, 'domain_mark_verified', cb.group_id, b, cb.txt_token)).outcome, 'verified');
+  });
+}
+
+test('a lazily-expired holder with Vercel attached also keeps the name (no sweep needed)', async () => {
+  const host = newHost('lazyv');
+  const [a, b] = [await newStore(), await newStore()];
+  const cb = await claim(b, host);
+  const ca = await ready(a, host);
+  await expireNow(db, ca.group_id);
+  assert.equal((await rpc(db, 'domain_mark_verified', cb.group_id, b, cb.txt_token)).outcome, 'hostname_releasing');
+  assert.deepEqual(await statusOf(ca.group_id), ['disconnecting', 'disconnecting']);
+  assert.deepEqual(await statusOf(cb.group_id), ['pending', 'pending']);
+});
+
+test('old-group cleanup can never delete or reconcile a Vercel resource once a new group owns the name', async () => {
+  const host = newHost('owner');
+  const [a, b] = [await newStore(), await newStore()];
+  const ca = await ready(a, host);
+  await expireNow(db, ca.group_id);
+  await rpc(db, 'domain_expire_stale', 500);                // -> disconnecting (verify_ttl)
+
+  // Re-authorising a DELETE renews the settle window, so a retried or delayed
+  // worker's DELETE always precedes the release by at least 2 minutes.
+  const at = async () => (await db.query(
+    `select extract(epoch from now() - vercel_state_at) as age from public.store_domains
+      where group_id = $1 and hostname = $2`, [ca.group_id, host])).rows[0].age;
+  assert.equal((await intent(a, ca, host, 'remove')).outcome, 'ok');
+  await settle(ca.group_id);
+  assert.ok(Number(await at()) >= 180, 'window backdated');
+  assert.equal((await intent(a, ca, host, 'remove')).outcome, 'ok', 'a retry must re-authorise');
+  assert.ok(Number(await at()) < 5, 're-authorising renewed the window');
+  await removeAll(a, ca);
+  assert.equal((await intent(a, ca, host, 'remove')).outcome, 'nothing_to_remove', 'confirmed removed');
+  assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'vercel_settling');
+  await settle(ca.group_id);
+  assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'expired');
+
+  // A new store proves and takes the name onto Vercel.
+  const cb = await connected(b, host);
+  assert.deepEqual(await resolve(host), [{ store_slug: b, primary_host: host }]);
+
+  // The old group can authorise nothing and record nothing any more...
+  for (const what of ['remove', 'add']) {
+    assert.equal((await intent(a, ca, host, what)).outcome, 'group_ended', what);
+  }
+  assert.equal((await observe(a, ca, host, false)).outcome, 'group_ended');
+  assert.equal((await observe(a, ca, host, true)).outcome, 'group_ended');
+  assert.equal((await rpc(db, 'domain_finish_disconnect', ca.group_id, a)).outcome, 'already_ended');
+  // ...not even by hand: an ended group is frozen.
+  const e = await refused(inTx(`update public.store_domains set vercel_state = 'removing', vercel_state_at = now()
+                                  where group_id = '${ca.group_id}'`));
+  assert.match(e.message, /ended group is frozen/);
+  // And a DELETE can only ever be authorised by a group that is releasing the name:
+  assert.equal((await intent(b, cb, host, 'remove')).outcome, 'not_disconnecting');
+  const e2 = await refused(inTx(`update public.store_domains set vercel_state = 'removing'
+                                   where group_id = '${cb.group_id}'`));
+  assert.equal(e2.code, '23514');
+  assert.match(e2.message, /store_domains_removing_only_when_disconnecting/);
+  assert.deepEqual((await groupRows(db, cb.group_id)).map((x) => x.vercel_state), ['configured', 'configured']);
+});
+
+test('a requested disconnect and a TTL cleanup stay distinguishable to the end', async () => {
+  const [a, b] = [await newStore(), await newStore()];
+  const ca = await connected(a, newHost('cause'));
+  await rpc(db, 'domain_begin_disconnect', ca.group_id, a, 'admin', null, null);
+  await removeAll(a, ca);
+  await settle(ca.group_id);
+  assert.deepEqual(await rpc(db, 'domain_finish_disconnect', ca.group_id, a),
+    { outcome: 'disconnected', group_id: ca.group_id, reason: 'admin' });
+
+  const cb = await ready(b, newHost('cause'));
+  await expireNow(db, cb.group_id);
+  await rpc(db, 'domain_expire_stale', 500);
+  await removeAll(b, cb);
+  await settle(cb.group_id);
+  assert.deepEqual(await rpc(db, 'domain_finish_disconnect', cb.group_id, b),
+    { outcome: 'expired', group_id: cb.group_id, reason: 'verify_ttl' });
+
+  // The CHECKs refuse a TTL recorded as a disconnect, or a person recorded as a TTL.
+  const g = '44444444-4444-4444-8444-444444444444';
+  for (const [status, reason] of [['disconnected', 'verify_ttl'], ['expired', 'merchant']]) {
+    const e = await refused(inTx(`
+      insert into public.store_domains (group_id, store_slug, hostname, kind, role, status, txt_token, end_reason, ended_at)
+      values ('${g}', '${a}', 'x.cause.com', 'subdomain', 'primary', '${status}', repeat('a', 32), '${reason}', now())`));
+    assert.equal(e.code, '23514', `${status}/${reason}`);
+  }
 });
 
 test('expiry frees the hostname without the sweep: a stale holder is ended the moment it blocks a proof', async () => {
@@ -789,7 +981,8 @@ test('a stale group cannot move forward: pending past 72h cannot verify, ready p
   const c2 = await ready(s2, newHost('late'));
   const id = await challenge(s2, c2.group_id, 'activate', c2.primary_host);
   await expireNow(db, c2.group_id);
-  assert.equal((await rpc(db, 'domain_activate', c2.group_id, s2, id, codeHash(CODE))).outcome, 'expired');
+  const a = await activate(s2, c2, id, CODE);
+  assert.deepEqual([a.outcome, a.status], ['expired', 'disconnecting'], 'Vercel holds it: cleanup, not release');
   assert.deepEqual((await groupRows(db, c2.group_id)).map((r) => r.end_reason), ['verify_ttl', 'verify_ttl']);
 });
 
@@ -802,7 +995,7 @@ test('TTLs: 72h pending, 7 days verified/ready, 30 days misconfigured, 10 minute
   assert.ok(Math.abs(await hoursLeft(c.group_id) - 72) < 0.1);
   await rpc(db, 'domain_mark_verified', c.group_id, slug, c.txt_token);
   assert.ok(Math.abs(await hoursLeft(c.group_id) - 168) < 0.1);
-  for (const h of c.hostnames) await rpc(db, 'domain_set_vercel_state', c.group_id, slug, h, 'added', null);
+  for (const h of c.hostnames) await configure(slug, c, h);
   await rpc(db, 'domain_mark_ready', c.group_id, slug);
   assert.ok(Math.abs(await hoursLeft(c.group_id) - 168) < 0.1, 'ready keeps the clock from verification');
   const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
@@ -810,7 +1003,7 @@ test('TTLs: 72h pending, 7 days verified/ready, 30 days misconfigured, 10 minute
     `select extract(epoch from expires_at - created_at) / 60 as m from public.store_domain_challenges where id = $1`,
     [id])).rows[0].m);
   assert.equal(mins, 10);
-  await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE));
+  await activate(slug, c, id, CODE);
   const exp = (await db.query(`select expires_at from public.store_domains where group_id = $1`, [c.group_id])).rows;
   assert.ok(exp.every((r) => r.expires_at === null), 'connected never expires');
   await rpc(db, 'domain_health_update', c.group_id, slug, false, 'x');
@@ -835,28 +1028,137 @@ test('health: one failure is tolerated, the second marks misconfigured, one succ
   assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'hostname_in_use', 'still held for 30 days');
   await expireNow(db, c.group_id);
   await rpc(db, 'domain_expire_stale', 500);
-  assert.deepEqual((await groupRows(db, c.group_id)).map((r) => r.end_reason), ['misconfigured_ttl', 'misconfigured_ttl']);
+  assert.deepEqual((await groupRows(db, c.group_id)).map((r) => [r.status, r.end_reason]),
+    [['disconnecting', 'misconfigured_ttl'], ['disconnecting', 'misconfigured_ttl']], 'released only after cleanup');
+  assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'hostname_releasing');
+  await removeAll(a, c);
+  await settle(c.group_id);
+  assert.equal((await rpc(db, 'domain_finish_disconnect', c.group_id, a)).outcome, 'expired');
   assert.equal((await rpc(db, 'domain_claim', b, host, 'apex')).outcome, 'claimed', 'released');
+});
+
+test('a misconfigured group can route again only when Vercel reports every name configured', async () => {
+  const slug = await newStore();
+  const host = newHost('recover');
+  const c = await connected(slug, host);
+  await rpc(db, 'domain_health_update', c.group_id, slug, false, 'x');
+  await rpc(db, 'domain_health_update', c.group_id, slug, false, 'x');
+  await observe(slug, c, `www.${host}`, true, true, true);          // www DNS still wrong
+  const r = await rpc(db, 'domain_health_update', c.group_id, slug, true, null);
+  assert.equal(r.outcome, 'vercel_not_configured');
+  assert.deepEqual(await statusOf(c.group_id), ['misconfigured', 'misconfigured']);
+  assert.deepEqual(await resolve(host), []);
+  await observe(slug, c, `www.${host}`, true, true, false);
+  assert.equal((await rpc(db, 'domain_health_update', c.group_id, slug, true, null)).outcome, 'connected');
+  assert.deepEqual(await resolve(host), [{ store_slug: slug, primary_host: host }]);
 });
 
 test('Vercel is never recorded as holding a name before its TXT proof', async () => {
   const slug = await newStore();
   const c = await claim(slug, newHost('vercel'));
-  for (const s of ['adding', 'pending_verification', 'added']) {
-    assert.equal((await rpc(db, 'domain_set_vercel_state', c.group_id, slug, c.primary_host, s, null)).outcome, 'not_verified');
+  assert.equal((await intent(slug, c, c.primary_host, 'add')).outcome, 'not_allowed');
+  assert.equal((await intent(slug, c, c.primary_host, 'remove')).outcome, 'not_disconnecting');
+  assert.equal((await observe(slug, c, c.primary_host, true)).outcome, 'not_verified');
+  assert.equal((await observe(slug, c, c.primary_host, false)).outcome, 'not_verified');
+  assert.equal((await intent(slug, c, c.primary_host, 'bogus')).outcome, 'invalid_intent');
+  assert.equal((await intent(slug, c, 'elsewhere.com', 'add')).outcome, 'hostname_not_in_group');
+  for (const st of ['adding', 'configured', 'removed']) {
+    const e = await refused(inTx(`update public.store_domains set vercel_state = '${st}', vercel_state_at = now()
+                                    where group_id = '${c.group_id}'`));
+    assert.equal(e.code, '23514', st);
   }
-  for (const s of ['removing', 'removed']) {
-    assert.equal((await rpc(db, 'domain_set_vercel_state', c.group_id, slug, c.primary_host, s, null)).outcome,
-      'not_verified', `${s} on a pending group is an outcome, not an error`);
+});
+
+// ── 'ready' means attached + verified + correctly configured (review blocker 2) ──
+
+test('the database derives the Vercel state from raw facts; only attached+verified+not-misconfigured is configured', async () => {
+  const slug = await newStore();
+  const c = await verified(slug, newHost('facts'));
+  const h = c.primary_host;
+  assert.equal((await intent(slug, c, h, 'add')).vercel_state, 'adding');
+  const cases = [
+    [[true, false, false], 'attached_unverified'],
+    [[true, null, false], 'attached_unverified'],
+    [[true, true, true], 'attached_misconfigured'],
+    [[true, true, null], 'attached_misconfigured'],
+    [[true, true, false], 'configured'],
+    [[false, true, false], 'removed'],
+  ];
+  for (const [[att, ver, mis], want] of cases) {
+    assert.equal((await observe(slug, c, h, att, ver, mis)).vercel_state, want, JSON.stringify([att, ver, mis]));
   }
-  assert.equal((await rpc(db, 'domain_set_vercel_state', c.group_id, slug, c.primary_host, 'bogus', null)).outcome, 'invalid_state');
-  assert.equal((await rpc(db, 'domain_set_vercel_state', c.group_id, slug, 'elsewhere.com', 'removed', null)).outcome,
-    'hostname_not_in_group');
-  const e = await refused(inTx(`update public.store_domains set vercel_state = 'added' where group_id = '${c.group_id}'`));
-  assert.equal(e.code, '23514');
-  await rpc(db, 'domain_mark_verified', c.group_id, slug, c.txt_token);
-  await rpc(db, 'domain_set_vercel_state', c.group_id, slug, c.primary_host, 'added', null);
-  assert.equal((await rpc(db, 'domain_mark_ready', c.group_id, slug)).outcome, 'vercel_not_ready', 'www not added yet');
+  assert.equal((await rpc(db, 'domain_vercel_observe', c.group_id, slug, h, null, true, false, null)).outcome,
+    'invalid_observation', 'unknown attachment is refused, never guessed');
+});
+
+test('mark_ready: a mere add, attached-but-unverified, or DNS-misconfigured name is refused', async () => {
+  const slug = await newStore();
+  const host = newHost('gate');
+  const c = await verified(slug, host);
+  const ready = () => rpc(db, 'domain_mark_ready', c.group_id, slug);
+  for (const h of c.hostnames) assert.equal((await intent(slug, c, h, 'add')).outcome, 'ok');
+  let r = await ready();
+  assert.equal(r.outcome, 'vercel_not_ready', 'a successful POST (adding) is not enough');
+  assert.deepEqual(r.vercel, { [host]: 'adding', [`www.${host}`]: 'adding' });
+
+  for (const h of c.hostnames) await observe(slug, c, h, true, false, false);
+  assert.equal((await ready()).outcome, 'vercel_not_ready', 'attached but unverified');
+
+  for (const h of c.hostnames) await observe(slug, c, h, true, true, true);
+  assert.equal((await ready()).outcome, 'vercel_not_ready', 'verified but DNS misconfigured');
+
+  await observe(slug, c, host, true, true, false);
+  r = await ready();
+  assert.equal(r.outcome, 'vercel_not_ready', 'apex configured, www not: BOTH rows must be configured');
+  assert.deepEqual(r.vercel, { [host]: 'configured', [`www.${host}`]: 'attached_misconfigured' });
+
+  await observe(slug, c, `www.${host}`, true, true, false);
+  assert.equal((await ready()).outcome, 'ready', 'fully verified and configured');
+});
+
+test('a ready group whose name regresses is demoted, and activation refuses it', async () => {
+  const slug = await newStore();
+  const host = newHost('regress');
+  const c = await ready(slug, host);
+  const id = await challenge(slug, c.group_id, 'activate', host);
+
+  const o = await observe(slug, c, `www.${host}`, true, true, true);
+  assert.deepEqual([o.vercel_state, o.status], ['attached_misconfigured', 'verified']);
+  assert.deepEqual(await statusOf(c.group_id), ['verified', 'verified']);
+  const a = await activate(slug, c, id);
+  assert.equal(a.outcome, 'not_ready');
+  const att = (await db.query(`select attempts, consumed_at from public.store_domain_challenges where id = $1`, [id])).rows[0];
+  assert.deepEqual(att, { attempts: 0, consumed_at: null }, 'the refusal did not spend the code');
+
+  // The CHECK makes a ready group with an unconfigured name impossible, even by hand.
+  await observe(slug, c, `www.${host}`, true, true, false);
+  assert.equal((await rpc(db, 'domain_mark_ready', c.group_id, slug)).outcome, 'ready');
+  for (const st of ['attached_unverified', 'attached_misconfigured', 'adding', 'removed']) {
+    const e = await refused(inTx(`update public.store_domains set vercel_state = '${st}'
+                                    where group_id = '${c.group_id}' and kind = 'apex'`));
+    assert.match(e.message, /store_domains_ready_is_configured/, st);
+  }
+
+  // Either name regressing -- the apex this time -- blocks activation the same way.
+  await observe(slug, c, host, false);
+  assert.deepEqual(await statusOf(c.group_id), ['verified', 'verified']);
+  assert.equal((await activate(slug, c, id)).outcome, 'not_ready');
+  for (const h of c.hostnames) await configure(slug, c, h);
+  await rpc(db, 'domain_mark_ready', c.group_id, slug);
+  assert.equal((await activate(slug, c, id)).outcome, 'connected', 'the same code still works once truly ready');
+});
+
+test('activation requires the TXT token freshly read from DNS; a stale or missing proof spends no code', async () => {
+  const slug = await newStore();
+  const c = await ready(slug, newHost('txt'));
+  const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
+  for (const token of [null, '', 'f'.repeat(32), c.txt_token.toUpperCase()]) {
+    assert.equal((await activate(slug, c, id, CODE, token)).outcome, 'token_mismatch', String(token));
+  }
+  const att = (await db.query(`select attempts, consumed_at from public.store_domain_challenges where id = $1`, [id])).rows[0];
+  assert.deepEqual(att, { attempts: 0, consumed_at: null });
+  assert.deepEqual(await statusOf(c.group_id), ['ready', 'ready']);
+  assert.equal((await activate(slug, c, id)).outcome, 'connected');
 });
 
 test('set_primary swaps roles under a code, and the resolver follows', async () => {
@@ -900,18 +1202,26 @@ test('no server RPC raises for a refusal: every call in every status, and all-NU
     return c;
   });
   await mk('expired', async (s) => { const c = await claim(s, newHost('sweep')); await expireNow(db, c.group_id); return c; });
+  await mk('ttl-cleanup', async (s) => {
+    const c = await ready(s, newHost('sweep'));
+    await expireNow(db, c.group_id);
+    await rpc(db, 'domain_expire_stale', 500);
+    return c;
+  });
+  await mk('stale-ready', async (s) => { const c = await ready(s, newHost('sweep')); await expireNow(db, c.group_id); return c; });
 
   const outcomes = new Set();
   for (const [name, { slug, c }] of Object.entries(groups)) {
     const [p, r] = [c.primary_host, c.hostnames.find((h) => h !== c.primary_host) ?? c.primary_host];
     const calls = [
       ['domain_mark_verified', c.group_id, slug, c.txt_token],
-      ...['adding', 'pending_verification', 'added', 'removing', 'removed']
-        .map((st) => ['domain_set_vercel_state', c.group_id, slug, p, st, null]),
+      ...['add', 'remove'].flatMap((w) => [p, r].map((h) => ['domain_vercel_intent', c.group_id, slug, h, w])),
+      ...[[true, false, false], [true, true, true], [true, true, false], [false, null, null]]
+        .map(([at, v, m]) => ['domain_vercel_observe', c.group_id, slug, p, at, v, m, null]),
       ['domain_mark_ready', c.group_id, slug],
       ...['activate', 'set_primary', 'disconnect'].flatMap((a) => [p, r]
         .map((t) => ['domain_challenge_create', slug, c.group_id, a, t, codeHash(CODE)])),
-      ['domain_activate', c.group_id, slug, null, null],
+      ['domain_activate', c.group_id, slug, c.txt_token, null, null],
       ['domain_set_primary', c.group_id, slug, r, null, null],
       ['domain_health_update', c.group_id, slug, true, null],
       ['domain_health_update', c.group_id, slug, false, 'x'],
@@ -927,8 +1237,9 @@ test('no server RPC raises for a refusal: every call in every status, and all-NU
       outcomes.add(out.outcome);
     }
   }
-  for (const [fn, n] of [['domain_claim', 3], ['domain_mark_verified', 3], ['domain_set_vercel_state', 5],
-                         ['domain_mark_ready', 2], ['domain_challenge_create', 5], ['domain_activate', 4],
+  for (const [fn, n] of [['domain_claim', 3], ['domain_mark_verified', 3], ['domain_vercel_intent', 4],
+                         ['domain_vercel_observe', 7],
+                         ['domain_mark_ready', 2], ['domain_challenge_create', 5], ['domain_activate', 5],
                          ['domain_set_primary', 5], ['domain_begin_disconnect', 5], ['domain_finish_disconnect', 2],
                          ['domain_expire_stale', 1], ['domain_health_update', 4], ['domain_event_append', 5]]) {
     const out = await rpc(db, fn, ...Array(n).fill(null)).catch((e) => assert.fail(`${fn}(NULL...) raised ${e.message}`));
@@ -955,14 +1266,14 @@ test('challenge purpose binding: a code for one action, group or hostname works 
   // Another store cannot use it at all.
   const other = await newStore();
   const co = await ready(other, newHost('purpose'));
-  assert.equal((await rpc(db, 'domain_activate', co.group_id, other, act, codeHash(CODE))).outcome, 'challenge_not_found');
+  assert.equal((await activate(other, co, act, CODE)).outcome, 'challenge_not_found');
 
   // A set_primary code (target www) cannot activate (target apex).
   const sp = await challenge(slug, c.group_id, 'set_primary', `www.${host}`);
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, sp, codeHash(CODE))).outcome, 'challenge_purpose_mismatch');
+  assert.equal((await activate(slug, c, sp, CODE)).outcome, 'challenge_purpose_mismatch');
 
   // Its own purpose still works.
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, act, codeHash(CODE))).outcome, 'connected');
+  assert.equal((await activate(slug, c, act, CODE)).outcome, 'connected');
   const a = (await db.query(`select attempts, consumed_at from public.store_domain_challenges where id = $1`, [act])).rows[0];
   assert.equal(a.attempts, 1);
   assert.ok(a.consumed_at);
@@ -989,7 +1300,7 @@ test('challenges expire after 10 minutes', async () => {
   await db.query(`update public.store_domain_challenges
                      set created_at = created_at - interval '11 minutes', expires_at = expires_at - interval '11 minutes'
                    where id = $1`, [id]);
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE))).outcome, 'challenge_expired');
+  assert.equal((await activate(slug, c, id, CODE)).outcome, 'challenge_expired');
   assert.deepEqual(await statusOf(c.group_id), ['ready', 'ready']);
 });
 
@@ -998,11 +1309,11 @@ test('five wrong codes lock a challenge; the right code is refused after that', 
   const c = await ready(slug, newHost('brute'));
   const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
   for (let i = 1; i <= 4; i++) {
-    assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(`00000${i}`))).outcome,
+    assert.equal((await activate(slug, c, id, `00000${i}`)).outcome,
       'challenge_wrong_code', `attempt ${i}`);
   }
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash('000005'))).outcome, 'challenge_locked');
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE))).outcome, 'challenge_locked');
+  assert.equal((await activate(slug, c, id, '000005')).outcome, 'challenge_locked');
+  assert.equal((await activate(slug, c, id, CODE)).outcome, 'challenge_locked');
   assert.deepEqual(await statusOf(c.group_id), ['ready', 'ready']);
   const r = (await db.query(`select attempts, consumed_at from public.store_domain_challenges where id = $1`, [id])).rows[0];
   assert.deepEqual(r, { attempts: 5, consumed_at: null });
@@ -1014,8 +1325,8 @@ test('a request that fails its state check never burns the code', async () => {
   const slug = await newStore();
   const c = await ready(slug, newHost('noburn'));
   const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
-  await rpc(db, 'domain_set_vercel_state', c.group_id, slug, c.primary_host, 'removing', null);
-  assert.equal((await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash('999999'))).outcome, 'vercel_not_ready');
+  await observe(slug, c, c.primary_host, true, false, false);          // Vercel verification lapsed
+  assert.equal((await activate(slug, c, id, '999999')).outcome, 'not_ready');
   const r = (await db.query(`select attempts from public.store_domain_challenges where id = $1`, [id])).rows[0];
   assert.equal(r.attempts, 0);
 });
@@ -1056,7 +1367,7 @@ test('no plaintext code is ever stored', async () => {
                           'expires_at', 'attempts', 'consumed_at', 'created_at']);
 
   const id = await challenge(slug, c.group_id, 'activate', c.primary_host);
-  await rpc(db, 'domain_activate', c.group_id, slug, id, codeHash(CODE));
+  await activate(slug, c, id, CODE);
   const everything = JSON.stringify((await db.query(`select * from public.store_domain_events`)).rows);
   assert.equal(everything.includes(CODE), false);
   assert.equal(everything.includes(codeHash(CODE)), false);
@@ -1072,7 +1383,8 @@ test('a full lifecycle leaves an ordered audit trail', async () => {
   const c = await connected(slug, newHost('audit'));
   const ev = (await db.query(`select event, actor from public.store_domain_events where group_id = $1 order by id`,
     [c.group_id])).rows.map((r) => `${r.event}/${r.actor}`);
-  assert.deepEqual(ev, ['claimed/merchant', 'verified/system', 'vercel_state/system', 'vercel_state/system',
+  assert.deepEqual(ev, ['claimed/merchant', 'verified/system',
+    'vercel_intent/system', 'vercel_observed/system', 'vercel_intent/system', 'vercel_observed/system',
     'ready/system', 'challenge_created/merchant', 'challenge_consumed/merchant', 'activated/merchant']);
 });
 
