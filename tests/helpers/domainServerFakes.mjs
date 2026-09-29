@@ -10,6 +10,10 @@
 //   WhatsApp fake   -- records every send.
 // All four write to one shared timeline so tests can assert ORDER.
 import { asRole } from './domainDb.mjs';
+import { parse as parseDomain } from 'tldts';
+
+// Set-returning RPCs: PostgREST answers them with an array of rows.
+const SETOF = new Set(['domain_reconcile_lease']);
 
 export const SB = 'https://sb.test';
 export const SERVICE_KEY = 'test-service-role-key-not-real';
@@ -56,11 +60,14 @@ export function createPostgrestShim(pg, { timeline, pins = new Map(), serviceKey
       const fn = path.slice('/rest/v1/rpc/'.length);
       const args = JSON.parse(init.body || '{}');
       const keys = Object.keys(args);
-      const sql = `select public.${fn}(${keys.map((k, i) => `${k} => $${i + 1}`).join(', ')}) as r`;
+      const named = keys.map((k, i) => `${k} => $${i + 1}`).join(', ');
+      const sql = SETOF.has(fn) ? `select * from public.${fn}(${named})` : `select public.${fn}(${named}) as r`;
       const vals = keys.map((k) => (args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k]));
       try {
-        const out = (await asRole(pg, 'service_role', sql, vals)).rows[0].r;
-        timeline?.push({ kind: 'db', fn, host: args.p_hostname ?? null, intent: args.p_intent ?? null, outcome: out?.outcome });
+        const q = await asRole(pg, 'service_role', sql, vals);
+        const out = SETOF.has(fn) ? q.rows : q.rows[0].r;
+        timeline?.push({ kind: 'db', fn, host: args.p_hostname ?? null, intent: args.p_intent ?? null,
+                         outcome: SETOF.has(fn) ? `rows:${out.length}` : out?.outcome });
         return res(200, plain(out));
       } catch (e) {
         timeline?.push({ kind: 'db_error', fn, code: e.code });
@@ -77,12 +84,12 @@ export function createPostgrestShim(pg, { timeline, pins = new Map(), serviceKey
     if (method === 'GET' && path === '/rest/v1/store_domains') {
       const cols = u.searchParams.get('select');
       const byStore = u.searchParams.get('store_slug');
-      const byStatus = u.searchParams.get('status');
+      const byGroup = u.searchParams.get('group_id');
       const order = u.searchParams.get('order') === 'created_at.desc' ? 'desc' : 'asc';
       const limit = Number(u.searchParams.get('limit') || 100);
       let where, params;
       if (byStore) { where = 'store_slug = $1'; params = [byStore.replace(/^eq\./, '')]; }
-      else if (byStatus) { where = 'status = any($1)'; params = [byStatus.replace(/^in\.\(|\)$/g, '').split(',')]; }
+      else if (byGroup) { where = 'group_id = any($1::uuid[])'; params = [byGroup.replace(/^in\.\(|\)$/g, '').split(',')]; }
       else return res(400, { message: 'unfiltered read refused by shim' });
       const rows = (await asRole(pg, 'service_role',
         `select ${cols} from public.store_domains where ${where} order by created_at ${order}, kind limit ${limit}`, params)).rows;
@@ -100,6 +107,7 @@ export function createVercelFake({ timeline, projectId = PROJECT_ID, token = VER
   const knobs = {
     verifyOnAdd: true,                           // a fresh domain verifies at once
     misconfigured: new Map(),                    // host -> true | false | null (missing field)
+    verification: new Map(),                     // host -> raw verification[] override (e.g. hostile)
     hang: new Set(),                             // `${METHOD} ${kind}:${host}` -> never answers
     hangOnce: new Set(),
     status: new Map(),                           // `${METHOD} ${kind}:${host}` -> forced HTTP status
@@ -130,8 +138,12 @@ export function createVercelFake({ timeline, projectId = PROJECT_ID, token = VER
     if (knobs.hang.has(key)) return hangUntilAbort(init.signal);
     if (knobs.status.has(key)) return res(knobs.status.get(key), { error: { code: 'forced' } });
 
-    const body = (h) => ({ name: h, apexName: h.replace(/^www\./, ''), projectId, verified: project.get(h).verified,
-                           verification: project.get(h).verified ? [] : [{ type: 'TXT', domain: `_vercel.${h}`, value: 'vc-domain-verify=x', reason: 'pending' }] });
+    const apexOf = (h) => parseDomain(h, { allowPrivateDomains: false }).domain || h;
+    const body = (h) => ({
+      name: h, apexName: apexOf(h), projectId, verified: project.get(h).verified,
+      verification: project.get(h).verified ? [] : (knobs.verification.get(h)
+        ?? [{ type: 'TXT', domain: `_vercel.${apexOf(h)}`, value: `vc-domain-verify=${h},9f8e7d6c5b4a`, reason: 'pending_domain_verification' }]),
+    });
     switch (kind) {
       case 'add':
         if (foreign.has(host)) return res(409, { error: { code: 'domain_already_in_use' } });

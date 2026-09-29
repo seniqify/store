@@ -65,6 +65,37 @@ export function classifyHostname(raw) {
            hostnames: [host], txtName: `_pocketlink.${host}` };
 }
 
+// DNS names for records the merchant is asked to create may have a leading
+// underscore label (_vercel, _pocketlink); values are printable ASCII without
+// spaces, quotes or backslashes -- nothing that could break out of a DNS UI or
+// be mistaken for more than one value.
+const TXT_NAME = /^(_?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])$/;
+const TXT_VALUE = /^[\x21\x23-\x5b\x5d-\x7e]{1,255}$/;
+
+/**
+ * Vercel's own verification challenges for `host`, reduced to what is safe to
+ * show a merchant: TXT only, a record name INSIDE the merchant's own registrable
+ * domain (never instructions to touch someone else's zone), a bounded printable
+ * value, at most three. Vercel's free-text `reason` is never passed on.
+ */
+export function safeVerificationChallenges(list, host) {
+  if (!Array.isArray(list)) return [];
+  const registrable = parse(String(host ?? ''), { allowPrivateDomains: false }).domain;
+  if (!registrable) return [];
+  const out = [];
+  for (const c of list.slice(0, 5)) {
+    if (!c || c.type !== 'TXT' || typeof c.domain !== 'string' || typeof c.value !== 'string') continue;
+    const name = c.domain.trim().toLowerCase().replace(/\.$/, '');
+    if (name.length > 253 || !TXT_NAME.test(name)) continue;
+    if (name !== registrable && !name.endsWith(`.${registrable}`)) continue;
+    if (!TXT_VALUE.test(c.value)) continue;
+    if (out.some((o) => o.name === name && o.value === c.value)) continue;
+    out.push({ type: 'TXT', name, value: c.value });
+    if (out.length === 3) break;
+  }
+  return out;
+}
+
 /** The TXT record name for an existing group, from its database rows. */
 export function txtNameForRows(rows) {
   const apex = rows.find((r) => r.kind === 'apex');

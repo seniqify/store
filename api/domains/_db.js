@@ -9,6 +9,11 @@
 //
 // Fails CLOSED: any non-2xx or network failure throws DomainDbError, which the
 // callers turn into a refusal, never into a guessed success.
+//
+// With a budget (_budget.js), each call's timeout is capped at the time left
+// before the HARD deadline (recording results may use the reserve), and no
+// call starts with less than MIN_DB_MS left.
+import { MIN_DB_MS } from './_budget.js';
 
 export class DomainDbError extends Error {
   constructor(code) {
@@ -51,7 +56,8 @@ export function groupRows(rows) {
   return groups.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
-export function createDomainDb({ url, serviceKey, fetchImpl = globalThis.fetch, timeoutMs = 10000 }) {
+export function createDomainDb(opts) {
+  const { url, serviceKey, fetchImpl = globalThis.fetch, timeoutMs = 10000, budget = null } = opts;
   const headers = () => ({
     apikey: serviceKey,
     Authorization: `Bearer ${serviceKey}`,
@@ -60,8 +66,14 @@ export function createDomainDb({ url, serviceKey, fetchImpl = globalThis.fetch, 
 
   async function request(path, init = {}) {
     if (!serviceKey) throw new DomainDbError('db_unconfigured');
+    let limit = timeoutMs;
+    if (budget) {
+      const left = budget.recordLeft();
+      if (left < MIN_DB_MS) throw new DomainDbError('budget_exhausted');
+      limit = Math.min(limit, left);
+    }
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const timer = setTimeout(() => ctrl.abort(), limit);
     let r;
     try {
       r = await fetchImpl(`${url}${path}`, { ...init, headers: headers(), signal: ctrl.signal });
@@ -84,6 +96,9 @@ export function createDomainDb({ url, serviceKey, fetchImpl = globalThis.fetch, 
   return {
     rpc,
 
+    /** The same client, bound to an execution budget. */
+    withBudget: (b) => createDomainDb({ ...opts, budget: b }),
+
     /** Only the owner phone, from the store record -- never from a request. */
     async storeOwnerPhone(slug) {
       const rows = await request(
@@ -97,12 +112,21 @@ export function createDomainDb({ url, serviceKey, fetchImpl = globalThis.fetch, 
       return groupRows(rows);
     },
 
-    async groupsInStatus(statuses, limit = 400) {
+    /** Complete groups (every row of each) by id -- never split by a row limit. */
+    async groupsByIds(ids) {
+      const clean = ids.filter((id) => /^[0-9a-f-]{36}$/.test(String(id)));
+      if (!clean.length) return [];
       const rows = await request(
-        `/rest/v1/store_domains?status=in.(${statuses.map(enc).join(',')})&select=${GROUP_COLUMNS}` +
-        `&order=created_at.asc&limit=${limit}`);
+        `/rest/v1/store_domains?group_id=in.(${clean.join(',')})&select=${GROUP_COLUMNS}&order=created_at.asc`);
       return groupRows(rows);
     },
+
+    /**
+     * Lease the next group(s) fairly (PR-B.1 domain_reconcile_lease): whole
+     * groups, disjoint across overlapping workers, least-recently-served first.
+     * The database caps the batch at 5 and fixes the lease at 120 s.
+     */
+    reconcileLease: (limit = 1) => rpc('domain_reconcile_lease', { p_limit: limit }),
 
     // ── PR-B RPCs (every write) ─────────────────────────────────────────────
     claim: (slug, host, kind) =>
@@ -143,8 +167,11 @@ export function createDomainDb({ url, serviceKey, fetchImpl = globalThis.fetch, 
       rpc('domain_finish_disconnect', { p_group_id: groupId, p_store_slug: slug }),
     expireStale: (limit = 200) =>
       rpc('domain_expire_stale', { p_limit: limit }),
-    healthUpdate: (groupId, slug, ok, error = null) =>
-      rpc('domain_health_update', { p_group_id: groupId, p_store_slug: slug, p_ok: ok, p_error: error }),
+    /** Only with the health token of the lease that authorised this check. */
+    healthUpdate: (groupId, slug, checkToken, ok, error = null) =>
+      rpc('domain_health_update', {
+        p_group_id: groupId, p_store_slug: slug, p_check_token: checkToken, p_ok: ok, p_error: error,
+      }),
     eventAppend: (groupId, slug, event, actor, detail = {}) =>
       rpc('domain_event_append', {
         p_group_id: groupId, p_store_slug: slug, p_event: event, p_actor: actor, p_detail: detail,

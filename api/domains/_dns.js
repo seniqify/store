@@ -14,6 +14,7 @@
 // Only an EXACT, whole-record match of the token proves ownership. A timeout or
 // an error is never a pass.
 import { Resolver } from 'node:dns/promises';
+import { MIN_EXTERNAL_MS } from './_budget.js';
 
 export const DNS_TIMEOUT_MS = 8000;
 const TOKEN = /^[0-9a-f]{32}$/;
@@ -58,10 +59,18 @@ export async function lookupTxt(name, { resolveTxt = systemResolveTxt(), timeout
  * Is `token` published at `name` right now?
  *   { proved: true, token }                     exact match found
  *   { proved: false, status }                   anything else (never a pass)
+ * With opts.budget, the lookup's timeout is capped at the time left for
+ * external work, and it is not started at all with too little left.
  */
 export async function proveTxtToken(name, token, opts = {}) {
   if (!name || !TOKEN.test(String(token ?? ''))) return { proved: false, status: 'bad_request' };
-  const r = await lookupTxt(name, opts);
+  const { budget, ...lookupOpts } = opts;
+  if (budget) {
+    const left = budget.actionLeft();
+    if (left < MIN_EXTERNAL_MS) return { proved: false, status: 'budget_exhausted' };
+    lookupOpts.timeoutMs = Math.min(lookupOpts.timeoutMs ?? DNS_TIMEOUT_MS, left);
+  }
+  const r = await lookupTxt(name, lookupOpts);
   if (r.status !== 'found') return { proved: false, status: r.status };
   if (r.values.some((v) => v === token)) return { proved: true, token };
   return { proved: false, status: r.values.length ? 'token_mismatch' : 'no_txt' };

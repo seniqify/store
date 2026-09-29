@@ -1,8 +1,10 @@
 // Custom-domain server integration (PR-C). No real DNS, Vercel, WhatsApp or
 // Supabase is touched: every external system is a deterministic fake, and the
-// database is the REAL PR-B schema running in PGlite behind a PostgREST shim
-// (tests/helpers/domainServerFakes.mjs) -- so every refusal, fence, TTL and
-// challenge rule asserted here is enforced by the production SQL.
+// database is the REAL PR-B + PR-B.1 schema running in PGlite behind a
+// PostgREST shim (tests/helpers/domainServerFakes.mjs) -- so every refusal,
+// fence, TTL, lease and challenge rule asserted here is enforced by the SQL.
+// (Real multi-connection locking is tested separately against PostgreSQL:
+// tests/custom-domains-lease-pg.test.mjs.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -17,24 +19,26 @@ import {
 
 import { ANON } from '../api/meta/_meta.js';
 import { domainsConfig, missingConfig } from '../api/domains/_config.js';
-import { classifyHostname, normalizeHostInput, txtNameForRows } from '../api/domains/_parse.js';
+import { classifyHostname, normalizeHostInput, txtNameForRows, safeVerificationChallenges } from '../api/domains/_parse.js';
 import { lookupTxt, proveTxtToken, DNS_TIMEOUT_MS } from '../api/domains/_dns.js';
 import { createVercelClient, VERCEL_DELETE_TIMEOUT_MS, VERCEL_TIMEOUT_MS } from '../api/domains/_vercel.js';
 import { otpHash, generateOtp, normalizeOwnerPhone, maskPhone } from '../api/domains/_otp.js';
-import { releaseRow, healthCheck } from '../api/domains/_steps.js';
-import { reconcile } from '../api/domains/_reconcile.js';
-import { handleManage, buildDeps } from '../api/domains/manage.js';
+import { releaseRow, healthCheck, syncGroup } from '../api/domains/_steps.js';
+import { createBudget, MIN_STEP_MS, RECORD_RESERVE_MS } from '../api/domains/_budget.js';
+import { createDomainDb } from '../api/domains/_db.js';
+import { reconcile, RECONCILE_BUDGET_MS } from '../api/domains/_reconcile.js';
+import { handleManage, buildDeps, withBudget, REQUEST_BUDGET_MS } from '../api/domains/manage.js';
 import { handleReconcile } from '../api/domains/reconcile.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
-const pg = await freshDb();
+const pg = await freshDb({ lease: true });
 
 // ── world: one set of fakes over the shared database ────────────────────────
 let seq = 0;
 // The reconciler works on EVERY group in the database, so tests that run it get
 // a database of their own (isolated); the rest share one.
 async function world({ env = ENV_ON, isolated = false } = {}) {
-  const db = isolated ? await freshDb() : pg;
+  const db = isolated ? await freshDb({ lease: true }) : pg;
   const timeline = createTimeline();
   const pins = new Map();
   const shim = createPostgrestShim(db, { timeline, pins, anonKey: ANON });
@@ -56,8 +60,10 @@ async function store(w, { ownerPhone = '919876543210', pin = '2580' } = {}) {
   return { slug, hashedPin: hashPin(pin) };
 }
 const host = (label = 'brand') => `${label}${++seq}.com`;
+const JSON_HEADERS = { 'content-type': 'application/json' };
 const call = (w, s, action, extra = {}, headers = { 'x-real-ip': '203.0.113.7' }) =>
-  handleManage({ method: 'POST', headers, body: { action, slug: s.slug, hashedPin: s.hashedPin, ...extra } },
+  handleManage({ method: 'POST', headers: { ...JSON_HEADERS, ...headers },
+                 body: { action, slug: s.slug, hashedPin: s.hashedPin, ...extra } },
     { env: w.env, fetchImpl: w.fetchImpl, deps: w.deps });
 const api = async (...a) => (await call(...a)).body;
 const lastCode = (w) => w.wa.sends.at(-1)?.code;
@@ -71,6 +77,13 @@ const expireNow = (w, slug) => w.pg.query(
   `update public.store_domains set expires_at = now() - interval '1 second'
     where store_slug = $1 and status in ('pending', 'verified', 'ready', 'misconfigured')`, [slug]);
 const runReconcile = (w, opts) => reconcile(w.deps, opts);
+/** Let every lease lapse, as 120 s passing would. */
+const expireLeases = (w) => w.pg.query(
+  `update public.store_domain_reconcile set lease_until = now() - interval '1 second' where lease_until is not null`);
+/** Make a connected group's hourly health check due. */
+const makeHealthDue = (w, slug) => w.pg.query(
+  `update public.store_domains set last_checked_at = now() - interval '61 minutes'
+    where store_slug = $1 and status in ('connected', 'misconfigured')`, [slug]);
 
 /** claim -> TXT published -> verify -> DNS pointed -> refresh (ready). */
 async function readyDomain(w, s, h = host()) {
@@ -231,9 +244,9 @@ test('Vercel client: project-scoped calls, teamId, raw facts, and no token in an
   const v = createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID, fetchImpl: fake.handle });
   const h = host('vc');
   assert.deepEqual(await v.inspect(h), { attached: false });
-  assert.deepEqual(await v.add(h), { result: 'attached', verified: true });
-  assert.deepEqual(await v.add(h), { result: 'already_attached', verified: true }, 'same project: idempotent (Vercel 400)');
-  assert.deepEqual(await v.inspect(h), { attached: true, verified: true });
+  assert.deepEqual(await v.add(h), { result: 'attached', verified: true, verification: [] });
+  assert.deepEqual(await v.add(h), { result: 'already_attached', verified: true, verification: [] }, 'same project: idempotent (Vercel 400)');
+  assert.deepEqual(await v.inspect(h), { attached: true, verified: true, verification: [] });
   fake.knobs.misconfigured.set(h, true);
   assert.equal((await v.facts(h)).misconfigured, true);
   fake.knobs.misconfigured.set(h, null);                      // field missing in the response
@@ -504,7 +517,7 @@ test('activation: Vercel must report every hostname configured at activation tim
   assert.equal(a.domain.status, 'verified', 'demoted by the database');
   w.vercel.knobs.hang.add(`GET inspect:${d.host}`);
   const w2deps = { ...w.deps, vercel: createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID, fetchImpl: w.fetchImpl, timeoutMs: 40 }) };
-  const unknown = await handleManage({ method: 'POST', headers: {}, body: { action: 'activate', slug: s.slug, hashedPin: s.hashedPin, challengeId: o.challenge_id, code } },
+  const unknown = await handleManage({ method: 'POST', headers: JSON_HEADERS, body: { action: 'activate', slug: s.slug, hashedPin: s.hashedPin, challengeId: o.challenge_id, code } },
     { env: w.env, fetchImpl: w.fetchImpl, deps: w2deps });
   assert.equal(unknown.body.outcome, 'vercel_unavailable', 'an unanswered Vercel call is never a pass');
   w.vercel.knobs.hang.delete(`GET inspect:${d.host}`);
@@ -521,9 +534,9 @@ test('after connection the TXT record need not stay published; health checks nev
   const d = await connectedDomain(w, s);
   w.dns.unpublish(d.txt.name);
   const lookups = w.dns.lookups.length;
-  await w.pg.query(`update public.store_domains set last_checked_at = now() - interval '2 hours' where store_slug = $1`, [s.slug]);
+  await makeHealthDue(w, s.slug);
   const r = await runReconcile(w);
-  assert.equal(r.health_checked, 1);
+  assert.deepEqual([r.health, r.health_no_verdict], [1, 0]);
   assert.equal(w.dns.lookups.length, lookups, 'no DNS lookup in a health check');
   assert.deepEqual((await rowsOf(w, s.slug)).map((x) => x.status), ['connected', 'connected']);
   assert.equal((await api(w, s, 'status')).domain.txt, null, 'no TXT instructions once connected');
@@ -546,8 +559,9 @@ test('disconnect: every DELETE is fenced by a fresh remove intent; ownership is 
 
   assert.equal((await api(w, b, 'claim', { hostname: d.host })).outcome, 'hostname_releasing', 'still exclusive');
   const again = await runReconcile(w);
-  assert.equal(again.cleanup_pending, 1, 'still inside the 2-minute fence');
+  assert.deepEqual([again.cleanup, again.cleanup_finished], [1, 0], 'still inside the 2-minute fence');
   await settle(w, a.slug);
+  await expireLeases(w);
   const fin = await runReconcile(w);
   assert.equal(fin.cleanup_finished, 1);
   assert.equal((await api(w, a, 'status')).domain, null);
@@ -635,7 +649,9 @@ test('reconciler: idempotent -- a second pass over a converged state changes not
   assert.equal(r1.marked_ready, 1);
   assertFenced(w.timeline);
   const muts = w.vercel.mutations().filter((x) => x.kind !== 'verify').length;
+  await expireLeases(w);
   const r2 = await runReconcile(w);
+  assert.equal(r2.sync, 1, 'the ready group was examined again');
   assert.equal(w.vercel.mutations().filter((x) => x.kind !== 'verify').length, muts, 'no add/delete on a converged group');
   assert.equal(r2.errors, 0);
 });
@@ -652,6 +668,7 @@ test('reconciler: a TTL cleanup group keeps its names until Vercel removal is co
   assert.equal(w.vercel.project.has(d.host), false, 'removed from Vercel in the same pass');
   assert.equal((await api(w, b, 'claim', { hostname: d.host })).outcome, 'hostname_releasing');
   await settle(w, a.slug);
+  await expireLeases(w);
   await runReconcile(w);
   const ended = (await w.pg.query('select distinct status, end_reason from public.store_domains where store_slug = $1', [a.slug])).rows;
   assert.deepEqual(ended, [{ status: 'expired', end_reason: 'verify_ttl' }]);
@@ -664,38 +681,297 @@ test('reconciler: a TTL cleanup group keeps its names until Vercel removal is co
 // ═══════════════════════════════════════════════════════════════════════════
 
 test('health: one failure tolerated, two consecutive -> misconfigured, success resets; recovery needs every hostname configured', async () => {
-  const w = await world();
+  const w = await world({ isolated: true });
   const s = await store(w);
   const d = await connectedDomain(w, s);
   const g = async () => (await w.deps.db.groupsForStore(s.slug))[0];
+  /** One due, leased, authorised check -- as the reconciler would do an hour later. */
+  const check = async (deps = w.deps) => {
+    await makeHealthDue(w, s.slug);
+    await expireLeases(w);
+    const [lease] = await w.deps.db.reconcileLease(1);
+    assert.equal(lease.work, 'health');
+    return healthCheck(deps, await g(), lease.health_token);
+  };
   w.vercel.knobs.misconfigured.set(`www.${d.host}`, true);
-  assert.deepEqual(await healthCheck(w.deps, await g()), { verdict: false, outcome: 'connected', failures: 1 });
-  assert.deepEqual(await healthCheck(w.deps, await g()), { verdict: false, outcome: 'misconfigured', failures: 2 });
+  assert.deepEqual(await check(), { verdict: false, outcome: 'connected', failures: 1 });
+  assert.deepEqual(await check(), { verdict: false, outcome: 'misconfigured', failures: 2 });
   w.vercel.knobs.misconfigured.set(d.host, null);             // apex fact now unknown
   w.vercel.dnsReady(`www.${d.host}`);
-  assert.equal((await healthCheck(w.deps, await g())).verdict, false, 'a null fact is never healthy');
+  assert.equal((await check()).verdict, false, 'a null fact is never healthy');
   assert.deepEqual((await rowsOf(w, s.slug)).map((x) => x.status), ['misconfigured', 'misconfigured']);
   w.vercel.dnsReady(d.host);
-  assert.deepEqual(await healthCheck(w.deps, await g()), { verdict: true, outcome: 'connected', failures: 0 });
+  assert.deepEqual(await check(), { verdict: true, outcome: 'connected', failures: 0 });
 
   // A transport failure is no verdict at all -- not counted either way.
-  w.deps = { ...w.deps, vercel: createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID,
-                                                     fetchImpl: w.fetchImpl, timeoutMs: 40 }) };
+  const slow = { ...w.deps, vercel: createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID,
+                                                         fetchImpl: w.fetchImpl, timeoutMs: 40 }) };
   w.vercel.knobs.hang.add(`GET config:${d.host}`);
-  assert.deepEqual(await healthCheck(w.deps, await g()), { verdict: null, reason: 'vercel_timeout' });
+  assert.deepEqual(await check(slow), { verdict: null, reason: 'vercel_timeout' });
   const row = (await w.pg.query('select consecutive_health_failures as f from public.store_domains where store_slug = $1 limit 1', [s.slug])).rows[0];
   assert.equal(row.f, 0);
+});
+
+test('health results are tied to the lease that authorised them: duplicates and stale results are refused', async () => {
+  const w = await world({ isolated: true });
+  const s = await store(w);
+  const d = await connectedDomain(w, s);
+  const g = async () => (await w.deps.db.groupsForStore(s.slug))[0];
+  await makeHealthDue(w, s.slug);
+  const [first] = await w.deps.db.reconcileLease(1);
+  w.vercel.knobs.misconfigured.set(d.host, true);
+  assert.deepEqual(await healthCheck(w.deps, await g(), first.health_token), { verdict: false, outcome: 'connected', failures: 1 });
+  // The same authorisation again (an overlapping or retried worker): refused, not counted twice.
+  assert.equal((await healthCheck(w.deps, await g(), first.health_token)).outcome, 'stale_check');
+  assert.equal((await w.pg.query('select consecutive_health_failures as f from public.store_domains where store_slug = $1 limit 1', [s.slug])).rows[0].f, 1);
+  // No token, or a made-up one: refused.
+  assert.deepEqual(await healthCheck(w.deps, await g(), null), { verdict: null, reason: 'no_token' });
+  assert.equal((await w.deps.db.healthUpdate((await g()).group_id, s.slug, crypto.randomUUID(), true)).outcome, 'stale_check');
+  // Two leases an hour apart: a delayed result from the older can never overwrite the newer.
+  await makeHealthDue(w, s.slug);
+  await expireLeases(w);
+  const [older] = await w.deps.db.reconcileLease(1);
+  await makeHealthDue(w, s.slug);
+  await expireLeases(w);
+  const [newer] = await w.deps.db.reconcileLease(1);
+  assert.notEqual(older.health_token, newer.health_token);
+  assert.deepEqual(await healthCheck(w.deps, await g(), newer.health_token), { verdict: false, outcome: 'misconfigured', failures: 2 });
+  w.vercel.dnsReady(d.host);
+  assert.equal((await healthCheck(w.deps, await g(), older.health_token)).outcome, 'stale_check', 'the delayed success is refused');
+  assert.deepEqual((await rowsOf(w, s.slug)).map((x) => x.status), ['misconfigured', 'misconfigured']);
 });
 
 test('health: the reconciler checks a connected group at most hourly', async () => {
   const w = await world({ isolated: true });
   const s = await store(w);
   await connectedDomain(w, s);
-  await w.pg.query(`update public.store_domains set last_checked_at = now() - interval '2 hours' where store_slug = $1`, [s.slug]);
+  await makeHealthDue(w, s.slug);
   const r1 = await runReconcile(w);
-  assert.equal(r1.health_checked, 1);
+  assert.equal(r1.health, 1);
+  await expireLeases(w);
   const r2 = await runReconcile(w);
-  assert.equal(r2.health_checked, 0, 'checked moments ago');
+  assert.equal(r2.health, 0, 'checked moments ago: not due, not even leased');
+  assert.equal(r2.complete, true);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Review round 3: 409, verification challenges, budgets, fairness, config
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('409 is not proof of absence: a domain already on THIS project is observed, not recorded absent', async () => {
+  const w = await world();
+  const s = await store(w);
+  const h = host('c409');
+  w.vercel.foreign.add(`www.${h}`);                          // Vercel answers 409 on add...
+  w.vercel.project.set(`www.${h}`, { verified: true });      // ...yet the name IS on our project
+  const c = await api(w, s, 'claim', { hostname: h });
+  w.dns.publish(c.domain.txt.name, c.domain.txt.value);
+  await api(w, s, 'verify');
+  const www = (await rowsOf(w, s.slug)).find((x) => x.kind === 'www');
+  assert.equal(www.vercel_state, 'attached_misconfigured', 'the real facts were recorded, not "removed"');
+  const last = (await w.pg.query('select last_error from public.store_domains where hostname = $1', [`www.${h}`])).rows[0];
+  assert.equal(last.last_error, null);
+  assertFenced(w.timeline);
+});
+
+test('409 with an uncertain inspection writes nothing: the row keeps its add intent and its ownership', async () => {
+  const w = await world();
+  const s = await store(w);
+  const h = host('c409u');
+  w.vercel.foreign.add(`www.${h}`);
+  w.vercel.knobs.hang.add(`GET inspect:www.${h}`);
+  w.deps = { ...w.deps, vercel: createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID,
+                                                     fetchImpl: w.fetchImpl, timeoutMs: 40 }) };
+  const c = await api(w, s, 'claim', { hostname: h });
+  w.dns.publish(c.domain.txt.name, c.domain.txt.value);
+  await api(w, s, 'verify');
+  const www = (await rowsOf(w, s.slug)).find((x) => x.kind === 'www');
+  assert.equal(www.vercel_state, 'adding', 'no observation was guessed');
+  const addAt = w.timeline.findIndex((e) => e.kind === 'vercel' && e.op === 'add' && e.host === `www.${h}`);
+  const after = w.timeline.slice(addAt + 1)
+    .filter((e) => e.kind === 'db' && e.fn === 'domain_vercel_observe' && e.host === `www.${h}`);
+  assert.deepEqual(after, []);
+  assert.deepEqual((await rowsOf(w, s.slug)).map((x) => x.status), ['verified', 'verified'], 'still exclusive');
+});
+
+test('Vercel verification challenges are returned to the owner -- validated, and only for unverified hostnames', async () => {
+  const w = await world();
+  const s = await store(w);
+  const h = host('vch');
+  w.vercel.knobs.verifyOnAdd = false;
+  const c = await api(w, s, 'claim', { hostname: h });
+  w.dns.publish(c.domain.txt.name, c.domain.txt.value);
+  const v = await api(w, s, 'verify');
+  assert.deepEqual(v.vercel_verification, [
+    { host: h, type: 'TXT', name: `_vercel.${h}`, value: `vc-domain-verify=${h},9f8e7d6c5b4a` },
+    { host: `www.${h}`, type: 'TXT', name: `_vercel.${h}`, value: `vc-domain-verify=www.${h},9f8e7d6c5b4a` },
+  ]);
+  // Hostile or malformed entries from the API never reach the merchant.
+  // (Only the first five entries are ever examined -- a bound, not a bug.)
+  w.vercel.knobs.verification.set(`www.${h}`, [
+    { type: 'CNAME', domain: `_vercel.${h}`, value: 'x' },
+    { type: 'TXT', domain: '_vercel.attacker.com', value: 'vc-domain-verify=steal' },
+    { type: 'TXT', domain: `_VERCEL.${h}.`, value: 'vc-domain-verify=ok', reason: 'internal detail' },
+    { type: 'TXT', domain: `_vercel.${h}`, value: 'has "quotes"' },
+    { type: 'TXT', domain: `_vercel.${h}`, value: 'has space' },
+    { type: 'TXT', domain: `bad_label.${h}`, value: 'v' },
+  ]);
+  const r = await api(w, s, 'refresh');
+  assert.deepEqual(r.vercel_verification.filter((x) => x.host === `www.${h}`),
+    [{ host: `www.${h}`, type: 'TXT', name: `_vercel.${h}`, value: 'vc-domain-verify=ok' }]);
+  assert.equal(JSON.stringify(r).includes('internal detail'), false);
+  const st = await api(w, s, 'status');
+  assert.deepEqual(st.vercel_verification, r.vercel_verification, 'status reads the same challenges live');
+  // Once Vercel verifies, there is nothing left to show.
+  for (const x of [h, `www.${h}`]) w.vercel.project.get(x).verified = true;
+  w.vercel.dnsReady(h, `www.${h}`);
+  const done = await api(w, s, 'refresh');
+  assert.deepEqual(done.vercel_verification, []);
+  assert.equal(done.domain.status, 'ready');
+  assert.equal((await api(w, s, 'status')).vercel_verification, undefined);
+});
+
+test('safeVerificationChallenges: TXT only, inside the merchant domain, printable, deduplicated, at most three', () => {
+  const ok = (v) => ({ type: 'TXT', domain: '_vercel.brand.co.in', value: v });
+  assert.deepEqual(safeVerificationChallenges([ok('a'), ok('a'), ok('b'), ok('c'), ok('d')], 'www.brand.co.in').map((x) => x.value),
+    ['a', 'b', 'c']);
+  assert.deepEqual(safeVerificationChallenges([{ ...ok('a'), domain: '_vercel.co.in' }], 'brand.co.in'), [],
+    'a public suffix is not the merchant domain');
+  assert.deepEqual(safeVerificationChallenges([{ ...ok('a'), domain: '_vercel.otherbrand.co.in' }], 'brand.co.in'), []);
+  assert.deepEqual(safeVerificationChallenges('nope', 'brand.com'), []);
+  assert.deepEqual(safeVerificationChallenges([ok('x')], 'not a host'), []);
+});
+
+test('config: merchant API and reconciler apply the SAME Vercel validation (a project NAME is refused by both)', async () => {
+  const env = { ...ENV_ON, DOMAINS_VERCEL_PROJECT_ID: 'store' };
+  const w = await world({ env });
+  assert.equal(w.deps.vercel.configured, false, 'buildDeps makes the client inert');
+  const s = await store(w);
+  const c = await api(w, s, 'claim', { hostname: host('cfg') });
+  w.dns.publish(c.domain.txt.name, c.domain.txt.value);
+  assert.equal((await api(w, s, 'verify')).outcome, 'verified');
+  assert.equal((await api(w, s, 'refresh')).outcome, 'not_configured');
+  const r = await handleReconcile({ method: 'POST', headers: { authorization: `Bearer ${CRON_SECRET}` } },
+    { env, fetchImpl: w.fetchImpl });
+  assert.deepEqual([r.status, r.body.outcome], [503, 'not_configured']);
+  assert.equal(w.vercel.calls.length, 0, 'no Vercel call from either path');
+});
+
+test('the endpoint requires a JSON body (so any cross-origin browser call needs a preflight that fails)', async () => {
+  const w = await world();
+  const body = JSON.stringify({ action: 'status', slug: 'x', hashedPin: 'a'.repeat(64) });
+  for (const req of [
+    { method: 'POST', headers: {}, body: { action: 'status' } },
+    { method: 'POST', headers: { 'content-type': 'text/plain' }, body },
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body },   // an unparsed string
+  ]) {
+    const r = await handleManage(req, { env: w.env, fetchImpl: w.fetchImpl });
+    assert.deepEqual([r.status, r.body], [415, { outcome: 'json_required' }]);
+  }
+  assert.equal(w.counter.n, 0);
+  const src = read('api/domains/manage.js');
+  assert.doesNotMatch(src, /same-origin only/i);
+  assert.match(src, /Any HTTP client can reach this endpoint/);
+});
+
+test('budget: two deadlines; Vercel, DNS and database calls are capped, and none starts without time for it', async () => {
+  let t = 0;
+  const b = createBudget({ totalMs: 20000, reserveMs: RECORD_RESERVE_MS, now: () => t });
+  assert.deepEqual([b.actionLeft(), b.recordLeft()], [12000, 20000]);
+  assert.equal(b.until(15000).hard, 15000);
+  assert.equal(b.until(99999).hard, 20000, 'a lease can only shorten a budget');
+
+  const calls = { n: 0 };
+  const counting = async () => { calls.n++; return { ok: true, status: 200, json: async () => ({}) }; };
+  t = 11000;                                                // 1 s left for external work
+  const v = createVercelClient({ token: 't', projectId: PROJECT_ID, fetchImpl: counting }).withBudget(b);
+  assert.deepEqual(await v.inspect('brand.com'), { unknown: true, reason: 'budget_exhausted' });
+  const dns = await proveTxtToken('_pocketlink.brand.com', 'a'.repeat(32), { resolveTxt: counting, budget: b });
+  assert.equal(dns.status, 'budget_exhausted');
+  const db = createDomainDb({ url: SB, serviceKey: 'k', fetchImpl: counting }).withBudget(b);
+  await db.rpc('domain_expire_stale', { p_limit: 1 });      // recording is still allowed in the reserve
+  assert.equal(calls.n, 1);
+  t = 19800;                                                // 200 ms before the hard stop
+  await assert.rejects(db.rpc('domain_expire_stale', { p_limit: 1 }), { code: 'budget_exhausted' });
+  assert.equal(calls.n, 1, 'nothing was sent without time to finish');
+  assert.ok(RECONCILE_BUDGET_MS < 60000 && REQUEST_BUDGET_MS < 60000, 'inside maxDuration');
+});
+
+test('budget: a step that could not finish is not started -- no intent is taken for it', async () => {
+  const w = await world();
+  const s = await store(w);
+  const c = await api(w, s, 'claim', { hostname: host('bud') });
+  const g0 = (await w.deps.db.groupsForStore(s.slug))[0];
+  await w.deps.db.markVerified(g0.group_id, s.slug, c.domain.txt.value);   // verified; nothing on Vercel yet
+  let t = 0;
+  const clocked = async (url, init) => {
+    if (init?.method === 'POST' && new URL(url).pathname.endsWith('/domains')) t += 9000;
+    return w.fetchImpl(url, init);
+  };
+  const deps = withBudget(buildDeps(w.cfg, clocked), createBudget({ totalMs: 20000, reserveMs: 8000, now: () => t }));
+  const g = (await w.deps.db.groupsForStore(s.slug))[0];
+  const r = await syncGroup(deps, g, { attach: true });
+  assert.equal(r.results[0].vercel_state, 'attached_misconfigured', 'first host: added, then observed and recorded');
+  assert.deepEqual(r.results[1], { host: g.rows[1].hostname, deferred: true });
+  const intents = w.timeline.filter((e) => e.kind === 'db' && e.fn === 'domain_vercel_intent').map((e) => e.host);
+  assert.deepEqual(intents, [g.rows[0].hostname], 'no intent for the deferred host');
+  assert.ok(MIN_STEP_MS >= 3000);
+});
+
+test('fairness: one queue across cleanup, health and sync; every group is served, including after a crash', async () => {
+  const w = await world({ isolated: true });
+  // One group of each kind of work.
+  const sSync = await store(w);
+  const cs = await api(w, sSync, 'claim', { hostname: host('fsync') });
+  w.dns.publish(cs.domain.txt.name, cs.domain.txt.value);
+  await api(w, sSync, 'verify');                                            // verified; DNS never pointed
+  const sClean = await store(w);
+  await connectedDomain(w, sClean);
+  const gc = (await w.deps.db.groupsForStore(sClean.slug))[0];
+  await w.deps.db.beginDisconnect(gc.group_id, sClean.slug, 'admin');       // cleanup: Vercel still holds it
+  const sHealth = await store(w);
+  await connectedDomain(w, sHealth);
+  await makeHealthDue(w, sHealth.slug);
+
+  // A clock that makes each Vercel call cost 6 s: one group per pass.
+  let t = 1e12;
+  const clocked = async (url, init) => {
+    if (new URL(url).hostname === 'api.vercel.com') t += 6000;
+    return w.fetchImpl(url, init);
+  };
+  const deps = { ...buildDeps(w.cfg, clocked), dnsOptions: w.deps.dnsOptions };
+  const pass = () => reconcile(deps, { now: () => t, budgetMs: 20000, reserveMs: 8000 });
+  const served = async () => (await w.pg.query(
+    `select d.store_slug from public.store_domain_reconcile r join public.store_domains d
+       on d.group_id = r.group_id and d.role = 'primary' order by r.last_reconciled_at desc limit 1`)).rows[0].store_slug;
+
+  const order = [];
+  for (let i = 0; i < 3; i++) {
+    const r = await pass();
+    assert.equal(r.leased, 1, `pass ${i + 1} took exactly one group`);
+    order.push(await served());
+  }
+  assert.deepEqual([...order].sort(), [sSync.slug, sClean.slug, sHealth.slug].sort(), 'every kind of work was served');
+  const idle = await pass();
+  assert.deepEqual([idle.leased, idle.complete], [0, true], 'all three are leased: nothing else is eligible');
+
+  // Crash: a worker leases a group and dies. Others carry on; once the lease
+  // lapses the crashed group is served again in turn.
+  await expireLeases(w);
+  await makeHealthDue(w, sHealth.slug);
+  const [crashed] = await w.deps.db.reconcileLease(1);                       // the oldest-served group
+  assert.equal(crashed.store_slug, order[0]);
+  const r1 = await pass();
+  assert.equal(r1.leased, 1);
+  assert.notEqual(await served(), crashed.store_slug, 'a held lease is never double-served');
+  const seen = new Set();
+  for (let i = 0; i < 3; i++) {
+    await expireLeases(w);
+    await makeHealthDue(w, sHealth.slug);
+    await pass();
+    seen.add(await served());
+  }
+  assert.ok(seen.has(crashed.store_slug), 'the crashed group was served again within N passes');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -806,7 +1082,7 @@ test('config: server-only names, never VITE_*; missing configuration is reported
 test('static: no VITE_ config, no CORS, no client import, no direct domain-table write, no new migration', () => {
   const dir = fileURLToPath(new URL('../api/domains/', import.meta.url));
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['_auth.js', '_config.js', '_db.js', '_dns.js', '_otp.js', '_parse.js',
+  assert.deepEqual(files.sort(), ['_auth.js', '_budget.js', '_config.js', '_db.js', '_dns.js', '_otp.js', '_parse.js',
     '_reconcile.js', '_service.js', '_steps.js', '_vercel.js', 'manage.js', 'reconcile.js']);
   for (const f of files) {
     const src = read(`api/domains/${f}`).split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');

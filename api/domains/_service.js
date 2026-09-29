@@ -33,11 +33,26 @@ export function domainView(g) {
 }
 
 /**
- * deps: { config, db, vercel, fetchImpl?, dnsOptions?, whatsapp?, randomInt? }
+ * Vercel's own ownership challenges for hostnames it has attached but not yet
+ * verified -- validated (TXT, inside the merchant's own domain, printable,
+ * bounded) by the Vercel client before they get here.
+ */
+function verificationFrom(results) {
+  const out = [];
+  for (const r of results) {
+    if (r.vercel_state !== 'attached_unverified') continue;
+    for (const c of r.verification || []) out.push({ host: r.host, type: c.type, name: c.name, value: c.value });
+  }
+  return out;
+}
+
+/**
+ * deps: { config, db, vercel, budget?, fetchImpl?, dnsOptions?, whatsapp?, randomInt? }
  *   whatsapp({ receiver, code }) -> { sent } ; defaults to the Seniqify template
  */
 export function createDomainService(deps) {
-  const { config, db, vercel, dnsOptions = {}, randomInt } = deps;
+  const { config, db, vercel, randomInt } = deps;
+  const dnsOptions = { ...(deps.dnsOptions || {}), budget: deps.budget || undefined };
   const whatsapp = deps.whatsapp || (({ receiver, code }) =>
     sendWhatsAppOtp({ url: config.whatsappUrl, apiKey: config.whatsappKey, receiver, code, fetchImpl: deps.fetchImpl }));
 
@@ -49,7 +64,21 @@ export function createDomainService(deps) {
 
   return {
     async status(slug) {
-      return { outcome: 'ok', domain: domainView(await openGroup(slug)) };
+      const g = await openGroup(slug);
+      const out = { outcome: 'ok', domain: domainView(g) };
+      const pending = g ? g.rows.filter((r) => r.vercel_state === 'attached_unverified') : [];
+      if (pending.length && vercel.configured) {
+        // Read-only: what Vercel needs to see to verify these hostnames.
+        const results = [];
+        for (const r of pending) {
+          const seen = await vercel.inspect(r.hostname);
+          if (seen.attached && seen.verified !== true) {
+            results.push({ host: r.hostname, vercel_state: 'attached_unverified', verification: seen.verification });
+          }
+        }
+        out.vercel_verification = verificationFrom(results);
+      }
+      return out;
     },
 
     async claim(slug, hostnameInput) {
@@ -66,15 +95,20 @@ export function createDomainService(deps) {
       if (!g) return { outcome: 'no_domain' };
       if (g.status !== 'pending') return { outcome: 'not_pending', domain: domainView(g) };
       const proof = await proveTxtToken(txtNameForRows(g.rows), g.txt_token, dnsOptions);
+      if (proof.status === 'budget_exhausted') return { outcome: 'temporarily_unavailable' };
       if (!proof.proved) return { outcome: 'txt_not_found', dns: proof.status, domain: domainView(g) };
       const r = await db.markVerified(g.group_id, slug, proof.token);
       if (r.outcome !== 'verified') return withView(slug, { outcome: r.outcome });
+      let vercel_verification = [];
       if (vercel.configured) {
         // Start attaching now so the merchant sees progress; the reconciler
         // finishes whatever this does not.
-        try { const g2 = await openGroup(slug); if (g2) await syncGroup(deps, g2, { attach: true }); } catch { /* reconciler retries */ }
+        try {
+          const g2 = await openGroup(slug);
+          if (g2) vercel_verification = verificationFrom((await syncGroup(deps, g2, { attach: true })).results);
+        } catch { /* reconciler retries */ }
       }
-      return withView(slug, { outcome: 'verified' });
+      return withView(slug, { outcome: 'verified', vercel_verification });
     },
 
     /** Re-read Vercel for every hostname; attach what is missing (pre-activation). */
@@ -94,7 +128,11 @@ export function createDomainService(deps) {
             ? { host: r.host, type: 'A', value: r.recommended.ipv4?.[0] ?? null }
             : { host: r.host, type: 'CNAME', value: r.recommended.cname ?? null };
         });
-      return withView(slug, { outcome: s.anyUnknown ? 'vercel_unavailable' : 'ok', dns_records });
+      return withView(slug, {
+        outcome: s.anyUnknown ? 'vercel_unavailable' : 'ok',
+        dns_records,
+        vercel_verification: verificationFrom(s.results),
+      });
     },
 
     /** Send a step-up code to the store's OWNER phone (from the store record). */
@@ -140,6 +178,7 @@ export function createDomainService(deps) {
       if (!s.allConfigured) return withView(slug, { outcome: 'vercel_not_ready' });
 
       const proof = await proveTxtToken(txtNameForRows(g.rows), g.txt_token, dnsOptions);
+      if (proof.status === 'budget_exhausted') return { outcome: 'temporarily_unavailable' };   // code untouched
       if (!proof.proved) return withView(slug, { outcome: 'txt_not_found', dns: proof.status });
 
       const hash = otpHash(config.otpSecret, { slug, action: 'activate', target: g.primary, code: String(code) });

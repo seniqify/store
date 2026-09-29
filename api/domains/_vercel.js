@@ -2,11 +2,12 @@
 // the Vercel API about domains.
 //
 // Contract (Vercel REST API, checked against the official reference 2026-09-29):
-//   GET    /v9/projects/{project}/domains/{domain}          project domain: projectId, verified
+//   GET    /v9/projects/{project}/domains/{domain}          project domain: projectId, verified,
+//                                                          verification[] challenges;
 //                                                          404 -> not in this project
 //   POST   /v10/projects/{project}/domains  {name}          add. 400 if it is ALREADY on this
 //                                                          project; 409 if another project /
-//                                                          account holds it
+//                                                          account holds it (or claims to)
 //   POST   /v9/projects/{project}/domains/{domain}/verify   re-check Vercel's own verification;
 //                                                          400 = challenge not satisfied
 //   GET    /v6/domains/{domain}/config?projectIdOrName=     misconfigured (DNS + TLS issuable)
@@ -18,6 +19,11 @@
 // or "unknown"; this client never decides a derived state -- the database does
 // (domain_vercel_observe). Errors are reduced to short fixed codes; the token
 // never appears in a result, an error or a log.
+//
+// With a budget (_budget.js), every call's timeout is capped at the time left
+// for external work, and no call starts with less than MIN_EXTERNAL_MS left.
+import { safeVerificationChallenges } from './_parse.js';
+import { MIN_EXTERNAL_MS } from './_budget.js';
 
 const API = 'https://api.vercel.com';
 
@@ -28,21 +34,30 @@ export const VERCEL_TIMEOUT_MS = 15000;
 export const VERCEL_DELETE_TIMEOUT_MS = 20000;
 
 const reasonOf = (r) =>
-  r.timedOut ? 'vercel_timeout' : r.status ? `vercel_http_${r.status}` : 'vercel_network';
+  r.budgetExhausted ? 'budget_exhausted'
+    : r.timedOut ? 'vercel_timeout'
+      : r.status ? `vercel_http_${r.status}` : 'vercel_network';
 
-export function createVercelClient({
-  token, projectId, teamId = '', fetchImpl = globalThis.fetch,
-  timeoutMs = VERCEL_TIMEOUT_MS, deleteTimeoutMs = VERCEL_DELETE_TIMEOUT_MS,
-}) {
+export function createVercelClient(opts) {
+  const {
+    token, projectId, teamId = '', fetchImpl = globalThis.fetch,
+    timeoutMs = VERCEL_TIMEOUT_MS, deleteTimeoutMs = VERCEL_DELETE_TIMEOUT_MS, budget = null,
+  } = opts;
   const configured = Boolean(token && projectId);
 
   async function call(method, path, { body, query = {}, timeout = timeoutMs } = {}) {
     if (!configured) return { ok: false, status: 0, unconfigured: true, json: null };
+    let limit = timeout;
+    if (budget) {
+      const left = budget.actionLeft();
+      if (left < MIN_EXTERNAL_MS) return { ok: false, status: 0, budgetExhausted: true, json: null };
+      limit = Math.min(limit, left);
+    }
     const url = new URL(API + path);
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
     if (teamId) url.searchParams.set('teamId', teamId);
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeout);
+    const timer = setTimeout(() => ctrl.abort(), limit);
     try {
       const r = await fetchImpl(url.toString(), {
         method,
@@ -63,27 +78,33 @@ export function createVercelClient({
   const P = () => `/v9/projects/${encodeURIComponent(projectId)}/domains`;
   const D = (host) => `${P()}/${encodeURIComponent(host)}`;
   const boolOrNull = (v) => (v === true ? true : v === false ? false : null);
+  const challenges = (json, host) =>
+    json && json.verified !== true ? safeVerificationChallenges(json.verification, host) : [];
 
   return {
     configured,
 
-    /** Is `host` attached to THIS project, and is it verified by Vercel? */
+    /** The same client, bound to an execution budget. */
+    withBudget: (b) => createVercelClient({ ...opts, budget: b }),
+
+    /** Is `host` attached to THIS project, is it verified, and if not, how. */
     async inspect(host) {
       const r = await call('GET', D(host));
       if (r.unconfigured) return { unknown: true, reason: 'vercel_unconfigured' };
       if (r.status === 404) return { attached: false };
       if (r.ok && r.json && r.json.projectId === projectId && r.json.name === host) {
-        return { attached: true, verified: boolOrNull(r.json.verified) };
+        return { attached: true, verified: boolOrNull(r.json.verified), verification: challenges(r.json, host) };
       }
       if (r.ok) return { unknown: true, reason: 'vercel_unexpected_response' };
       return { unknown: true, reason: reasonOf(r) };
     },
 
     /**
-     * Attach `host` to THIS project. Idempotent:
+     * Attach `host` to THIS project.
      *   attached          newly attached (verified per Vercel)
      *   already_attached  it was already on THIS project (Vercel answers 400)
-     *   conflict          another project or account holds it (409) -- never taken
+     *   conflict          409. NOT proof that it is absent from this project --
+     *                     the caller must inspect before recording anything.
      *   rejected          any other refusal
      *   unknown           no answer in time; the caller must not assume anything
      */
@@ -91,12 +112,12 @@ export function createVercelClient({
       const r = await call('POST', `/v10/projects/${encodeURIComponent(projectId)}/domains`, { body: { name: host } });
       if (r.unconfigured) return { result: 'unknown', reason: 'vercel_unconfigured' };
       if (r.ok && r.json && r.json.projectId === projectId) {
-        return { result: 'attached', verified: boolOrNull(r.json.verified) };
+        return { result: 'attached', verified: boolOrNull(r.json.verified), verification: challenges(r.json, host) };
       }
       if (r.status === 409) return { result: 'conflict', reason: 'vercel_conflict' };
       if (r.status === 400) {
         const seen = await this.inspect(host);
-        if (seen.attached === true) return { result: 'already_attached', verified: seen.verified };
+        if (seen.attached === true) return { result: 'already_attached', verified: seen.verified, verification: seen.verification };
         return { result: 'rejected', reason: 'vercel_http_400' };
       }
       if (r.ok) return { result: 'unknown', reason: 'vercel_unexpected_response' };
@@ -149,13 +170,15 @@ export function createVercelClient({
       if (seen.unknown) return seen;
       if (!seen.attached) return { attached: false, verified: null, misconfigured: null };
       let verified = seen.verified;
+      let verification = seen.verification;
       if (verified !== true && recheckVerification) {
         const v = await this.verify(host);
         if (!v.unknown) verified = v.verified;
+        if (verified === true) verification = [];
       }
       const cfg = await this.config(host);
       if (cfg.unknown) return cfg;
-      return { attached: true, verified, misconfigured: cfg.misconfigured, recommended: cfg.recommended };
+      return { attached: true, verified, misconfigured: cfg.misconfigured, recommended: cfg.recommended, verification };
     },
   };
 }

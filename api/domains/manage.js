@@ -1,12 +1,14 @@
 // POST /api/domains/manage  -- the owner-only custom-domain API for the later
 // Manage UI (PR-E). One endpoint, action-dispatched, like payments-connect.
 //
+//   Content-Type: application/json
 //   body: { action, slug, hashedPin, ...action fields }
 //   actions:
-//     status                                   -> { domain }
+//     status                                   -> { domain, vercel_verification? }
 //     claim        { hostname }                -> PENDING group + TXT record to publish
 //     verify                                   -> live TXT check, then verified
-//     refresh                                  -> re-read Vercel, attach, mark ready
+//     refresh                                  -> re-read Vercel, attach, mark ready,
+//                                                 Vercel's own TXT challenges if needed
 //     request_otp  { otpAction, hostname? }    -> code to the OWNER's WhatsApp
 //     activate     { challengeId, code }       -> fresh TXT + Vercel check, then connected
 //     set_primary  { hostname, challengeId, code }
@@ -14,41 +16,68 @@
 //
 // Order of refusals, on purpose:
 //   1. CUSTOM_DOMAINS_ENABLED off   -> feature_disabled (nothing is read, no PIN check)
-//   2. server not configured        -> not_configured (no detail returned or logged)
-//   3. PIN wrong / throttled        -> 403 unauthorized
-// Same-origin only: no CORS headers are added, so no other site's page can call it.
+//   2. not application/json         -> 415
+//   3. server not configured        -> not_configured (no detail returned or logged)
+//   4. PIN wrong / throttled        -> 403 unauthorized
+//
+// WHO CAN CALL IT. Any HTTP client can reach this endpoint; it is not
+// origin-restricted, and access control is the store PIN (verified per request
+// through the throttled verify_store_pin), never the caller's origin. What the
+// absence of CORS headers does do: a page on another origin cannot read the
+// responses, and because a JSON body is required, a browser must send a CORS
+// preflight for any cross-origin call -- which fails, so the call is never
+// made. No cookie or ambient credential is involved, so there is nothing for a
+// cross-site request to borrow.
+//
+// Every request runs under one execution budget (_budget.js): database, DNS and
+// Vercel calls are capped at the time left, with time reserved for recording
+// results.
 import { domainsConfig, missingConfig } from './_config.js';
 import { cleanSlug, cleanHashedPin, clientIp, verifyOwnerPin } from './_auth.js';
 import { createDomainDb } from './_db.js';
 import { createVercelClient } from './_vercel.js';
 import { createDomainService } from './_service.js';
+import { createBudget } from './_budget.js';
 
+export const REQUEST_BUDGET_MS = 50000;          // maxDuration is 60 s
+
+/**
+ * Real dependencies. The Vercel client is configured ONLY when the same check
+ * the reconciler uses passes (token, prj_ project id) -- otherwise it is inert
+ * and every Vercel-dependent action answers not_configured.
+ */
 export function buildDeps(cfg, fetchImpl = globalThis.fetch) {
+  const vercelOk = missingConfig(cfg, 'vercel').length === 0;
   return {
     config: cfg,
     fetchImpl,
     db: createDomainDb({ url: cfg.supabaseUrl, serviceKey: cfg.serviceKey, fetchImpl }),
     vercel: createVercelClient({
-      token: cfg.vercelToken, projectId: cfg.vercelProjectId, teamId: cfg.vercelTeamId, fetchImpl,
+      token: vercelOk ? cfg.vercelToken : '', projectId: vercelOk ? cfg.vercelProjectId : '',
+      teamId: cfg.vercelTeamId, fetchImpl,
     }),
   };
+}
+
+/** Bind every client in `deps` to one budget. */
+export function withBudget(deps, budget) {
+  return { ...deps, budget, db: deps.db.withBudget(budget), vercel: deps.vercel.withBudget(budget) };
 }
 
 const ACTIONS = new Set(['status', 'claim', 'verify', 'refresh', 'request_otp', 'activate', 'set_primary', 'disconnect']);
 
 /** The whole handler as a function of (request, environment) -> { status, body }. */
-export async function handleManage(req, { env = process.env, fetchImpl = globalThis.fetch, deps: injected } = {}) {
+export async function handleManage(req, { env = process.env, fetchImpl = globalThis.fetch, deps: injected, budgetMs = REQUEST_BUDGET_MS } = {}) {
   if (req.method !== 'POST') return { status: 405, body: { outcome: 'method_not_allowed' } };
 
   const cfg = domainsConfig(env);
   if (!cfg.enabled) return { status: 200, body: { outcome: 'feature_disabled' } };
 
-  let body;
-  try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  } catch {
-    return { status: 400, body: { outcome: 'bad_request' } };
+  const ctype = String(req.headers?.['content-type'] || '').toLowerCase();
+  if (!ctype.startsWith('application/json') || typeof req.body !== 'object' || req.body === null) {
+    return { status: 415, body: { outcome: 'json_required' } };
   }
+  const body = req.body;
   const action = String(body.action || '');
   if (!ACTIONS.has(action)) return { status: 400, body: { outcome: 'invalid_action' } };
   const slug = cleanSlug(body.slug);
@@ -60,7 +89,7 @@ export async function handleManage(req, { env = process.env, fetchImpl = globalT
   const ok = await verifyOwnerPin({ supabaseUrl: cfg.supabaseUrl, fetchImpl }, slug, hashedPin, clientIp(req));
   if (!ok) return { status: 403, body: { outcome: 'unauthorized' } };
 
-  const svc = createDomainService(injected || buildDeps(cfg, fetchImpl));
+  const svc = createDomainService(withBudget(injected || buildDeps(cfg, fetchImpl), createBudget({ totalMs: budgetMs })));
   try {
     switch (action) {
       case 'status':      return { status: 200, body: await svc.status(slug) };
