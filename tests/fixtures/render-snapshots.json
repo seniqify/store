@@ -1,0 +1,233 @@
+{
+ "generatedFrom": "main 09ae13919a0a005af9d40ecacf7dcc229539d4b4 api/render.js (pre-groundwork)",
+ "baseHtml": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n\r\n    <!-- Default title/meta — overridden per-store by Home.jsx useEffect -->\r\n    <title>PocketLink — WhatsApp Page for Every Business</title>\r\n    <meta name=\"description\"\r\n      content=\"Create your free WhatsApp business page in 2 minutes. No coding. No fees. Customers browse, add to cart, and order directly on WhatsApp.\" />\r\n    <link rel=\"canonical\" href=\"https://www.pocketlink.store/\" />\r\n\r\n    <!-- Open Graph (social preview) -->\r\n    <meta property=\"og:type\"          content=\"website\" />\r\n    <meta property=\"og:site_name\"     content=\"PocketLink\" />\r\n    <meta property=\"og:url\"           content=\"https://www.pocketlink.store/\" />\r\n    <meta property=\"og:title\"         content=\"PocketLink — Give your business a page on WhatsApp\" />\r\n    <meta property=\"og:description\"   content=\"A free storefront in 2 minutes — catalog, cart & orders, all on WhatsApp. No app. No code.\" />\r\n    <meta property=\"og:image\"         content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta property=\"og:image:secure_url\" content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta property=\"og:image:type\"    content=\"image/jpeg\" />\r\n    <meta property=\"og:image:width\"   content=\"1200\" />\r\n    <meta property=\"og:image:height\"  content=\"630\" />\r\n    <meta property=\"og:image:alt\"     content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n    <meta property=\"og:locale\"        content=\"en_IN\" />\r\n\r\n    <!-- Twitter card -->\r\n    <meta name=\"twitter:card\"        content=\"summary_large_image\" />\r\n    <meta name=\"twitter:title\"       content=\"PocketLink — Give your business a page on WhatsApp\" />\r\n    <meta name=\"twitter:description\" content=\"A free storefront in 2 minutes — catalog, cart & orders, all on WhatsApp. No app. No code.\" />\r\n    <meta name=\"twitter:image\"       content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta name=\"twitter:image:alt\"   content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n\r\n    <!-- Theme color (browser chrome + PWA) -->\r\n    <meta name=\"theme-color\" content=\"#0d9488\" />\r\n    <meta name=\"robots\" content=\"index, follow, max-image-preview:large\" />\r\n    <meta name=\"keywords\" content=\"WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace\" />\r\n\r\n    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->\r\n    <script type=\"application/ld+json\">\r\n    {\"@context\":\"https://schema.org\",\"@graph\":[\r\n      {\"@type\":\"Organization\",\"@id\":\"https://www.pocketlink.store/#org\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"logo\":\"https://www.pocketlink.store/pocketlink-logo.svg\",\"description\":\"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace.\"},\r\n      {\"@type\":\"WebSite\",\"@id\":\"https://www.pocketlink.store/#website\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"publisher\":{\"@id\":\"https://www.pocketlink.store/#org\"},\"potentialAction\":{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.pocketlink.store/marketplace?q={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}}\r\n    ]}\r\n    </script>\r\n\r\n    <!-- Fonts -->\r\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\r\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\r\n    <link href=\"https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap\" rel=\"stylesheet\" />\r\n  </head>\r\n  <body>\r\n    <div id=\"root\"></div>\r\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\r\n  </body>\r\n</html>\r\n",
+ "cases": {
+  "store": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "body": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n\r\n    <!-- Default title/meta — overridden per-store by Home.jsx useEffect -->\r\n    <title>Krupa Agarbatti Work — Pooja Essentials in Solapur | Order on WhatsApp</title>\r\n    <meta name=\"description\"\r\n      content=\"Hand-rolled agarbatti from Solapur. Shop Mogra Agarbatti, Sandal Dhoop, Combo Pack. Order directly on WhatsApp — no app needed.\" />\r\n    \r\n\r\n    <!-- Open Graph (social preview) -->\r\n    <meta property=\"og:type\"          content=\"website\" />\r\n    <meta property=\"og:site_name\"     content=\"PocketLink\" />\r\n    <meta property=\"og:url\"           content=\"https://www.pocketlink.store/krupaagarbattiwork\" />\r\n    <meta property=\"og:title\"         content=\"Krupa Agarbatti Work — Pooja Essentials in Solapur | Order on WhatsApp\" />\r\n    <meta property=\"og:description\"   content=\"Hand-rolled agarbatti from Solapur. Shop Mogra Agarbatti, Sandal Dhoop, Combo Pack. Order directly on WhatsApp — no app needed.\" />\r\n    <meta property=\"og:image\"         content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:secure_url\" content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:type\"    content=\"image/jpeg\" />\r\n    <meta property=\"og:image:width\"   content=\"1200\" />\r\n    <meta property=\"og:image:height\"  content=\"630\" />\r\n    <meta property=\"og:image:alt\"     content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n    <meta property=\"og:locale\"        content=\"en_IN\" />\r\n\r\n    <!-- Twitter card -->\r\n    <meta name=\"twitter:card\"        content=\"summary_large_image\" />\r\n    <meta name=\"twitter:title\"       content=\"Krupa Agarbatti Work — Pooja Essentials in Solapur | Order on WhatsApp\" />\r\n    <meta name=\"twitter:description\" content=\"Hand-rolled agarbatti from Solapur. Shop Mogra Agarbatti, Sandal Dhoop, Combo Pack. Order directly on WhatsApp — no app needed.\" />\r\n    <meta name=\"twitter:image\"       content=\"https://img.example/cover.jpg\" />\r\n    <meta name=\"twitter:image:alt\"   content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n\r\n    <!-- Theme color (browser chrome + PWA) -->\r\n    <meta name=\"theme-color\" content=\"#0d9488\" />\r\n    <meta name=\"robots\" content=\"index, follow, max-image-preview:large\" />\r\n    <meta name=\"keywords\" content=\"WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace\" />\r\n\r\n    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->\r\n    <script type=\"application/ld+json\">\r\n    {\"@context\":\"https://schema.org\",\"@graph\":[\r\n      {\"@type\":\"Organization\",\"@id\":\"https://www.pocketlink.store/#org\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"logo\":\"https://www.pocketlink.store/pocketlink-logo.svg\",\"description\":\"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace.\"},\r\n      {\"@type\":\"WebSite\",\"@id\":\"https://www.pocketlink.store/#website\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"publisher\":{\"@id\":\"https://www.pocketlink.store/#org\"},\"potentialAction\":{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.pocketlink.store/marketplace?q={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}}\r\n    ]}\r\n    </script>\r\n\r\n    <!-- Fonts -->\r\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\r\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\r\n    <link href=\"https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap\" rel=\"stylesheet\" />\r\n  <link rel=\"canonical\" href=\"https://www.pocketlink.store/krupaagarbattiwork\"/>\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Store\",\"@id\":\"https://www.pocketlink.store/krupaagarbattiwork#business\",\"name\":\"Krupa Agarbatti Work\",\"description\":\"Hand-rolled agarbatti from Solapur. Shop Mogra Agarbatti, Sandal Dhoop, Combo Pack. Order directly on WhatsApp — no app needed.\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork\",\"image\":\"https://img.example/cover.jpg\",\"areaServed\":\"Solapur\",\"priceRange\":\"₹₹\",\"telephone\":\"+919876543210\",\"address\":{\"@type\":\"PostalAddress\",\"addressLocality\":\"Solapur\",\"addressRegion\":\"Maharashtra\",\"addressCountry\":\"IN\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":\"4.3\",\"reviewCount\":\"3\",\"bestRating\":\"5\",\"worstRating\":\"1\"}},{\"@type\":\"Product\",\"name\":\"Mogra Agarbatti\",\"image\":\"https://img.example/mogra.jpg\",\"description\":\"Mogra Agarbatti from Krupa Agarbatti Work in Solapur. Order on WhatsApp — no app needed.\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Krupa Agarbatti Work\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"120\",\"priceCurrency\":\"INR\",\"availability\":\"https://schema.org/InStock\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork\",\"shippingDetails\":{\"@type\":\"OfferShippingDetails\",\"shippingRate\":{\"@type\":\"MonetaryAmount\",\"value\":\"40\",\"currency\":\"INR\"},\"shippingDestination\":{\"@type\":\"DefinedRegion\",\"addressCountry\":\"IN\"}}}},{\"@type\":\"Product\",\"name\":\"Sandal Dhoop\",\"description\":\"Slow-burning sandal dhoop.\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Krupa Agarbatti Work\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"90\",\"priceCurrency\":\"INR\",\"availability\":\"https://schema.org/InStock\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork\",\"shippingDetails\":{\"@type\":\"OfferShippingDetails\",\"shippingRate\":{\"@type\":\"MonetaryAmount\",\"value\":\"40\",\"currency\":\"INR\"},\"shippingDestination\":{\"@type\":\"DefinedRegion\",\"addressCountry\":\"IN\"}}}},{\"@type\":\"Product\",\"name\":\"Combo Pack\",\"description\":\"Combo Pack from Krupa Agarbatti Work in Solapur. Order on WhatsApp — no app needed.\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Krupa Agarbatti Work\"},\"offers\":{\"@type\":\"AggregateOffer\",\"lowPrice\":\"150\",\"highPrice\":\"280\",\"offerCount\":\"2\",\"priceCurrency\":\"INR\",\"availability\":\"https://schema.org/InStock\",\"shippingDetails\":{\"@type\":\"OfferShippingDetails\",\"shippingRate\":{\"@type\":\"MonetaryAmount\",\"value\":\"40\",\"currency\":\"INR\"},\"shippingDestination\":{\"@type\":\"DefinedRegion\",\"addressCountry\":\"IN\"}}}},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"PocketLink Marketplace\",\"item\":\"https://www.pocketlink.store/marketplace\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Krupa Agarbatti Work\",\"item\":\"https://www.pocketlink.store/krupaagarbattiwork\"}]}]}</script>\n<script>window.__PL_CONFIG__={\"slug\":\"krupaagarbattiwork\",\"config\":{\"businessName\":\"Krupa Agarbatti Work\",\"tagline\":\"Hand-rolled agarbatti from Solapur\",\"category\":\"Pooja Essentials\",\"city\":\"Solapur\",\"state\":\"Maharashtra\",\"whatsappNumber\":\"919876543210\",\"businessType\":\"product\",\"coverImage\":\"https://img.example/cover.jpg\",\"theme\":{\"primary\":\"#b45309\"},\"cart\":{\"shippingCharge\":40},\"categories\":[{\"id\":\"all\",\"label\":\"All Products\"},{\"id\":\"dhoop\",\"label\":\"Dhoop Sticks\"},{\"id\":\"agarbatti\",\"label\":\"Agarbatti Packs\"}],\"products\":[{\"id\":\"prod-1\",\"name\":\"Mogra Agarbatti\",\"price\":120,\"category\":\"agarbatti\",\"image\":\"https://img.example/mogra.jpg\"},{\"id\":\"prod-2\",\"name\":\"Sandal Dhoop\",\"price\":90,\"category\":\"dhoop\",\"description\":\"Slow-burning sandal dhoop.\"},{\"id\":\"prod-3\",\"name\":\"Combo Pack\",\"category\":\"agarbatti\",\"variants\":{\"options\":[{\"label\":\"Small\",\"price\":150},{\"label\":\"Large\",\"price\":280}]}}]}}</script>\n</head>\r\n  <body>\r\n    <div id=\"root\"><div style=\"min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#f8fafc;font-family:system-ui,-apple-system,sans-serif\">\n<div style=\"width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,#b45309,#b45309);box-shadow:0 10px 30px rgba(0,0,0,.15)\">🏪</div>\n<div style=\"font-weight:800;font-size:20px;color:#111827\">Krupa Agarbatti Work</div>\n<div style=\"width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#b45309;border-radius:50%;animation:plspin .8s linear infinite\"></div>\n<style>@keyframes plspin{to{transform:rotate(360deg)}}</style>\n</div><div style=\"position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)\"><main style=\"max-width:680px;margin:0 auto;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#111\">\n  <h1>Krupa Agarbatti Work</h1>\n  <p>Hand-rolled agarbatti from Solapur</p>\n  <p>Pooja Essentials · Solapur</p>\n  <p>Rated 4.3 out of 5 by 3 customers.</p>\n  \n  <p><a href=\"https://wa.me/919876543210\">Order on WhatsApp</a></p>\n  <h2>Products</h2><ul><li>Mogra Agarbatti — ₹120</li><li>Sandal Dhoop — ₹90</li><li>Combo Pack</li></ul>\n  <p><a href=\"https://www.pocketlink.store/marketplace\">Discover more local businesses on PocketLink</a></p>\n</main></div></div>\r\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\r\n  </body>\r\n</html>\r\n",
+   "oldCanonicalCount": 2
+  },
+  "store, trailing slash": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "store, mixed-case path": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "store, direct pathname": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "product": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "616243d4f8e274e410db70941164bb1a370afeda42b6edfcf04a5204d70abe10",
+   "bodyLength": 7847,
+   "body": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n\r\n    <!-- Default title/meta — overridden per-store by Home.jsx useEffect -->\r\n    <title>Sandal Dhoop — Krupa Agarbatti Work | Order on WhatsApp</title>\r\n    <meta name=\"description\"\r\n      content=\"Sandal Dhoop — ₹90. Slow-burning sandal dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    \r\n\r\n    <!-- Open Graph (social preview) -->\r\n    <meta property=\"og:type\"          content=\"website\" />\r\n    <meta property=\"og:site_name\"     content=\"PocketLink\" />\r\n    <meta property=\"og:url\"           content=\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2\" />\r\n    <meta property=\"og:title\"         content=\"Sandal Dhoop — Krupa Agarbatti Work | Order on WhatsApp\" />\r\n    <meta property=\"og:description\"   content=\"Sandal Dhoop — ₹90. Slow-burning sandal dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    <meta property=\"og:image\"         content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:secure_url\" content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:type\"    content=\"image/jpeg\" />\r\n    <meta property=\"og:image:width\"   content=\"1200\" />\r\n    <meta property=\"og:image:height\"  content=\"630\" />\r\n    <meta property=\"og:image:alt\"     content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n    <meta property=\"og:locale\"        content=\"en_IN\" />\r\n\r\n    <!-- Twitter card -->\r\n    <meta name=\"twitter:card\"        content=\"summary_large_image\" />\r\n    <meta name=\"twitter:title\"       content=\"Sandal Dhoop — Krupa Agarbatti Work | Order on WhatsApp\" />\r\n    <meta name=\"twitter:description\" content=\"Sandal Dhoop — ₹90. Slow-burning sandal dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    <meta name=\"twitter:image\"       content=\"https://img.example/cover.jpg\" />\r\n    <meta name=\"twitter:image:alt\"   content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n\r\n    <!-- Theme color (browser chrome + PWA) -->\r\n    <meta name=\"theme-color\" content=\"#0d9488\" />\r\n    <meta name=\"robots\" content=\"index, follow, max-image-preview:large\" />\r\n    <meta name=\"keywords\" content=\"WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace\" />\r\n\r\n    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->\r\n    <script type=\"application/ld+json\">\r\n    {\"@context\":\"https://schema.org\",\"@graph\":[\r\n      {\"@type\":\"Organization\",\"@id\":\"https://www.pocketlink.store/#org\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"logo\":\"https://www.pocketlink.store/pocketlink-logo.svg\",\"description\":\"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace.\"},\r\n      {\"@type\":\"WebSite\",\"@id\":\"https://www.pocketlink.store/#website\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"publisher\":{\"@id\":\"https://www.pocketlink.store/#org\"},\"potentialAction\":{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.pocketlink.store/marketplace?q={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}}\r\n    ]}\r\n    </script>\r\n\r\n    <!-- Fonts -->\r\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\r\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\r\n    <link href=\"https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap\" rel=\"stylesheet\" />\r\n  <link rel=\"canonical\" href=\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2\"/>\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Store\",\"@id\":\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2#business\",\"name\":\"Krupa Agarbatti Work\",\"description\":\"Sandal Dhoop — ₹90. Slow-burning sandal dhoop. Order directly on WhatsApp — no app needed.\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2\",\"image\":\"https://img.example/cover.jpg\",\"areaServed\":\"Solapur\",\"priceRange\":\"₹₹\",\"telephone\":\"+919876543210\",\"address\":{\"@type\":\"PostalAddress\",\"addressLocality\":\"Solapur\",\"addressRegion\":\"Maharashtra\",\"addressCountry\":\"IN\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":\"4.3\",\"reviewCount\":\"3\",\"bestRating\":\"5\",\"worstRating\":\"1\"}},{\"@type\":\"Product\",\"name\":\"Sandal Dhoop\",\"description\":\"Slow-burning sandal dhoop.\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Krupa Agarbatti Work\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"90\",\"priceCurrency\":\"INR\",\"availability\":\"https://schema.org/InStock\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2\",\"shippingDetails\":{\"@type\":\"OfferShippingDetails\",\"shippingRate\":{\"@type\":\"MonetaryAmount\",\"value\":\"40\",\"currency\":\"INR\"},\"shippingDestination\":{\"@type\":\"DefinedRegion\",\"addressCountry\":\"IN\"}}}},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"PocketLink Marketplace\",\"item\":\"https://www.pocketlink.store/marketplace\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Krupa Agarbatti Work\",\"item\":\"https://www.pocketlink.store/krupaagarbattiwork\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Sandal Dhoop\",\"item\":\"https://www.pocketlink.store/krupaagarbattiwork/p/prod-2\"}]}]}</script>\n<script>window.__PL_CONFIG__={\"slug\":\"krupaagarbattiwork\",\"config\":{\"businessName\":\"Krupa Agarbatti Work\",\"tagline\":\"Hand-rolled agarbatti from Solapur\",\"category\":\"Pooja Essentials\",\"city\":\"Solapur\",\"state\":\"Maharashtra\",\"whatsappNumber\":\"919876543210\",\"businessType\":\"product\",\"coverImage\":\"https://img.example/cover.jpg\",\"theme\":{\"primary\":\"#b45309\"},\"cart\":{\"shippingCharge\":40},\"categories\":[{\"id\":\"all\",\"label\":\"All Products\"},{\"id\":\"dhoop\",\"label\":\"Dhoop Sticks\"},{\"id\":\"agarbatti\",\"label\":\"Agarbatti Packs\"}],\"products\":[{\"id\":\"prod-1\",\"name\":\"Mogra Agarbatti\",\"price\":120,\"category\":\"agarbatti\",\"image\":\"https://img.example/mogra.jpg\"},{\"id\":\"prod-2\",\"name\":\"Sandal Dhoop\",\"price\":90,\"category\":\"dhoop\",\"description\":\"Slow-burning sandal dhoop.\"},{\"id\":\"prod-3\",\"name\":\"Combo Pack\",\"category\":\"agarbatti\",\"variants\":{\"options\":[{\"label\":\"Small\",\"price\":150},{\"label\":\"Large\",\"price\":280}]}}]}}</script>\n</head>\r\n  <body>\r\n    <div id=\"root\"><div style=\"min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#f8fafc;font-family:system-ui,-apple-system,sans-serif\">\n<div style=\"width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,#b45309,#b45309);box-shadow:0 10px 30px rgba(0,0,0,.15)\">🏪</div>\n<div style=\"font-weight:800;font-size:20px;color:#111827\">Krupa Agarbatti Work</div>\n<div style=\"width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#b45309;border-radius:50%;animation:plspin .8s linear infinite\"></div>\n<style>@keyframes plspin{to{transform:rotate(360deg)}}</style>\n</div><div style=\"position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)\"><main style=\"max-width:680px;margin:0 auto;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#111\">\n  <h1>Krupa Agarbatti Work</h1>\n  <p>Hand-rolled agarbatti from Solapur</p>\n  <p>Pooja Essentials · Solapur</p>\n  <p>Rated 4.3 out of 5 by 3 customers.</p>\n  \n  <p><a href=\"https://wa.me/919876543210\">Order on WhatsApp</a></p>\n  <h2>Products</h2><ul><li>Mogra Agarbatti — ₹120</li><li>Sandal Dhoop — ₹90</li><li>Combo Pack</li></ul>\n  <p><a href=\"https://www.pocketlink.store/marketplace\">Discover more local businesses on PocketLink</a></p>\n</main></div></div>\r\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\r\n  </body>\r\n</html>\r\n",
+   "oldCanonicalCount": 2
+  },
+  "product, variants": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "bd05886433baebbc0c234e4f3c25fa11391abddda2011e99ff57b7f2c1b73d81",
+   "bodyLength": 7889,
+   "oldCanonicalCount": 2
+  },
+  "product, unknown id": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "category by label slug": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "d31535d62ef0c9616611e819a868dcc20d0989627bfea58f84dcd67d930d21c1",
+   "bodyLength": 7975,
+   "body": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n\r\n    <!-- Default title/meta — overridden per-store by Home.jsx useEffect -->\r\n    <title>Dhoop Sticks — Krupa Agarbatti Work | Order on WhatsApp</title>\r\n    <meta name=\"description\"\r\n      content=\"Dhoop Sticks from Krupa Agarbatti Work in Solapur. Shop Sandal Dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    \r\n\r\n    <!-- Open Graph (social preview) -->\r\n    <meta property=\"og:type\"          content=\"website\" />\r\n    <meta property=\"og:site_name\"     content=\"PocketLink\" />\r\n    <meta property=\"og:url\"           content=\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks\" />\r\n    <meta property=\"og:title\"         content=\"Dhoop Sticks — Krupa Agarbatti Work | Order on WhatsApp\" />\r\n    <meta property=\"og:description\"   content=\"Dhoop Sticks from Krupa Agarbatti Work in Solapur. Shop Sandal Dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    <meta property=\"og:image\"         content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:secure_url\" content=\"https://img.example/cover.jpg\" />\r\n    <meta property=\"og:image:type\"    content=\"image/jpeg\" />\r\n    <meta property=\"og:image:width\"   content=\"1200\" />\r\n    <meta property=\"og:image:height\"  content=\"630\" />\r\n    <meta property=\"og:image:alt\"     content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n    <meta property=\"og:locale\"        content=\"en_IN\" />\r\n\r\n    <!-- Twitter card -->\r\n    <meta name=\"twitter:card\"        content=\"summary_large_image\" />\r\n    <meta name=\"twitter:title\"       content=\"Dhoop Sticks — Krupa Agarbatti Work | Order on WhatsApp\" />\r\n    <meta name=\"twitter:description\" content=\"Dhoop Sticks from Krupa Agarbatti Work in Solapur. Shop Sandal Dhoop. Order directly on WhatsApp — no app needed.\" />\r\n    <meta name=\"twitter:image\"       content=\"https://img.example/cover.jpg\" />\r\n    <meta name=\"twitter:image:alt\"   content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n\r\n    <!-- Theme color (browser chrome + PWA) -->\r\n    <meta name=\"theme-color\" content=\"#0d9488\" />\r\n    <meta name=\"robots\" content=\"index, follow, max-image-preview:large\" />\r\n    <meta name=\"keywords\" content=\"WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace\" />\r\n\r\n    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->\r\n    <script type=\"application/ld+json\">\r\n    {\"@context\":\"https://schema.org\",\"@graph\":[\r\n      {\"@type\":\"Organization\",\"@id\":\"https://www.pocketlink.store/#org\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"logo\":\"https://www.pocketlink.store/pocketlink-logo.svg\",\"description\":\"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace.\"},\r\n      {\"@type\":\"WebSite\",\"@id\":\"https://www.pocketlink.store/#website\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"publisher\":{\"@id\":\"https://www.pocketlink.store/#org\"},\"potentialAction\":{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.pocketlink.store/marketplace?q={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}}\r\n    ]}\r\n    </script>\r\n\r\n    <!-- Fonts -->\r\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\r\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\r\n    <link href=\"https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap\" rel=\"stylesheet\" />\r\n  <link rel=\"canonical\" href=\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks\"/>\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Store\",\"@id\":\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks#business\",\"name\":\"Krupa Agarbatti Work\",\"description\":\"Dhoop Sticks from Krupa Agarbatti Work in Solapur. Shop Sandal Dhoop. Order directly on WhatsApp — no app needed.\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks\",\"image\":\"https://img.example/cover.jpg\",\"areaServed\":\"Solapur\",\"priceRange\":\"₹₹\",\"telephone\":\"+919876543210\",\"address\":{\"@type\":\"PostalAddress\",\"addressLocality\":\"Solapur\",\"addressRegion\":\"Maharashtra\",\"addressCountry\":\"IN\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":\"4.3\",\"reviewCount\":\"3\",\"bestRating\":\"5\",\"worstRating\":\"1\"}},{\"@type\":\"Product\",\"name\":\"Sandal Dhoop\",\"description\":\"Slow-burning sandal dhoop.\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Krupa Agarbatti Work\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"90\",\"priceCurrency\":\"INR\",\"availability\":\"https://schema.org/InStock\",\"url\":\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks\",\"shippingDetails\":{\"@type\":\"OfferShippingDetails\",\"shippingRate\":{\"@type\":\"MonetaryAmount\",\"value\":\"40\",\"currency\":\"INR\"},\"shippingDestination\":{\"@type\":\"DefinedRegion\",\"addressCountry\":\"IN\"}}}},{\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"PocketLink Marketplace\",\"item\":\"https://www.pocketlink.store/marketplace\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Krupa Agarbatti Work\",\"item\":\"https://www.pocketlink.store/krupaagarbattiwork\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Dhoop Sticks\",\"item\":\"https://www.pocketlink.store/krupaagarbattiwork/c/dhoop-sticks\"}]}]}</script>\n<script>window.__PL_CONFIG__={\"slug\":\"krupaagarbattiwork\",\"config\":{\"businessName\":\"Krupa Agarbatti Work\",\"tagline\":\"Hand-rolled agarbatti from Solapur\",\"category\":\"Pooja Essentials\",\"city\":\"Solapur\",\"state\":\"Maharashtra\",\"whatsappNumber\":\"919876543210\",\"businessType\":\"product\",\"coverImage\":\"https://img.example/cover.jpg\",\"theme\":{\"primary\":\"#b45309\"},\"cart\":{\"shippingCharge\":40},\"categories\":[{\"id\":\"all\",\"label\":\"All Products\"},{\"id\":\"dhoop\",\"label\":\"Dhoop Sticks\"},{\"id\":\"agarbatti\",\"label\":\"Agarbatti Packs\"}],\"products\":[{\"id\":\"prod-1\",\"name\":\"Mogra Agarbatti\",\"price\":120,\"category\":\"agarbatti\",\"image\":\"https://img.example/mogra.jpg\"},{\"id\":\"prod-2\",\"name\":\"Sandal Dhoop\",\"price\":90,\"category\":\"dhoop\",\"description\":\"Slow-burning sandal dhoop.\"},{\"id\":\"prod-3\",\"name\":\"Combo Pack\",\"category\":\"agarbatti\",\"variants\":{\"options\":[{\"label\":\"Small\",\"price\":150},{\"label\":\"Large\",\"price\":280}]}}]}}</script>\n</head>\r\n  <body>\r\n    <div id=\"root\"><div style=\"min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#f8fafc;font-family:system-ui,-apple-system,sans-serif\">\n<div style=\"width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,#b45309,#b45309);box-shadow:0 10px 30px rgba(0,0,0,.15)\">🏪</div>\n<div style=\"font-weight:800;font-size:20px;color:#111827\">Krupa Agarbatti Work</div>\n<div style=\"width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#b45309;border-radius:50%;animation:plspin .8s linear infinite\"></div>\n<style>@keyframes plspin{to{transform:rotate(360deg)}}</style>\n</div><div style=\"position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)\"><main style=\"max-width:680px;margin:0 auto;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#111\">\n  <h1>Krupa Agarbatti Work</h1>\n  <p>Hand-rolled agarbatti from Solapur</p>\n  <p>Pooja Essentials · Solapur</p>\n  <p>Rated 4.3 out of 5 by 3 customers.</p>\n  \n  <p><a href=\"https://wa.me/919876543210\">Order on WhatsApp</a></p>\n  <h2>Products</h2><ul><li>Mogra Agarbatti — ₹120</li><li>Sandal Dhoop — ₹90</li><li>Combo Pack</li></ul>\n  <p><a href=\"https://www.pocketlink.store/marketplace\">Discover more local businesses on PocketLink</a></p>\n</main></div></div>\r\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\r\n  </body>\r\n</html>\r\n",
+   "oldCanonicalCount": 2
+  },
+  "category by id": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "77647418b869d2d110d0535378dbaf71d41fdf9d8630ed6a43b1e30bf7ebe4fc",
+   "bodyLength": 8726,
+   "oldCanonicalCount": 2
+  },
+  "category, unknown": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "marketplace": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=600, stale-while-revalidate=86400"
+   },
+   "bodySha256": "2ce2d2cd9c7a1ac497c17a0edf795a786ec44d6ccf5b98eddf24ce0fa3dc93ec",
+   "bodyLength": 6367,
+   "body": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n\r\n    <!-- Default title/meta — overridden per-store by Home.jsx useEffect -->\r\n    <title>Discover Local Businesses Near You | PocketLink Marketplace</title>\r\n    <meta name=\"description\"\r\n      content=\"Browse 2+ local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.\" />\r\n    \r\n\r\n    <!-- Open Graph (social preview) -->\r\n    <meta property=\"og:type\"          content=\"website\" />\r\n    <meta property=\"og:site_name\"     content=\"PocketLink\" />\r\n    <meta property=\"og:url\"           content=\"https://www.pocketlink.store/marketplace\" />\r\n    <meta property=\"og:title\"         content=\"Discover Local Businesses Near You | PocketLink Marketplace\" />\r\n    <meta property=\"og:description\"   content=\"Browse 2+ local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.\" />\r\n    <meta property=\"og:image\"         content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta property=\"og:image:secure_url\" content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta property=\"og:image:type\"    content=\"image/jpeg\" />\r\n    <meta property=\"og:image:width\"   content=\"1200\" />\r\n    <meta property=\"og:image:height\"  content=\"630\" />\r\n    <meta property=\"og:image:alt\"     content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n    <meta property=\"og:locale\"        content=\"en_IN\" />\r\n\r\n    <!-- Twitter card -->\r\n    <meta name=\"twitter:card\"        content=\"summary_large_image\" />\r\n    <meta name=\"twitter:title\"       content=\"Discover Local Businesses Near You | PocketLink Marketplace\" />\r\n    <meta name=\"twitter:description\" content=\"Browse 2+ local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.\" />\r\n    <meta name=\"twitter:image\"       content=\"https://www.pocketlink.store/og-image.jpg\" />\r\n    <meta name=\"twitter:image:alt\"   content=\"PocketLink — a free WhatsApp business page with catalog, cart and orders.\" />\r\n\r\n    <!-- Theme color (browser chrome + PWA) -->\r\n    <meta name=\"theme-color\" content=\"#0d9488\" />\r\n    <meta name=\"robots\" content=\"index, follow, max-image-preview:large\" />\r\n    <meta name=\"keywords\" content=\"WhatsApp store, online catalogue, local business, order on WhatsApp, free business page, India, marketplace\" />\r\n\r\n    <!-- Structured data: Organization + WebSite (homepage; store/marketplace add their own) -->\r\n    <script type=\"application/ld+json\">\r\n    {\"@context\":\"https://schema.org\",\"@graph\":[\r\n      {\"@type\":\"Organization\",\"@id\":\"https://www.pocketlink.store/#org\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"logo\":\"https://www.pocketlink.store/pocketlink-logo.svg\",\"description\":\"PocketLink lets any small business create a free WhatsApp storefront — catalogue, cart and orders on WhatsApp — and runs a local-business discovery marketplace.\"},\r\n      {\"@type\":\"WebSite\",\"@id\":\"https://www.pocketlink.store/#website\",\"name\":\"PocketLink\",\"url\":\"https://www.pocketlink.store/\",\"publisher\":{\"@id\":\"https://www.pocketlink.store/#org\"},\"potentialAction\":{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.pocketlink.store/marketplace?q={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}}\r\n    ]}\r\n    </script>\r\n\r\n    <!-- Fonts -->\r\n    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\r\n    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\r\n    <link href=\"https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap\" rel=\"stylesheet\" />\r\n  <link rel=\"canonical\" href=\"https://www.pocketlink.store/marketplace\"/>\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"CollectionPage\",\"name\":\"PocketLink Marketplace\",\"url\":\"https://www.pocketlink.store/marketplace\",\"description\":\"Browse 2+ local shops, restaurants, salons and services near you and order directly on WhatsApp. No app, no login, 0% commission.\",\"isPartOf\":{\"@id\":\"https://www.pocketlink.store/#website\"},\"mainEntity\":{\"@type\":\"ItemList\",\"numberOfItems\":2,\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"url\":\"https://www.pocketlink.store/krupaagarbattiwork\",\"name\":\"Krupa Agarbatti Work\"},{\"@type\":\"ListItem\",\"position\":2,\"url\":\"https://www.pocketlink.store/royalfoodsmasale\",\"name\":\"Royal Foods & Spices\"}]}}</script>\n</head>\r\n  <body>\r\n    <div id=\"root\"><div style=\"min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#f8fafc;font-family:system-ui,-apple-system,sans-serif\">\n<div style=\"width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,#0d9488,#064e3b);box-shadow:0 10px 30px rgba(0,0,0,.15)\">🛍️</div>\n<div style=\"font-weight:800;font-size:20px;color:#111827\">PocketLink Market</div>\n<div style=\"width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#0d9488;border-radius:50%;animation:plspin .8s linear infinite\"></div>\n<style>@keyframes plspin{to{transform:rotate(360deg)}}</style>\n</div><div style=\"position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)\"><main style=\"max-width:680px;margin:0 auto;padding:24px;font-family:system-ui,-apple-system,sans-serif;color:#111\">\n  <h1>Discover Local Businesses Near You</h1>\n  <p>PocketLink is a local marketplace to browse shops, restaurants, salons and services near you and order directly on WhatsApp — no app, no login, 0% commission.</p>\n  <h2>Browse by category</h2><p>Pooja Essentials · Grocery</p>\n  <h2>Shops by city</h2><p>Solapur</p>\n  <h2>Businesses on PocketLink</h2>\n  <ul><li><a href=\"https://www.pocketlink.store/krupaagarbattiwork\">Krupa Agarbatti Work</a> — Hand-rolled agarbatti</li><li><a href=\"https://www.pocketlink.store/royalfoodsmasale\">Royal Foods &amp; Spices</a> — Grocery, Solapur</li></ul>\n  <p><a href=\"https://www.pocketlink.store/\">List your business free on PocketLink</a></p>\n</main></div></div>\r\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\r\n  </body>\r\n</html>\r\n",
+   "oldCanonicalCount": 2
+  },
+  "explore": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=600, stale-while-revalidate=86400"
+   },
+   "bodySha256": "2ce2d2cd9c7a1ac497c17a0edf795a786ec44d6ccf5b98eddf24ce0fa3dc93ec",
+   "bodyLength": 6367,
+   "oldCanonicalCount": 2
+  },
+  "unknown store": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "store without a name": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "reserved path": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "manage path": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "deep unknown path": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "root": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "supabase down": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8"
+   },
+   "bodySha256": "f950af6159a99b13d84b560e9f5c791dbbbb1f0d27c5edd6db95869ff6de2b8d",
+   "bodyLength": 3937,
+   "oldCanonicalCount": 1
+  },
+  "no host header": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "ebc13e5ab8e60731f1e302a9d5f87809f8bd1799e9ed19cd15a2aea1aecaf325",
+   "bodyLength": 9018,
+   "oldCanonicalCount": 2
+  },
+  "apex host": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "260fa6b7b0493e6b5e0c2a959e22c439c96a4b720ad48f87f2f3917ebff54cfb",
+   "bodyLength": 8982,
+   "oldCanonicalCount": 2
+  },
+  "market host, marketplace": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=600, stale-while-revalidate=86400"
+   },
+   "bodySha256": "9e2413a139894a45e755430800386b90ae0be59611571de89f9e98de3f2f76db",
+   "bodyLength": 6385,
+   "oldCanonicalCount": 2
+  },
+  "preview deployment": {
+   "status": 200,
+   "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "s-maxage=120, stale-while-revalidate=600"
+   },
+   "bodySha256": "613fe867df44c32078cba222c704ce9c76628dc8e996e361b65b9f2a9b987cc7",
+   "bodyLength": 8331,
+   "oldCanonicalCount": 2
+  }
+ }
+}
