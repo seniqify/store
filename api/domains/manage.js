@@ -14,6 +14,11 @@
 //     set_primary  { hostname, challengeId, code }
 //     disconnect   { challengeId?, code? }     -> pending cancels without a code
 //
+//   verify (its Vercel attach), refresh, activate and disconnect hold the
+//   group's lease -- the one the reconciler takes -- for their Vercel work.
+//   While it is held elsewhere they answer { outcome: 'busy',
+//   retry_after_seconds }: nothing is called or written, and no code is spent.
+//
 // Order of refusals, on purpose:
 //   1. CUSTOM_DOMAINS_ENABLED off   -> feature_disabled (nothing is read, no PIN check)
 //   2. not application/json         -> 415

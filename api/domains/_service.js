@@ -7,6 +7,14 @@
 // never a code, an HMAC, a Vercel token, a group id or internal audit detail.
 // The TXT token IS shown to the authenticated owner -- publishing it is the
 // whole point of the ownership check.
+//
+// Every flow that calls Vercel for the group or records what Vercel said --
+// verify (its attach), refresh, activate, disconnect -- first takes the
+// group's lease (PR-B.1), the same one the reconciler takes, and gives it back
+// when done. While another execution holds it the answer is 'busy', returned
+// BEFORE anything else happens: no Vercel call, no write, and no step-up code
+// checked or spent. status (a read-only Vercel look), claim, request_otp and
+// set_primary touch neither Vercel nor its recorded state, so they take none.
 import { classifyHostname, normalizeHostInput, txtNameForRows } from './_parse.js';
 import { proveTxtToken } from './_dns.js';
 import { generateOtp, otpHash, normalizeOwnerPhone, maskPhone, sendWhatsAppOtp } from './_otp.js';
@@ -62,6 +70,33 @@ export function createDomainService(deps) {
   }
   const withView = async (slug, extra) => ({ ...extra, domain: domainView(await openGroup(slug)) });
 
+  /**
+   * Run fn(leasedDeps, group) holding the group's lease; always give it back.
+   * `group` is re-read under the lease, so fn never acts on a snapshot taken
+   * before another execution's changes. Returns { value }, or -- when the group
+   * is held elsewhere or gone -- { refused } with the answer for the merchant,
+   * in which case fn never ran.
+   */
+  async function underLease(g, fn) {
+    const l = await db.groupLease(g.group_id, g.store_slug);
+    if (l.outcome !== 'leased') {
+      return { refused: l.outcome === 'busy'
+        ? { outcome: 'busy', retry_after_seconds: l.retry_after_seconds ?? null }
+        : { outcome: l.outcome } };
+    }
+    try {
+      const [fresh] = await db.groupsByIds([g.group_id]);
+      if (!fresh) return { refused: { outcome: 'no_domain' } };
+      return { value: await fn({ ...deps, lease: l.lease_token }, fresh) };
+    } finally {
+      try {
+        await db.leaseRelease(g.group_id, g.store_slug, l.lease_token);
+      } catch { /* it lapses by itself after 120 s */ }
+    }
+  }
+  /** A lease lost mid-flow (only if the request outlived it): nothing was written; retry. */
+  const LOST = { outcome: 'busy', retry_after_seconds: null };
+
   return {
     async status(slug) {
       const g = await openGroup(slug);
@@ -102,10 +137,10 @@ export function createDomainService(deps) {
       let vercel_verification = [];
       if (vercel.configured) {
         // Start attaching now so the merchant sees progress; the reconciler
-        // finishes whatever this does not.
+        // finishes whatever this does not (including when the group is busy).
         try {
-          const g2 = await openGroup(slug);
-          if (g2) vercel_verification = verificationFrom((await syncGroup(deps, g2, { attach: true })).results);
+          const run = await underLease(g, (ld, g2) => syncGroup(ld, g2, { attach: true }));
+          if (run.value) vercel_verification = verificationFrom(run.value.results);
         } catch { /* reconciler retries */ }
       }
       return withView(slug, { outcome: 'verified', vercel_verification });
@@ -113,26 +148,30 @@ export function createDomainService(deps) {
 
     /** Re-read Vercel for every hostname; attach what is missing (pre-activation). */
     async refresh(slug) {
-      const g = await openGroup(slug);
-      if (!g) return { outcome: 'no_domain' };
-      if (!['verified', 'ready', 'connected', 'misconfigured'].includes(g.status)) {
-        return { outcome: 'not_verified', domain: domainView(g) };
-      }
+      const g0 = await openGroup(slug);
+      if (!g0) return { outcome: 'no_domain' };
+      const REFRESHABLE = ['verified', 'ready', 'connected', 'misconfigured'];
+      if (!REFRESHABLE.includes(g0.status)) return { outcome: 'not_verified', domain: domainView(g0) };
       if (!vercel.configured) return { outcome: 'not_configured' };
-      const s = await syncGroup(deps, g, { attach: g.status === 'verified' || g.status === 'ready' });
-      const dns_records = s.results
-        .filter((r) => r.recommended)
-        .map((r) => {
-          const apex = g.rows.find((x) => x.hostname === r.host)?.kind === 'apex';
-          return apex
-            ? { host: r.host, type: 'A', value: r.recommended.ipv4?.[0] ?? null }
-            : { host: r.host, type: 'CNAME', value: r.recommended.cname ?? null };
-        });
-      return withView(slug, {
-        outcome: s.anyUnknown ? 'vercel_unavailable' : 'ok',
-        dns_records,
-        vercel_verification: verificationFrom(s.results),
+      const run = await underLease(g0, async (ld, g) => {
+        if (!REFRESHABLE.includes(g.status)) return { outcome: 'not_verified' };
+        const s = await syncGroup(ld, g, { attach: g.status === 'verified' || g.status === 'ready' });
+        if (s.leaseLost) return LOST;
+        const dns_records = s.results
+          .filter((r) => r.recommended)
+          .map((r) => {
+            const apex = g.rows.find((x) => x.hostname === r.host)?.kind === 'apex';
+            return apex
+              ? { host: r.host, type: 'A', value: r.recommended.ipv4?.[0] ?? null }
+              : { host: r.host, type: 'CNAME', value: r.recommended.cname ?? null };
+          });
+        return {
+          outcome: s.anyUnknown ? 'vercel_unavailable' : 'ok',
+          dns_records,
+          vercel_verification: verificationFrom(s.results),
+        };
       });
+      return withView(slug, run.refused || run.value);
     },
 
     /** Send a step-up code to the store's OWNER phone (from the store record). */
@@ -158,32 +197,39 @@ export function createDomainService(deps) {
     },
 
     /**
-     * Activation. Order matters -- nothing before step 4 can spend the code:
-     *   1. the group is ready (or verified and becomes ready now)
-     *   2. Vercel re-checked for EVERY hostname: all configured
-     *   3. a FRESH TXT lookup finds the exact current token
-     *   4. domain_activate(group, slug, proved_token, challenge_id, code_hash)
+     * Activation. Order matters -- nothing before step 5 can spend the code:
+     *   1. the group's lease (else 'busy', and nothing else happens)
+     *   2. the group is ready (or verified and becomes ready now)
+     *   3. Vercel re-checked for EVERY hostname: all configured
+     *   4. a FRESH TXT lookup finds the exact current token
+     *   5. domain_leased_activate(lease, group, slug, proved_token, challenge_id,
+     *      code_hash) -- which refuses a lost lease before the code is looked at
      */
     async activate(slug, challengeId, code) {
       if (!UUID.test(String(challengeId ?? '')) || !SIX_DIGITS.test(String(code ?? ''))) {
         return { outcome: 'invalid_code' };
       }
-      const g = await openGroup(slug);
-      if (!g) return { outcome: 'no_domain' };
-      if (g.status !== 'ready' && g.status !== 'verified') return { outcome: 'not_ready', domain: domainView(g) };
+      const g0 = await openGroup(slug);
+      if (!g0) return { outcome: 'no_domain' };
+      if (g0.status !== 'ready' && g0.status !== 'verified') return { outcome: 'not_ready', domain: domainView(g0) };
       if (!vercel.configured) return { outcome: 'not_configured' };
 
-      const s = await syncGroup(deps, g, { attach: false });
-      if (s.anyUnknown) return { outcome: 'vercel_unavailable' };
-      if (!s.allConfigured) return withView(slug, { outcome: 'vercel_not_ready' });
+      const run = await underLease(g0, async (ld, g) => {
+        if (g.status !== 'ready' && g.status !== 'verified') return withView(slug, { outcome: 'not_ready' });
+        const s = await syncGroup(ld, g, { attach: false });
+        if (s.leaseLost) return withView(slug, LOST);                                    // code untouched
+        if (s.anyUnknown) return { outcome: 'vercel_unavailable' };
+        if (!s.allConfigured) return withView(slug, { outcome: 'vercel_not_ready' });
 
-      const proof = await proveTxtToken(txtNameForRows(g.rows), g.txt_token, dnsOptions);
-      if (proof.status === 'budget_exhausted') return { outcome: 'temporarily_unavailable' };   // code untouched
-      if (!proof.proved) return withView(slug, { outcome: 'txt_not_found', dns: proof.status });
+        const proof = await proveTxtToken(txtNameForRows(g.rows), g.txt_token, dnsOptions);
+        if (proof.status === 'budget_exhausted') return { outcome: 'temporarily_unavailable' };   // code untouched
+        if (!proof.proved) return withView(slug, { outcome: 'txt_not_found', dns: proof.status });
 
-      const hash = otpHash(config.otpSecret, { slug, action: 'activate', target: g.primary, code: String(code) });
-      const r = await db.activate(g.group_id, slug, proof.token, challengeId, hash);
-      return withView(slug, { outcome: r.outcome });
+        const hash = otpHash(config.otpSecret, { slug, action: 'activate', target: g.primary, code: String(code) });
+        const r = await db.activate(ld.lease, g.group_id, slug, proof.token, challengeId, hash);
+        return withView(slug, r.outcome === 'lease_lost' ? LOST : { outcome: r.outcome });   // lost: code untouched
+      });
+      return run.refused ? withView(slug, run.refused) : run.value;
     },
 
     async setPrimary(slug, hostnameInput, challengeId, code) {
@@ -202,30 +248,36 @@ export function createDomainService(deps) {
     /**
      * Disconnect. A pending claim cancels without a code. A proven group needs
      * a 'disconnect' code; Vercel removal then runs under fresh remove intents,
-     * and the database releases the names only once removal has settled.
+     * and the database releases the names only once removal has settled. All
+     * of it under the group's lease: 'busy' spends no code.
      */
     async disconnect(slug, challengeId, code) {
-      const g = await openGroup(slug);
-      if (!g) return { outcome: 'no_domain' };
-      let r;
-      if (g.status === 'pending') {
-        r = await db.beginDisconnect(g.group_id, slug, 'merchant');
-      } else if (g.status === 'disconnecting') {
-        r = { outcome: 'disconnecting' };                                // continue the cleanup
-      } else {
-        if (!UUID.test(String(challengeId ?? '')) || !SIX_DIGITS.test(String(code ?? ''))) {
-          return { outcome: 'invalid_code' };
+      const g0 = await openGroup(slug);
+      if (!g0) return { outcome: 'no_domain' };
+      const codeOk = UUID.test(String(challengeId ?? '')) && SIX_DIGITS.test(String(code ?? ''));
+      if (g0.status !== 'pending' && g0.status !== 'disconnecting' && !codeOk) return { outcome: 'invalid_code' };
+
+      const run = await underLease(g0, async (ld, g) => {
+        let r;
+        if (g.status === 'pending') {
+          r = await db.beginDisconnect(ld.lease, g.group_id, slug, 'merchant');
+        } else if (g.status === 'disconnecting') {
+          r = { outcome: 'disconnecting' };                              // continue the cleanup
+        } else {
+          if (!codeOk) return { outcome: 'invalid_code' };
+          const hash = otpHash(config.otpSecret, { slug, action: 'disconnect', target: g.primary, code: String(code) });
+          r = await db.beginDisconnect(ld.lease, g.group_id, slug, 'merchant', challengeId, hash);
         }
-        const hash = otpHash(config.otpSecret, { slug, action: 'disconnect', target: g.primary, code: String(code) });
-        r = await db.beginDisconnect(g.group_id, slug, 'merchant', challengeId, hash);
-      }
-      if (r.outcome !== 'disconnecting' || !vercel.configured) return withView(slug, { outcome: r.outcome });
-      const g2 = await openGroup(slug);
-      const f = g2 && g2.status === 'disconnecting' ? await releaseGroup(deps, g2) : { outcome: 'disconnecting' };
-      return withView(slug, {
-        outcome: f.outcome === 'disconnected' ? 'disconnected' : 'disconnecting',
-        retry_after_seconds: f.retry_after_seconds ?? null,
+        if (r.outcome === 'lease_lost') return LOST;                     // code untouched
+        if (r.outcome !== 'disconnecting' || !vercel.configured) return { outcome: r.outcome };
+        const [g2] = await db.groupsByIds([g.group_id]);
+        const f = g2 && g2.status === 'disconnecting' ? await releaseGroup(ld, g2) : { outcome: 'disconnecting' };
+        return {
+          outcome: f.outcome === 'disconnected' ? 'disconnected' : 'disconnecting',
+          retry_after_seconds: f.retry_after_seconds ?? null,
+        };
       });
+      return withView(slug, run.refused || run.value);
     },
   };
 }

@@ -6,18 +6,24 @@
 //   2. repeat while the budget allows another whole step:
 //        domain_reconcile_lease(1) -> ONE whole group, least-recently-served
 //        first, across ALL kinds of work (PR-B.1); disjoint from any other
-//        worker's; never a batch the budget could not finish
+//        worker's and from any merchant request's; never a batch the budget
+//        could not finish
 //        work = cleanup  remove from Vercel under fresh remove intents, then
 //                        domain_finish_disconnect (the 2-minute fence decides)
-//        work = health   one authoritative check, recorded ONLY with the lease's
-//                        health token (a stale or duplicate result is refused)
+//        work = health   one authoritative check, counted ONLY under this lease
+//                        and only once (a stale or duplicate result is refused)
 //        work = sync     attach / observe / mark ready
+//        then give the lease back, so a merchant is not kept waiting
 //      until no group is eligible, or the budget is spent.
 //
-// Fairness: every lease moves its group to the back of one queue, so with N
-// eligible groups each is served within N passes -- including a group whose
-// worker crashed or timed out (its lease lapses after 120 s and it is served
-// again in turn). Health-not-yet-due groups are not eligible at all.
+// Every write for the group carries the lease token; the database refuses it
+// once the lease is released, lapsed or replaced ('lease_lost').
+//
+// Fairness: every lease moves its group to the back of one queue, and the
+// reconciler does not take a group again within one lease length (120 s), so
+// with N eligible groups each is served within N passes -- including a group
+// whose worker crashed or timed out (its lease lapses after 120 s and it is
+// served again in turn). Health-not-yet-due groups are not eligible at all.
 //
 // Time: the budget's hard deadline is the earlier of the pass budget and the
 // lease's safe end (lease length - LEASE_SAFETY_MS). External calls stop
@@ -43,7 +49,7 @@ export async function reconcile(deps, { now = () => Date.now(), budgetMs = RECON
 
   const summary = {
     outcome: 'ok', expired: 0, leased: 0, cleanup: 0, health: 0, sync: 0,
-    marked_ready: 0, health_no_verdict: 0, cleanup_finished: 0, errors: 0, complete: false,
+    marked_ready: 0, health_no_verdict: 0, cleanup_finished: 0, lease_lost: 0, errors: 0, complete: false,
   };
 
   try {
@@ -65,7 +71,7 @@ export async function reconcile(deps, { now = () => Date.now(), budgetMs = RECON
     summary.leased++;
 
     const groupBudget = pass.until(now() + Number(lease.lease_seconds) * 1000 - LEASE_SAFETY_MS);
-    const gd = bind(groupBudget);
+    const gd = { ...bind(groupBudget), lease: lease.lease_token };
     try {
       const [g] = await gd.db.groupsByIds([lease.group_id]);
       if (!g || g.status !== lease.status) continue;              // changed since the lease: next pass
@@ -73,17 +79,24 @@ export async function reconcile(deps, { now = () => Date.now(), budgetMs = RECON
         summary.cleanup++;
         const f = await releaseGroup(gd, g);
         if (f.outcome === 'disconnected' || f.outcome === 'expired') summary.cleanup_finished++;
+        if (f.outcome === 'lease_lost') summary.lease_lost++;
       } else if (lease.work === 'health') {
         summary.health++;
-        const h = await healthCheck(gd, g, lease.health_token);
+        const h = await healthCheck(gd, g);
         if (h.verdict === null) summary.health_no_verdict++;
+        if (h.reason === 'lease_lost' || h.outcome === 'lease_lost') summary.lease_lost++;
       } else {
         summary.sync++;
         const s = await syncGroup(gd, g, { attach: true, nowMs: now() });
         if (s.ready === 'ready') summary.marked_ready++;
+        if (s.leaseLost) summary.lease_lost++;
       }
     } catch {
       summary.errors++;                                   // one group never stops the rest
+    } finally {
+      try {
+        await run.db.leaseRelease(lease.group_id, lease.store_slug, lease.lease_token);
+      } catch { /* it lapses by itself after 120 s */ }
     }
   }
   return summary;

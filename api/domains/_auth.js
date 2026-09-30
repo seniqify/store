@@ -11,6 +11,7 @@
 // x-real-ip / x-forwarded-for itself; a client cannot supply them.
 import { isIP } from 'node:net';
 import { ANON } from '../meta/_meta.js';
+import { fetchJsonWithin } from './_http.js';
 
 export function cleanSlug(raw) {
   return String(raw ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
@@ -36,18 +37,8 @@ export async function verifyOwnerPin({ supabaseUrl, fetchImpl = globalThis.fetch
   if (!slug || !hashedPin) return false;
   const headers = { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' };
   if (ip) headers['x-forwarded-for'] = ip;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const r = await fetchImpl(`${supabaseUrl}/rest/v1/rpc/verify_store_pin`, {
-      method: 'POST', headers, signal: ctrl.signal,
-      body: JSON.stringify({ p_slug: slug, p_hashed_pin: hashedPin }),
-    });
-    if (!r.ok) return false;
-    return (await r.json()) === true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await fetchJsonWithin(fetchImpl, `${supabaseUrl}/rest/v1/rpc/verify_store_pin`, {
+    method: 'POST', headers, body: JSON.stringify({ p_slug: slug, p_hashed_pin: hashedPin }),
+  }, timeoutMs);
+  return r.ok && r.json === true;
 }

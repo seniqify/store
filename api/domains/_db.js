@@ -7,13 +7,22 @@
 // that PR-B grants service_role on store_domains, plus the store's config for
 // the authoritative owner phone.
 //
-// Fails CLOSED: any non-2xx or network failure throws DomainDbError, which the
-// callers turn into a refusal, never into a guessed success.
+// GROUP LEASE (PR-B.1). Every write that authorises a Vercel call or records /
+// derives Vercel state goes through a domain_leased_* gateway and needs the
+// group's current lease token as its FIRST argument: the database refuses
+// ('lease_lost') anything else, atomically with the write. service_role
+// cannot call the underlying PR-B functions directly. A missing token is
+// refused here, before any request is sent.
+//
+// Fails CLOSED: any non-2xx, network failure or timeout throws DomainDbError,
+// which the callers turn into a refusal, never into a guessed success.
 //
 // With a budget (_budget.js), each call's timeout is capped at the time left
 // before the HARD deadline (recording results may use the reserve), and no
-// call starts with less than MIN_DB_MS left.
+// call starts with less than MIN_DB_MS left. The timeout covers the whole
+// exchange, response body included (_http.js).
 import { MIN_DB_MS } from './_budget.js';
+import { fetchJsonWithin } from './_http.js';
 
 export class DomainDbError extends Error {
   constructor(code) {
@@ -72,25 +81,20 @@ export function createDomainDb(opts) {
       if (left < MIN_DB_MS) throw new DomainDbError('budget_exhausted');
       limit = Math.min(limit, left);
     }
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), limit);
-    let r;
-    try {
-      r = await fetchImpl(`${url}${path}`, { ...init, headers: headers(), signal: ctrl.signal });
-    } catch {
-      throw new DomainDbError('db_unreachable');
-    } finally {
-      clearTimeout(timer);
-    }
+    const r = await fetchJsonWithin(fetchImpl, `${url}${path}`, { ...init, headers: headers() }, limit);
+    if (r.timedOut) throw new DomainDbError('db_timeout');
+    if (r.status === 0) throw new DomainDbError('db_unreachable');
     if (!r.ok) throw new DomainDbError(`db_http_${r.status}`);
-    try {
-      return await r.json();
-    } catch {
-      throw new DomainDbError('db_bad_response');
-    }
+    if (r.badBody) throw new DomainDbError('db_bad_response');
+    return r.json;
   }
 
   const rpc = (fn, args) => request(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+  /** A gateway call: refused here without a lease token, by the database with a stale one. */
+  const leased = async (fn, lease, args) => {
+    if (!lease) throw new DomainDbError('lease_required');
+    return rpc(fn, { p_lease_token: lease, ...args });
+  };
   const enc = encodeURIComponent;
 
   return {
@@ -122,56 +126,65 @@ export function createDomainDb(opts) {
     },
 
     /**
-     * Lease the next group(s) fairly (PR-B.1 domain_reconcile_lease): whole
-     * groups, disjoint across overlapping workers, least-recently-served first.
-     * The database caps the batch at 5 and fixes the lease at 120 s.
+     * Reconciler: lease the next group(s) fairly (domain_reconcile_lease) --
+     * whole groups, disjoint across overlapping workers, least-recently-served
+     * first. The database caps the batch at 5 and fixes the lease at 120 s.
      */
     reconcileLease: (limit = 1) => rpc('domain_reconcile_lease', { p_limit: limit }),
+    /** Merchant request: lease its group -> { outcome: 'leased', lease_token } | busy | group_ended. */
+    groupLease: (groupId, slug) =>
+      rpc('domain_group_lease', { p_group_id: groupId, p_store_slug: slug }),
+    /** Give the lease back as soon as the work is done (else it lapses after 120 s). */
+    leaseRelease: (groupId, slug, lease) =>
+      rpc('domain_group_lease_release', { p_group_id: groupId, p_store_slug: slug, p_lease_token: lease }),
 
-    // ── PR-B RPCs (every write) ─────────────────────────────────────────────
+    // ── PR-B RPCs that need no lease ───────────────────────────────────────
     claim: (slug, host, kind) =>
       rpc('domain_claim', { p_store_slug: slug, p_hostname: host, p_kind: kind }),
     markVerified: (groupId, slug, provedToken) =>
       rpc('domain_mark_verified', { p_group_id: groupId, p_store_slug: slug, p_proved_token: provedToken }),
-    vercelIntent: (groupId, slug, host, intent) =>
-      rpc('domain_vercel_intent', { p_group_id: groupId, p_store_slug: slug, p_hostname: host, p_intent: intent }),
-    vercelObserve: (groupId, slug, host, facts, error = null) =>
-      rpc('domain_vercel_observe', {
-        p_group_id: groupId, p_store_slug: slug, p_hostname: host,
-        p_attached: facts.attached, p_verified: facts.verified ?? null,
-        p_misconfigured: facts.misconfigured ?? null, p_error: error,
-      }),
-    markReady: (groupId, slug) =>
-      rpc('domain_mark_ready', { p_group_id: groupId, p_store_slug: slug }),
     challengeCreate: (slug, groupId, action, target, codeHash) =>
       rpc('domain_challenge_create', {
         p_store_slug: slug, p_group_id: groupId, p_action: action,
         p_target_hostname: target, p_code_hash: codeHash,
-      }),
-    activate: (groupId, slug, provedToken, challengeId, codeHash) =>
-      rpc('domain_activate', {
-        p_group_id: groupId, p_store_slug: slug, p_proved_token: provedToken,
-        p_challenge_id: challengeId, p_code_hash: codeHash,
       }),
     setPrimary: (groupId, slug, host, challengeId, codeHash) =>
       rpc('domain_set_primary', {
         p_group_id: groupId, p_store_slug: slug, p_hostname: host,
         p_challenge_id: challengeId, p_code_hash: codeHash,
       }),
-    beginDisconnect: (groupId, slug, actor, challengeId = null, codeHash = null) =>
-      rpc('domain_begin_disconnect', {
+    expireStale: (limit = 200) =>
+      rpc('domain_expire_stale', { p_limit: limit }),
+
+    // ── Leased gateways (PR-B.1): the lease token first, always ─────────────
+    vercelIntent: (lease, groupId, slug, host, intent) =>
+      leased('domain_leased_vercel_intent', lease,
+        { p_group_id: groupId, p_store_slug: slug, p_hostname: host, p_intent: intent }),
+    vercelObserve: (lease, groupId, slug, host, facts, error = null) =>
+      leased('domain_leased_vercel_observe', lease, {
+        p_group_id: groupId, p_store_slug: slug, p_hostname: host,
+        p_attached: facts.attached, p_verified: facts.verified ?? null,
+        p_misconfigured: facts.misconfigured ?? null, p_error: error,
+      }),
+    markReady: (lease, groupId, slug) =>
+      leased('domain_leased_mark_ready', lease, { p_group_id: groupId, p_store_slug: slug }),
+    activate: (lease, groupId, slug, provedToken, challengeId, codeHash) =>
+      leased('domain_leased_activate', lease, {
+        p_group_id: groupId, p_store_slug: slug, p_proved_token: provedToken,
+        p_challenge_id: challengeId, p_code_hash: codeHash,
+      }),
+    beginDisconnect: (lease, groupId, slug, actor, challengeId = null, codeHash = null) =>
+      leased('domain_leased_begin_disconnect', lease, {
         p_group_id: groupId, p_store_slug: slug, p_actor: actor,
         p_challenge_id: challengeId, p_code_hash: codeHash,
       }),
-    finishDisconnect: (groupId, slug) =>
-      rpc('domain_finish_disconnect', { p_group_id: groupId, p_store_slug: slug }),
-    expireStale: (limit = 200) =>
-      rpc('domain_expire_stale', { p_limit: limit }),
-    /** Only with the health token of the lease that authorised this check. */
-    healthUpdate: (groupId, slug, checkToken, ok, error = null) =>
-      rpc('domain_health_update', {
-        p_group_id: groupId, p_store_slug: slug, p_check_token: checkToken, p_ok: ok, p_error: error,
-      }),
+    finishDisconnect: (lease, groupId, slug) =>
+      leased('domain_leased_finish_disconnect', lease, { p_group_id: groupId, p_store_slug: slug }),
+    /** Counts only under the reconciler lease that made this check due, and only once. */
+    healthUpdate: (lease, groupId, slug, ok, error = null) =>
+      leased('domain_leased_health_update', lease,
+        { p_group_id: groupId, p_store_slug: slug, p_ok: ok, p_error: error }),
+
     eventAppend: (groupId, slug, event, actor, detail = {}) =>
       rpc('domain_event_append', {
         p_group_id: groupId, p_store_slug: slug, p_event: event, p_actor: actor, p_detail: detail,

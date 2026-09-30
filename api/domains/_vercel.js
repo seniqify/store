@@ -22,8 +22,11 @@
 //
 // With a budget (_budget.js), every call's timeout is capped at the time left
 // for external work, and no call starts with less than MIN_EXTERNAL_MS left.
+// The timeout covers the whole exchange, response body included (_http.js); a
+// response that does not complete in time is unknown, never a fact.
 import { safeVerificationChallenges } from './_parse.js';
 import { MIN_EXTERNAL_MS } from './_budget.js';
+import { fetchJsonWithin } from './_http.js';
 
 const API = 'https://api.vercel.com';
 
@@ -56,23 +59,12 @@ export function createVercelClient(opts) {
     const url = new URL(API + path);
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
     if (teamId) url.searchParams.set('teamId', teamId);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), limit);
-    try {
-      const r = await fetchImpl(url.toString(), {
-        method,
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: ctrl.signal,
-      });
-      let json = null;
-      try { json = await r.json(); } catch { json = null; }
-      return { ok: r.ok, status: r.status, json };
-    } catch (e) {
-      return { ok: false, status: 0, timedOut: e?.name === 'AbortError', json: null };
-    } finally {
-      clearTimeout(timer);
-    }
+    const r = await fetchJsonWithin(fetchImpl, url.toString(), {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }, limit);
+    return { ok: r.ok, status: r.status, timedOut: Boolean(r.timedOut), json: r.json };
   }
 
   const P = () => `/v9/projects/${encodeURIComponent(projectId)}/domains`;

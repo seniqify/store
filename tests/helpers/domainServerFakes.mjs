@@ -67,7 +67,8 @@ export function createPostgrestShim(pg, { timeline, pins = new Map(), serviceKey
         const q = await asRole(pg, 'service_role', sql, vals);
         const out = SETOF.has(fn) ? q.rows : q.rows[0].r;
         timeline?.push({ kind: 'db', fn, host: args.p_hostname ?? null, intent: args.p_intent ?? null,
-                         outcome: SETOF.has(fn) ? `rows:${out.length}` : out?.outcome });
+                         outcome: SETOF.has(fn) ? `rows:${out.length}` : out?.outcome,
+                         lease: (SETOF.has(fn) ? out[0]?.lease_token : out?.lease_token) ?? args.p_lease_token ?? null });
         return res(200, plain(out));
       } catch (e) {
         timeline?.push({ kind: 'db_error', fn, code: e.code });

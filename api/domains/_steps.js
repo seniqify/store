@@ -2,8 +2,8 @@
 //
 // Every step has the same shape, and none skips a stage:
 //
-//   read DB  ->  DB intent (domain_vercel_intent)  ->  Vercel call
-//            ->  observe what is actually true  ->  record it (domain_vercel_observe)
+//   lease    ->  read DB  ->  DB intent (domain_leased_vercel_intent)  ->  Vercel call
+//            ->  observe what is actually true  ->  record it (domain_leased_vercel_observe)
 //
 // * No Vercel add or DELETE without an 'ok' intent obtained IMMEDIATELY before
 //   it, in the same execution. A DELETE never reuses an earlier authorisation:
@@ -14,6 +14,12 @@
 //   A 409 on add is not taken as absence either: the domain is inspected on
 //   THIS project first, and an uncertain inspection writes nothing.
 // * The database derives every state; nothing here assigns one.
+// * Lease (deps.lease, PR-B.1): every step runs under the group's lease. Each
+//   intent, observation and derived transition carries its token, and the
+//   database refuses a stale one ('lease_lost') atomically with the write --
+//   so an execution that has lost the group (a delayed merchant request, an
+//   overrun pass) can never record an older answer over a newer one. The
+//   first 'lease_lost' ends the work on that group: nothing after it is sent.
 // * Budget (deps.budget): a step that could not finish -- intent, external call
 //   and the recording of its result -- is not started ('deferred'). Recording
 //   uses the reserved time at the end of the budget.
@@ -24,14 +30,17 @@ const ON_VERCEL = (s) => s !== 'none' && s !== 'removed';
 export const CONFLICT_BACKOFF_MS = 60 * 60 * 1000;
 
 const ABSENT = { attached: false, verified: null, misconfigured: null };
+const LOST = 'lease_lost';
 const noTimeFor = (deps, ms = MIN_STEP_MS) => Boolean(deps.budget) && !deps.budget.canStart(ms);
+const lost = (r) => r?.refused === LOST;
 
 /** Observe one hostname and record the facts. */
 export async function observeRow(deps, g, host, { recheckVerification = true } = {}) {
-  const { db, vercel } = deps;
+  const { db, vercel, lease } = deps;
   const f = await vercel.facts(host, { recheckVerification });
   if (f.unknown) return { host, unknown: true, reason: f.reason };
-  const r = await db.vercelObserve(g.group_id, g.store_slug, host, f);
+  const r = await db.vercelObserve(lease, g.group_id, g.store_slug, host, f);
+  if (r.outcome === LOST) return { host, refused: LOST };
   return {
     host, outcome: r.outcome, vercel_state: r.vercel_state, status: r.status,
     recommended: f.recommended ?? null, verification: f.verification ?? [],
@@ -40,10 +49,10 @@ export async function observeRow(deps, g, host, { recheckVerification = true } =
 
 /** Attach one hostname to THIS project, only under an 'ok' add intent. */
 export async function attachRow(deps, g, row) {
-  const { db, vercel } = deps;
+  const { db, vercel, lease } = deps;
   const host = row.hostname;
   if (noTimeFor(deps)) return { host, deferred: true };                 // no intent we cannot follow through
-  const i = await db.vercelIntent(g.group_id, g.store_slug, host, 'add');
+  const i = await db.vercelIntent(lease, g.group_id, g.store_slug, host, 'add');
   if (i.outcome === 'already_attached') return observeRow(deps, g, host);
   if (i.outcome !== 'ok') return { host, refused: i.outcome };          // not authorised: Vercel untouched
 
@@ -55,7 +64,8 @@ export async function attachRow(deps, g, row) {
     const seen = await vercel.inspect(host);
     if (seen.unknown) return { host, [a.result]: true, unknown: true, reason: seen.reason };   // nothing written
     if (seen.attached) return observeRow(deps, g, host);
-    const r = await db.vercelObserve(g.group_id, g.store_slug, host, ABSENT, a.reason);
+    const r = await db.vercelObserve(lease, g.group_id, g.store_slug, host, ABSENT, a.reason);
+    if (r.outcome === LOST) return { host, refused: LOST };
     return { host, [a.result]: true, vercel_state: r.vercel_state };
   }
   // No answer: the row stays 'adding'; the next attempt re-authorises.
@@ -85,23 +95,25 @@ export async function syncGroup(deps, g, { attach = true, nowMs = Date.now() } =
     } else {
       results.push(await observeRow(deps, g, row.hostname));
     }
+    if (lost(results.at(-1))) return { results, leaseLost: true, anyUnknown: true, allConfigured: false, ready: null };
   }
   const anyUnknown = results.some((r) => r.unknown || r.deferred);
   const allConfigured = results.length > 0 && results.every((r) => r.vercel_state === 'configured');
   let ready = null;
   if (allConfigured && (g.status === 'verified' || results.some((r) => r.status === 'verified'))) {
-    ready = (await deps.db.markReady(g.group_id, g.store_slug)).outcome;
+    ready = (await deps.db.markReady(deps.lease, g.group_id, g.store_slug)).outcome;
+    if (ready === LOST) return { results, leaseLost: true, anyUnknown: true, allConfigured: false, ready: null };
   }
-  return { results, anyUnknown, allConfigured, ready };
+  return { results, leaseLost: false, anyUnknown, allConfigured, ready };
 }
 
 /** Remove one hostname -- only under a FRESH 'ok' remove intent. */
 export async function releaseRow(deps, g, row) {
-  const { db, vercel } = deps;
+  const { db, vercel, lease } = deps;
   const host = row.hostname;
   if (!ON_VERCEL(row.vercel_state)) return { host, skipped: true };
   if (noTimeFor(deps)) return { host, deferred: true };
-  const i = await db.vercelIntent(g.group_id, g.store_slug, host, 'remove');
+  const i = await db.vercelIntent(lease, g.group_id, g.store_slug, host, 'remove');
   if (i.outcome === 'nothing_to_remove') return { host, skipped: true };
   if (i.outcome !== 'ok') return { host, refused: i.outcome };          // e.g. group_ended: no DELETE
 
@@ -112,28 +124,33 @@ export async function releaseRow(deps, g, row) {
   const seen = await vercel.inspect(host);
   if (seen.unknown) return { host, pending: seen.reason };
   if (seen.attached) return observeRow(deps, g, host);
-  const r = await db.vercelObserve(g.group_id, g.store_slug, host, ABSENT);
+  const r = await db.vercelObserve(lease, g.group_id, g.store_slug, host, ABSENT);
+  if (r.outcome === LOST) return { host, refused: LOST };
   return { host, removed: true, vercel_state: r.vercel_state };
 }
 
 /** Clean up a 'disconnecting' group, then let the database decide the release. */
 export async function releaseGroup(deps, g) {
   const results = [];
-  for (const row of g.rows) results.push(await releaseRow(deps, g, row));
-  const f = await deps.db.finishDisconnect(g.group_id, g.store_slug);
+  for (const row of g.rows) {
+    results.push(await releaseRow(deps, g, row));
+    if (lost(results.at(-1))) return { results, outcome: LOST, retry_after_seconds: null };
+  }
+  const f = await deps.db.finishDisconnect(deps.lease, g.group_id, g.store_slug);
   return { results, outcome: f.outcome, retry_after_seconds: f.retry_after_seconds ?? null };
 }
 
 /**
  * One authoritative health check of a connected / misconfigured group, under
- * the health token its lease issued (PR-B.1). Verdict only when Vercel answered
- * for EVERY hostname in time; otherwise no verdict at all -- not a failure, not
- * a success -- and nothing is recorded (the token simply lapses). Unknown or
- * null facts are never healthy. PocketLink's TXT record is not part of this.
+ * the reconciler lease that found it due (PR-B.1): the result counts only under
+ * that lease, and only once. Verdict only when Vercel answered for EVERY
+ * hostname in time; otherwise no verdict at all -- not a failure, not a success
+ * -- and nothing is recorded. Unknown or null facts are never healthy.
+ * PocketLink's TXT record is not part of this.
  */
-export async function healthCheck(deps, g, checkToken) {
-  const { db, vercel } = deps;
-  if (!checkToken) return { verdict: null, reason: 'no_token' };
+export async function healthCheck(deps, g) {
+  const { db, vercel, lease } = deps;
+  if (!lease) return { verdict: null, reason: 'no_lease' };
   const facts = [];
   for (const row of g.rows) {
     if (noTimeFor(deps)) return { verdict: null, reason: 'budget_exhausted' };
@@ -143,12 +160,13 @@ export async function healthCheck(deps, g, checkToken) {
   }
   const states = [];
   for (const [host, f] of facts) {
-    const r = await db.vercelObserve(g.group_id, g.store_slug, host, f);
+    const r = await db.vercelObserve(lease, g.group_id, g.store_slug, host, f);
+    if (r.outcome === LOST) return { verdict: null, reason: LOST };
     states.push([host, r.vercel_state]);
   }
   const bad = states.filter(([, s]) => s !== 'configured').map(([h, s]) => `${h}=${s}`);
   const ok = bad.length === 0;
-  const r = await db.healthUpdate(g.group_id, g.store_slug, checkToken, ok,
+  const r = await db.healthUpdate(lease, g.group_id, g.store_slug, ok,
     ok ? null : `not_configured: ${bad.join(', ')}`.slice(0, 300));
   return { verdict: ok, outcome: r.outcome, failures: r.failures ?? null };
 }
