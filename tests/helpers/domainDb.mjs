@@ -25,6 +25,11 @@ export const FORWARD  = read('supabase/custom-domains-forward.sql');
 export const VERIFY   = read('supabase/custom-domains-verify.sql');
 export const ROLLBACK = read('supabase/custom-domains-ROLLBACK.sql');
 
+// PR-B.1 (reconciler leases + ordered health results), applied on top of PR-B.
+export const LEASE_FORWARD  = read('supabase/custom-domains-lease-forward.sql');
+export const LEASE_VERIFY   = read('supabase/custom-domains-lease-verify.sql');
+export const LEASE_ROLLBACK = read('supabase/custom-domains-lease-ROLLBACK.sql');
+
 export const BASELINE = `
   create role anon nologin;
   create role authenticated nologin;
@@ -58,10 +63,11 @@ export const BASELINE = `
   insert into public.orders (store_slug, total) values ('alpha', 120), ('beta', 90);
 `;
 
-export async function freshDb({ apply = true } = {}) {
+export async function freshDb({ apply = true, lease = false } = {}) {
   const db = new PGlite();
   await db.exec(BASELINE);
   if (apply) await db.exec(FORWARD);
+  if (apply && lease) await db.exec(LEASE_FORWARD);
   return db;
 }
 
