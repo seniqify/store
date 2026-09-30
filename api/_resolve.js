@@ -46,6 +46,22 @@ export function createResolver({
   const rpc = (fn, args) => fetchJsonWithin(fetchImpl, `${url}/rest/v1/rpc/${fn}`,
     { method: 'POST', headers: headers(), body: JSON.stringify(args) }, timeoutMs);
 
+  /**
+   * A store's connected primary domain: { status: 'ok', host } (host is null
+   * when it has none) or an error. A slug no domain could belong to is ok/null.
+   */
+  async function lookupPrimaryHost(slug) {
+    if (typeof slug !== 'string' || !SLUG.test(slug)) return { status: 'ok', host: null };
+    if (!url || !anonKey) return error('unconfigured');
+    const r = await rpc('store_primary_host', { p_slug: slug });
+    if (r.timedOut) return error('timeout');
+    if (!r.ok || r.badBody) return error(r.status ? `http_${r.status}` : 'unreachable');
+    if (r.json === null) return { status: 'ok', host: null };
+    const host = r.json;
+    if (typeof host !== 'string' || normalizeHost(host) !== host || !validHostname(host)) return error('malformed');
+    return { status: 'ok', host };
+  }
+
   return {
     /** Which store a merchant domain serves. `host` must already be normalised. */
     async resolveHost(host) {
@@ -64,13 +80,12 @@ export function createResolver({
       return value;
     },
 
+    lookupPrimaryHost,
+
     /** A store's connected primary domain, or null (none, or any failure: PocketLink stays canonical). */
     async primaryHostFor(slug) {
-      if (typeof slug !== 'string' || !SLUG.test(slug) || !url || !anonKey) return null;
-      const r = await rpc('store_primary_host', { p_slug: slug });
-      if (!r.ok || r.badBody || typeof r.json !== 'string') return null;
-      const host = r.json;
-      return normalizeHost(host) === host && validHostname(host) ? host : null;
+      const r = await lookupPrimaryHost(slug);
+      return r.status === 'ok' ? r.host : null;
     },
 
     /** Forget cached answers (tests). */

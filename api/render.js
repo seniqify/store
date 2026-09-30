@@ -69,12 +69,14 @@ async function getBaseHtml(origin, fetchImpl) {
 // from the very build whose /assets/* the browser loads next -- on a preview, on
 // production and on a merchant's domain alike -- with no network fetch for it
 // and no Deployment Protection in the way. Off Vercel (local tests), or if the
-// file were missing, the shell is fetched as before (baseHtmlOrigin).
-let ownShellCache;
+// file were missing: PocketLink hosts fetch the shell as before (baseHtmlOrigin);
+// a merchant's domain answers 503 rather than mix another build's HTML with this
+// build's JavaScript. Only a successful read is remembered.
+let ownShellCache = null;
 function ownShell(env) {
   if (!env.VERCEL) return null;
-  if (ownShellCache === undefined) {
-    try { ownShellCache = readFileSync(join(process.cwd(), 'dist', 'index.html'), 'utf8'); } catch { ownShellCache = null; }
+  if (ownShellCache === null) {
+    try { ownShellCache = readFileSync(join(process.cwd(), 'dist', 'index.html'), 'utf8'); } catch { /* not bundled */ }
   }
   return ownShellCache;
 }
@@ -327,13 +329,10 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
   if (!r.isPrimary) { sendRedirect(res, `https://${r.primaryHost}${route ? path : '/'}`); return; }
   if (!route) { sendNotFound(res); return; }
 
-  let base;
-  try {
-    base = await loadShell(res, env, deps, PL_ORIGIN, fetchImpl);
-  } catch {
-    sendUnavailable(res);
-    return;
-  }
+  // This build's own shell or nothing: never another deployment's HTML.
+  const base = deps.shell ?? ownShell(env);
+  if (!base) { sendUnavailable(res); return; }
+  res.setHeader('X-PL-Shell', 'own');
 
   const SUPABASE_URL  = env.VITE_SUPABASE_URL;
   const SUPABASE_ANON = env.VITE_SUPABASE_ANON_KEY;

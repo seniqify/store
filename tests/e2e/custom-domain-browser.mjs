@@ -5,9 +5,10 @@
 //
 // It builds the SPA (with test Supabase settings) into a temporary folder, then
 // drives headless Chrome. EVERY request Chrome makes is intercepted over the
-// DevTools protocol and answered by tests/helpers/routingWorld.mjs -- the real
-// middleware.js, api/render.js and api/sitemap.js over the real PR-B + PR-B.1
-// SQL in PGlite -- and the SPA's own Supabase calls by the same stand-in. All
+// DevTools protocol and answered by tests/helpers/routingWorld.mjs -- Vercel's
+// own compiled route table for this repo, the real middleware.js, api/render.js
+// and api/sitemap.js over the real PR-B + PR-B.1 SQL in PGlite -- and the SPA's
+// own Supabase calls by the same stand-in. All
 // real DNS is blackholed, so nothing leaves this machine. (Browser CORS is off:
 // the stand-in is not a real Supabase; isolation never relied on CORS.)
 import { spawn, spawnSync } from 'node:child_process';
@@ -50,7 +51,7 @@ const ENV_ON = { VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON, CUSTOM_DOM
 const ENV_OFF = { VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON };
 let pipeline = createPipeline({ env: ENV_ON, supabase, shell: SHELL, distDir: dist, now });
 const APP_HOSTS = new Set(['brandshop.test', 'www.brandshop.test', 'otherbrand.test', 'www.otherbrand.test',
-  'pending.test', 'www.pending.test', 'www.pocketlink.store', 'pocketlink.store']);
+  'pending.test', 'www.pending.test', 'never-claimed.test', 'www.pocketlink.store', 'pocketlink.store']);
 
 // ── 3. Chrome, with every request answered here ──────────────────────────────
 const profile = join(work, 'profile');
@@ -69,18 +70,18 @@ let seq = 0;
 const pending = new Map();
 const pageErrors = [];
 const docs = [];          // every top-level document response: { url, status }
+const loaded = [];        // every request the page made: { url, type }
 const blocked = [];
 const send = (method, params = {}) => new Promise((res) => { const id = ++seq; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
 
 async function answer({ requestId, request, resourceType }) {
   const u = new URL(request.url);
+  loaded.push({ url: request.url, type: resourceType });
   try {
     let res;
     if (u.hostname === 'sb.test') {
       const r = await supabase.handle(request.url, { method: request.method, headers: request.headers, body: request.postData });
       res = { status: r.status, headers: Object.fromEntries(r.headers), body: Buffer.from(await r.arrayBuffer()) };
-    } else if (APP_HOSTS.has(u.hostname) && u.pathname.startsWith('/_vercel/')) {
-      res = { status: 200, headers: { 'content-type': 'text/javascript' }, body: Buffer.alloc(0) };
     } else if (APP_HOSTS.has(u.hostname)) {
       res = await pipeline.handle({ method: request.method, url: request.url, headers: request.headers });
     } else {
@@ -187,6 +188,29 @@ try {
   await go('https://otherbrand.test/');
   check('another merchant\'s domain shows ITS store only', await waitFor(text('Secret Tea')) && !(await ev(text('Clay Mug'))));
   check('the two domains never cross', otherStoreReads() >= 1 && (await ev('window.__PL_HOST__.slug')) === 'otherstore');
+
+  // ── Paths the middleware never sees: no way into PocketLink's SPA ───────────
+  // (review of 5863649: these reached the unrestricted SPA, which then navigated
+  // client-side to a demo store.) Connected, pending and never-claimed domains.
+  const readsBefore = otherStoreReads();
+  for (const host of ['brandshop.test', 'pending.test', 'never-claimed.test']) {
+    for (const path of ['/assets/missing.js', '/_vercel/missing', '/api/missing', '/api/x/manage', '/assets/manage', '/api/_hosts']) {
+      await go(`https://${host}${path}`);
+      const since = loaded.length;
+      check(`${host}${path}: a real 404, not the SPA`,
+        lastDoc().status === 404 && (await ev('document.getElementById("root") === null')) && (await ev('window.__PL_HOST__ === undefined')),
+        `${lastDoc().status}`);
+      for (const to of ['/demo/aanyaboutique', '/otherstore', '/otherstore/p/o1', '/']) {
+        await ev(`history.pushState({}, '', '${to}'); dispatchEvent(new PopStateEvent('popstate'))`);
+      }
+      await sleep(500);
+      const scripts = loaded.slice(since).filter((r) => r.type === 'Script' || r.url.includes('/assets/'));
+      check(`${host}${path}: no client-side way to another store afterwards`,
+        !(await ev(text('Secret Tea'))) && !(await ev(text('Aanya'))) && !(await ev(text('Other Store'))) &&
+        (await ev('document.getElementById("root") === null')) && scripts.length === 0, JSON.stringify(scripts.map((r) => r.url)));
+    }
+  }
+  check('nothing of another store was fetched by any of it', otherStoreReads() === readsBefore, `${readsBefore} -> ${otherStoreReads()}`);
 
   // ── PocketLink pages from a merchant domain ─────────────────────────────────
   await go('https://brandshop.test/manage');

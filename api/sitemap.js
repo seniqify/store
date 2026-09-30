@@ -4,6 +4,12 @@
 // On a merchant's own domain (CUSTOM_DOMAINS_ROUTING_ENABLED on), the sitemap
 // lists ONLY the store the database says owns that domain, on that domain --
 // never another store. With routing off, every host gets PocketLink's, as before.
+//
+// PocketLink's own sitemap, with routing on, leaves out every store with a
+// connected domain: that store's canonical is on its domain (api/render.js), and
+// the domain's own sitemap lists it. Each store is looked up (store_primary_host);
+// if any lookup fails, the sitemap is 503, never cached -- a guess could list a
+// page whose canonical is elsewhere, or drop one whose canonical is here.
 import { esc } from './_seo.js';
 import { categoryLinkId } from './_categoryLink.js';
 import { normalizeHost, classifyHost, routingEnabled } from './_hosts.js';
@@ -13,6 +19,7 @@ import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect } from '.
 const ORIGIN  = 'https://www.pocketlink.store';
 const STATIC  = ['/', '/marketplace', '/plans', '/start', '/terms', '/privacy'];
 const DEMOS   = ['aanyaboutique', 'glowup'];
+const LOOKUP_CONCURRENCY = 8;
 
 let defaultResolver = null;
 function resolverFor(env) {
@@ -44,6 +51,12 @@ export default async function handler(req, res, deps = {}) {
     }
   } catch { /* still emit static + demos */ }
 
+  if (routingEnabled(env)) {
+    const kept = await withoutDomainStores(stores.filter((s) => s && s.slug), deps.resolver ?? resolverFor(env));
+    if (!kept) { sendUnavailable(res); return; }
+    stores = kept;
+  }
+
   // priority/changefreq: the home page is the most important, the marketplace
   // (fresh listings as stores join) next, then individual stores, then the rest.
   const prio = (p) => (p === '/' ? '1.0' : p === '/marketplace' ? '0.8' : '0.6');
@@ -72,6 +85,24 @@ ${body}
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
   res.status(200).send(xml);
+}
+
+// The stores whose canonical is on PocketLink: those with no connected domain.
+// null if any lookup failed. Stops at the first failure.
+async function withoutDomainStores(stores, resolver) {
+  const keep = new Array(stores.length).fill(false);
+  let next = 0;
+  let failed = false;
+  async function worker() {
+    while (!failed && next < stores.length) {
+      const i = next++;
+      const r = await resolver.lookupPrimaryHost(stores[i].slug);
+      if (r.status !== 'ok') { failed = true; return; }
+      keep[i] = !r.host;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(LOOKUP_CONCURRENCY, stores.length) }, worker));
+  return failed ? null : stores.filter((_, i) => keep[i]);
 }
 
 // The one store that owns this merchant domain: its home, categories and

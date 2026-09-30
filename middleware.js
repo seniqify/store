@@ -9,14 +9,17 @@
 // src/utils/customDomainRoutes.js). The database decides which ONE store the
 // domain serves (resolve_store_host: connected groups only); the path never
 // chooses a store:
-//   generic assets (/assets/*, favicon, logo, version.json)   untouched
+//   generic assets (/assets/*, favicon, logo, version.json)   as they are, no lookup
 //   not connected / unknown                     404 "not connected", every path
 //   the lookup failed or timed out              503 -- never a store, never PocketLink
 //   a non-primary name of the domain            307 to the primary, same path
 //   /, /p/{id}, /c/{id}                         that store (api/render)
 //   /robots.txt, /sitemap.xml                   that store's own
 //   /api/og, /api/qr                            only for that store's slug
-//   /api/render, /api/sitemap directly          404 (reached only through here)
+//   /api/render, /api/sitemap directly, and any
+//   other path to the four functions (/api/og/,
+//   /api/og.js, ...)                            404 (render/sitemap: reached only
+//                                               through here)
 //   PocketLink pages (/manage, /start, /terms, /order/{token}, ...)
 //                                               307 to PocketLink (/manage -> this
 //                                               store's dashboard)
@@ -31,10 +34,15 @@ import {
   storeRoute, pocketlinkTarget, isPassThrough, imageEndpointSlug,
 } from './src/utils/customDomainRoutes.js';
 
-// Every page path, plus the four API routes that render or list store pages.
-// Other /api/* routes and the hashed /assets/* never reach the middleware.
+// Every page path, plus every path to the four API functions that render or
+// list store pages -- with the variants Vercel also sends to them (a trailing
+// slash, ".js"). Other /api/* routes, /_vercel/* and the hashed /assets/* never
+// reach the middleware, so vercel.json never falls back to the SPA for those
+// three prefixes: a miss there is a plain 404. (Vercel finds a function by its
+// DECODED path but matches this matcher against the raw one, so render, sitemap,
+// og and qr each check a merchant's domain again themselves.)
 export const config = {
-  matcher: ['/((?!assets/|_vercel/|api/).*)', '/api/render', '/api/sitemap', '/api/og', '/api/qr'],
+  matcher: ['/((?!assets/|_vercel/|api/).*)', '/api/(render|sitemap|og|qr)(.*)'],
 };
 
 
@@ -58,7 +66,13 @@ function robotsTxt(host) {
 async function routeMerchantDomain(req, resolver) {
   const url = new URL(req.url);
   const path = url.pathname;
-  if (isPassThrough(path)) return undefined;
+  // On a merchant's domain the middleware never just lets routing continue:
+  // what it allows, it rewrites to the very URL it checked. req.url has its dot
+  // segments resolved (WHATWG), but Vercel goes on routing the RAW path -- so
+  // /x/../favicon.svg looks like the favicon here, yet left alone it would find
+  // no file and fall back to the SPA shell.
+  const allow = () => rewrite(url);
+  if (isPassThrough(path)) return allow();
 
   const host = normalizeHost(url.hostname);
   const r = await resolver.resolveHost(host);
@@ -66,9 +80,10 @@ async function routeMerchantDomain(req, resolver) {
   if (r.status !== 'connected') return responses.notConnected();
   if (!r.isPrimary) return responses.redirect(`https://${r.primaryHost}${path}${url.search}`);
 
-  if (path === '/api/render' || path === '/api/sitemap') return responses.notFound();
-  if (path === '/api/og' || path === '/api/qr') {
-    return imageEndpointSlug(url.searchParams.get('slug')) === r.slug ? undefined : responses.notFound();
+  if (path.startsWith('/api/')) {
+    // Only the image endpoints, by their exact path, for this store.
+    const image = path === '/api/og' || path === '/api/qr';
+    return image && imageEndpointSlug(url.searchParams.get('slug')) === r.slug ? allow() : responses.notFound();
   }
   if (path === '/robots.txt') return robotsTxt(host);
   if (path === '/sitemap.xml') return rewrite(new URL('/api/sitemap', url));

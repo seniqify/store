@@ -8,21 +8,38 @@
 //     ask: the two public read RPCs as the anon role, and store reads.
 //     It returns real WHATWG Responses, with permissive CORS, so the browser
 //     test can use it too.
-//   * A pipeline that follows a request the way Vercel would for this repo:
-//     the real middleware.js, then vercel.json's redirects, the filesystem and
-//     rewrites, then the real api/render.js and api/sitemap.js. It is only the
-//     parts this repo's routing depends on -- not Vercel.
-import { readFileSync, existsSync, statSync } from 'node:fs';
+//   * A pipeline that routes each request through VERCEL'S OWN compiled route
+//     table for this repo (tests/fixtures/vercel-routes.json, from `vercel
+//     build`), run the way Vercel's router answered on production
+//     (tests/helpers/vercelRouter.mjs): the real middleware.js at its real place
+//     in the table, then the filesystem, rewrites and Vercel's own 404s, then
+//     the real api/render.js and api/sitemap.js, and the real store-image guard
+//     of api/og.js and api/qr.js.
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freshDb, asRole } from './domainDb.mjs';
+import { createRouter, VERCEL_NOT_FOUND } from './vercelRouter.mjs';
 import { createMiddleware } from '../../middleware.js';
 import { createResolver } from '../../api/_resolve.js';
+import { createStoreImageGuard } from '../../api/_storeImageGuard.js';
+import { imageEndpointSlug } from '../../src/utils/customDomainRoutes.js';
 import renderHandler from '../../api/render.js';
 import sitemapHandler from '../../api/sitemap.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const VERCEL_JSON = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf8'));
+/** Vercel's compiled route table for this repo (scripts/vercel-routes-fixture.mjs). */
+export const VERCEL_ROUTES = JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'vercel-routes.json'), 'utf8'));
+
+/** The functions this repo deploys, by path: every .js under api/ not starting with "_". */
+export const FUNCTION_PATHS = new Set();
+(function walk(dir, base) {
+  for (const f of readdirSync(dir)) {
+    if (statSync(join(dir, f)).isDirectory()) walk(join(dir, f), `${base}/${f}`);
+    else if (f.endsWith('.js') && !f.startsWith('_')) FUNCTION_PATHS.add(`${base}/${f.slice(0, -3)}`);
+  }
+})(join(ROOT, 'api'), '/api');
 
 export const SB = 'https://sb.test';
 export const ANON = 'anon-test-key';
@@ -189,25 +206,6 @@ export function createSupabase(db) {
 }
 
 // ── The pipeline ─────────────────────────────────────────────────────────────
-function compile(source) {
-  const names = [];
-  const body = source
-    .replace(/\/:([A-Za-z]+)\*/g, (_, n) => { names.push(n); return '(?:/(.*))?'; })
-    .replace(/:([A-Za-z]+)/g, (_, n) => { names.push(n); return '([^/]+)'; });
-  return { re: new RegExp(`^${body}/?$`), names };
-}
-function matchRoute(source, pathname) {
-  const { re, names } = compile(source);
-  const m = re.exec(pathname);
-  if (!m) return null;
-  return Object.fromEntries(names.map((n, i) => [n, m[i + 1] ?? '']));
-}
-function substitute(dest, params) {
-  return dest.replace(/:([A-Za-z]+)\*?/g, (_, n) => params[n] ?? '');
-}
-const hostOk = (rule, host) => !rule.has || rule.has.every((h) => h.type !== 'host' || h.value === host);
-
-const FUNCTIONS = new Set(['/api/render', '/api/sitemap', '/api/og', '/api/qr']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
                 '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.txt': 'text/plain', '.woff2': 'font/woff2' };
 
@@ -220,26 +218,38 @@ async function fromWebResponse(r) {
  * A request pipeline for this repo. Options:
  *   env        the deployment's environment (routing flag, Supabase public key...)
  *   supabase   createSupabase(db)
- *   shell      the SPA shell the render function carries (its build's index.html)
+ *   shell      the SPA shell the render function carries (its build's index.html);
+ *              undefined: it carries none
  *   distDir    a built dist folder to serve static files from (browser test);
  *              otherwise a tiny virtual filesystem (shell + a few generic files)
+ *   files      virtual files to add ({ path: body }) or take away ({ path: null })
  *   now        clock for the resolvers' caches (both the middleware's and the functions')
+ *   routes     the route table (default: Vercel's, from the fixture)
+ *   middlewareCaseInsensitive  match the middleware route ignoring case (vercelRouter.mjs)
  * handle({ method, url, headers }) -> { status, headers, body: Buffer, via }
+ *   via: 'middleware' | 'redirect' | 'function' | 'static' (a file at the path
+ *        the router had) | 'rewrite' (a file a rewrite led to) | 'platform' |
+ *        'vercel' (Vercel's own 404)
+ * `url` is used exactly as given: its path is never normalised (dot segments stay).
  */
-export function createPipeline({ env, supabase, shell, distDir = null, now = () => Date.now() }) {
+export function createPipeline({
+  env, supabase, shell, distDir = null, files = {}, now = () => Date.now(), routes = VERCEL_ROUTES.routes,
+  middlewareCaseInsensitive = false,
+}) {
   const fetchImpl = (u, init) => supabase.handle(u, init);
   const mwResolver = createResolver({ url: SB, anonKey: ANON, fetchImpl, now });
   const fnResolver = createResolver({ url: SB, anonKey: ANON, fetchImpl, now });
   const middleware = createMiddleware({ env, resolverFor: () => mwResolver });
-  const virtualFiles = {
-    '/index.html': shell, '/favicon.svg': '<svg/>', '/version.json': '{"v":"test"}',
+  const imageGuard = createStoreImageGuard({ env, resolverFor: () => fnResolver });
+  const virtualFiles = Object.fromEntries(Object.entries({
+    '/index.html': shell ?? '<!doctype html><div id="root"></div>', '/favicon.svg': '<svg/>', '/version.json': '{"v":"test"}',
     '/assets/app.js': 'console.log(1)', '/robots.txt': 'User-agent: *\nAllow: /\n', '/llms.txt': '# PocketLink',
-  };
+    ...files,
+  }).filter(([, v]) => v !== null));
 
-  function staticFile(pathname) {
-    const p = pathname === '/' ? '/index.html' : pathname;
+  function staticFile(p) {
     if (distDir) {
-      const f = join(distDir, decodeURIComponent(p));
+      const f = join(distDir, p);
       if (f.startsWith(distDir) && existsSync(f) && statSync(f).isFile()) {
         return { body: readFileSync(f), type: TYPES[extname(f)] || 'application/octet-stream' };
       }
@@ -248,8 +258,13 @@ export function createPipeline({ env, supabase, shell, distDir = null, now = () 
     return p in virtualFiles ? { body: Buffer.from(virtualFiles[p]), type: TYPES[extname(p)] || 'text/plain' } : null;
   }
 
-  async function invoke(pathWithQuery, host, method) {
-    const u = new URL(pathWithQuery, `https://${host}`);
+  const router = createRouter({
+    routes, middleware, middlewareCaseInsensitive,
+    isFunction: (p) => FUNCTION_PATHS.has(p),
+    isFile: (p) => staticFile(p) !== null,
+  });
+
+  async function invoke(path, search, host, method) {
     const deps = { env, fetchImpl, shell, resolver: fnResolver };
     const out = { status: 200, headers: {}, body: Buffer.alloc(0) };
     const res = {
@@ -258,56 +273,47 @@ export function createPipeline({ env, supabase, shell, distDir = null, now = () 
       send: (b) => { out.body = Buffer.from(String(b)); return res; },
       end: (b) => { if (b !== undefined) out.body = Buffer.from(String(b)); return res; },
     };
-    const req = { method, headers: { host }, url: u.pathname + u.search };
-    if (u.pathname === '/api/render') await renderHandler(req, res, deps);
-    else if (u.pathname === '/api/sitemap') await sitemapHandler(req, res, deps);
-    else if (u.pathname === '/api/og' || u.pathname === '/api/qr') {
-      out.headers['content-type'] = 'text/plain';
-      out.body = Buffer.from(`image-stub:${u.pathname}:${u.searchParams.get('slug') || ''}`);
+    const req = { method, headers: { host }, url: path + search };
+    if (path === '/api/render') await renderHandler(req, res, deps);
+    else if (path === '/api/sitemap') await sitemapHandler(req, res, deps);
+    else if (path === '/api/og' || path === '/api/qr') {
+      // The real guard at the top of api/og.js and api/qr.js; the image itself is a stub.
+      const slug = imageEndpointSlug(new URLSearchParams(search).get('slug'));
+      const refused = await imageGuard(new Request(`https://${host}${path}${search}`), slug);
+      if (refused) return { ...(await fromWebResponse(refused)), via: 'function' };
+      out.headers['content-type'] = 'image/png';
+      out.body = Buffer.from(`image-stub:${path}:${slug}`);
     } else {
-      return { status: 404, headers: {}, body: Buffer.from('no such function'), via: 'function' };
+      out.headers['content-type'] = 'application/json';
+      out.body = Buffer.from(JSON.stringify({ function: path }));
     }
     return { ...out, via: 'function' };
   }
 
   async function handle({ method = 'GET', url, headers = {} }) {
-    const u = new URL(url);
-    const host = u.host;
-    // 1. Edge middleware (only on paths its matcher covers).
-    const covered = !/^\/(assets|_vercel|api)\//.test(u.pathname) || ['/api/render', '/api/sitemap', '/api/og', '/api/qr'].includes(u.pathname);
-    if (covered) {
-      const mw = await middleware(new Request(u, { method, headers }));
-      if (mw) {
-        const rw = mw.headers.get('x-middleware-rewrite');
-        if (rw) {
-          const t = new URL(rw);
-          return invoke(t.pathname + t.search, host, method);
-        }
-        return { ...(await fromWebResponse(mw)), via: 'middleware' };
+    const host = /^https?:\/\/([^/?#]+)/.exec(url)[1];
+    const r = await router({ method, url, headers });
+    const extra = r.headers || {};
+    const merge = (x) => ({ ...x, headers: { ...x.headers, ...extra } });
+    switch (r.kind) {
+      case 'platform':
+        return { status: 200, headers: { 'content-type': 'text/javascript' }, body: Buffer.alloc(0), via: 'platform' };
+      case 'middleware':
+        return { ...(await fromWebResponse(r.response)), via: 'middleware' };
+      case 'redirect':
+        return { status: r.status, headers: { location: r.location }, body: Buffer.alloc(0), via: 'redirect' };
+      case 'function':
+        return merge(await invoke(r.path, r.search, host, method));
+      case 'file': {
+        const f = staticFile(r.path);
+        return merge({ status: 200, headers: { 'content-type': f.type }, body: f.body, via: r.rewritten ? 'rewrite' : 'static' });
+      }
+      default: {
+        const page = r.file ? staticFile(r.file) : null;
+        return { status: 404, headers: { 'content-type': page ? page.type : 'text/plain; charset=utf-8' },
+                 body: page ? page.body : Buffer.from(VERCEL_NOT_FOUND), via: 'vercel' };
       }
     }
-    // 2. vercel.json redirects.
-    for (const r of VERCEL_JSON.redirects || []) {
-      const params = hostOk(r, host) ? matchRoute(r.source, u.pathname) : null;
-      if (params) {
-        const dest = substitute(r.destination, params);
-        return { status: r.permanent ? 308 : 307, headers: { location: new URL(dest, u).toString() }, body: Buffer.alloc(0), via: 'redirect' };
-      }
-    }
-    // 3. The filesystem: functions, then static files.
-    if (FUNCTIONS.has(u.pathname)) return invoke(u.pathname + u.search, host, method);
-    const file = staticFile(u.pathname);
-    if (file) return { status: 200, headers: { 'content-type': file.type }, body: file.body, via: 'static' };
-    // 4. vercel.json rewrites.
-    for (const r of VERCEL_JSON.rewrites || []) {
-      const params = matchRoute(r.source, u.pathname);
-      if (!params) continue;
-      const dest = substitute(r.destination, params);
-      if (dest.startsWith('/api/')) return invoke(dest, host, method);
-      const f = staticFile(dest.split('?')[0]);
-      if (f) return { status: 200, headers: { 'content-type': f.type }, body: f.body, via: 'rewrite' };
-    }
-    return { status: 404, headers: {}, body: Buffer.from('not found'), via: 'none' };
   }
 
   return { handle, mwResolver, fnResolver };

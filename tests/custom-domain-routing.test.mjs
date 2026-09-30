@@ -1,7 +1,9 @@
 // PR-D: custom-domain routing and storefront rendering.
 //
-// Every request goes through the real middleware.js, then vercel.json's
-// redirects / filesystem / rewrites, then the real api/render.js and
+// Every request goes through VERCEL'S OWN compiled route table for this repo
+// (tests/fixtures/vercel-routes.json, from `vercel build`), run the way Vercel's
+// router answered on production (tests/helpers/vercelRouter.mjs) -- the real
+// middleware.js at its real place in it -- then the real api/render.js and
 // api/sitemap.js (tests/helpers/routingWorld.mjs). Which store a domain serves
 // comes from the REAL PR-B + PR-B.1 SQL in PGlite: each domain status is reached
 // through the real domain functions, and resolve_store_host / store_primary_host
@@ -13,17 +15,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  SB, ANON, BRAND, createDb, domainIn, setPrimary, disconnect, createSupabase, createPipeline, get,
+  SB, ANON, BRAND, createDb, domainIn, setPrimary, disconnect, createSupabase, createPipeline, get, VERCEL_ROUTES,
 } from './helpers/routingWorld.mjs';
+import { VERCEL_NOT_FOUND } from './helpers/vercelRouter.mjs';
 import { makeFetch, runHandler, POCKETLINK_CASES } from './helpers/renderHarness.mjs';
 import renderHandler from '../api/render.js';
 import { interpretResolve, createResolver, RESOLVE_CACHE_MS } from '../api/_resolve.js';
 import { classifyHost, routingEnabled, validHostname, normalizeHost } from '../api/_hosts.js';
-import { PL_ORIGIN } from '../src/utils/customDomainRoutes.js';
+import { PL_ORIGIN, PASS_THROUGH_FILES } from '../src/utils/customDomainRoutes.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const SHELL = JSON.parse(read('tests/fixtures/render-snapshots.json')).baseHtml;
@@ -47,11 +51,11 @@ const assertNoOtherStore = (r, what) => {
 const resolverCalls = (sb) => sb.log.filter((e) => e.path.startsWith('/rest/v1/rpc/resolve_store_host')).length;
 const storeReadsFor = (sb, slug) => sb.log.filter((e) => e.path === '/rest/v1/stores' && e.query.includes(`slug=eq.${slug}`)).length;
 
-async function world({ env = ENV_ON, status = 'connected', now } = {}) {
+async function world({ env = ENV_ON, status = 'connected', now, shell = SHELL, files, middlewareCaseInsensitive } = {}) {
   const db = await createDb();
   const g = status ? await domainIn(db, BRAND.slug, DOMAIN, status) : null;
   const supabase = createSupabase(db);
-  const pipeline = createPipeline({ env, supabase, shell: SHELL, now });
+  const pipeline = createPipeline({ env, supabase, shell, now, files, middlewareCaseInsensitive });
   return { db, g, supabase, pipeline, get: (path, headers) => get(pipeline, path.startsWith('http') ? path : `https://${DOMAIN}${path}`, headers) };
 }
 
@@ -180,7 +184,7 @@ test('PocketLink-only paths: explicit temporary redirects -- /manage to THIS sto
     ['/start', `${PL_ORIGIN}/start`], ['/plans', `${PL_ORIGIN}/plans`], ['/onboarding', `${PL_ORIGIN}/onboarding`],
     ['/terms?x=1', `${PL_ORIGIN}/terms?x=1`], ['/privacy', `${PL_ORIGIN}/privacy`], ['/data-deletion', `${PL_ORIGIN}/data-deletion`],
     ['/hub', `${PL_ORIGIN}/hub`], ['/console', `${PL_ORIGIN}/console`], ['/marketplace?q=tea', `${PL_ORIGIN}/marketplace?q=tea`],
-    ['/explore', `${PL_ORIGIN}/explore`], ['/sell', `${PL_ORIGIN}/sell`], ['/checkout/pro', `${PL_ORIGIN}/checkout/pro`],
+    ['/explore', `${PL_ORIGIN}/explore`], ['/checkout/pro', `${PL_ORIGIN}/checkout/pro`],
     ['/order/tok-123', `${PL_ORIGIN}/order/tok-123`], ['/confirm/tok-9', `${PL_ORIGIN}/confirm/tok-9`],
     ['/review/tok-7', `${PL_ORIGIN}/review/tok-7`], ['/demo/glowup', `${PL_ORIGIN}/demo/glowup`],
   ];
@@ -192,6 +196,10 @@ test('PocketLink-only paths: explicit temporary redirects -- /manage to THIS sto
     const r = await w.get(path);
     assert.equal(r.status, 404, path);
   }
+  // Vercel runs vercel.json's redirects BEFORE the middleware (the compiled route
+  // table puts them first): /sell stays on this domain, at its home -- this store.
+  const sell = await w.get('/sell');
+  assert.deepEqual([sell.status, sell.headers.location], [308, '/']);
 });
 
 test('robots.txt and sitemap.xml on a merchant domain: that store only, on that domain', async () => {
@@ -474,6 +482,331 @@ test('vercel.json bundles the build\'s index.html into the render function; midd
   const vj = JSON.parse(read('vercel.json'));
   assert.equal(vj.functions['api/render.js'].includeFiles, 'dist/index.html');
   const { config } = await import('../middleware.js');
-  assert.deepEqual(config.matcher, ['/((?!assets/|_vercel/|api/).*)', '/api/render', '/api/sitemap', '/api/og', '/api/qr']);
+  assert.deepEqual(config.matcher, ['/((?!assets/|_vercel/|api/).*)', '/api/(render|sitemap|og|qr)(.*)']);
   assert.equal(vj.crons, undefined);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Nothing on a merchant domain falls back to the unrestricted SPA shell
+// (review of 5863649: /assets/missing.js, /_vercel/missing and /api/missing
+// reached PocketLink's SPA without the merchant marker)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SHELL_BYTES = Buffer.from(SHELL);
+/** The static index.html: the SPA in PocketLink mode, with no merchant marker. */
+const isPlainShell = (r) => r.body.equals(SHELL_BYTES);
+
+test('the route table under test is Vercel\'s own, compiled from THIS vercel.json and middleware matcher', async () => {
+  const vj = JSON.parse(read('vercel.json'));
+  const { config } = await import('../middleware.js');
+  assert.deepEqual(VERCEL_ROUTES.from, { redirects: vj.redirects, rewrites: vj.rewrites, headers: vj.headers, matcher: config.matcher },
+    'stale: run node scripts/vercel-routes-fixture.mjs');
+  const kind = (r) => (r.handle ? r.handle : r.middlewarePath ? 'middleware'
+    : r.status >= 300 && r.status < 400 ? 'redirect' : r.dest ? 'rewrite' : r.status ? 'status' : 'headers');
+  const kinds = VERCEL_ROUTES.routes.map(kind);
+  assert.ok(kinds.lastIndexOf('redirect') < kinds.indexOf('middleware') && kinds.indexOf('middleware') < kinds.indexOf('filesystem'),
+    'Vercel runs vercel.json\'s redirects, then the middleware, then the filesystem');
+  // Every rewrite to the SPA shell stays clear of the three prefixes the middleware never sees, in any case.
+  const toShell = VERCEL_ROUTES.routes.filter((r) => r.dest?.startsWith('/index.html'));
+  assert.ok(toShell.length >= 8);
+  for (const r of toShell) {
+    for (const p of ['/api/x', '/api/manage', '/api/x/manage', '/assets/x.js', '/assets/manage', '/assets/a/b/c',
+                     '/_vercel/x', '/_vercel/manage', '/API/x', '/Assets/x/y', '/_VERCEL/x', '/aPi/manage']) {
+      assert.equal(new RegExp(r.src).test(p), false, `${r.src} must not match ${p}`);
+    }
+  }
+});
+
+test('missing assets, unknown API paths and unknown /_vercel paths: a real 404, never the SPA -- connected, unconnected and PocketLink hosts', async () => {
+  const paths = ['/assets/missing.js', '/assets/missing.css', '/assets/x/y/z.js', '/assets/manage', '/assets/', '/Assets/missing.js',
+                 '/_vercel/missing', '/_vercel/x/y', '/_vercel/manage', '/api/missing', '/api/missing/deeper', '/api/x/manage',
+                 '/api/manage', '/api/_hosts', '/api/_resolve', '/api/domains/missing', '/api/og.js/', '/api/og/x', '/api/ogx', '/API/og'];
+  for (const status of ['connected', 'ready', 'disconnected', null]) {
+    const w = await world({ status });
+    for (const host of [DOMAIN, 'never-claimed.test', 'www.pocketlink.store']) {
+      for (const path of paths) {
+        const r = await w.get(`https://${host}${path}`);
+        const what = `${status} ${host}${path}`;
+        assert.equal(r.status, 404, what);
+        assert.equal(isPlainShell(r), false, `${what}: not the SPA`);
+        assert.equal(r.text.includes('<div id="root">'), false, what);
+        assert.equal(hostMarker(r.text), null, what);
+        // Under the three prefixes the middleware never sees, it is Vercel's own 404.
+        if (/^\/(assets|_vercel|api)\//.test(path) && !/^\/api\/(og|qr|render|sitemap)/.test(path)) {
+          assert.deepEqual([r.via, r.text], ['vercel', VERCEL_NOT_FOUND], what);
+        }
+      }
+    }
+  }
+});
+
+test('real assets, the analytics script and working APIs still answer on a merchant domain', async () => {
+  const w = await world();
+  for (const [path, via] of [['/assets/app.js', 'static'], ['/favicon.svg', 'static'], ['/version.json', 'static'],
+                             ['/_vercel/insights/script.js', 'platform'], ['/api/pincode?pin=411001', 'function'],
+                             ['/api/pincode/', 'function'], ['/api/pincode.js', 'function']]) {
+    const r = await w.get(path);
+    assert.deepEqual([r.status, r.via], [200, via], path);
+  }
+  assert.equal((await w.get('/version.json')).headers['cache-control'], 'no-store, max-age=0, must-revalidate', 'vercel.json header kept');
+});
+
+test('a generic file missing from a build is a 404 on a merchant domain, never the SPA fallback', async () => {
+  // Each pass-through file is one path segment, so if it is missing vercel.json's
+  // /:slug rewrite -- the renderer, which refuses -- answers, not the SPA fallback.
+  for (const f of PASS_THROUGH_FILES) assert.match(f, /^\/[^/]+$/, f);
+  const w = await world({ files: { '/version.json': null, '/favicon.svg': null } });
+  for (const path of [...PASS_THROUGH_FILES].filter((f) => !['/version.json', '/favicon.svg'].includes(f)).concat(['/version.json', '/favicon.svg'])) {
+    const r = await w.get(path);
+    assert.equal(r.status, 404, path);
+    assert.equal(isPlainShell(r), false, path);
+  }
+});
+
+test('dot segments: the middleware sees a normalised URL but Vercel routes the raw path -- what it lets through is exactly what it checked', async () => {
+  for (const status of ['connected', null]) {
+    const w = await world({ status });
+    const files = [['/x/../favicon.svg', '<svg/>'], ['/x/%2e%2e/favicon.svg', '<svg/>'], ['/x/%2E%2E/version.json', '{"v":"test"}'],
+                   ['/p/../version.json', '{"v":"test"}'], ['/x/../assets/app.js', 'console.log(1)'], ['/./favicon.svg', '<svg/>']];
+    for (const [path, body] of files) {
+      const r = await w.get(`https://${DOMAIN}${path}`);
+      assert.deepEqual([r.status, r.text], [200, body], `${status} ${path}: the file itself`);
+    }
+    for (const path of ['/x/./favicon.svg', '/x/../index.html', '/x/%2e%2e/index.html', '/p/p1/../../otherstore', '/x/../api/og?slug=otherstore',
+                        '/x/../api/render?path=/otherstore', '/x/../assets/missing.js', '/a/b/../../_vercel/missing']) {
+      const r = await w.get(`https://${DOMAIN}${path}`);
+      assert.equal(r.status, 404, `${status} ${path}`);
+      assert.equal(isPlainShell(r), false, `${status} ${path}`);
+      assertNoOtherStore(r, path);
+    }
+    // This store's own image, by a dot-segment path: the image -- what the middleware checked -- not the shell.
+    const img = await w.get(`https://${DOMAIN}/x/../api/og?slug=brandshop`);
+    assert.equal(img.status, status ? 200 : 404, `${status}: own image`);
+    if (status) assert.equal(img.text, 'image-stub:/api/og:brandshop');
+    assert.equal(isPlainShell(img), false);
+  }
+});
+
+test('the four functions, reached by paths the middleware matcher never sees (decoded names, %2F), refuse on their own', async () => {
+  const w = await world();
+  for (const [path, status] of [
+    ['/api/%6fg?slug=otherstore', 404], ['/api/%71r?slug=otherstore', 404], ['/api/og%2F?slug=otherstore', 404],
+    ['/api/og/?slug=otherstore', 404], ['/api/og.js?slug=otherstore', 404], ['/api/qr.js?slug=otherstore', 404],
+    ['/api/%6fg?slug=brandshop', 200], ['/api/og.js?slug=brandshop', 404],
+    ['/api/render/?path=/', 404], ['/api/render.js?path=/', 404], ['/api/sitemap/', 404], ['/api/sitemap.js', 404],
+    ['/api/%72ender?path=/otherstore', 404], ['/api/%72ender?path=/otherstore/p/o1', 404], ['/api/%72ender?path=/brandshop', 404],
+  ]) {
+    const r = await w.get(path);
+    assert.equal(r.status, status, path);
+    assertNoOtherStore(r, path);
+  }
+  // Even a decoded renderer path shows only THIS store (the renderer re-resolves the host).
+  const own = await w.get('/api/%72ender?path=/');
+  assert.equal(own.status, 200);
+  assert.deepEqual(hostMarker(own.text), { slug: 'brandshop', base: `https://${DOMAIN}` });
+  const sm = await w.get('/api/%73itemap');
+  assert.equal(sm.status, 200);
+  assertNoOtherStore(sm, 'decoded sitemap');
+  assert.equal(storeReadsFor(w.supabase, 'otherstore'), 0);
+
+  const ready = await world({ status: 'ready' });
+  for (const path of ['/api/%6fg?slug=brandshop', '/api/%71r?slug=brandshop', '/api/%72ender?path=/', '/api/%73itemap']) {
+    const r = await ready.get(path);
+    assert.equal(r.status, 404, `ready ${path}`);
+    assert.match(r.text, /not connected/, path);
+  }
+});
+
+test('api/og.js and api/qr.js check a merchant domain themselves -- the real modules, before any store read', async () => {
+  const db = await createDb();
+  await domainIn(db, BRAND.slug, DOMAIN, 'connected');
+  await domainIn(db, 'otherstore', 'ready.test', 'ready');
+  const sb = createSupabase(db);
+  const saved = { ...process.env };
+  const realFetch = globalThis.fetch;
+  const outside = [];
+  Object.assign(process.env, { CUSTOM_DOMAINS_ROUTING_ENABLED: 'true', VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON });
+  globalThis.fetch = (u, init) => {
+    const s = String(u);
+    if (s.startsWith(SB)) return sb.handle(u, init);
+    if (s.startsWith('data:')) return realFetch(u, init);          // @vercel/og's own wasm
+    outside.push(s);
+    return Promise.reject(new TypeError('blocked'));
+  };
+  try {
+    const { default: og } = await import('../api/og.js');
+    const { default: qr } = await import('../api/qr.js');
+    for (const [name, handler] of [['og', og], ['qr', qr]]) {
+      for (const [url, status] of [
+        [`https://${DOMAIN}/api/${name}?slug=otherstore`, 404], [`https://${DOMAIN}/api/${name}?slug=OtherStore!`, 404],
+        [`https://${DOMAIN}/api/${name}`, 404], [`https://${WWW_DOMAIN}/api/${name}?slug=brandshop`, 404],
+        ['https://ready.test/api/' + name + '?slug=otherstore', 404], ['https://never-claimed.test/api/' + name + '?slug=otherstore', 404],
+      ]) {
+        const r = await handler(new Request(url));
+        assert.equal(r.status, status, url);
+        assert.equal(r.headers.get('cache-control'), 'no-store', url);
+      }
+    }
+    sb.knobs.resolver = 'down';
+    assert.equal((await og(new Request('https://fresh.test/api/og?slug=otherstore'))).status, 503, 'lookup failed: 503');
+    assert.deepEqual(outside, [], 'no request left for the real store database or anywhere else');
+    assert.equal(storeReadsFor(sb, 'otherstore'), 0);
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('sweep: thousands of raw paths -- any case, percent-encoded, dot segments -- never serve a merchant domain the plain SPA', async () => {
+  const SEG = ['', 'api', 'assets', '_vercel', 'API', 'Assets', 'x', 'manage', 'p', 'c', 'og', 'render', '%61ssets', '..', '%2e%2e', 'index.html'];
+  const paths = new Set();
+  const walk = (prefix, depth) => {
+    if (!depth) return;
+    for (const s of SEG) { const p = `${prefix}/${s}`; paths.add(p); paths.add(`${p}/`); walk(p, depth - 1); }
+  };
+  walk('', 3);
+  for (const middlewareCaseInsensitive of [false, true]) {
+    for (const status of ['connected', null]) {
+      const w = await world({ status, middlewareCaseInsensitive });
+      const bad = [];
+      for (const path of paths) {
+        const r = await w.get(`https://${DOMAIN}${path}`);
+        if (r.status >= 300 && r.status < 400) continue;
+        if (isPlainShell(r) || r.text.includes('Other Store')) bad.push(`${r.status} ${path}`);
+        else if (/text\/html/.test(r.headers['content-type'] || '') && r.status === 200
+                 && JSON.stringify(hostMarker(r.text)) !== JSON.stringify({ slug: 'brandshop', base: `https://${DOMAIN}` })) bad.push(`marker ${path}`);
+      }
+      assert.deepEqual(bad, [], `status ${status}, case-insensitive middleware ${middlewareCaseInsensitive}: ${paths.size} paths`);
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PocketLink's own sitemap: stores whose canonical is on their domain are left out
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MAIN_SITEMAP = JSON.parse(read('tests/fixtures/sitemap-main.json'));
+const withoutStore = (xml, slug) => xml.split('\n').filter((l) => !l.includes(`<loc>${PL_ORIGIN}/${slug}</loc>`)).join('\n');
+const primaryCalls = (sb) => sb.log.filter((e) => e.path.endsWith('/store_primary_host')).length;
+
+test('PocketLink sitemap, routing off: byte for byte what main served, and no domain lookup at all', async () => {
+  const w = await world({ env: ENV_OFF });
+  for (const host of ['www.pocketlink.store', 'pocketlink.store']) {
+    const r = await w.get(`https://${host}/sitemap.xml`);
+    assert.deepEqual([r.status, r.headers['cache-control'], r.headers['content-type']],
+      [MAIN_SITEMAP.status, MAIN_SITEMAP.cacheControl, MAIN_SITEMAP.contentType], host);
+    assert.equal(r.text, MAIN_SITEMAP.xml, host);
+  }
+  assert.equal(primaryCalls(w.supabase), 0);
+});
+
+test('PocketLink sitemap, routing on: a store is listed exactly when its canonical is on PocketLink', async () => {
+  const on = await world();
+  const r = await on.get('https://www.pocketlink.store/sitemap.xml');
+  assert.equal(r.status, 200);
+  assert.equal(r.text, withoutStore(MAIN_SITEMAP.xml, 'brandshop'), 'brandshop (connected) left out; everything else as on main');
+  assert.equal(r.headers['cache-control'], MAIN_SITEMAP.cacheControl);
+  assert.ok(r.text.includes(`<loc>${PL_ORIGIN}/otherstore</loc>`));
+
+  // Every other status, and after a disconnect: listed -- and in each case in step with the page's own canonical.
+  for (const status of ['pending', 'verified', 'ready', 'misconfigured', 'disconnecting', 'disconnected', 'expired']) {
+    const w = await world({ status });
+    const listed = (await w.get('https://www.pocketlink.store/sitemap.xml')).text.includes(`<loc>${PL_ORIGIN}/brandshop</loc>`);
+    const canonical = canonicals((await w.get('https://www.pocketlink.store/brandshop')).text)[0];
+    assert.equal(listed, canonical === `${PL_ORIGIN}/brandshop`, `${status}: listed iff PocketLink is the canonical (${canonical})`);
+    if (listed) assert.equal((await w.get('https://www.pocketlink.store/sitemap.xml')).text, MAIN_SITEMAP.xml, status);
+  }
+  await disconnect(on.db, on.g);
+  assert.equal((await on.get('https://www.pocketlink.store/sitemap.xml')).text, MAIN_SITEMAP.xml, 'disconnected: listed again at once');
+
+  // A deployment host (preview) with routing on filters the same way.
+  const env = { ...ENV_ON, VERCEL_BRANCH_URL: 'store-git-x-seniqifys-projects.vercel.app' };
+  const dep = await world({ env });
+  assert.equal((await dep.get('https://store-git-x-seniqifys-projects.vercel.app/sitemap.xml')).text, withoutStore(MAIN_SITEMAP.xml, 'brandshop'));
+});
+
+test('PocketLink sitemap, routing on: any failed lookup is a 503, never cached, never a guess -- and not remembered', async () => {
+  for (const mode of ['down', 'http500', 'malformed', 'hang']) {
+    const w = await world();
+    w.supabase.knobs.resolver = mode;
+    const t0 = Date.now();
+    const r = await w.get('https://www.pocketlink.store/sitemap.xml');
+    assert.equal(r.status, 503, mode);
+    assert.deepEqual([r.headers['cache-control'], r.headers['retry-after']], ['no-store', '5'], mode);
+    assert.equal(r.text.includes('<urlset'), false, mode);
+    assert.ok(Date.now() - t0 < 4000, `${mode}: bounded by the lookup timeout`);
+    w.supabase.knobs.resolver = 'ok';
+    assert.equal((await w.get('https://www.pocketlink.store/sitemap.xml')).text, withoutStore(MAIN_SITEMAP.xml, 'brandshop'), `${mode}: recovered`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A merchant domain's HTML only ever comes from this build's own shell
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('merchant domain without its bundled shell: 503, never another deployment\'s HTML; PocketLink hosts fetch as before', async () => {
+  const db = await createDb();
+  await domainIn(db, BRAND.slug, DOMAIN, 'connected');
+  const sb = createSupabase(db);
+  const seen = [];
+  const fetchImpl = (u, init) => {
+    seen.push(String(u));
+    if (String(u) === `${PL_ORIGIN}/index.html`) return Promise.resolve(new Response(SHELL, { status: 200 }));
+    return sb.handle(u, init);
+  };
+  const direct = async (host, url, env) => {
+    const out = { status: 200, headers: {}, body: '' };
+    const res = { setHeader: (k, v) => { out.headers[k.toLowerCase()] = String(v); }, status: (c) => { out.status = c; return res; },
+                  send: (b) => { out.body = String(b); return res; } };
+    await renderHandler({ headers: { host }, url }, res, { env, fetchImpl, resolver: createResolver({ url: SB, anonKey: ANON, fetchImpl }) });
+    return out;
+  };
+  // No shell of its own (off Vercel: nothing bundled): the merchant page is 503.
+  const m = await direct(DOMAIN, '/api/render?path=/p/p1', ENV_ON);
+  assert.deepEqual([m.status, m.headers['cache-control'], m.headers['retry-after']], [503, 'no-store', '5']);
+  assert.equal(m.headers['x-pl-shell'], undefined);
+  assert.equal(seen.filter((u) => u.endsWith('/index.html')).length, 0, 'no shell fetched from anywhere');
+  assert.equal(storeReadsFor(sb, 'brandshop'), 0, 'nothing read for a page it will not serve');
+  // PocketLink hosts: exactly as before -- the main site's shell is fetched.
+  for (const env of [ENV_ON, ENV_OFF]) {
+    const pl = await direct('www.pocketlink.store', '/api/render?path=/brandshop', env);
+    assert.equal(pl.status, 200);
+    assert.ok(seen.includes(`${PL_ORIGIN}/index.html`));
+  }
+  // Routing off, merchant host: "not connected", as before.
+  assert.equal((await direct(DOMAIN, '/api/render?path=/', ENV_OFF)).status, 404);
+
+  // On Vercel, with dist/index.html missing from the function: 503 too (a fresh process, so no cached shell).
+  const dir = mkdtempSync(join(tmpdir(), 'pl-noshell-'));
+  try {
+    const script = `
+      const { default: render } = await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL('../api/render.js', import.meta.url))).href)});
+      const fetched = [];
+      const out = { status: 0, headers: {} };
+      const res = { setHeader: (k, v) => { out.headers[k.toLowerCase()] = v; }, status: (c) => { out.status = c; return res; }, send: () => res };
+      await render({ headers: { host: 'brandshop.test' }, url: '/api/render?path=/' }, res, {
+        env: { VERCEL: '1', CUSTOM_DOMAINS_ROUTING_ENABLED: 'true', VITE_SUPABASE_URL: 'https://sb.test', VITE_SUPABASE_ANON_KEY: 'k' },
+        fetchImpl: async (u) => { fetched.push(String(u)); throw new Error('no network'); },
+        resolver: { resolveHost: async () => ({ status: 'connected', slug: 'brandshop', primaryHost: 'brandshop.test', isPrimary: true }) },
+      });
+      const first = { status: out.status, shell: out.headers['x-pl-shell'] ?? null };
+      // The file turns up (a failed read is not remembered): the next render uses it.
+      const { mkdirSync, writeFileSync } = await import('node:fs');
+      mkdirSync('dist');
+      writeFileSync('dist/index.html', '<!doctype html><html><head><title>t</title></head><body><div id="root"></div></body></html>');
+      out.headers = {};
+      await render({ headers: { host: 'brandshop.test' }, url: '/api/render?path=/' }, res, {
+        env: { VERCEL: '1', CUSTOM_DOMAINS_ROUTING_ENABLED: 'true', VITE_SUPABASE_URL: 'https://sb.test', VITE_SUPABASE_ANON_KEY: 'k' },
+        fetchImpl: async (u) => { fetched.push(String(u)); return new Response('[]', { status: 200 }); },
+        resolver: { resolveHost: async () => ({ status: 'connected', slug: 'brandshop', primaryHost: 'brandshop.test', isPrimary: true }) },
+      });
+      console.log(JSON.stringify({ first, second: out.headers['x-pl-shell'] ?? null, shells: fetched.filter((u) => u.endsWith('/index.html')) }));`;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8' });
+    assert.equal(child.status, 0, child.stderr);
+    assert.deepEqual(JSON.parse(child.stdout.trim().split('\n').at(-1)),
+      { first: { status: 503, shell: null }, second: 'own', shells: [] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
