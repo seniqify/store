@@ -59,7 +59,9 @@ const TYPE_SCHEMA = {
 //              domain will be passed here instead (e.g. https://brand.com), and
 //              product/category URLs follow it as {storeBase}/p/{id},
 //              {storeBase}/c/{id} — the shapes src/utils/storeUrls.js builds.
-export function storeSeo(config, slug, origin, rating = null, section = null, item = null, { storeBase = `${origin}/${slug}` } = {}) {
+// `marketplace` false (a merchant's own domain): no PocketLink Marketplace
+// breadcrumb and no marketplace link — that domain never leads to other shops.
+export function storeSeo(config, slug, origin, rating = null, section = null, item = null, { storeBase = `${origin}/${slug}`, marketplace = true } = {}) {
   const name    = config.businessName || 'Local business';
   const cat     = config.category || '';
   const city    = config.city || '';
@@ -213,16 +215,16 @@ export function storeSeo(config, slug, origin, rating = null, section = null, it
   // Breadcrumb: Marketplace → this store → (category or product), so Google can
   // show a trail that matches the URL.
   const trail = [
-    { '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` },
-    { '@type': 'ListItem', position: 2, name, item: storeBase },
+    ...(marketplace ? [{ '@type': 'ListItem', position: 1, name: 'PocketLink Marketplace', item: `${origin}/marketplace` }] : []),
+    { '@type': 'ListItem', position: marketplace ? 2 : 1, name, item: storeBase },
   ];
-  if (section) trail.push({ '@type': 'ListItem', position: 3, name: section.label, item: url });
-  if (item)    trail.push({ '@type': 'ListItem', position: 3, name: item.name, item: url });
+  if (section) trail.push({ '@type': 'ListItem', position: trail.length + 1, name: section.label, item: url });
+  if (item)    trail.push({ '@type': 'ListItem', position: trail.length + 1, name: item.name, item: url });
   const breadcrumb = { '@type': 'BreadcrumbList', itemListElement: trail };
 
   const ld = { '@context': 'https://schema.org', '@graph': [business, ...productNodes, breadcrumb] };
 
-  return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null, storeBase };
+  return { title, description, url, image, ld, name, city, cat, tagline, wa, products, rating: hasRating ? rating : null, storeBase, marketplace };
 }
 
 export function storeBody(config, slug, origin, seo) {
@@ -239,7 +241,7 @@ export function storeBody(config, slug, origin, seo) {
   ${config.address ? `<p>${esc(config.address)}</p>` : ''}
   <p><a href="${esc(wa)}">Order on WhatsApp</a></p>
   ${items ? `<h2>Products</h2><ul>${items}</ul>` : ''}
-  <p><a href="${origin}/marketplace">Discover more local businesses on PocketLink</a></p>
+  ${seo.marketplace === false ? '' : `<p><a href="${origin}/marketplace">Discover more local businesses on PocketLink</a></p>`}
 </main>`;
 }
 

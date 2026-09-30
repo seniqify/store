@@ -13,6 +13,8 @@ import { loadBusiness, refreshBusiness, listBusinesses } from './utils/BusinessL
 import { logStoreView } from './utils/viewService';
 import { applyTheme }   from './utils/theme';
 import { I18nProvider } from './i18n/I18nContext';
+import { hostMode }     from './utils/hostMode';
+import { pocketlinkTarget } from './utils/customDomainRoutes';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
 const Landing    = lazy(() => import('./pages/Landing'));
@@ -29,6 +31,7 @@ const Privacy    = lazy(() => import('./pages/Privacy'));
 const DataDeletion = lazy(() => import('./pages/DataDeletion'));
 const OrderTracking = lazy(() => import('./pages/OrderTracking'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
+const StoreNotFound = lazy(() => import('./pages/StoreNotFound'));
 
 function PageLoader() {
   return (
@@ -96,8 +99,11 @@ function DemoShell() {
   );
 }
 
-function BusinessShell() {
-  const { businessSlug } = useParams();
+// `slug`: set on a merchant's own domain, where the store comes from the server
+// (hostMode), never from the URL. On PocketLink it is the /:businessSlug param.
+function BusinessShell({ slug } = {}) {
+  const params = useParams();
+  const businessSlug = slug ?? params.businessSlug;
   // SSR'd pages embed the config — start hydrated, zero loading frames.
   const pre0 = (typeof window !== 'undefined'
     && window.__PL_CONFIG__?.slug === businessSlug
@@ -165,7 +171,7 @@ function BusinessShell() {
   }, [businessSlug]);
 
   if (loading)  return <LoadingScreen />;
-  if (notFound) return <NotFound slug={businessSlug} />;
+  if (notFound) return slug ? <StoreNotFound /> : <NotFound slug={businessSlug} />;
 
   return (
     <BusinessProvider config={config}>
@@ -214,6 +220,44 @@ function ToMainSite() {
   return <PageLoader />;
 }
 
+// ── A merchant's own domain ───────────────────────────────────────────────────
+// The server marked this page (window.__PL_HOST__, see utils/hostMode.js): the
+// SPA shows exactly ONE store -- the one the database says owns this domain --
+// at /, /p/{id} and /c/{id}. A PocketLink page (the dashboard, terms, an order
+// link...) is left for its PocketLink address; anything else is that store's
+// "not found". No other store, and no PocketLink page, can render here.
+const HOST = hostMode();
+
+function MerchantElsewhere({ slug }) {
+  const { pathname, search } = useLocation();
+  const target = pocketlinkTarget(pathname, search, slug);
+  useEffect(() => {
+    if (target) window.location.replace(target);
+  }, [target]);
+  return target ? <PageLoader /> : <StoreNotFound />;
+}
+
+function MerchantRoutes({ slug }) {
+  const shop = <ErrorBoundary><BusinessShell slug={slug} /></ErrorBoundary>;
+  return (
+    <Routes>
+      <Route path="/"                element={shop} />
+      <Route path="/p/:productId"    element={shop} />
+      <Route path="/c/:categoryId"   element={shop} />
+      <Route path="*"                element={<MerchantElsewhere slug={slug} />} />
+    </Routes>
+  );
+}
+
+// A marker that does not check out: show nothing rather than guess.
+function DomainUnavailable() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 text-center">
+      <p className="text-sm text-gray-500 font-medium">This shop could not be loaded. Please try again.</p>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <I18nProvider>
@@ -222,7 +266,11 @@ export default function App() {
       <Analytics />
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
-          {isMarketHost ? (
+          {HOST.mode === 'merchant' ? (
+            <MerchantRoutes slug={HOST.slug} />
+          ) : HOST.mode === 'invalid' ? (
+            <DomainUnavailable />
+          ) : isMarketHost ? (
             <Routes>
               <Route path="*" element={<ToMainSite />} />
             </Routes>
