@@ -23,35 +23,44 @@ export const NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charse
 
 const HTML = 'text/html; charset=utf-8';
 
-/** Web Response versions, for the edge middleware. Never cached, never indexed. */
+// Every answer on a TEST-mode domain (routingMode 'test', api/_hosts.js): never
+// indexed, its links never followed. (Crawling is still allowed -- a crawler
+// that may not fetch a page never sees its noindex.)
+export const TEST_ROBOTS = 'noindex, nofollow';
+
+/**
+ * Web Response versions, for the edge middleware and functions. Never cached,
+ * never indexed; `robots` replaces the X-Robots-Tag (TEST_ROBOTS on a test domain).
+ */
 export const responses = {
-  notConnected: () => new Response(NOT_CONNECTED_HTML, { status: 404, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } }),
-  unavailable: () => new Response(UNAVAILABLE_HTML, { status: 503, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'Retry-After': '5', 'X-Robots-Tag': 'noindex' } }),
-  notFound: () => new Response(NOT_FOUND_HTML, { status: 404, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } }),
+  notConnected: (robots = 'noindex') => new Response(NOT_CONNECTED_HTML, { status: 404, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'X-Robots-Tag': robots } }),
+  unavailable: (robots = 'noindex') => new Response(UNAVAILABLE_HTML, { status: 503, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'Retry-After': '5', 'X-Robots-Tag': robots } }),
+  notFound: (robots = 'noindex') => new Response(NOT_FOUND_HTML, { status: 404, headers: { 'Content-Type': HTML, 'Cache-Control': 'no-store', 'X-Robots-Tag': robots } }),
   // Temporary: which store a merchant domain belongs to, and which of its names
   // is primary, can change -- a browser must never remember the answer.
   redirect: (location) => new Response(null, { status: 307, headers: { Location: location, 'Cache-Control': 'no-store' } }),
 };
 
-/** Node (req, res) versions, for api/render.js and api/sitemap.js. */
-export function sendNotConnected(res) {
+/** Node (req, res) versions, for api/render.js and api/sitemap.js; `robots` as above. */
+export function sendNotConnected(res, robots = 'noindex') {
   res.setHeader('Content-Type', HTML);
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Robots-Tag', 'noindex');
+  res.setHeader('X-Robots-Tag', robots);
   res.status(404).send(NOT_CONNECTED_HTML);
 }
 
-export function sendUnavailable(res) {
+export function sendUnavailable(res, robots) {
   res.setHeader('Content-Type', HTML);
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Retry-After', '5');
+  if (robots) res.setHeader('X-Robots-Tag', robots);
   res.status(503).send(UNAVAILABLE_HTML);
 }
 
-export function sendNotFound(res) {
+export function sendNotFound(res, robots = 'noindex') {
   res.setHeader('Content-Type', HTML);
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Robots-Tag', 'noindex');
+  res.setHeader('X-Robots-Tag', robots);
   res.status(404).send(NOT_FOUND_HTML);
 }
 

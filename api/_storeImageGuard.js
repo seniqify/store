@@ -1,6 +1,8 @@
 // The store-image endpoints (/api/og, /api/qr) on a merchant's own domain:
-// only for the ONE store the database says owns it, only on its primary name,
-// and never stored by a browser or CDN.
+// when it is routed (routingMode 'global' or 'test', api/_hosts.js -- the same
+// decision as the middleware, render and sitemap), only for the ONE store the
+// database says owns it and only on its primary name; and on EVERY custom host,
+// routed or not, never stored by a browser or CDN.
 //
 // middleware.js checks this first, but it cannot be the only check: Vercel looks
 // a function up by its DECODED path, and accepts a trailing slash or ".js", while
@@ -10,13 +12,13 @@
 // No caching: a CDN copy is served without running this check at all, so an
 // image cached while one store owned the domain would still be served after the
 // domain passed to another. That holds on any host that is not PocketLink's or
-// this project's own, whatever the routing flag: a copy cached with routing off
-// would outlive turning it on. PocketLink's own hosts keep their caching.
+// this project's own, whatever the routing mode: a copy cached while a host is
+// not routed would outlive routing it. PocketLink's own hosts keep their caching.
 //
-// Routing off, or any host that is not a merchant's: no lookup.
-import { classifyHost, normalizeHost, routingEnabled } from './_hosts.js';
+// A host that is not routed, or not a merchant's at all: no lookup.
+import { classifyHost, normalizeHost, routingMode } from './_hosts.js';
 import { resolverFromEnv } from './_resolve.js';
-import { responses } from './_pages.js';
+import { responses, TEST_ROBOTS } from './_pages.js';
 
 /**
  * guard(req, slug) -> { refused, merchantHost }
@@ -33,12 +35,14 @@ export function createStoreImageGuard({ env = process.env, resolverFor = (e) => 
     const host = [req.headers?.get?.('host'), new URL(req.url).hostname]
       .map(normalizeHost).find((h) => h && classifyHost(h, env) === 'custom');
     if (!host) return { refused: null, merchantHost: false };
-    if (!routingEnabled(env)) return { refused: null, merchantHost: true };
+    const mode = routingMode(host, env);
+    if (mode === 'off') return { refused: null, merchantHost: true };
+    const robots = mode === 'test' ? TEST_ROBOTS : undefined;
     const r = await (resolver ??= resolverFor(env)).resolveHost(host);
-    if (r.status === 'error') return { refused: responses.unavailable(), merchantHost: true };
-    if (r.status !== 'connected') return { refused: responses.notConnected(), merchantHost: true };
+    if (r.status === 'error') return { refused: responses.unavailable(robots), merchantHost: true };
+    if (r.status !== 'connected') return { refused: responses.notConnected(robots), merchantHost: true };
     const ok = r.isPrimary && slug === r.slug;
-    return { refused: ok ? null : responses.notFound(), merchantHost: true };
+    return { refused: ok ? null : responses.notFound(robots), merchantHost: true };
   };
 }
 
