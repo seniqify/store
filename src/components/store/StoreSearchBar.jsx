@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, Search, X, MessageCircle, ArrowRight, Store } from 'lucide-react';
 import { formatINR } from '../../utils/currency';
 import { similarProducts } from '../../utils/similar';
+import { hostMode } from '../../utils/hostMode';
 
 /**
  * StoreSearchBar — the hero "ask or search" bar under the store header.
@@ -257,7 +258,8 @@ export default function StoreSearchBar({
                   /* Out of the store's range (nothing similar). Only here do we
                      offer the marketplace — and only if the owner left local
                      referrals on. The merchant is never referred out for their
-                     own categories, so no competitor ever shows on their page. */
+                     own categories, so no competitor ever shows on their page.
+                     Never on a merchant's own domain: it leads to no other shop. */
                   <>
                     {!hasAi && (
                       <p className="px-3 pt-4 pb-1 text-center text-sm text-gray-500">
@@ -265,7 +267,7 @@ export default function StoreSearchBar({
                       </p>
                     )}
 
-                    {referrals && (
+                    {referrals && hostMode().mode !== 'merchant' && (
                       <a href={`/marketplace?q=${encodeURIComponent(query.trim())}`}
                          className="mt-1.5 mx-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
                          style={{ border: `1px dashed ${primary}55` }}>

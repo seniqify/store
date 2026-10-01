@@ -5,7 +5,15 @@ import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { whatsappLink } from '../../utils/theme';
 import { isValidUpiVpa } from '../../utils/upiLink';
 import { showBrandBadge, effectivePlan } from '../../utils/planLimits';
-import { managePath } from '../../utils/storeUrls';
+import { managePath, pocketlinkPath, isAbsoluteUrl } from '../../utils/storeUrls';
+
+// A router link on PocketLink. On a merchant's own domain these targets are
+// absolute PocketLink URLs (utils/storeUrls.js), which need a plain link.
+function SiteLink({ to, children, ...rest }) {
+  return isAbsoluteUrl(to)
+    ? <a href={to} {...rest}>{children}</a>
+    : <Link to={to} {...rest}>{children}</Link>;
+}
 
 /**
  * Footer — reads the active business config from context.
@@ -249,19 +257,19 @@ export default function Footer() {
           © {new Date().getFullYear()} {businessName}. All rights reserved.&nbsp;·&nbsp;Made in India 🇮🇳
         </span>
         <div className="order-1 sm:order-2 flex items-center gap-3 flex-wrap justify-center">
-          <Link to="/terms" target="_blank" rel="noopener noreferrer"
-                className="hover:text-gray-300 transition-colors duration-150">Terms</Link>
+          <SiteLink to={pocketlinkPath('/terms')} target="_blank" rel="noopener noreferrer"
+                className="hover:text-gray-300 transition-colors duration-150">Terms</SiteLink>
           <span className="text-gray-700">·</span>
-          <Link to="/privacy" target="_blank" rel="noopener noreferrer"
-                className="hover:text-gray-300 transition-colors duration-150">Privacy</Link>
+          <SiteLink to={pocketlinkPath('/privacy')} target="_blank" rel="noopener noreferrer"
+                className="hover:text-gray-300 transition-colors duration-150">Privacy</SiteLink>
           {slug && (
             <>
               <span className="text-gray-700">·</span>
-              <Link to={managePath(slug)}
+              <SiteLink to={managePath(slug)}
                     className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-300 transition-colors duration-150">
                 <Settings size={11} />
                 <span>Manage</span>
-              </Link>
+              </SiteLink>
             </>
           )}
         </div>

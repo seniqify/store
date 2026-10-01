@@ -1,9 +1,21 @@
 // Server-renders SEO head + crawlable content for store pages and the marketplace,
 // then lets the React SPA hydrate on top. Any failure after the base HTML is in
 // hand → serve the normal SPA shell. A host that is not PocketLink's gets a
-// neutral 404; a base HTML that cannot be fetched gets a 503 (never a redirect).
+// neutral 404; a base HTML that cannot be had gets a 503 (never a redirect).
+//
+// A merchant's own domain (CUSTOM_DOMAINS_ROUTING_ENABLED on; see
+// middleware.js): the database alone decides which ONE store it renders. The
+// path -- or ?path -- only chooses that store's home, product or category page.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { esc, storeSeo, storeBody, marketplaceSeo, marketplaceBody } from './_seo.js';
 import { resolveCategory } from './_categoryLink.js';
+import { PL_ORIGIN, PL_HOSTS, normalizeHost, classifyHost, routingEnabled } from './_hosts.js';
+import { createResolver } from './_resolve.js';
+import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect } from './_pages.js';
+import { storeRoute } from '../src/utils/customDomainRoutes.js';
+
+export { PL_ORIGIN, normalizeHost };
 
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
@@ -13,77 +25,70 @@ const RESERVED = new Set([
 ]);
 
 // ── Which hosts this renderer serves ─────────────────────────────────────────
-// Custom merchant domains are NOT enabled yet. Until they are, only PocketLink's
-// own hosts and THIS project's own Vercel URLs may render anything, and no other
-// host can choose a store — through its path or through ?path.
-export const PL_ORIGIN = 'https://www.pocketlink.store';
-const PL_HOSTS = new Set(['www.pocketlink.store', 'pocketlink.store', 'market.pocketlink.store']);
-
-/** A Host header as a bare hostname: lowercase, no port, no trailing dot. */
-export function normalizeHost(raw) {
-  return String(raw ?? '').trim().toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
-}
-
-// This project's own Vercel URLs, from Vercel's system environment variables —
-// set by Vercel for this deployment, never by the request:
-//   VERCEL_URL                     this deployment's generated URL
-//   VERCEL_BRANCH_URL              this deployment's git-branch URL (previews)
-//   VERCEL_PROJECT_PRODUCTION_URL  the project's production domain
-// Only an EXACT match is trusted. A hostname is never trusted for merely ending
-// in the team's vercel.app suffix: every project in the team shares that suffix.
-function isDeploymentHost(host) {
-  if (!host) return false;
-  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]
-    .some((v) => Boolean(v) && normalizeHost(v) === host);
-}
+// PocketLink's own hosts and EXACTLY this project's own Vercel URLs render as
+// PocketLink (api/_hosts.js). Any other host renders nothing -- unless custom-
+// domain routing is on and the database says it is a merchant's connected domain.
 
 /** May this host be served as PocketLink? */
 export function isTrustedHost(host) {
-  return PL_HOSTS.has(host) || isDeploymentHost(host);
+  const kind = classifyHost(host, process.env);
+  return kind === 'pocketlink' || kind === 'deployment';
 }
 
 /**
- * Where the SPA's base HTML is fetched from. Never the raw request host: a
- * PocketLink host always uses the main site, and one of this project's Vercel
- * URLs uses itself so a preview renders its OWN build. Only called for trusted
- * hosts; anything else falls back to the main site.
+ * Where the SPA's base HTML is fetched from when this function does not carry
+ * its own build's (see ownShell). Never the raw request host: a PocketLink host
+ * always uses the main site, and one of this project's Vercel URLs uses itself
+ * so a preview renders its OWN build. Anything else falls back to the main site.
  */
 export function baseHtmlOrigin(host) {
   if (PL_HOSTS.has(host)) return PL_ORIGIN;
-  return isDeploymentHost(host) ? `https://${host}` : PL_ORIGIN;
+  return classifyHost(host, process.env) === 'deployment' ? `https://${host}` : PL_ORIGIN;
 }
 
-async function getBaseHtml(origin) {
-  const r = await fetch(`${origin}/index.html`, { headers: { 'x-pl-render': '1' } });
+/**
+ * The SPA shell for this response. When it is this build's own (bundled), the
+ * response says so -- X-PL-Shell: own -- so a smoke check can see a page was
+ * assembled from the build that serves its JavaScript. (A fetched shell adds
+ * no header: responses stay exactly as they were before.)
+ */
+async function loadShell(res, env, deps, fetchOrigin, fetchImpl) {
+  const own = deps.shell ?? ownShell(env);
+  if (own) { res.setHeader('X-PL-Shell', 'own'); return own; }
+  return getBaseHtml(fetchOrigin, fetchImpl);
+}
+
+async function getBaseHtml(origin, fetchImpl) {
+  const r = await fetchImpl(`${origin}/index.html`, { headers: { 'x-pl-render': '1' } });
   if (!r.ok) throw new Error('base html ' + r.status);
   return await r.text();
 }
 
-// A host that is not PocketLink's: no store, no SPA, nothing to index.
-const NOT_CONNECTED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/><title>Not a PocketLink shop</title></head>
-<body style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:15vh auto;padding:0 24px;color:#111;text-align:center">
-<h1 style="font-size:20px">This address is not connected to a PocketLink shop.</h1>
-<p><a href="${PL_ORIGIN}/">Go to PocketLink</a></p></body></html>`;
-
-function sendNotConnected(res) {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Robots-Tag', 'noindex');
-  res.status(404).send(NOT_CONNECTED_HTML);
+// This deployment's own SPA shell: dist/index.html, bundled into this function
+// by vercel.json (includeFiles). On Vercel it is always used, so the HTML comes
+// from the very build whose /assets/* the browser loads next -- on a preview, on
+// production and on a merchant's domain alike -- with no network fetch for it
+// and no Deployment Protection in the way. Off Vercel (local tests), or if the
+// file were missing: PocketLink hosts fetch the shell as before (baseHtmlOrigin);
+// a merchant's domain answers 503 rather than mix another build's HTML with this
+// build's JavaScript. Only a successful read is remembered.
+let ownShellCache = null;
+function ownShell(env) {
+  if (!env.VERCEL) return null;
+  if (ownShellCache === null) {
+    try { ownShellCache = readFileSync(join(process.cwd(), 'dist', 'index.html'), 'utf8'); } catch { /* not bundled */ }
+  }
+  return ownShellCache;
 }
 
-// The base HTML could not be fetched. Answer here instead of redirecting to the
-// same URL, which could loop for as long as the fetch keeps failing.
-const UNAVAILABLE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/><title>Please try again</title></head>
-<body style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:15vh auto;padding:0 24px;color:#111;text-align:center">
-<h1 style="font-size:20px">This page could not load just now.</h1>
-<p><a href="">Try again</a></p></body></html>`;
-
-function sendUnavailable(res) {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Retry-After', '5');
-  res.status(503).send(UNAVAILABLE_HTML);
+// The database lookups (PR-B's public RPCs), shared by every request this
+// instance serves; answers are cached briefly (api/_resolve.js).
+let defaultResolver = null;
+function resolverFor(env) {
+  return (defaultResolver ??= createResolver({
+    url: env.VITE_SUPABASE_URL, anonKey: env.VITE_SUPABASE_ANON_KEY,
+    fetchImpl: (u, init) => globalThis.fetch(u, init),
+  }));
 }
 
 // Every canonical <link>, whatever its attribute order or quoting.
@@ -144,18 +149,24 @@ function storeSplash(config) {
   return splash({ logoHtml, name: esc(config.businessName || 'Loading…'), color: primary });
 }
 
-export default async function handler(req, res) {
+export default async function handler(req, res, deps = {}) {
+  const env = deps.env ?? process.env;
+  const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
   const host = normalizeHost(req.headers.host) || 'www.pocketlink.store';
-  // Not a PocketLink host: never render a store, whatever the path or ?path says.
-  if (!isTrustedHost(host)) {
-    sendNotConnected(res);
+  const kind = classifyHost(host, env);
+  const routing = routingEnabled(env);
+  if (kind === 'custom') {
+    // Not a PocketLink host. Routing off: never render a store, whatever the path
+    // or ?path says -- exactly as before. Routing on: a merchant's domain.
+    if (!routing) { sendNotConnected(res); return; }
+    await renderMerchantDomain(req, res, { env, fetchImpl, host, deps });
     return;
   }
   const origin = `https://${host}`;
 
   let base;
   try {
-    base = await getBaseHtml(baseHtmlOrigin(host));
+    base = await loadShell(res, env, deps, baseHtmlOrigin(host), fetchImpl);
   } catch {
     sendUnavailable(res);
     return;
@@ -165,8 +176,8 @@ export default async function handler(req, res) {
     const url  = new URL(req.url, origin);
     const path = (url.searchParams.get('path') || url.pathname || '/').split('?')[0];
 
-    const SUPABASE_URL  = process.env.VITE_SUPABASE_URL;
-    const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY;
+    const SUPABASE_URL  = env.VITE_SUPABASE_URL;
+    const SUPABASE_ANON = env.VITE_SUPABASE_ANON_KEY;
     const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
 
     // ── Marketplace — lives at /marketplace (and the /explore alias). The
@@ -180,7 +191,7 @@ export default async function handler(req, res) {
         if (SUPABASE_URL && SUPABASE_ANON) {
           // Slim selection: the listing only needs name + tagline per store —
           // never pull full configs (products) for the whole table.
-          const r = await fetch(
+          const r = await fetchImpl(
             `${SUPABASE_URL}/rest/v1/stores?select=slug,name:config->>businessName,tagline:config->>tagline,category:config->>category,city:config->>city&limit=200`,
             { headers: dbHeaders },
           );
@@ -220,7 +231,7 @@ export default async function handler(req, res) {
     if (slug && (seg.length === 1 || categoryId || productId) && !RESERVED.has(slug) && SUPABASE_URL && SUPABASE_ANON) {
       let config = null;
       try {
-        const r = await fetch(
+        const r = await fetchImpl(
           `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config&limit=1`,
           { headers: dbHeaders },
         );
@@ -231,7 +242,7 @@ export default async function handler(req, res) {
         // Published verified-review aggregate → star rich result (best-effort, never blocks).
         let rating = null;
         try {
-          const rr = await fetch(
+          const rr = await fetchImpl(
             `${SUPABASE_URL}/rest/v1/product_reviews?store_slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=rating`,
             { headers: dbHeaders },
           );
@@ -255,9 +266,18 @@ export default async function handler(req, res) {
         const item = productId
           ? (config.products || []).find((p) => p && String(p.id).toLowerCase() === productId) || null
           : null;
-        // Where this store lives. Today always {origin}/{slug}; a verified custom
-        // domain will be passed here instead, without touching _seo.js again.
-        const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase: `${origin}/${slug}` });
+        // Where this store lives: {origin}/{slug}, or -- with routing on -- its
+        // connected merchant domain, which then carries the canonical (the page is
+        // still served here: no redirect, so PocketLink always works as a fallback).
+        // A lookup that fails is a 503, never cached -- not "no domain", which
+        // would make PocketLink canonical for a store whose canonical may be its domain.
+        let storeBase = `${origin}/${slug}`;
+        if (routing) {
+          const owner = await (deps.resolver ?? resolverFor(env)).lookupPrimaryHost(slug);
+          if (owner.status !== 'ok') { sendUnavailable(res); return; }
+          if (owner.host) storeBase = `https://${owner.host}`;
+        }
+        const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase });
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —
         // no second DB fetch, no "Loading page…" screen. (Escape </script>.)
@@ -280,4 +300,96 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.status(200).send(base);
   }
+}
+
+// The SPA shell describes PocketLink's own home page. On a merchant's domain
+// none of that is true: drop PocketLink's structured data (Organization,
+// WebSite and its marketplace search box) and keywords, and name the store --
+// not PocketLink -- as the site in the link-preview tags.
+const LD_JSON = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi;
+function merchantShell(html, name) {
+  const set = (key, val, content) => {
+    const re = new RegExp(`(<meta\\s+${key}="${val}"\\s+content=")[^"]*(")`, 'i');
+    return (h) => h.replace(re, `$1${esc(content)}$2`);
+  };
+  let out = html.replace(LD_JSON, '').replace(/<meta\s+name="keywords"[^>]*>\s*/i, '');
+  for (const f of [set('property', 'og:site_name', name), set('property', 'og:image:alt', name), set('name', 'twitter:image:alt', name)]) {
+    out = f(out);
+  }
+  return out;
+}
+
+// ── A merchant's own domain ──────────────────────────────────────────────────
+// The store comes ONLY from the database (resolve_store_host); nothing in the
+// request names it. Only that store's /, /p/{id} and /c/{id} render; the page's
+// canonical, og:url and JSON-LD are on the merchant's domain, with no PocketLink
+// Marketplace breadcrumb or link. Every answer is no-store.
+async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
+  const r = await (deps.resolver ?? resolverFor(env)).resolveHost(host);
+  if (r.status === 'error') { sendUnavailable(res); return; }
+  if (r.status !== 'connected') { sendNotConnected(res); return; }
+
+  const url = new URL(req.url, `https://${host}`);
+  const path = (url.searchParams.get('path') || url.pathname || '/').split('?')[0];
+  const route = storeRoute(path);
+  if (!r.isPrimary) { sendRedirect(res, `https://${r.primaryHost}${route ? path : '/'}`); return; }
+  if (!route) { sendNotFound(res); return; }
+
+  // This build's own shell or nothing: never another deployment's HTML.
+  const base = deps.shell ?? ownShell(env);
+  if (!base) { sendUnavailable(res); return; }
+  res.setHeader('X-PL-Shell', 'own');
+
+  const SUPABASE_URL  = env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON = env.VITE_SUPABASE_ANON_KEY;
+  const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
+  const slug = r.slug;
+
+  let config;
+  try {
+    const resp = await fetchImpl(
+      `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config&limit=1`,
+      { headers: dbHeaders },
+    );
+    if (!resp.ok) throw new Error('store ' + resp.status);
+    const rows = await resp.json();
+    config = Array.isArray(rows) && rows[0] && rows[0].slug === slug ? rows[0].config : null;
+  } catch {
+    sendUnavailable(res);   // never an unrendered shell on a merchant's domain
+    return;
+  }
+  if (!config || !config.businessName) { sendNotFound(res); return; }
+
+  let rating = null;
+  try {
+    const rr = await fetchImpl(
+      `${SUPABASE_URL}/rest/v1/product_reviews?store_slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=rating`,
+      { headers: dbHeaders },
+    );
+    if (rr.ok) {
+      const rows = await rr.json();
+      if (Array.isArray(rows) && rows.length) {
+        const sum = rows.reduce((t, x) => t + (Number(x.rating) || 0), 0);
+        rating = { avg: Math.round((sum / rows.length) * 10) / 10, count: rows.length };
+      }
+    }
+  } catch { /* no rating */ }
+
+  const id = route.kind === 'home' ? null : route.id.toLowerCase();
+  const section = route.kind === 'category' ? resolveCategory(config.categories, id) : null;
+  const item = route.kind === 'product'
+    ? (config.products || []).find((p) => p && String(p.id).toLowerCase() === id) || null
+    : null;
+
+  const origin = `https://${host}`;
+  const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase: origin, marketplace: false });
+  let html = injectHead(merchantShell(base, config.businessName), seo);
+  const cfgJson = JSON.stringify({ slug, config }).replace(/</g, '\\u003c');
+  const hostJson = JSON.stringify({ slug, base: origin }).replace(/</g, '\\u003c');
+  // __PL_HOST__ puts the SPA in merchant-domain mode for exactly this store.
+  html = html.replace('</head>', `<script>window.__PL_CONFIG__=${cfgJson};window.__PL_HOST__=${hostJson}</script>\n</head>`);
+  html = injectBody(html, storeSplash(config) + hiddenForBots(storeBody(config, slug, origin, seo)));
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).send(html);
 }
