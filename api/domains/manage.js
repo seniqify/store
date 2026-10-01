@@ -22,8 +22,12 @@
 // Order of refusals, on purpose:
 //   1. CUSTOM_DOMAINS_ENABLED off   -> feature_disabled (nothing is read, no PIN check)
 //   2. not application/json         -> 415
-//   3. server not configured        -> not_configured (no detail returned or logged)
-//   4. PIN wrong / throttled        -> 403 unauthorized
+//   3. a store not listed in CUSTOM_DOMAINS_PILOT_STORES
+//                                   -> feature_disabled, the same answer as 1: no
+//                                      PIN check, and no database, DNS, Vercel or
+//                                      WhatsApp call -- for every action
+//   4. server not configured        -> not_configured (no detail returned or logged)
+//   5. PIN wrong / throttled        -> 403 unauthorized
 //
 // WHO CAN CALL IT. Any HTTP client can reach this endpoint; it is not
 // origin-restricted, and access control is the store PIN (verified per request
@@ -38,7 +42,7 @@
 // Vercel calls are capped at the time left, with time reserved for recording
 // results.
 import { domainsConfig, missingConfig } from './_config.js';
-import { cleanSlug, cleanHashedPin, clientIp, verifyOwnerPin } from './_auth.js';
+import { cleanSlug, cleanHashedPin, clientIp, verifyOwnerPin, isPilotStore } from './_auth.js';
 import { createDomainDb } from './_db.js';
 import { createVercelClient } from './_vercel.js';
 import { createDomainService } from './_service.js';
@@ -88,6 +92,9 @@ export async function handleManage(req, { env = process.env, fetchImpl = globalT
   const slug = cleanSlug(body.slug);
   const hashedPin = cleanHashedPin(body.hashedPin);
   if (!slug || !hashedPin) return { status: 400, body: { outcome: 'bad_request' } };
+
+  // The pilot gate, for every action: only a listed store goes any further.
+  if (!isPilotStore(slug, env)) return { status: 200, body: { outcome: 'feature_disabled' } };
 
   if (missingConfig(cfg, 'database').length) return { status: 503, body: { outcome: 'not_configured' } };
 

@@ -38,7 +38,11 @@ const pg = await freshDb({ lease: true });
 let seq = 0;
 // The reconciler works on EVERY group in the database, so tests that run it get
 // a database of their own (isolated); the rest share one.
-async function world({ env = ENV_ON, isolated = false } = {}) {
+// Every store a test creates is listed in CUSTOM_DOMAINS_PILOT_STORES, so the
+// domain flow is reachable; the pilot gate itself is tested in
+// tests/custom-domains-pilot-stores.test.mjs.
+async function world({ env: baseEnv = ENV_ON, isolated = false } = {}) {
+  const env = { ...baseEnv };
   const db = isolated ? await freshDb({ lease: true }) : pg;
   const timeline = createTimeline();
   const pins = new Map();
@@ -58,6 +62,7 @@ async function store(w, { ownerPhone = '919876543210', pin = '2580' } = {}) {
   await w.pg.query('insert into public.stores (slug, config) values ($1, $2)',
     [slug, JSON.stringify(ownerPhone === null ? { businessName: slug } : { businessName: slug, ownerPhone })]);
   w.pins.set(slug, hashPin(pin));
+  w.env.CUSTOM_DOMAINS_PILOT_STORES = [w.env.CUSTOM_DOMAINS_PILOT_STORES, slug].filter(Boolean).join(',');
   return { slug, hashedPin: hashPin(pin) };
 }
 const host = (label = 'brand') => `${label}${++seq}.com`;
