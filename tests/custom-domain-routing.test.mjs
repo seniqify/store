@@ -21,11 +21,12 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   SB, ANON, BRAND, createDb, domainIn, setPrimary, disconnect, createSupabase, createPipeline, get, VERCEL_ROUTES,
+  POCKETLINK_IMAGE_CACHE,
 } from './helpers/routingWorld.mjs';
 import { VERCEL_NOT_FOUND } from './helpers/vercelRouter.mjs';
 import { makeFetch, runHandler, POCKETLINK_CASES } from './helpers/renderHarness.mjs';
 import renderHandler from '../api/render.js';
-import { interpretResolve, createResolver, RESOLVE_CACHE_MS } from '../api/_resolve.js';
+import { interpretResolve, createResolver, RESOLVE_CACHE_MS, RESOLVE_MISS_CACHE_MS } from '../api/_resolve.js';
 import { classifyHost, routingEnabled, validHostname, normalizeHost } from '../api/_hosts.js';
 import { PL_ORIGIN, PASS_THROUGH_FILES } from '../src/utils/customDomainRoutes.js';
 
@@ -96,7 +97,10 @@ test('routing on changes NOTHING on PocketLink pages of stores without a domain:
       const prev = process.env.CUSTOM_DOMAINS_ROUTING_ENABLED;
       if (flag === undefined) delete process.env.CUSTOM_DOMAINS_ROUTING_ENABLED; else process.env.CUSTOM_DOMAINS_ROUTING_ENABLED = flag;
       try {
-        const { fetchImpl } = makeFetch(SHELL, c.opts);
+        // A store without a domain: store_primary_host answers null.
+        const { fetchImpl: base } = makeFetch(SHELL, c.opts);
+        const fetchImpl = async (u, init) => (String(u).endsWith('/rest/v1/rpc/store_primary_host')
+          ? { ok: true, status: 200, json: async () => null, text: async () => 'null' } : base(u, init));
         outs.push(await runHandler(renderHandler, c, fetchImpl));
       } finally {
         if (prev === undefined) delete process.env.CUSTOM_DOMAINS_ROUTING_ENABLED; else process.env.CUSTOM_DOMAINS_ROUTING_ENABLED = prev;
@@ -172,6 +176,7 @@ test('store-image endpoints on a merchant domain draw only that domain\'s store'
   ]) {
     const r = await w.get(path);
     assert.equal(r.status, ok ? 200 : 404, path);
+    assert.equal(r.headers['cache-control'], 'no-store', `${path}: never cached on a merchant domain`);
     if (ok) assert.equal(r.via, 'function', path);
   }
 });
@@ -706,7 +711,7 @@ test('PocketLink sitemap, routing on: a store is listed exactly when its canonic
   const r = await on.get('https://www.pocketlink.store/sitemap.xml');
   assert.equal(r.status, 200);
   assert.equal(r.text, withoutStore(MAIN_SITEMAP.xml, 'brandshop'), 'brandshop (connected) left out; everything else as on main');
-  assert.equal(r.headers['cache-control'], MAIN_SITEMAP.cacheControl);
+  assert.equal(r.headers['cache-control'], 's-maxage=600', 'membership can change: ten minutes, no stale-while-revalidate');
   assert.ok(r.text.includes(`<loc>${PL_ORIGIN}/otherstore</loc>`));
 
   // Every other status, and after a disconnect: listed -- and in each case in step with the page's own canonical.
@@ -727,7 +732,7 @@ test('PocketLink sitemap, routing on: a store is listed exactly when its canonic
 });
 
 test('PocketLink sitemap, routing on: any failed lookup is a 503, never cached, never a guess -- and not remembered', async () => {
-  for (const mode of ['down', 'http500', 'malformed', 'hang']) {
+  for (const mode of ['down', 'http500', 'malformed', 'badhost', 'hang']) {
     const w = await world();
     w.supabase.knobs.resolver = mode;
     const t0 = Date.now();
@@ -809,4 +814,198 @@ test('merchant domain without its bundled shell: 503, never another deployment\'
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Re-review of 7f60d6c: a failed canonical-domain lookup is never read as
+// "no domain"; images on a merchant domain are never cached
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('PocketLink store page, routing on: a failed canonical-domain lookup is a 503 (no-store) -- never a PocketLink canonical -- and the next good request recovers', async () => {
+  for (const mode of ['hang', 'http500', 'malformed', 'badhost', 'down']) {
+    const w = await world();                                   // brandshop is connected to brandshop.test
+    w.supabase.knobs.resolver = mode;
+    const paths = mode === 'hang' ? ['/brandshop'] : ['/brandshop', '/brandshop/p/p1', '/brandshop/c/mugs', '/otherstore', '/otherstore/p/o1'];
+    for (const path of paths) {
+      const t0 = Date.now();
+      const r = await w.get(`https://www.pocketlink.store${path}`);
+      const what = `${mode} ${path}`;
+      assert.equal(r.status, 503, what);
+      assert.deepEqual([r.headers['cache-control'], r.headers['retry-after']], ['no-store', '5'], `${what}: never cached`);
+      assert.deepEqual(canonicals(r.text), [], `${what}: no canonical at all`);
+      assert.equal(ogUrl(r.text), undefined, what);
+      assert.equal(r.text.includes(`${PL_ORIGIN}${path}`), false, `${what}: no PocketLink URL for the store`);
+      assert.equal(r.text.includes('__PL_CONFIG__'), false, what);
+      if (mode === 'hang') assert.ok(Date.now() - t0 < 4000, `${what}: bounded by the lookup timeout`);
+    }
+    w.supabase.knobs.resolver = 'ok';
+    const a = await w.get('https://www.pocketlink.store/brandshop');
+    assert.deepEqual([a.status, canonicals(a.text)], [200, [`https://${DOMAIN}`]], `${mode}: recovered, canonical on the domain`);
+    const b = await w.get('https://www.pocketlink.store/otherstore/p/o1');
+    assert.deepEqual([b.status, canonicals(b.text)], [200, [`${PL_ORIGIN}/otherstore/p/o1`]], `${mode}: recovered, no domain`);
+  }
+  // A deployment (preview) host is the same.
+  const env = { ...ENV_ON, VERCEL_BRANCH_URL: 'store-git-x-seniqifys-projects.vercel.app' };
+  const dep = await world({ env });
+  dep.supabase.knobs.resolver = 'http500';
+  const d = await dep.get('https://store-git-x-seniqifys-projects.vercel.app/brandshop');
+  assert.deepEqual([d.status, d.headers['cache-control'], canonicals(d.text)], [503, 'no-store', []]);
+  // Pages that name no store's canonical do not depend on the lookup.
+  const mp = await dep.get('https://store-git-x-seniqifys-projects.vercel.app/marketplace');
+  assert.equal(mp.status, 200);
+  // Routing off: no lookup at all, so its failure changes nothing.
+  const off = await world({ env: ENV_OFF });
+  off.supabase.knobs.resolver = 'down';
+  const o = await off.get('https://www.pocketlink.store/brandshop');
+  assert.deepEqual([o.status, canonicals(o.text)], [200, [`${PL_ORIGIN}/brandshop`]]);
+  assert.equal(primaryCalls(off.supabase), 0);
+});
+
+const IMG_NAMES = [['og', '%6fg'], ['qr', '%71r']];   // each endpoint, and its name percent-encoded (the matcher cannot see it)
+
+test('transfer through the full routing: A\'s images stop and B\'s start when the domain changes hands; every image on it is no-store', async () => {
+  let t = 1e9;
+  const w = await world({ now: () => t });                   // A = brandshop owns brandshop.test
+  const img = (host, name, slug) => w.get(`https://${host}/api/${name}?slug=${slug}`);
+  const noStoreEverywhere = (r, what) => assert.equal(r.headers['cache-control'], 'no-store', `${what}: no-store`);
+  for (const [name, encoded] of IMG_NAMES) {
+    const a = await img(DOMAIN, name, 'brandshop');
+    assert.deepEqual([a.status, a.text], [200, `image-stub:/api/${name}:brandshop`], `A owns it: ${name}`);
+    noStoreEverywhere(a, `A ${name}`);
+    noStoreEverywhere(await img(DOMAIN, name, 'otherstore'), `${name} for another store`);
+    // The non-primary name: the middleware sends it to the primary; past the matcher, the function refuses.
+    const www = await img(WWW_DOMAIN, name, 'brandshop');
+    assert.deepEqual([www.status, www.headers.location], [307, `https://${DOMAIN}/api/${name}?slug=brandshop`]);
+    noStoreEverywhere(www, `www ${name}`);
+    const wwwFn = await img(WWW_DOMAIN, encoded, 'brandshop');
+    assert.equal(wwwFn.status, 404, `www ${encoded}`);
+    noStoreEverywhere(wwwFn, `www ${encoded}`);
+    // PocketLink's own host keeps its caching.
+    const pl = await img('www.pocketlink.store', name, 'brandshop');
+    assert.deepEqual([pl.status, pl.headers['cache-control']], [200, POCKETLINK_IMAGE_CACHE], `PocketLink ${name}`);
+  }
+
+  // A disconnects; B = otherstore claims and connects the same domain.
+  await disconnect(w.db, w.g);
+  await domainIn(w.db, 'otherstore', DOMAIN, 'connected');
+  t += RESOLVE_CACHE_MS + 1;
+  for (const [name, encoded] of IMG_NAMES) {
+    for (const path of [name, encoded]) {
+      const a = await img(DOMAIN, path, 'brandshop');
+      assert.equal(a.status, 404, `after transfer, A's ${path}`);
+      assert.equal(a.text.includes('image-stub'), false);
+      noStoreEverywhere(a, `A ${path}`);
+      const b = await img(DOMAIN, path, 'otherstore');
+      assert.deepEqual([b.status, b.text], [200, `image-stub:/api/${name}:otherstore`], `after transfer, B's ${path}`);
+      noStoreEverywhere(b, `B ${path}`);
+    }
+    noStoreEverywhere(await img(WWW_DOMAIN, name, 'otherstore'), `www after transfer ${name}`);
+  }
+
+  // Routing off: a merchant's host still never caches an image (a copy would outlive turning routing on).
+  const off = await world({ env: ENV_OFF });
+  const o = await off.get(`https://${DOMAIN}/api/og?slug=brandshop`);
+  assert.deepEqual([o.status, o.headers['cache-control']], [200, 'no-store']);
+  assert.equal((await off.get('https://www.pocketlink.store/api/og?slug=brandshop')).headers['cache-control'], POCKETLINK_IMAGE_CACHE);
+  assert.equal(resolverCalls(off.supabase), 0, 'routing off: still no lookup');
+});
+
+test('transfer, the REAL api/og.js and api/qr.js: images rendered on a merchant domain are no-store; A\'s stop and B\'s start when it changes hands', async () => {
+  const HOST = 'transfer.test';
+  const db = await createDb();
+  const a = await domainIn(db, BRAND.slug, HOST, 'connected');
+  const sb = createSupabase(db);
+  const saved = { ...process.env };
+  const realFetch = globalThis.fetch;
+  const realNow = Date.now;
+  let offset = 0;
+  const FONT = readFileSync(fileURLToPath(new URL('../node_modules/@vercel/og/dist/Geist-Regular.ttf', import.meta.url)));
+  const WORDMARK = readFileSync(fileURLToPath(new URL('../public/pocketlink-wordmark.png', import.meta.url)));
+  const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+  const PROD_DB = 'https://uoyqbexemoheipwrtkcz.supabase.co';
+  const answeredHere = [];
+  Object.assign(process.env, { CUSTOM_DOMAINS_ROUTING_ENABLED: 'true', VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON });
+  // Every request either module makes is answered here; nothing reaches the network.
+  globalThis.fetch = async (u, init) => {
+    const s = String(u);
+    if (s.startsWith('data:')) return realFetch(u, init);                  // @vercel/og's own wasm
+    if (s.startsWith(SB)) return sb.handle(u, init);
+    answeredHere.push(s);
+    if (s.startsWith(PROD_DB)) return sb.handle(SB + s.slice(PROD_DB.length), init);   // the store read, from the test database
+    if (s.startsWith('https://api.qrserver.com/')) return new Response(PNG_1X1, { headers: { 'Content-Type': 'image/png' } });
+    if (s.endsWith('/pocketlink-wordmark.png')) return new Response(WORDMARK, { headers: { 'Content-Type': 'image/png' } });
+    if (/\.(woff2?|ttf)$/.test(s)) return new Response(FONT);
+    return new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"/>', { headers: { 'Content-Type': 'image/svg+xml' } });
+  };
+  Date.now = () => realNow() + offset;
+  const call = async (handler, url) => {
+    const r = await handler(new Request(url));
+    const out = { status: r.status, cache: r.headers.get('cache-control'), type: r.headers.get('content-type') };
+    try { await r.body?.cancel(); } catch { /* fine */ }
+    return out;
+  };
+  try {
+    const { default: og } = await import('../api/og.js');
+    const { default: qr } = await import('../api/qr.js');
+    const image = (r, what) => {
+      assert.equal(r.status, 200, what);
+      assert.match(r.type, /^image\/png/, what);
+    };
+    for (const [name, handler] of [['og', og], ['qr', qr]]) {
+      // PocketLink's own host: the rendered image, cached as before (the card, not the plain-QR fallback).
+      const pl = await call(handler, `https://www.pocketlink.store/api/${name}?slug=brandshop`);
+      image(pl, `PocketLink ${name}`);
+      assert.match(pl.cache, /public/, `PocketLink ${name}: caching unchanged`);
+      // A owns the domain: the same rendered image, no-store.
+      const own = await call(handler, `https://${HOST}/api/${name}?slug=brandshop`);
+      image(own, `A ${name}`);
+      assert.equal(own.cache, 'no-store', `A ${name} on its domain: no-store, nothing else`);
+      for (const url of [`https://${HOST}/api/${name}?slug=otherstore`, `https://www.${HOST}/api/${name}?slug=brandshop`]) {
+        const r = await call(handler, url);
+        assert.deepEqual([r.status, r.cache], [404, 'no-store'], url);
+      }
+    }
+    // The domain changes hands: A disconnects, B claims and connects it.
+    await disconnect(db, a);
+    await domainIn(db, 'otherstore', HOST, 'connected');
+    offset += RESOLVE_CACHE_MS + 1;
+    for (const [name, handler] of [['og', og], ['qr', qr]]) {
+      const old = await call(handler, `https://${HOST}/api/${name}?slug=brandshop`);
+      assert.deepEqual([old.status, old.cache], [404, 'no-store'], `after transfer: A's ${name}`);
+      const now = await call(handler, `https://${HOST}/api/${name}?slug=otherstore`);
+      image(now, `after transfer: B's ${name}`);
+      assert.equal(now.cache, 'no-store', `after transfer: B's ${name}`);
+      const www = await call(handler, `https://www.${HOST}/api/${name}?slug=otherstore`);
+      assert.deepEqual([www.status, www.cache], [404, 'no-store'], `non-primary name: ${name}`);
+    }
+    assert.ok(answeredHere.some((u) => u.startsWith(PROD_DB)), 'the modules read the store -- from the test database');
+  } finally {
+    Date.now = realNow;
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('the resolver remembers "not connected" for RESOLVE_MISS_CACHE_MS only, and a connected answer for RESOLVE_CACHE_MS', async () => {
+  assert.ok(RESOLVE_MISS_CACHE_MS <= 10000 && RESOLVE_MISS_CACHE_MS < RESOLVE_CACHE_MS);
+  let t = 1e9;
+  const t0 = t;
+  const w = await world({ now: () => t });
+  assert.equal((await w.get('/')).status, 200, 'brandshop.test: connected, remembered from t0');
+  const NEW = 'newbrand.test';
+  assert.equal((await w.get(`https://${NEW}/`)).status, 404, 'not connected yet');
+  await domainIn(w.db, 'otherstore', NEW, 'connected');
+  t += RESOLVE_MISS_CACHE_MS - 1;
+  assert.equal((await w.get(`https://${NEW}/`)).status, 404, 'within the miss window: the cached "none"');
+  t += 2;
+  const r = await w.get(`https://${NEW}/`);
+  assert.equal(r.status, 200, 'after the miss window: connected');
+  assert.deepEqual(hostMarker(r.text), { slug: 'otherstore', base: `https://${NEW}` });
+  // ... while a connected answer is kept for the full window (bounded staleness after a disconnect).
+  await disconnect(w.db, w.g);
+  assert.ok(t - t0 > RESOLVE_MISS_CACHE_MS && t - t0 < RESOLVE_CACHE_MS);
+  assert.equal((await w.get('/')).status, 200, 'brandshop.test: the connected answer still held');
+  t = t0 + RESOLVE_CACHE_MS + 1;
+  assert.equal((await w.get('/')).status, 404, 'brandshop.test: after the window, not connected');
 });

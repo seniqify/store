@@ -250,6 +250,9 @@ try {
   await go('https://otherbrand.test/');
   check('resolver failing: 503, no store, not the PocketLink app',
     lastDoc().status === 503 && await ev(text('could not load just now')) && !(await ev(text('Secret Tea'))), lastDoc().status);
+  await go(PL + '/otherstore');
+  check('PocketLink store page while the canonical-domain lookup fails: 503, no canonical at all, not the store',
+    lastDoc().status === 503 && (await canon()).length === 0 && !(await ev(text('Secret Tea'))), lastDoc().status + ' ' + JSON.stringify(await canon()));
   supabase.knobs.resolver = 'ok';
 
   // ── PocketLink host, routing on ─────────────────────────────────────────────

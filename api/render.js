@@ -269,8 +269,14 @@ export default async function handler(req, res, deps = {}) {
         // Where this store lives: {origin}/{slug}, or -- with routing on -- its
         // connected merchant domain, which then carries the canonical (the page is
         // still served here: no redirect, so PocketLink always works as a fallback).
-        const domain = routing ? await (deps.resolver ?? resolverFor(env)).primaryHostFor(slug) : null;
-        const storeBase = domain ? `https://${domain}` : `${origin}/${slug}`;
+        // A lookup that fails is a 503, never cached -- not "no domain", which
+        // would make PocketLink canonical for a store whose canonical may be its domain.
+        let storeBase = `${origin}/${slug}`;
+        if (routing) {
+          const owner = await (deps.resolver ?? resolverFor(env)).lookupPrimaryHost(slug);
+          if (owner.status !== 'ok') { sendUnavailable(res); return; }
+          if (owner.host) storeBase = `https://${owner.host}`;
+        }
         const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase });
         let html = injectHead(base, seo);
         // Hand the already-fetched config to the SPA so it hydrates instantly —

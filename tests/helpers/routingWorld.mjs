@@ -22,7 +22,7 @@ import { freshDb, asRole } from './domainDb.mjs';
 import { createRouter, VERCEL_NOT_FOUND } from './vercelRouter.mjs';
 import { createMiddleware } from '../../middleware.js';
 import { createResolver } from '../../api/_resolve.js';
-import { createStoreImageGuard } from '../../api/_storeImageGuard.js';
+import { createStoreImageGuard, noStore } from '../../api/_storeImageGuard.js';
 import { imageEndpointSlug } from '../../src/utils/customDomainRoutes.js';
 import renderHandler from '../../api/render.js';
 import sitemapHandler from '../../api/sitemap.js';
@@ -153,7 +153,9 @@ const jsonResponse = (status, body, extra = {}) => new Response(body === undefin
 
 /**
  * fetch-compatible handler for https://sb.test. knobs:
- *   resolver: 'ok' | 'down' (network error) | 'http500' | 'malformed' | 'hang'
+ *   resolver: 'ok' | 'down' (network error) | 'http500' | 'malformed' | 'badhost'
+ *             (well-formed JSON naming an invalid hostname) | 'hang'
+ *             -- for both resolve_store_host and store_primary_host
  *   storesDown: store reads fail
  * `log` records every request: { method, path, query, body }.
  */
@@ -172,6 +174,10 @@ export function createSupabase(db) {
       if (knobs.resolver === 'down') throw new TypeError('fetch failed');
       if (knobs.resolver === 'http500') return jsonResponse(500, { message: 'boom' });
       if (knobs.resolver === 'malformed') return jsonResponse(200, { store_slug: 'otherstore' });
+      if (knobs.resolver === 'badhost') {
+        return jsonResponse(200, url.pathname.endsWith('/resolve_store_host')
+          ? [{ store_slug: 'brandshop', primary_host: 'Brand.TEST/x' }] : 'https://evil.test');
+      }
       if (knobs.resolver === 'hang') {
         return new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
       }
@@ -206,6 +212,9 @@ export function createSupabase(db) {
 }
 
 // ── The pipeline ─────────────────────────────────────────────────────────────
+// What api/og.js sends with an image on PocketLink's own hosts.
+export const POCKETLINK_IMAGE_CACHE = 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800';
+
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
                 '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.txt': 'text/plain', '.woff2': 'font/woff2' };
 
@@ -277,12 +286,13 @@ export function createPipeline({
     if (path === '/api/render') await renderHandler(req, res, deps);
     else if (path === '/api/sitemap') await sitemapHandler(req, res, deps);
     else if (path === '/api/og' || path === '/api/qr') {
-      // The real guard at the top of api/og.js and api/qr.js; the image itself is a stub.
+      // The real guard and caching rule of api/og.js and api/qr.js; the image itself is a stub.
       const slug = imageEndpointSlug(new URLSearchParams(search).get('slug'));
-      const refused = await imageGuard(new Request(`https://${host}${path}${search}`), slug);
+      const { refused, merchantHost } = await imageGuard(new Request(`https://${host}${path}${search}`), slug);
       if (refused) return { ...(await fromWebResponse(refused)), via: 'function' };
-      out.headers['content-type'] = 'image/png';
-      out.body = Buffer.from(`image-stub:${path}:${slug}`);
+      const image = new Response(`image-stub:${path}:${slug}`,
+        { headers: { 'Content-Type': 'image/png', 'Cache-Control': POCKETLINK_IMAGE_CACHE } });
+      return { ...(await fromWebResponse(merchantHost ? noStore(image) : image)), via: 'function' };
     } else {
       out.headers['content-type'] = 'application/json';
       out.body = Buffer.from(JSON.stringify({ function: path }));

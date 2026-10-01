@@ -10,6 +10,9 @@
 // the domain's own sitemap lists it. Each store is looked up (store_primary_host);
 // if any lookup fails, the sitemap is 503, never cached -- a guess could list a
 // page whose canonical is elsewhere, or drop one whose canonical is here.
+// Which stores it lists changes as domains connect and disconnect, so with
+// routing on a CDN copy is kept ten minutes, with no stale-while-revalidate
+// (routing off: an hour, plus a day of stale-while-revalidate, as before).
 import { esc } from './_seo.js';
 import { categoryLinkId } from './_categoryLink.js';
 import { normalizeHost, classifyHost, routingEnabled } from './_hosts.js';
@@ -20,6 +23,8 @@ const ORIGIN  = 'https://www.pocketlink.store';
 const STATIC  = ['/', '/marketplace', '/plans', '/start', '/terms', '/privacy'];
 const DEMOS   = ['aanyaboutique', 'glowup'];
 const LOOKUP_CONCURRENCY = 8;
+const CACHE = 's-maxage=3600, stale-while-revalidate=86400';
+const ROUTED_CACHE = 's-maxage=600';
 
 let defaultResolver = null;
 function resolverFor(env) {
@@ -83,7 +88,7 @@ ${body}
 </urlset>`;
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+  res.setHeader('Cache-Control', routingEnabled(env) ? ROUTED_CACHE : CACHE);
   res.status(200).send(xml);
 }
 

@@ -12,14 +12,18 @@
 // an error is never cached and never guessed into a store -- callers fail closed
 // (503), they do not fall through to another store or to PocketLink's pages.
 //
-// Answers ("connected" and "none") are cached per instance for RESOLVE_CACHE_MS,
-// so a disconnected or re-pointed domain stops routing within that window.
+// Answers are cached per instance: "connected" for RESOLVE_CACHE_MS, so a
+// disconnected or re-pointed domain stops routing within that window; "none" for
+// the shorter RESOLVE_MISS_CACHE_MS, so a newly connected one starts sooner.
+// store_primary_host answers are not cached, and a failure there is an error
+// too -- never read as "no domain" (api/render.js, api/sitemap.js).
 // Runs on the edge (middleware) and in Node (render, sitemap).
 import { fetchJsonWithin } from './domains/_http.js';
 import { normalizeHost, validHostname } from './_hosts.js';
 
 export const RESOLVE_TIMEOUT_MS = 1500;
 export const RESOLVE_CACHE_MS = 30000;
+export const RESOLVE_MISS_CACHE_MS = 10000;
 const CACHE_MAX = 500;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,59}$/;
 
@@ -39,7 +43,8 @@ export function interpretResolve(json, host) {
 
 export function createResolver({
   url, anonKey, fetchImpl = globalThis.fetch,
-  timeoutMs = RESOLVE_TIMEOUT_MS, cacheMs = RESOLVE_CACHE_MS, now = () => Date.now(),
+  timeoutMs = RESOLVE_TIMEOUT_MS, cacheMs = RESOLVE_CACHE_MS, missCacheMs = RESOLVE_MISS_CACHE_MS,
+  now = () => Date.now(),
 } = {}) {
   const cache = new Map();
   const headers = () => ({ apikey: anonKey, Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' });
@@ -67,7 +72,7 @@ export function createResolver({
     async resolveHost(host) {
       if (!validHostname(host)) return { status: 'none' };
       const hit = cache.get(host);
-      if (hit && now() - hit.at < cacheMs) return hit.value;
+      if (hit && now() - hit.at < (hit.value.status === 'connected' ? cacheMs : missCacheMs)) return hit.value;
       if (!url || !anonKey) return error('unconfigured');
       const r = await rpc('resolve_store_host', { p_host: host });
       if (r.timedOut) return error('timeout');
@@ -82,12 +87,6 @@ export function createResolver({
 
     lookupPrimaryHost,
 
-    /** A store's connected primary domain, or null (none, or any failure: PocketLink stays canonical). */
-    async primaryHostFor(slug) {
-      const r = await lookupPrimaryHost(slug);
-      return r.status === 'ok' ? r.host : null;
-    },
-
     /** Forget cached answers (tests). */
     clear: () => cache.clear(),
   };
@@ -95,5 +94,8 @@ export function createResolver({
 
 /** The resolver for this runtime: PR-B's public RPCs with the public key the site already uses. */
 export function resolverFromEnv(env = process.env, opts = {}) {
-  return createResolver({ url: env.VITE_SUPABASE_URL, anonKey: env.VITE_SUPABASE_ANON_KEY, ...opts });
+  return createResolver({
+    url: env.VITE_SUPABASE_URL, anonKey: env.VITE_SUPABASE_ANON_KEY,
+    fetchImpl: (u, init) => globalThis.fetch(u, init), ...opts,
+  });
 }

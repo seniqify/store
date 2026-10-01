@@ -9,11 +9,11 @@
 // cold start. If the QR or fonts can't be fetched, we serve the plain QR with a
 // NO-STORE header so a transient miss never gets cached.
 import { ImageResponse } from '@vercel/og';
-import { createStoreImageGuard } from './_storeImageGuard.js';
+import { createStoreImageGuard, noStore } from './_storeImageGuard.js';
 
 export const config = { runtime: 'edge' };
 
-// On a merchant's own domain: only that store's image (api/_storeImageGuard.js).
+// On a merchant's own domain: only that store's image, never cached (api/_storeImageGuard.js).
 const guard = createStoreImageGuard();
 
 const SITE = 'https://www.pocketlink.store';
@@ -69,8 +69,13 @@ function rawQrResponse(qrSrc) {
 export default async function handler(req) {
   const url  = new URL(req.url);
   const slug = (url.searchParams.get('slug') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
-  const refused = await guard(req, slug);
+  const { refused, merchantHost } = await guard(req, slug);
   if (refused) return refused;
+  const res = await draw(slug);
+  return merchantHost ? noStore(res) : res;
+}
+
+async function draw(slug) {
   const target = slug ? `${SITE}/${slug}` : SITE;
   const qrSrc  = `https://api.qrserver.com/v1/create-qr-code/?size=460x460&margin=0&ecc=H&qzone=1&color=${QR_DARK.slice(1)}&data=${encodeURIComponent(target)}`;
 

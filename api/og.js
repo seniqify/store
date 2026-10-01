@@ -4,11 +4,11 @@
 // supported by loading Noto Sans Devanagari; if a font fetch fails it degrades
 // gracefully to @vercel/og's built-in Latin font (the card still renders).
 import { ImageResponse } from '@vercel/og';
-import { createStoreImageGuard } from './_storeImageGuard.js';
+import { createStoreImageGuard, noStore } from './_storeImageGuard.js';
 
 export const config = { runtime: 'edge' };
 
-// On a merchant's own domain: only that store's image (api/_storeImageGuard.js).
+// On a merchant's own domain: only that store's image, never cached (api/_storeImageGuard.js).
 const guard = createStoreImageGuard();
 
 // Public anon credentials (already shipped in the client bundle — safe to inline).
@@ -43,9 +43,13 @@ async function loadFonts() {
 export default async function handler(req) {
   const url = new URL(req.url);
   const slug = (url.searchParams.get('slug') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
-  const refused = await guard(req, slug);
+  const { refused, merchantHost } = await guard(req, slug);
   if (refused) return refused;
+  const res = await draw(slug);
+  return merchantHost ? noStore(res) : res;
+}
 
+async function draw(slug) {
   let cfg = null;
   if (slug) {
     try {
