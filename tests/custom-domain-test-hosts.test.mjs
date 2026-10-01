@@ -119,11 +119,18 @@ test('test list: exact normalised hostnames only -- nothing inferred, anything m
   for (const [list, expected] of cases) {
     assert.deepEqual([...routingTestHosts(env(list))].sort(), [...expected].sort(), JSON.stringify(list));
   }
-  for (const v of ['VERCEL_URL', 'VERCEL_BRANCH_URL', 'VERCEL_PROJECT_PRODUCTION_URL']) {
+  for (const v of ['VERCEL_URL', 'VERCEL_BRANCH_URL']) {
     const e = env(`${PREVIEW}, ${BRAND}`, { [v]: PREVIEW });
     assert.deepEqual([...routingTestHosts(e)], [BRAND], v);
     assert.equal(routingMode(PREVIEW, e), 'off', `${v}: still this project's own host`);
   }
+  // VERCEL_PROJECT_PRODUCTION_URL is the project's SHORTEST domain -- a listed test
+  // domain can become it -- and never takes a host off the list.
+  const prod = env(`${BRAND}, www.${BRAND}`, { VERCEL_PROJECT_PRODUCTION_URL: BRAND });
+  assert.deepEqual([...routingTestHosts(prod)].sort(), [BRAND, `www.${BRAND}`].sort());
+  assert.equal(routingMode(BRAND, prod), 'test');
+  // www.seniqify.store is this project's own (former production) host: never listed.
+  assert.deepEqual([...routingTestHosts(env(`www.seniqify.store, ${BRAND}`))], [BRAND]);
   // Request hosts are normalised the same way before the exact match.
   const e = env(BRAND);
   for (const raw of ['BrandShop.Test', `${BRAND}.`, `${BRAND}:443`, ` ${BRAND} `]) assert.equal(routingMode(normalizeHost(raw), e), 'test', raw);

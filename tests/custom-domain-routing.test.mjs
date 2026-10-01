@@ -436,6 +436,7 @@ test('PocketLink and deployment hosts are never looked up as merchant domains, a
   const env = { ...ENV_ON, VERCEL_BRANCH_URL: 'store-git-x-seniqifys-projects.vercel.app', VERCEL_PROJECT_PRODUCTION_URL: 'www.seniqify.store' };
   const w = await world({ env });
   assert.equal(classifyHost('www.seniqify.store', env), 'deployment', 'Seniqify host: unchanged (cleanup deferred)');
+  assert.equal(classifyHost('www.seniqify.store', ENV_ON), 'deployment', 'listed by name, not trusted through VERCEL_PROJECT_PRODUCTION_URL');
   for (const h of ['www.pocketlink.store', 'pocketlink.store', 'store-git-x-seniqifys-projects.vercel.app', 'www.seniqify.store']) {
     const store = await w.get(`https://${h}/otherstore`);
     assert.equal(store.status, 200, h);
