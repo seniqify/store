@@ -1,11 +1,13 @@
 // Dynamic sitemap — static pages + demo pages + every live store.
 // '/' is the merchant landing (home); '/marketplace' is the consumer marketplace.
 //
-// On a merchant's own domain (CUSTOM_DOMAINS_ROUTING_ENABLED on), the sitemap
-// lists ONLY the store the database says owns that domain, on that domain --
-// never another store. With routing off, every host gets PocketLink's, as before.
+// On a merchant's own domain in 'global' mode (routingMode, api/_hosts.js), the
+// sitemap lists ONLY the store the database says owns that domain, on that
+// domain -- never another store. A 'test' domain has no sitemap at all (404):
+// its URLs are never advertised. A host that is not routed gets PocketLink's,
+// as before.
 //
-// PocketLink's own sitemap, with routing on, leaves out every store with a
+// PocketLink's own sitemap, in 'global' mode only, leaves out every store with a
 // connected domain: that store's canonical is on its domain (api/render.js), and
 // the domain's own sitemap lists it. Each store is looked up (store_primary_host);
 // if any lookup fails, the sitemap is 503, never cached -- a guess could list a
@@ -15,9 +17,9 @@
 // (routing off: an hour, plus a day of stale-while-revalidate, as before).
 import { esc } from './_seo.js';
 import { categoryLinkId } from './_categoryLink.js';
-import { normalizeHost, classifyHost, routingEnabled } from './_hosts.js';
+import { normalizeHost, routingEnabled, routingMode } from './_hosts.js';
 import { createResolver } from './_resolve.js';
-import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect } from './_pages.js';
+import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect, TEST_ROBOTS } from './_pages.js';
 
 const ORIGIN  = 'https://www.pocketlink.store';
 const STATIC  = ['/', '/marketplace', '/plans', '/start', '/terms', '/privacy'];
@@ -38,7 +40,9 @@ export default async function handler(req, res, deps = {}) {
   const env = deps.env ?? process.env;
   const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
   const host = normalizeHost(req.headers?.host) || 'www.pocketlink.store';
-  if (classifyHost(host, env) === 'custom' && routingEnabled(env)) {
+  const mode = routingMode(host, env);
+  if (mode === 'test') { sendNotFound(res, TEST_ROBOTS); return; }
+  if (mode === 'global') {
     await merchantSitemap(res, { env, fetchImpl, host, resolver: deps.resolver ?? resolverFor(env) });
     return;
   }

@@ -3,16 +3,17 @@
 // hand → serve the normal SPA shell. A host that is not PocketLink's gets a
 // neutral 404; a base HTML that cannot be had gets a 503 (never a redirect).
 //
-// A merchant's own domain (CUSTOM_DOMAINS_ROUTING_ENABLED on; see
-// middleware.js): the database alone decides which ONE store it renders. The
-// path -- or ?path -- only chooses that store's home, product or category page.
+// A merchant's own domain, when routed (routingMode 'global' or 'test',
+// api/_hosts.js; see middleware.js): the database alone decides which ONE store
+// it renders. The path -- or ?path -- only chooses that store's home, product or
+// category page. A 'test' domain's pages are never indexed.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { esc, storeSeo, storeBody, marketplaceSeo, marketplaceBody } from './_seo.js';
 import { resolveCategory } from './_categoryLink.js';
-import { PL_ORIGIN, PL_HOSTS, normalizeHost, classifyHost, routingEnabled } from './_hosts.js';
+import { PL_ORIGIN, PL_HOSTS, normalizeHost, classifyHost, routingEnabled, routingMode } from './_hosts.js';
 import { createResolver } from './_resolve.js';
-import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect } from './_pages.js';
+import { sendNotConnected, sendUnavailable, sendNotFound, sendRedirect, TEST_ROBOTS } from './_pages.js';
 import { storeRoute } from '../src/utils/customDomainRoutes.js';
 
 export { PL_ORIGIN, normalizeHost };
@@ -154,14 +155,17 @@ export default async function handler(req, res, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
   const host = normalizeHost(req.headers.host) || 'www.pocketlink.store';
   const kind = classifyHost(host, env);
-  const routing = routingEnabled(env);
   if (kind === 'custom') {
-    // Not a PocketLink host. Routing off: never render a store, whatever the path
-    // or ?path says -- exactly as before. Routing on: a merchant's domain.
-    if (!routing) { sendNotConnected(res); return; }
-    await renderMerchantDomain(req, res, { env, fetchImpl, host, deps });
+    // Not a PocketLink host. Not routed: never render a store, whatever the path
+    // or ?path says -- exactly as before. Routed: a merchant's domain.
+    const mode = routingMode(host, env);
+    if (mode === 'off') { sendNotConnected(res); return; }
+    await renderMerchantDomain(req, res, { env, fetchImpl, host, deps, mode });
     return;
   }
+  // PocketLink's own pages point a store's canonical at its domain in 'global'
+  // mode only -- never because a test domain is listed.
+  const routing = routingEnabled(env);
   const origin = `https://${host}`;
 
   let base;
@@ -319,25 +323,34 @@ function merchantShell(html, name) {
   return out;
 }
 
+// A test domain's page: one robots meta, noindex -- the shell's own ("index,
+// follow") is replaced, never left beside it.
+function noindexHtml(html) {
+  return html.replace(/<meta\s+name=["']robots["'][^>]*>\s*/gi, '')
+    .replace('</head>', `<meta name="robots" content="${TEST_ROBOTS}"/>\n</head>`);
+}
+
 // ── A merchant's own domain ──────────────────────────────────────────────────
 // The store comes ONLY from the database (resolve_store_host); nothing in the
 // request names it. Only that store's /, /p/{id} and /c/{id} render; the page's
 // canonical, og:url and JSON-LD are on the merchant's domain, with no PocketLink
-// Marketplace breadcrumb or link. Every answer is no-store.
-async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
+// Marketplace breadcrumb or link. Every answer is no-store. In 'test' mode every
+// answer is also X-Robots-Tag: noindex, nofollow, and the page says so too.
+async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps, mode }) {
+  const robots = mode === 'test' ? TEST_ROBOTS : undefined;
   const r = await (deps.resolver ?? resolverFor(env)).resolveHost(host);
-  if (r.status === 'error') { sendUnavailable(res); return; }
-  if (r.status !== 'connected') { sendNotConnected(res); return; }
+  if (r.status === 'error') { sendUnavailable(res, robots); return; }
+  if (r.status !== 'connected') { sendNotConnected(res, robots); return; }
 
   const url = new URL(req.url, `https://${host}`);
   const path = (url.searchParams.get('path') || url.pathname || '/').split('?')[0];
   const route = storeRoute(path);
   if (!r.isPrimary) { sendRedirect(res, `https://${r.primaryHost}${route ? path : '/'}`); return; }
-  if (!route) { sendNotFound(res); return; }
+  if (!route) { sendNotFound(res, robots); return; }
 
   // This build's own shell or nothing: never another deployment's HTML.
   const base = deps.shell ?? ownShell(env);
-  if (!base) { sendUnavailable(res); return; }
+  if (!base) { sendUnavailable(res, robots); return; }
   res.setHeader('X-PL-Shell', 'own');
 
   const SUPABASE_URL  = env.VITE_SUPABASE_URL;
@@ -355,10 +368,10 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
     const rows = await resp.json();
     config = Array.isArray(rows) && rows[0] && rows[0].slug === slug ? rows[0].config : null;
   } catch {
-    sendUnavailable(res);   // never an unrendered shell on a merchant's domain
+    sendUnavailable(res, robots);   // never an unrendered shell on a merchant's domain
     return;
   }
-  if (!config || !config.businessName) { sendNotFound(res); return; }
+  if (!config || !config.businessName) { sendNotFound(res, robots); return; }
 
   let rating = null;
   try {
@@ -384,6 +397,7 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
   const origin = `https://${host}`;
   const seo = storeSeo(config, slug, origin, rating, section, item, { storeBase: origin, marketplace: false });
   let html = injectHead(merchantShell(base, config.businessName), seo);
+  if (robots) html = noindexHtml(html);
   const cfgJson = JSON.stringify({ slug, config }).replace(/</g, '\\u003c');
   const hostJson = JSON.stringify({ slug, base: origin }).replace(/</g, '\\u003c');
   // __PL_HOST__ puts the SPA in merchant-domain mode for exactly this store.
@@ -391,5 +405,6 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps }) {
   html = injectBody(html, storeSplash(config) + hiddenForBots(storeBody(config, slug, origin, seo)));
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  if (robots) res.setHeader('X-Robots-Tag', robots);
   res.status(200).send(html);
 }

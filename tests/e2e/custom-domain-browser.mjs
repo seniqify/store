@@ -1,5 +1,7 @@
 // PR-D in a real browser: cold loads, client-side navigation, host isolation,
-// primary changes, disconnects, resolver failures and routing-off compatibility.
+// primary changes, disconnects, resolver failures and routing-off compatibility;
+// PR-D.1: a TEST-mode domain (the flag off, the domain listed) next to an
+// unlisted one.
 //
 // Opt-in (needs Google Chrome):   node tests/e2e/custom-domain-browser.mjs
 //
@@ -12,7 +14,7 @@
 // real DNS is blackholed, so nothing leaves this machine. (Browser CORS is off:
 // the stand-in is not a real Supabase; isolation never relied on CORS.)
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +38,9 @@ const build = spawnSync(process.execPath, [join(ROOT, 'node_modules/vite/bin/vit
 });
 if (build.status !== 0) { console.error(build.stdout, build.stderr); process.exit(1); }
 const SHELL = readFileSync(join(dist, 'index.html'), 'utf8');
+// Server-only: the test-host list never reaches the browser bundle.
+const BUNDLE_HAS_ROUTING_ENV = readdirSync(join(dist, 'assets'))
+  .some((f) => readFileSync(join(dist, 'assets', f), 'utf8').includes('CUSTOM_DOMAINS_ROUTING'));
 
 // ── 2. The world: stores, domains, a controllable clock ──────────────────────
 const db = await createDb();
@@ -51,7 +56,8 @@ const ENV_ON = { VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON, CUSTOM_DOM
 const ENV_OFF = { VITE_SUPABASE_URL: SB, VITE_SUPABASE_ANON_KEY: ANON };
 let pipeline = createPipeline({ env: ENV_ON, supabase, shell: SHELL, distDir: dist, now });
 const APP_HOSTS = new Set(['brandshop.test', 'www.brandshop.test', 'otherbrand.test', 'www.otherbrand.test',
-  'pending.test', 'www.pending.test', 'never-claimed.test', 'www.pocketlink.store', 'pocketlink.store']);
+  'pending.test', 'www.pending.test', 'never-claimed.test', 'fourthbrand.test', 'www.fourthbrand.test',
+  'www.pocketlink.store', 'pocketlink.store']);
 
 // ── 3. Chrome, with every request answered here ──────────────────────────────
 const profile = join(work, 'profile');
@@ -89,7 +95,7 @@ async function answer({ requestId, request, resourceType }) {
       await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
       return;
     }
-    if (resourceType === 'Document') docs.push({ url: request.url, status: res.status });
+    if (resourceType === 'Document') docs.push({ url: request.url, status: res.status, headers: res.headers });
     await send('Fetch.fulfillRequest', {
       requestId, responseCode: res.status,
       responseHeaders: Object.entries(res.headers).map(([name, value]) => ({ name, value: String(value) })),
@@ -275,6 +281,37 @@ try {
   check('routing off: PocketLink store page, canonical on PocketLink',
     await waitFor(text('Secret Tea')) && JSON.stringify(await canon()) === JSON.stringify([`${PL}/otherstore`]), JSON.stringify(await canon()));
   check('routing off: no merchant-domain lookup at all', supabase.log.filter((e) => e.path.includes('resolve_store_host')).length === lookups);
+
+  // ── TEST mode: the flag off, ONE connected domain listed ────────────────────
+  check('server-only: the browser bundle never names the routing settings', !BUNDLE_HAS_ROUTING_ENV);
+  await db.query(`insert into public.stores (slug, config) values ('fourthstore', $1)`, [JSON.stringify({
+    slug: 'fourthstore', businessName: 'Fourth Store', theme: { primary: '#0d9488' },
+    categories: [{ id: 'all', label: 'All Products' }], products: [{ id: 'f1', name: 'Fourth Thing', price: 5, category: 'all' }] })]);
+  await domainIn(db, 'fourthstore', 'fourthbrand.test', 'connected');
+  pipeline = createPipeline({ env: { ...ENV_OFF, CUSTOM_DOMAINS_ROUTING_TEST_HOSTS: 'otherbrand.test' }, supabase, shell: SHELL, distDir: dist, now });
+  t += RESOLVE_CACHE_MS + 1;
+  const testFrom = supabase.log.length;
+  await go('https://otherbrand.test/');
+  check('TEST mode: the listed connected domain renders its store, in merchant mode',
+    await waitFor(text('Secret Tea')) && (await ev('window.__PL_HOST__ && window.__PL_HOST__.slug')) === 'otherstore', lastDoc().status);
+  const metas = await ev(`[...document.querySelectorAll('meta[name=robots]')].map(m => m.content).join('|')`);
+  check('TEST mode: noindex, nofollow -- the header and the page\'s one robots meta',
+    lastDoc().headers?.['x-robots-tag'] === 'noindex, nofollow' && metas === 'noindex, nofollow', `${lastDoc().headers?.['x-robots-tag']} / ${metas}`);
+  await ev('window.__noReload2 = 7');
+  await clickText('Secret Tea');
+  check('TEST mode: client navigation to a product, no reload',
+    await waitFor(`location.pathname === '/p/o1'`) && (await ev('window.__noReload2')) === 7, await ev('location.pathname'));
+  const robotsTxt = await ev(`fetch('/robots.txt').then(r => r.text())`);
+  check('TEST mode: robots.txt lets crawlers in, names no sitemap', /Allow: \//.test(robotsTxt) && !/Disallow|Sitemap/i.test(robotsTxt), JSON.stringify(robotsTxt));
+  check('TEST mode: no sitemap', (await ev(`fetch('/sitemap.xml').then(r => r.status)`)) === 404);
+  await go('https://fourthbrand.test/');
+  check('TEST mode: an unlisted connected domain does not enter merchant mode',
+    lastDoc().status === 200 && (await ev('window.__PL_HOST__ === undefined')) && !(await ev(text('Fourth Thing'))), lastDoc().status);
+  await go('https://www.otherbrand.test/');
+  check('TEST mode: the unlisted www name of the listed domain is not routed either', (await ev('window.__PL_HOST__ === undefined')) && lastDoc().status === 200);
+  const unlistedLookups = supabase.log.slice(testFrom)
+    .filter((e) => e.path.endsWith('/resolve_store_host') && /fourthbrand|www\.otherbrand/.test(e.body || '')).length;
+  check('TEST mode: unlisted hosts were never looked up', unlistedLookups === 0, unlistedLookups);
 } finally {
   ws.close();
   chrome.kill();
