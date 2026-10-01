@@ -4,11 +4,16 @@
 // and in Node.
 //
 //   pocketlink  www.pocketlink.store, pocketlink.store, market.pocketlink.store
-//   deployment  EXACTLY one of this project's own Vercel URLs, from Vercel's
+//   deployment  EXACTLY this deployment's own vercel.app URLs, from Vercel's
 //               system variables (set by Vercel, never by the request):
-//                 VERCEL_URL, VERCEL_BRANCH_URL, VERCEL_PROJECT_PRODUCTION_URL
+//                 VERCEL_URL, VERCEL_BRANCH_URL
+//               plus www.seniqify.store, listed by name (LEGACY_DEPLOYMENT_HOSTS).
 //               A host is never trusted for merely ending in the team's
 //               vercel.app suffix -- every project in the team shares it.
+//               VERCEL_PROJECT_PRODUCTION_URL is NOT trusted: Vercel sets it to
+//               the project's SHORTEST production domain, so attaching a short
+//               merchant domain (poketlink.app, 2026-10-01) made the next
+//               deployment serve every PocketLink store on that domain.
 //   custom      anything else. Routed as a merchant's domain only as
 //               routingMode() says: then the database decides (api/_resolve.js) --
 //               a connected merchant domain serves its ONE store, anything else
@@ -38,16 +43,25 @@ export function validHostname(host) {
   return typeof host === 'string' && HOSTNAME.test(host) && !/^\d+(\.\d+){3}$/.test(host);
 }
 
-/** This deployment's own Vercel URLs, normalised; empty values trust nothing. */
+/**
+ * The project's former production URL. It was trusted only because Vercel named
+ * it in VERCEL_PROJECT_PRODUCTION_URL; listed by name so it is served exactly as
+ * before (the Seniqify host cleanup is deferred, not decided here).
+ */
+export const LEGACY_DEPLOYMENT_HOSTS = new Set(['www.seniqify.store']);
+
+/** This deployment's own vercel.app URLs, normalised; empty or non-vercel.app values trust nothing. */
 function deploymentHosts(env) {
-  return [env.VERCEL_URL, env.VERCEL_BRANCH_URL, env.VERCEL_PROJECT_PRODUCTION_URL]
+  return [env.VERCEL_URL, env.VERCEL_BRANCH_URL]
     .filter((v) => Boolean(v))
-    .map(normalizeHost);
+    .map(normalizeHost)
+    .filter((h) => h.endsWith('.vercel.app'));
 }
 
 /** 'pocketlink' | 'deployment' | 'custom' for an already-normalised host. */
 export function classifyHost(host, env = process.env) {
   if (PL_HOSTS.has(host)) return 'pocketlink';
+  if (LEGACY_DEPLOYMENT_HOSTS.has(host)) return 'deployment';
   if (host && deploymentHosts(env).includes(host)) return 'deployment';
   return 'custom';
 }

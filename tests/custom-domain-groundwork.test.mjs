@@ -230,12 +230,25 @@ test('the exact VERCEL_BRANCH_URL is trusted (and renders its own build)', async
   await assertServedFromItself(PREVIEW, { VERCEL_BRANCH_URL: PREVIEW });
 });
 
-test('the exact VERCEL_PROJECT_PRODUCTION_URL is trusted (and renders its own build)', async () => {
-  await assertServedFromItself(PROJECT_PROD_URL, { VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL });
+test('VERCEL_PROJECT_PRODUCTION_URL is never trusted: Vercel names the shortest attached domain, which may be a merchant\'s', async () => {
+  await assertNotConnected(PROJECT_PROD_URL, { VERCEL_PROJECT_PRODUCTION_URL: PROJECT_PROD_URL });
+  // 2026-10-01: attaching poketlink.app made it this project's production URL on the next deployment.
+  for (const host of ['poketlink.app', 'brand.com', 'shop.brand.co.in']) {
+    await assertNotConnected(host, { VERCEL_PROJECT_PRODUCTION_URL: host });
+    await assertNotConnected(host, { ...ALL_OURS, VERCEL_PROJECT_PRODUCTION_URL: host });
+  }
 });
 
-test('with all three set, each is trusted — and only those three', async () => {
-  for (const host of [DEPLOYMENT_URL, PREVIEW, PROJECT_PROD_URL]) await assertServedFromItself(host, ALL_OURS);
+test('with all three set, only VERCEL_URL and VERCEL_BRANCH_URL are trusted', async () => {
+  for (const host of [DEPLOYMENT_URL, PREVIEW]) await assertServedFromItself(host, ALL_OURS);
+  await assertNotConnected(PROJECT_PROD_URL, ALL_OURS);
+});
+
+test('a VERCEL_URL or VERCEL_BRANCH_URL that is not a vercel.app host is not trusted', async () => {
+  for (const host of ['brand.com', 'poketlink.app', 'vercel.app.brand.com']) {
+    await assertNotConnected(host, { VERCEL_URL: host });
+    await assertNotConnected(host, { VERCEL_BRANCH_URL: host });
+  }
 });
 
 test('each variable trusts only its own host: VERCEL_URL alone does not trust the branch URL, and so on', async () => {
