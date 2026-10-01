@@ -40,7 +40,7 @@ if (build.status !== 0) { console.error(build.stdout, build.stderr); process.exi
 const SHELL = readFileSync(join(dist, 'index.html'), 'utf8');
 // Server-only: the test-host list never reaches the browser bundle.
 const BUNDLE_HAS_ROUTING_ENV = readdirSync(join(dist, 'assets'))
-  .some((f) => readFileSync(join(dist, 'assets', f), 'utf8').includes('CUSTOM_DOMAINS_ROUTING'));
+  .some((f) => readFileSync(join(dist, 'assets', f), 'utf8').includes('CUSTOM_DOMAINS_'));   // routing, test hosts, pilot stores
 
 // ── 2. The world: stores, domains, a controllable clock ──────────────────────
 const db = await createDb();
@@ -283,7 +283,7 @@ try {
   check('routing off: no merchant-domain lookup at all', supabase.log.filter((e) => e.path.includes('resolve_store_host')).length === lookups);
 
   // ── TEST mode: the flag off, ONE connected domain listed ────────────────────
-  check('server-only: the browser bundle never names the routing settings', !BUNDLE_HAS_ROUTING_ENV);
+  check('server-only: the browser bundle never names any CUSTOM_DOMAINS_ setting', !BUNDLE_HAS_ROUTING_ENV);
   await db.query(`insert into public.stores (slug, config) values ('fourthstore', $1)`, [JSON.stringify({
     slug: 'fourthstore', businessName: 'Fourth Store', theme: { primary: '#0d9488' },
     categories: [{ id: 'all', label: 'All Products' }], products: [{ id: 'f1', name: 'Fourth Thing', price: 5, category: 'all' }] })]);

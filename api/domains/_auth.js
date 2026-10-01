@@ -17,6 +17,29 @@ export function cleanSlug(raw) {
   return String(raw ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
 }
 
+/**
+ * CUSTOM_DOMAINS_PILOT_STORES (server-only: not a Vite variable, never in the
+ * browser bundle): the exact store slugs that may use the merchant domain API
+ * while CUSTOM_DOMAINS_ENABLED is on. Comma-separated; each entry is trimmed and
+ * lowercased, and must then already BE a slug as cleanSlug() makes one -- an
+ * entry it would change (a space, "*", ".", anything over 60 characters) is
+ * ignored rather than cleaned into some other slug. No wildcard, prefix or
+ * suffix matching. Unset or empty: no store may use the API.
+ */
+export function pilotStores(env = process.env) {
+  const slugs = new Set();
+  for (const raw of String(env.CUSTOM_DOMAINS_PILOT_STORES ?? '').split(',')) {
+    const entry = raw.trim().toLowerCase();
+    if (entry && cleanSlug(entry) === entry) slugs.add(entry);
+  }
+  return slugs;
+}
+
+/** May this (already cleaned) store slug use the merchant domain API? */
+export function isPilotStore(slug, env = process.env) {
+  return Boolean(slug) && pilotStores(env).has(slug);
+}
+
 export function cleanHashedPin(raw) {
   const s = String(raw ?? '').toLowerCase();
   return /^[0-9a-f]{64}$/.test(s) ? s : '';
