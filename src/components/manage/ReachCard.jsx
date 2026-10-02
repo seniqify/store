@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, TrendingUp, TrendingDown, Share2, Copy, Check } from 'lucide-react';
 import { fetchViewStats, weekTrend } from '../../utils/viewService';
+import { publicStoreUrl } from '../../utils/storeUrls';
 
 /**
  * ReachCard — the owner's "people are looking" hook, shown at the top of Manage.
@@ -13,7 +14,7 @@ import { fetchViewStats, weekTrend } from '../../utils/viewService';
 
 const MILESTONE = 50;   // celebrate + ask for a referral once a page crosses this
 
-export default function ReachCard({ slug, themeColor = '#0d9488', businessName = '', upgrade = false, phone = '' }) {
+export default function ReachCard({ slug, themeColor = '#0d9488', businessName = '', upgrade = false, phone = '', domain = null }) {
   const [stats,  setStats]  = useState(null);   // null = loading
   const [copied, setCopied] = useState(false);
 
@@ -23,7 +24,7 @@ export default function ReachCard({ slug, themeColor = '#0d9488', businessName =
     return () => { alive = false; };
   }, [slug]);
 
-  const storeUrl  = `${window.location.origin}/${slug}`;
+  const storeUrl  = publicStoreUrl(slug, {}, domain, window.location.origin);   // their own domain once it is live
   const shareText = `🛍️ Order from ${businessName || 'my shop'} on WhatsApp — browse & order here:\n${storeUrl}`;
   const waShare   = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
   const refText   = `I made a free WhatsApp page for my business on PocketLink in 2 minutes — catalogue, cart & orders all on WhatsApp. You should make one too 👇\nhttps://pocketlink.store/start`;

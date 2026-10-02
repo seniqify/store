@@ -51,10 +51,13 @@ import PaymentsConnect                                    from '../components/ma
 import PaymentsTab                                        from '../components/manage/PaymentsTab';
 import MetaConnect                                        from '../components/manage/MetaConnect';
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
+import DomainConnect                                       from '../components/manage/DomainConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 import NewOrderToast                                       from '../components/manage/NewOrderToast';
 import { useNewOrders }                                    from '../hooks/useNewOrders';
+import { useStoreDomain }                                  from '../hooks/useStoreDomain';
+import { publicStoreUrl }                                  from '../utils/storeUrls';
 import { orderSoundOn, setOrderSoundOn, playOrderChime, buzz, alertNewOrder } from '../utils/notifySound';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1494,7 +1497,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
 }
 
 // ── Categories Tab ────────────────────────────────────────────────────────────
-function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
+function ManageCategories({ config, onChange, onSave, saveStatus, saveError, domain = null }) {
   const themeColor = config.theme?.primary || '#0d9488';
   const userCats   = (config.categories || []).filter(c => c.id !== 'all');
   const plan       = effectivePlan(config);
@@ -1510,7 +1513,7 @@ function ManageCategories({ config, onChange, onSave, saveStatus, saveError }) {
 
   function copyCategoryLink(id) {
     const cat = userCats.find((c) => c.id === id);
-    const url = `${window.location.origin}/${config.slug}/c/${categoryLinkId(cat)}`;
+    const url = publicStoreUrl(config.slug, { categoryId: categoryLinkId(cat) }, domain, window.location.origin);
     navigator.clipboard.writeText(url).then(() => {
       setCopiedCat(id);
       setTimeout(() => setCopiedCat((c) => (c === id ? null : c)), 2000);
@@ -2070,15 +2073,16 @@ function OrderAlertsCard({ themeColor }) {
   );
 }
 
-function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete, pin }) {
+function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDelete, pin, domainState }) {
   const themeColor  = config.theme?.primary || '#0d9488';
+  // The link the owner shares: their own domain once it is live, else PocketLink (as before).
+  const shareUrl    = publicStoreUrl(config.slug, {}, domainState?.domain, window.location.origin);
   const [dirty, setDirty] = useState(false);
 
   // Copy-link state for the store URL card
   const [copied, setCopied] = useState(false);
   function copyStoreUrl() {
-    const url = `${window.location.origin}/${config.slug}`;
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -2165,12 +2169,12 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
             Your page is live — share it
           </p>
           <a
-            href={`/${config.slug}`}
+            href={domainState?.domain ? shareUrl : `/${config.slug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-sm font-mono font-bold truncate hover:underline mb-3"
           >
-            {window.location.origin}/{config.slug}
+            {shareUrl}
           </a>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -2184,7 +2188,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
               {copied ? 'Copied!' : 'Copy link'}
             </button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`Check out my page: ${window.location.origin}/${config.slug}`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(`Check out my page: ${shareUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg
@@ -2337,6 +2341,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
           {/* Shipping — connect the store's own Delhivery */}
           <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
+
+          {/* Own domain — shown only when the server allows this store */}
+          <DomainConnect slug={config.slug} pin={pin} themeColor={themeColor} domainState={domainState} />
 
           {/* Store icon (logoEmoji) */}
           <div>
@@ -2850,6 +2857,10 @@ export default function ManageStore() {
     slug: businessSlug, pin: storePin, enabled: pinVerified, onArrive: handleOrderArrive,
   });
 
+  // ── Own domain: one PIN-checked status read; `domain` is set only while it is live ──
+  const domainState = useStoreDomain({ slug: businessSlug, pin: storePin, enabled: pinVerified });
+  const liveDomain  = domainState.domain;
+
   // Opening Orders (or a fresh order arriving while you're already there) clears
   // the badge + any toast — you've now seen them.
   useEffect(() => {
@@ -3089,7 +3100,7 @@ export default function ManageStore() {
             )}
             <div className="min-w-0 flex-1">
               <p className="text-lg font-extrabold leading-tight truncate">{config.businessName}</p>
-              <p className="text-xs text-white/70 truncate">pocketlink.store/{businessSlug}</p>
+              <p className="text-xs text-white/70 truncate">{liveDomain || `pocketlink.store/${businessSlug}`}</p>
             </div>
             <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
                     className="p-1.5 rounded-lg text-white/80 hover:bg-white/15 transition-colors flex-shrink-0">
@@ -3129,7 +3140,7 @@ export default function ManageStore() {
             )}
             <div className="min-w-0 flex-1">
               <p className="text-[15px] font-extrabold leading-tight truncate">{config.businessName}</p>
-              <p className="text-[11px] text-white/70 truncate">/{businessSlug}</p>
+              <p className="text-[11px] text-white/70 truncate">{liveDomain || `/${businessSlug}`}</p>
             </div>
           </div>
           <Link to={`/${businessSlug}`}
@@ -3193,12 +3204,12 @@ export default function ManageStore() {
         )}
         {tab === 'orders' && (
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
-                     upgrade={!analyticsEnabled} phone={config.whatsappNumber} />
+                     upgrade={!analyticsEnabled} phone={config.whatsappNumber} domain={liveDomain} />
         )}
         {tab === 'home' ? (
           <div className="animate-pl-fade-up">
             <OverviewTab slug={businessSlug} pin={storePin} config={config} themeColor={themeColor}
-                         businessName={config.businessName} onGoTab={setTab} />
+                         businessName={config.businessName} onGoTab={setTab} domain={liveDomain} />
           </div>
         ) : tab === 'assistant' ? (
           <div className="animate-pl-fade-up">
@@ -3242,7 +3253,7 @@ export default function ManageStore() {
         ) : tab === 'insights' ? (
           <div className="animate-pl-fade-up">
             <AiInsightsTab slug={businessSlug} pin={storePin} themeColor={themeColor}
-                           enabled={aiInsightsEnabled} businessName={config.businessName} config={config} />
+                           enabled={aiInsightsEnabled} businessName={config.businessName} config={config} domain={liveDomain} />
           </div>
         ) : tab === 'ads' ? (
           <div className="animate-pl-fade-up">
@@ -3261,6 +3272,7 @@ export default function ManageStore() {
                 onSave={handleSave}
                 saveStatus={saveStatus}
                 saveError={saveError}
+                domain={liveDomain}
               />
               <div className="flex items-center gap-2 pt-1">
                 <div className="h-px flex-1 bg-gray-200" />
@@ -3307,6 +3319,7 @@ export default function ManageStore() {
               saveError={saveError}
               onDelete={handleStoreDeleted}
               pin={storePin}
+              domainState={domainState}
             />
           )}
         </div>

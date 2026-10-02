@@ -11,7 +11,7 @@ import { buildKnowledgeDoc, downloadKnowledgeDoc, knowledgeSummary, knowledgeFil
  * always reflects the current catalogue. (Direct Meta-API sync is a future step;
  * this is the download-and-upload version, built on the same doc builder.)
  */
-export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
+export default function BotKnowledge({ config = {}, themeColor = '#0d9488', domain = null }) {
   const [preview, setPreview]   = useState(false);
   const [copied, setCopied]     = useState(false);
   const [doc, setDoc]           = useState('');
@@ -21,7 +21,7 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
   const hasProducts = summary.products > 0;
 
   function ensureDoc() {
-    const text = buildKnowledgeDoc(config);
+    const text = buildKnowledgeDoc(config, { domain });
     setDoc(text);
     return text;
   }
@@ -29,7 +29,7 @@ export default function BotKnowledge({ config = {}, themeColor = '#0d9488' }) {
   async function handleDownload() {
     if (building) return;
     setBuilding(true);                    // fetching + embedding product photos
-    try { await downloadKnowledgeDoc(config); } finally { setBuilding(false); }
+    try { await downloadKnowledgeDoc(config, { domain }); } finally { setBuilding(false); }
   }
 
   async function handleCopy() {

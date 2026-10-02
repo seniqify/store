@@ -8,6 +8,7 @@ import { fetchReviews } from '../../utils/reviewService';
 import { buildOverviewExtras } from '../../utils/overviewStats';
 import { buildOverviewMetrics, WEEKDAY_LETTERS } from '../../utils/overviewMetrics';
 import { formatINR } from '../../utils/currency';
+import { publicStoreUrl } from '../../utils/storeUrls';
 
 // The merchant's clock. Every order-derived day boundary on this screen is
 // theirs, not the browser's.
@@ -22,7 +23,7 @@ const STORE_TZ = 'Asia/Kolkata';
  * actions. Built entirely from data the other tabs already compute — no new
  * backend. `onGoTab(key)` switches the active Manage tab.
  */
-export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9488', businessName = '', onGoTab }) {
+export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9488', businessName = '', onGoTab, domain = null }) {
   // The facts RESULT, not its rows: { ok, data, reason }. An empty list is a
   // real answer - this store has taken no orders - and a failed read is not an
   // answer at all. Home must never show the two the same way.
@@ -117,7 +118,7 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
   const weekMax = Math.max(...acc.week.map((d) => d.sales), 1);
 
   async function shareStore() {
-    const url = `${window.location.origin}/${slug}`;
+    const url = publicStoreUrl(slug, {}, domain, window.location.origin);   // their own domain once it is live
     if (navigator.share) { try { await navigator.share({ title: businessName, text: `Order from ${businessName}`, url }); } catch { /* dismissed */ } }
     else { try { await navigator.clipboard?.writeText(url); } catch { /* ignore */ } }
   }

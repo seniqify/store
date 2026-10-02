@@ -21,8 +21,9 @@ import { paragraphsToDocxBlob } from './docxWriter';
  */
 
 export const STORE_ORIGIN = 'https://www.pocketlink.store';
-export const storeUrl   = (slug) => `${STORE_ORIGIN}/${slug}`;
-export const productUrl = (slug, id) => `${STORE_ORIGIN}/${slug}/p/${id}`;
+// `domain`: the store's own domain while it is live (Manage passes it); else PocketLink.
+export const storeUrl   = (slug, domain) => (domain ? `https://${domain}` : `${STORE_ORIGIN}/${slug}`);
+export const productUrl = (slug, id, domain) => (domain ? `https://${domain}/p/${id}` : `${STORE_ORIGIN}/${slug}/p/${id}`);
 
 const SZ = { title: 34, meta: 18, section: 26, product: 24, body: 21 };
 
@@ -100,7 +101,7 @@ function normalizedProducts(config) {
 // ── Structured content (single source of truth) ───────────────────────────────
 // Text paragraphs, plus an { image:{ src, url } } marker where each product photo
 // belongs. The text/docx builders each resolve that marker their own way.
-function collectContent(config = {}) {
+function collectContent(config = {}, { domain = null } = {}) {
   const slug = config.slug;
   const products = normalizedProducts(config);
   const name = clean(config.businessName || config.name) || 'This store';
@@ -119,7 +120,7 @@ function collectContent(config = {}) {
   const info = (label, val) => { const v = clean(val); if (v) P(`${label}: ${v}`); };
   info('Store Name', config.businessName || config.name);
   if (clean(config.tagline)) P(`About: ${clean(config.tagline)}`);
-  P(`Website: ${storeUrl(slug)}`);
+  P(`Website: ${storeUrl(slug, domain)}`);
   const wa = prettyPhone(config.whatsappNumber);
   if (wa) P(`WhatsApp / Contact: ${wa}`);
   const place = [config.address, config.area, config.state].map(clean).filter(Boolean).join(', ');
@@ -130,7 +131,7 @@ function collectContent(config = {}) {
   blank();
 
   P('HOW TO ORDER', { bold: true, size: SZ.body });
-  P(`- Open the store link (${storeUrl(slug)}), choose products, and tap “Order on WhatsApp”.`);
+  P(`- Open the store link (${storeUrl(slug, domain)}), choose products, and tap “Order on WhatsApp”.`);
   if (wa) P(`- Or message the shop on WhatsApp at ${wa}.`);
   const estimate = clean(config.cart?.deliveryEstimate);
   if (estimate) P(`- Typical delivery time: ${estimate}.`);
@@ -153,7 +154,7 @@ function collectContent(config = {}) {
     const variants = variantLine(p); if (variants) P(`Options: ${variants}`);
     extrasLines(p).forEach((l) => P(`Choice — ${l}`));
     const details = detailsLine(p); if (details) P(`Details: ${details}`);
-    P(`Product link: ${productUrl(slug, p.id)}`);
+    P(`Product link: ${productUrl(slug, p.id, domain)}`);
     blank();
   });
 
@@ -163,16 +164,16 @@ function collectContent(config = {}) {
 }
 
 // Text paragraphs — image markers become an "Image: <url>" line (Preview / Copy).
-export function knowledgeParas(config = {}) {
-  return collectContent(config).flatMap((it) => {
+export function knowledgeParas(config = {}, opts = {}) {
+  return collectContent(config, opts).flatMap((it) => {
     if (it.image) return it.image.url ? [{ text: `Image: ${it.image.url}`, size: SZ.body }] : [];
     return [it];
   });
 }
 
 /** Plain-text form (Preview / Copy). */
-export function buildKnowledgeDoc(config = {}) {
-  return knowledgeParas(config).map((p) => p.text).join('\n');
+export function buildKnowledgeDoc(config = {}, opts = {}) {
+  return knowledgeParas(config, opts).map((p) => p.text).join('\n');
 }
 
 // ── Image fetch/decode for embedding (JPEG/PNG only) ──────────────────────────
@@ -211,8 +212,8 @@ async function loadImagePart(src) {
 }
 
 // Docx items — product photos fetched + embedded; failed ones fall back to text.
-async function buildKnowledgeItems(config = {}) {
-  const content = collectContent(config);
+async function buildKnowledgeItems(config = {}, opts = {}) {
+  const content = collectContent(config, opts);
   const srcs = [...new Set(content.filter((it) => it.image?.src).map((it) => it.image.src))];
   const loaded = new Map();
   await Promise.all(srcs.map(async (s) => { loaded.set(s, await loadImagePart(s)); }));
@@ -246,8 +247,8 @@ export function knowledgeFilename(config = {}) {
 }
 
 /** Build (fetch + embed images) and download the .docx. Async. */
-export async function downloadKnowledgeDoc(config = {}) {
-  const items = await buildKnowledgeItems(config);
+export async function downloadKnowledgeDoc(config = {}, opts = {}) {
+  const items = await buildKnowledgeItems(config, opts);
   const blob = paragraphsToDocxBlob(items);
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');

@@ -4,7 +4,7 @@
 //   Content-Type: application/json
 //   body: { action, slug, hashedPin, ...action fields }
 //   actions:
-//     status                                   -> { domain, vercel_verification? }
+//     status                                   -> { domain, serving, vercel_verification? }
 //     claim        { hostname }                -> PENDING group + TXT record to publish
 //     verify                                   -> live TXT check, then verified
 //     refresh                                  -> re-read Vercel, attach, mark ready,
@@ -47,8 +47,22 @@ import { createDomainDb } from './_db.js';
 import { createVercelClient } from './_vercel.js';
 import { createDomainService } from './_service.js';
 import { createBudget } from './_budget.js';
+import { routingMode } from '../_hosts.js';
 
 export const REQUEST_BUDGET_MS = 50000;          // maxDuration is 60 s
+
+/**
+ * status, plus `serving`: is the store's CONNECTED primary hostname routed right
+ * now? A group can be connected while routing is off for its host (global flag
+ * off and the host not on the test list) -- it then shows "not connected", so
+ * Manage must not hand that link out. Only the server knows the routing mode.
+ */
+export function withServing(body, env = process.env) {
+  const d = body?.domain;
+  const serving = Boolean(d && d.status === 'connected' && d.primary_host
+    && routingMode(String(d.primary_host).toLowerCase(), env) !== 'off');
+  return { ...body, serving };
+}
 
 /**
  * Real dependencies. The Vercel client is configured ONLY when the same check
@@ -104,7 +118,7 @@ export async function handleManage(req, { env = process.env, fetchImpl = globalT
   const svc = createDomainService(withBudget(injected || buildDeps(cfg, fetchImpl), createBudget({ totalMs: budgetMs })));
   try {
     switch (action) {
-      case 'status':      return { status: 200, body: await svc.status(slug) };
+      case 'status':      return { status: 200, body: withServing(await svc.status(slug), env) };
       case 'claim':       return { status: 200, body: await svc.claim(slug, body.hostname) };
       case 'verify':      return { status: 200, body: await svc.verify(slug) };
       case 'refresh':     return { status: 200, body: await svc.refresh(slug) };
