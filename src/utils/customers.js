@@ -1,4 +1,4 @@
-import { isPaymentIncomplete } from './orderState';
+import { isPaymentIncomplete } from './orderState.js';
 /**
  * Customer intelligence — derives a per-customer view from saved orders.
  *
@@ -107,13 +107,19 @@ function assignSegments(customers) {
   // Needs a few customers to be meaningful, else everyone looks like a whale.
   const spends = customers.map((c) => c.totalSpent).filter((v) => v > 0).sort((a, b) => a - b);
   const p80 = spends.length ? spends[Math.min(spends.length - 1, Math.floor(spends.length * 0.8))] : Infinity;
+  // ...and they must have spent MORE than the typical customer. When most
+  // customers buy the same thing once (krupaagarbattiwork, 2026-10-04: 265 of 312
+  // spent exactly ₹290), the 80th percentile IS that common amount, and `>= p80`
+  // alone made almost everyone a "big spender". Above the median, a tie can no
+  // longer sweep the whole base in; if everyone spent the same, nobody stands out.
+  const median = spends.length ? spends[Math.floor((spends.length - 1) / 2)] : Infinity;
 
   for (const c of customers) {
     const segs = [];
     if (c.orderCount >= LOYAL_ORDERS) segs.push('loyal');
     if (c.orderCount === 1) segs.push('new');
     if (c.daysSinceLast != null && c.daysSinceLast >= LAPSED_DAYS && c.orderCount >= 1) segs.push('winback');
-    if (spends.length >= 3 && c.totalSpent > 0 && c.totalSpent >= p80) segs.push('bigspender');
+    if (spends.length >= 3 && c.totalSpent > 0 && c.totalSpent >= p80 && c.totalSpent > median) segs.push('bigspender');
     c.segments = segs;
   }
 }
