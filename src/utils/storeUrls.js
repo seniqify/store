@@ -43,6 +43,17 @@ export function storeUrl(origin, slug, opts) {
   return `${origin}/${slug}${tail(opts)}`;
 }
 
+/**
+ * The link an owner shares for their store, a product or a category: on their
+ * own domain while it is live (`domain`, from the domain API's status), else on
+ * PocketLink (`origin`, today's behaviour). Order tracking, confirm and review
+ * links never use this -- they always stay on PocketLink.
+ */
+export function publicStoreUrl(slug, opts = {}, domain = null, origin = PL_ORIGIN) {
+  if (domain) return `https://${domain}${tail(opts)}`;
+  return storeUrl(origin, slug, opts);
+}
+
 /** Path to the owner's dashboard. The dashboard only ever lives on PocketLink. */
 export function managePath(slug, mode = hostMode()) {
   return mode.mode === 'merchant' ? `${PL_ORIGIN}/${slug}/manage` : `/${slug}/manage`;

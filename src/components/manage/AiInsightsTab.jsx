@@ -15,7 +15,7 @@ import BotKnowledge from './BotKnowledge';
  * it's the seller's own data and it funnels them toward WhatsApp AI; the query
  * insights below stay Premium-gated.
  */
-export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabled = false, businessName = 'your store', config = {} }) {
+export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabled = false, businessName = 'your store', config = {}, domain = null }) {
   const [loading, setLoading]   = useState(true);
   const [insights, setInsights] = useState(null);
 
@@ -222,7 +222,7 @@ export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabl
 
   return (
     <div className="space-y-5">
-      <BotKnowledge config={config} themeColor={themeColor} />
+      <BotKnowledge config={config} themeColor={themeColor} domain={domain} />
       {insightsBody()}
     </div>
   );

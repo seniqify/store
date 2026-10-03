@@ -1363,12 +1363,21 @@ test('static: no VITE_ config, no CORS, no client import, no direct domain-table
   assert.doesNotMatch(dbSrc, /'(PATCH|PUT|DELETE)'/);
   assert.equal(dbSrc.match(/method: 'POST'/g).length, 1);
   assert.match(dbSrc, /const rpc = \(fn, args\) => request\(`\/rest\/v1\/rpc\/\$\{fn\}`, \{ method: 'POST'/);
-  // The browser bundle never sees any of it.
+  // The browser bundle never sees the server side of it: no server setting or
+  // table name, and no import of server code. PR-E: the owner's card CALLS the
+  // endpoint by URL -- from src/utils/domainsApi.js only.
   const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]);
   for (const f of walk(fileURLToPath(new URL('../src', import.meta.url)))) {
     const src = readFileSync(f, 'utf8');
-    assert.doesNotMatch(src, /api\/domains|DOMAINS_VERCEL|DOMAINS_OTP|CUSTOM_DOMAINS_ENABLED|SUPABASE_SERVICE_ROLE|store_domain/, f);
+    assert.doesNotMatch(src, /DOMAINS_VERCEL|DOMAINS_OTP|CUSTOM_DOMAINS_ENABLED|SUPABASE_SERVICE_ROLE|store_domain/, f);
+    assert.doesNotMatch(src, /from\s+['"][^'"]*api\/domains/, `${f}: imports server code`);
+    const refs = src.match(/api\/domains/g) || [];
+    if (f.replace(/\\/g, '/').endsWith('/src/utils/domainsApi.js')) {
+      assert.ok(src.includes("fetchImpl('/api/domains/manage'"), 'the one client call, by URL');
+    } else {
+      assert.equal(refs.length, 0, `${f}: only src/utils/domainsApi.js may reach the domain API`);
+    }
   }
   // No schedule is installed, and PR-B's migration files are untouched.
   const vj = JSON.parse(read('vercel.json'));
@@ -1385,4 +1394,43 @@ test('shim sanity: domain reads go through service_role REST exactly as in produ
   const bad = await w.shim.handle(`${SB}/rest/v1/store_domains?store_slug=eq.${s.slug}&select=hostname`,
     { method: 'GET', headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } });
   assert.equal(bad.status, 401, 'the shim refuses anything but the service key');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-E: status tells Manage whether the connected domain is actually SERVED
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('status.serving: true only for a CONNECTED primary that the routing mode serves (test list or global)', async () => {
+  const w = await world();
+  const none = await store(w);
+  let r = await api(w, none, 'status');
+  assert.deepEqual([r.outcome, r.domain, r.serving], ['ok', null, false], 'no domain');
+
+  const ready = await store(w);
+  const hReady = host();
+  await readyDomain(w, ready, hReady);
+  w.env.CUSTOM_DOMAINS_ROUTING_ENABLED = 'true';
+  r = await api(w, ready, 'status');
+  assert.deepEqual([r.domain.status, r.serving], ['ready', false], 'ready is never served, even with global routing');
+  delete w.env.CUSTOM_DOMAINS_ROUTING_ENABLED;
+
+  const live = await store(w);
+  const h = host();
+  await connectedDomain(w, live, h);
+  r = await api(w, live, 'status');
+  assert.deepEqual([r.domain.status, r.domain.primary_host, r.serving], ['connected', h, false], 'connected, routing off: not served');
+
+  w.env.CUSTOM_DOMAINS_ROUTING_TEST_HOSTS = `www.${h}`;
+  assert.equal((await api(w, live, 'status')).serving, false, 'only the www name listed: the primary is not served');
+  w.env.CUSTOM_DOMAINS_ROUTING_TEST_HOSTS = `${h},www.${h}`;
+  assert.equal((await api(w, live, 'status')).serving, true, 'test mode: served');
+  delete w.env.CUSTOM_DOMAINS_ROUTING_TEST_HOSTS;
+  w.env.CUSTOM_DOMAINS_ROUTING_ENABLED = 'true';
+  assert.equal((await api(w, live, 'status')).serving, true, 'global: served');
+  delete w.env.CUSTOM_DOMAINS_ROUTING_ENABLED;
+
+  // Only status carries it; refusals before the domain service never do.
+  assert.equal((await api(w, live, 'refresh')).serving, undefined);
+  const outsider = { slug: 'notlisted', hashedPin: hashPin('2580') };
+  assert.deepEqual(await api(w, outsider, 'status'), { outcome: 'feature_disabled' });
 });
