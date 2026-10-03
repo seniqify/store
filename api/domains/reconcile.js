@@ -1,8 +1,15 @@
 // /api/domains/reconcile -- one reconciler pass (see _reconcile.js).
 //
 // Caller must send  Authorization: Bearer <CRON_SECRET>  -- the header Vercel
-// Cron sends when CRON_SECRET is set, so the same endpoint can be scheduled
-// later. NO SCHEDULE IS INSTALLED BY THIS PR: vercel.json has no cron for it.
+// Cron sends when CRON_SECRET is set.
+//
+// SCHEDULE (vercel.json "crons"): every 30 minutes, production only. Not hourly
+// on purpose: a connected group's health is due once its last check is at
+// least 1 hour old (store_domain_health_interval), and that time is stamped
+// when the check finishes -- a moment AFTER the tick. An hourly tick therefore
+// always finds it a few seconds short and checks every 2 hours; a 30-minute
+// tick checks every 60-90 minutes. The database still decides what is due, so
+// no group is health-checked more than once an hour, whatever the schedule.
 //
 // CUSTOM_DOMAINS_ENABLED off -> feature_disabled, with no database or Vercel
 // call of any kind. The response is counts only.

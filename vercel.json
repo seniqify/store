@@ -8,6 +8,9 @@
     "api/domains/reconcile.js": { "maxDuration": 60 },
     "api/render.js": { "includeFiles": "dist/index.html" }
   },
+  "crons": [
+    { "path": "/api/domains/reconcile", "schedule": "*/30 * * * *" }
+  ],
   "headers": [
     { "source": "/version.json", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }] }
   ],

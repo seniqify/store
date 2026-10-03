@@ -1379,9 +1379,9 @@ test('static: no VITE_ config, no CORS, no client import, no direct domain-table
       assert.equal(refs.length, 0, `${f}: only src/utils/domainsApi.js may reach the domain API`);
     }
   }
-  // No schedule is installed, and PR-B's migration files are untouched.
+  // The one schedule is the reconciler (PR-C.1), and PR-B's migration files are untouched.
   const vj = JSON.parse(read('vercel.json'));
-  assert.equal(vj.crons, undefined);
+  assert.deepEqual(vj.crons, [{ path: '/api/domains/reconcile', schedule: '*/30 * * * *' }]);
   const sha = (p) => crypto.createHash('sha256').update(read(p).replace(/\r\n/g, '\n')).digest('hex').slice(0, 16);
   assert.equal(sha('supabase/custom-domains-forward.sql'), '83f56942b4ae0508');
   assert.equal(sha('supabase/custom-domains-verify.sql'), 'e5b4abf8c261c686');
@@ -1433,4 +1433,123 @@ test('status.serving: true only for a CONNECTED primary that the routing mode se
   assert.equal((await api(w, live, 'refresh')).serving, undefined);
   const outsider = { slug: 'notlisted', hashedPin: hashPin('2580') };
   assert.deepEqual(await api(w, outsider, 'status'), { outcome: 'feature_disabled' });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-C.1: scheduled passes, exactly as Vercel Cron calls the endpoint
+// (GET, Authorization: Bearer <CRON_SECRET>). One tick = one handleReconcile.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** One cron tick. `deps` lets a test swap in a Vercel client with a short timeout. */
+async function cronTick(w, deps = w.deps) {
+  const r = await handleReconcile(
+    { method: 'GET', headers: { authorization: `Bearer ${CRON_SECRET}`, 'user-agent': 'vercel-cron/1.0' } },
+    { env: w.env, fetchImpl: w.fetchImpl, deps });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.outcome, 'ok', JSON.stringify(r.body));
+  return r.body;
+}
+const primaryOf = async (w, s) => (await w.pg.query(
+  `select status, consecutive_health_failures as f, expires_at, last_checked_at from public.store_domains
+    where store_slug = $1 and role = 'primary' and status not in ('disconnected', 'expired')`, [s.slug])).rows[0];
+const vercelRemovals = (w) => w.timeline.of('vercel').filter((e) => e.op === 'remove').length;
+const routed = async (w, h) => (await w.pg.query('select * from public.resolve_store_host($1)', [h])).rows.length === 1;
+
+test('scheduled pass: one failure tolerated, two -> misconfigured, a full pass recovers; other groups untouched; nothing removed', async () => {
+  const w = await world({ isolated: true });
+  const a = await store(w);
+  const da = await connectedDomain(w, a);
+  const b = await store(w);
+  const db_ = await connectedDomain(w, b);
+  const p = await store(w);
+  assert.equal((await api(w, p, 'claim', { hostname: host('pend') })).outcome, 'claimed');
+  const pendingRows = await rowsOf(w, p.slug);
+  const due = async () => { await makeHealthDue(w, a.slug); await makeHealthDue(w, b.slug); await expireLeases(w); };
+  const state = async (s) => { const r = await primaryOf(w, s); return [r.status, r.f]; };
+  const removalsBefore = vercelRemovals(w);
+
+  // Healthy: both connected groups checked in one tick.
+  await due();
+  let r = await cronTick(w);
+  assert.deepEqual([r.health, r.errors], [2, 0]);
+  assert.deepEqual(await state(a), ['connected', 0]);
+
+  // First failure: tolerated -- still connected and still routed.
+  w.vercel.knobs.misconfigured.set(`www.${da.host}`, true);
+  await due();
+  await cronTick(w);
+  assert.deepEqual(await state(a), ['connected', 1]);
+  assert.ok(await routed(w, da.host), 'one failed check never stops routing');
+
+  // A Vercel timeout is no verdict: nothing counted, nothing stamped -- and the other group is still checked.
+  const slow = { ...w.deps, vercel: createVercelClient({ token: VERCEL_TOKEN, projectId: PROJECT_ID, teamId: TEAM_ID,
+                                                         fetchImpl: w.fetchImpl, timeoutMs: 40 }) };
+  w.vercel.knobs.hang.add(`GET config:${da.host}`);
+  await due();
+  const stampedBefore = (await primaryOf(w, a)).last_checked_at;
+  r = await cronTick(w, slow);
+  assert.equal(r.health_no_verdict, 1);
+  assert.deepEqual(await state(a), ['connected', 1], 'a timeout neither counts as a failure nor resets one');
+  assert.deepEqual((await primaryOf(w, a)).last_checked_at, stampedBefore, 'not stamped: it is due again next tick');
+  assert.deepEqual(await state(b), ['connected', 0], 'the other group was checked normally');
+  w.vercel.knobs.hang.delete(`GET config:${da.host}`);
+
+  // Second consecutive failure: misconfigured (stops routing, keeps the domain), 30-day expiry set.
+  await due();
+  await cronTick(w);
+  const m = await primaryOf(w, a);
+  assert.deepEqual([m.status, m.f], ['misconfigured', 2]);
+  const days = (new Date(m.expires_at) - Date.now()) / 86400000;
+  assert.ok(days > 29.9 && days <= 30, `released only if it stays broken for 30 days (${days.toFixed(2)})`);
+
+  // Partly fixed (www right, apex now wrong): not every name configured -> no reset, still misconfigured.
+  w.vercel.dnsReady(`www.${da.host}`);
+  w.vercel.knobs.misconfigured.set(`www.${da.host}`, false);
+  w.vercel.knobs.misconfigured.set(da.host, true);
+  await due();
+  await cronTick(w);
+  assert.deepEqual(await state(a), ['misconfigured', 3]);
+  assert.deepEqual((await primaryOf(w, a)).expires_at, m.expires_at, 'the expiry is never moved by a check');
+
+  // Fully fixed: one complete pass recovers it.
+  w.vercel.knobs.misconfigured.set(da.host, false);
+  w.vercel.dnsReady(da.host);
+  await due();
+  await cronTick(w);
+  const back = await primaryOf(w, a);
+  assert.deepEqual([back.status, back.f, back.expires_at], ['connected', 0, null]);
+  assert.ok(await routed(w, da.host));
+
+  // Throughout: the other connected group never moved, the pending claim was left alone,
+  // and no hostname was removed from Vercel because a check failed.
+  assert.deepEqual(await state(b), ['connected', 0]);
+  assert.ok(await routed(w, db_.host));
+  assert.deepEqual(await rowsOf(w, p.slug), pendingRows);
+  assert.equal(vercelRemovals(w), removalsBefore, 'no Vercel removal');
+});
+
+test('scheduled pass: failed checks never release a domain; only the existing 30-day misconfigured expiry does', async () => {
+  const w = await world({ isolated: true });
+  const s = await store(w);
+  const d = await connectedDomain(w, s);
+  w.vercel.knobs.misconfigured.set(d.host, true);
+  const removalsBefore = vercelRemovals(w);
+  for (let i = 0; i < 6; i++) {                    // three hours of failing checks
+    await makeHealthDue(w, s.slug);
+    await expireLeases(w);
+    await cronTick(w);
+  }
+  const m = await primaryOf(w, s);
+  assert.deepEqual([m.status, m.f], ['misconfigured', 6]);
+  assert.equal(vercelRemovals(w), removalsBefore, 'still attached on Vercel: nothing removed');
+  assert.ok(w.vercel.project.has(d.host) && w.vercel.project.has(`www.${d.host}`), 'both names still on the Vercel project');
+
+  // The pre-existing rule (PR-B): a group left misconfigured past its 30-day expiry goes to cleanup.
+  await w.pg.query(`update public.store_domains set expires_at = now() - interval '1 second'
+                     where store_slug = $1 and status = 'misconfigured'`, [s.slug]);
+  await expireLeases(w);
+  const r = await cronTick(w);
+  assert.equal(r.expired, 1);
+  const ended = (await w.pg.query(`select status, end_reason from public.store_domains where store_slug = $1 order by kind`, [s.slug])).rows;
+  assert.ok(ended.every((x) => ['disconnecting', 'expired'].includes(x.status) && x.end_reason === 'misconfigured_ttl'), JSON.stringify(ended));
 });
