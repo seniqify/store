@@ -3,10 +3,11 @@ import {
   ShoppingBag, IndianRupee, ShoppingCart, Package, Star, Wallet,
   Plus, Share2, Download, ChevronRight, Sparkles, RefreshCw,
 } from 'lucide-react';
-import { fetchOrderFacts } from '../../utils/orderService';
+import { fetchOrderFacts, fetchAbandonedCarts } from '../../utils/orderService';
 import { fetchReviews } from '../../utils/reviewService';
 import { buildOverviewExtras } from '../../utils/overviewStats';
 import { buildOverviewMetrics, WEEKDAY_LETTERS } from '../../utils/overviewMetrics';
+import { summarizeAbandoned } from '../../utils/abandonedCarts';
 import { formatINR } from '../../utils/currency';
 import { publicStoreUrl } from '../../utils/storeUrls';
 
@@ -28,10 +29,14 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
   // real answer - this store has taken no orders - and a failed read is not an
   // answer at all. Home must never show the two the same way.
   //
-  // Home reads ONLY the uncapped, PII-free facts feed. Every figure it shows
-  // needs nothing but created_at, status, total, paid and the shipment columns,
-  // so it has no reason to touch the capped get_store_orders list at all.
+  // Home's accounting reads ONLY the uncapped, PII-free facts feed. Every sales
+  // figure needs nothing but created_at, status, total, paid and the shipment
+  // columns, so it has no reason to touch the capped get_store_orders list at
+  // all. The one exception, abandoned carts, has its own uncapped feed below.
   const [factsResult, setFactsResult] = useState(null);   // null = loading
+  // Abandoned carts come from their own feed, the same per-customer list the
+  // Abandoned tab shows, so the two screens always agree. Same { ok, data } envelope.
+  const [cartsResult, setCartsResult] = useState(null);
   const [reviews, setReviews] = useState([]);
   // The one clock reading on this screen, taken when the data lands rather than
   // during render, so the day windows are stable across re-renders.
@@ -41,14 +46,16 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
 
   const load = useCallback(async () => {
     setFactsResult(null);
-    const [facts, revs] = await Promise.all([
+    const [facts, revs, carts] = await Promise.all([
       fetchOrderFacts(slug, pin),
       fetchReviews(slug),
+      isService ? null : fetchAbandonedCarts(slug, pin),
     ]);
     setReviews(revs || []);
+    setCartsResult(carts);
     setFactsResult(facts);
     setLoadedAt(Date.now());
-  }, [slug, pin]);
+  }, [slug, pin, isService]);
   useEffect(() => { load(); }, [load]);
 
   // Built only from a SUCCESSFUL read. On failure the rows are empty and this
@@ -67,6 +74,12 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
     [config, reviews, loadedAt],
   );
   const accountingOk = factsResult?.ok === true;
+  // Same rule for the carts: a failed read shows no row at all, never a zero.
+  const carts = useMemo(
+    () => summarizeAbandoned(cartsResult?.ok ? cartsResult.data : []),
+    [cartsResult],
+  );
+  const cartsOk = cartsResult?.ok === true;
 
   // ── Loading skeleton ──
   if (factsResult === null) {
@@ -99,10 +112,10 @@ export default function OverviewTab({ slug, pin, config = {}, themeColor = '#0d9
       title: `${formatINR(acc.toCollect)} to collect`,
       sub: `${acc.unpaidCount} unpaid ${acc.unpaidCount === 1 ? 'order' : 'orders'}`,
       cta: 'View', onClick: () => onGoTab?.('orders') });
-  if (accountingOk && !isService && acc.abandonedCount > 0)
+  if (cartsOk && !isService && carts.count > 0)
     attention.push({ key: 'abandoned', emoji: '🛒', tint: 'rose',
-      title: `${acc.abandonedCount} abandoned ${acc.abandonedCount === 1 ? 'cart' : 'carts'}`,
-      sub: acc.abandonedValue > 0 ? `${formatINR(acc.abandonedValue)} nearly bought — win back` : 'Win them back',
+      title: `${carts.count} abandoned ${carts.count === 1 ? 'cart' : 'carts'}`,
+      sub: carts.value > 0 ? `${formatINR(carts.value)} nearly bought — win back` : 'Win them back',
       cta: 'Recover', onClick: () => onGoTab?.('abandoned') });
   if (extras.outOfStockCount > 0)
     attention.push({ key: 'stock', emoji: '📦', tint: 'blue',

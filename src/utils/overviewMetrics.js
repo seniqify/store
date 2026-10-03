@@ -13,9 +13,8 @@
  * TERMINOLOGY. Home shows no all-time aggregate: there is no Gross Sales, Sales
  * Orders or Average Order Value card here. What it shows is
  *
- *   FLOWS      today's sales, yesterday's, the seven-day chart, abandoned carts
- *              in the recent window — each dated by created_at and bounded by an
- *              explicit range.
+ *   FLOWS      today's sales, yesterday's, the seven-day chart — each dated by
+ *              created_at and bounded by an explicit range.
  *   A BALANCE  "To collect", a position: money still collectible right now.
  *   A COUNT    new orders awaiting action, all-time.
  *
@@ -30,6 +29,13 @@
  * Payments and Delivery still compute their own "to collect" over different
  * populations. Those are separate screens with separate migrations; do not make
  * them agree by editing this file.
+ *
+ * ABANDONED CARTS ARE NOT HERE. They used to be: every abandoned row in the last
+ * 30 days, counted from this feed — 406 on a store whose Abandoned tab showed 50,
+ * because the checkout records one row per customer per day and a customer who
+ * later ordered was still counted. Home now reads the same per-customer list as
+ * the Abandoned tab (fetchAbandonedCarts → abandonedCarts.js). This feed has no
+ * phone number, so it cannot tell customers apart; do not count carts here again.
  */
 import {
   buildCommerceMetrics, checkInvariants, classifyOrder,
@@ -38,7 +44,6 @@ import {
 
 const DAY = 86400000;
 
-const paise = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
 const status = (o) => String(o?.status ?? '').toLowerCase().trim();
 
 /** Is this row eligible to count as one of the store's sales? Canonical only. */
@@ -53,10 +58,9 @@ const isSaleRow = (o) => {
  * @param {string}  [opts.timeZone]       the merchant's zone; all day boundaries
  * @param {number}   opts.now             epoch ms; the only clock reading, supplied
  * @param {number}  [opts.weekDays]       civil days in the chart (default 7)
- * @param {number}  [opts.abandonedDays]  civil days in the abandoned window (default 30)
  */
 export function buildOverviewMetrics(facts, {
-  timeZone = 'Asia/Kolkata', now, weekDays = 7, abandonedDays = 30,
+  timeZone = 'Asia/Kolkata', now, weekDays = 7,
 } = {}) {
   const rows = Array.isArray(facts) ? facts : [];
   const clock = Number.isFinite(now) ? now : null;
@@ -77,8 +81,6 @@ export function buildOverviewMetrics(facts, {
   let todayDeltaPct = null;
   let week = [];
   let weekTotal = 0;
-  let abandonedCount = 0;
-  let abandonedValuePaise = 0;
 
   if (clock !== null) {
     // The range runs wider than the days actually shown, so every displayed day
@@ -113,22 +115,6 @@ export function buildOverviewMetrics(facts, {
     todayDeltaPct = yesterdaySales > 0
       ? Math.round(((todaySales - yesterdaySales) / yesterdaySales) * 100)
       : null;
-
-    // Abandoned carts: EXACTLY `abandonedDays` merchant CIVIL DAYS ending today,
-    // today included — not a rolling 30 × 24 hours. Membership is tested on the
-    // day key, so the boundary is the merchant's midnight, same as every other
-    // day boundary on this screen.
-    const windowKeys = new Set(
-      dayKeysBetween(clock - (abandonedDays - 1) * DAY, clock, timeZone).slice(-abandonedDays),
-    );
-    for (const o of rows) {
-      if (classifyOrder(o) !== 'abandoned') continue;
-      const key = dayKeyInZone(Date.parse(o?.created_at), timeZone);
-      if (key && windowKeys.has(key)) {
-        abandonedCount += 1;
-        abandonedValuePaise += paise(o?.total);
-      }
-    }
   }
 
   return {
@@ -138,8 +124,6 @@ export function buildOverviewMetrics(facts, {
     todayDeltaPct,
     week,
     weekTotal,
-    abandonedCount,
-    abandonedValue: abandonedValuePaise / 100,
     // balance (a position, not an aggregate)
     toCollect,
     unpaidCount,

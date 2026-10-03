@@ -135,7 +135,8 @@ export async function saveAbandonedCheckout(customerDetails = {}, cart = [], con
 
 /** Owner-only: list this store's orders (PIN-checked server-side).
  *  Abandoned-checkout rows are excluded by default so Orders, Stats and
- *  Customers never count them — only the Abandoned tab opts in. */
+ *  Customers never count them — only the Customers CSV export opts in. The
+ *  Abandoned tab reads fetchAbandonedCarts instead. */
 export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) {
   try {
     const hashed = await hashPin(pin);
@@ -187,6 +188,26 @@ export async function fetchOrderFacts(slug, pin) {
     );
   } catch {
     // Network down, request aborted, hashing unavailable - all "we do not know".
+    return factsFailed('unavailable');
+  }
+}
+
+/** Owner-only: the store's abandoned carts (get_store_abandoned_carts) - ONE row
+ *  per customer who reached checkout in the last 30 IST days and has not ordered
+ *  since, with their latest cart and `attempts`. The single definition behind
+ *  both Home's abandoned-carts row and the Abandoned tab, so the two always show
+ *  the same number. Uncapped: the 30-day window bounds it.
+ *
+ *  Same envelope as fetchOrderFacts - { ok, data } or { ok: false, data: [],
+ *  reason } - because "no abandoned carts" and "could not load them" must not
+ *  look alike. A wrong PIN is an empty set, as everywhere else. */
+export async function fetchAbandonedCarts(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    return factsFromRpc(
+      await supabase.rpc('get_store_abandoned_carts', { p_slug: slug, p_hashed_pin: hashed }),
+    );
+  } catch {
     return factsFailed('unavailable');
   }
 }
