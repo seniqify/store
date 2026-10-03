@@ -37,7 +37,7 @@ test('no server code compares the store PIN hash itself', () => {
 });
 
 test('the six seller functions go through verify_store_pin before acting', () => {
-  for (const name of ['payments-connect', 'send-campaign', 'shipping-book', 'shipping-connect', 'shipping-ops', 'shipping-sync', 'payments-link']) {
+  for (const name of ['payments-connect', 'send-campaign', 'shipping-book', 'shipping-connect', 'shipping-ops', 'shipping-sync', 'payments-link', 'wallet-topup']) {
     const src = readFileSync(`${fnDir}${name}/index.ts`, 'utf8');
     assert.match(src, /supabase\.rpc\('verify_store_pin', \{ p_slug: slug, p_hashed_pin: (hashedPin|hashedPin) \}\)/, name);
     assert.match(src, /if \(pinOk !== true\) return /, name);
