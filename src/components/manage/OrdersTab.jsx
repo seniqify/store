@@ -94,24 +94,24 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const dateRef = useRef(null);
 
   const [refreshing, setRefreshing] = useState(false);
-  // Rows the backend returned before abandoned ones were dropped - the only way
-  // to tell a full page from a short one.
-  const [rawCount,   setRawCount]   = useState(0);
+  // Real orders loaded (abandoned checkouts excluded) - what the order limit
+  // counts, so a full page can be told from a short one.
+  const [orderRows,  setOrderRows]  = useState(0);
   // The clock, read once when rows land rather than during render, so "Today"
   // does not quietly change meaning between two renders of the same list.
   const [loadedAt,   setLoadedAt]   = useState(null);
 
   // Initial load shows the skeleton; refresh() updates in place (no flash) so it
   // can run silently on a timer / focus without disrupting the list.
-  // Fetched WITH abandoned rows so the raw page size is visible: get_store_orders
-  // applies its LIMIT before anything is filtered out, so a store that is mostly
-  // abandoned checkouts can be badly truncated while holding far fewer than 500
-  // listable rows. The list itself still shows only what it always did.
+  // get_store_orders caps real orders and abandoned checkouts separately, so the
+  // order limit is measured on the listable rows alone. The list itself still
+  // shows only what it always did.
   const take = useCallback(async () => {
     const raw = await fetchOrders(slug, pin, { includeAbandoned: true });
-    setRawCount(raw.length);
+    const rows = listableRows(raw);
+    setOrderRows(rows.length);
     setLoadedAt(Date.now());
-    return listableRows(raw);
+    return rows;
   }, [slug, pin]);
 
   const load = useCallback(async () => {
@@ -161,7 +161,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // Unpaid = a real order whose money has not arrived. The SAME predicate runs
   // the filter below, so the chip's number and the rows it opens cannot diverge.
   const unpaidCount = countUnpaid(orders || [], { leads });
-  const atCap = isAtDetailedCap(rawCount);
+  const atCap = isAtDetailedCap(orderRows);
 
   // Date filtering - collapse the endless list to a single day. Keys are the
   // MERCHANT's civil date (Asia/Kolkata), so "Today" means their today wherever

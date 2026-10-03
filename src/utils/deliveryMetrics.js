@@ -62,9 +62,9 @@ import {
   buildCommerceMetrics, checkInvariants, classifyOrder, shipmentState, paymentState,
 } from './commerceMetrics.js';
 // One backend fact, named once: get_store_orders returns at most 500 rows.
-import { DETAILED_ORDER_CAP } from './ordersView.js';
+import { DETAILED_ORDER_CAP, orderRowCount } from './ordersView.js';
 
-export { DETAILED_ORDER_CAP };
+export { DETAILED_ORDER_CAP, orderRowCount };
 
 const paise = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
 const empty = () => ({ count: 0, amount: 0 });
@@ -74,9 +74,9 @@ const done = (b) => ({ count: b.count, amount: b.amount / 100 });
 /** A row the store actually took. Canonical eligibility, nothing else. */
 const isSale = (o) => classifyOrder(o) === 'sale';
 
-/** Did the detailed feed hand back a full page? Measured on the raw rows. */
-export function isAtDetailedCap(rawRowCount) {
-  return Number(rawRowCount) >= DETAILED_ORDER_CAP;
+/** Did the detailed feed hand back a full page of orders? Measured on orderRowCount (abandoned checkouts are capped separately). */
+export function isAtDetailedCap(orderRows) {
+  return Number(orderRows) >= DETAILED_ORDER_CAP;
 }
 
 /**

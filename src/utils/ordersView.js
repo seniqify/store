@@ -11,7 +11,7 @@
  * Nothing here is an accounting total. Gross Sales, Collected, Outstanding and
  * Written Off belong to commerceMetrics and are shown on Home, Stats and
  * Payments — never on this screen, because this screen can only ever see the
- * newest 500 rows.
+ * newest 500 orders.
  *
  * WHAT THIS MODULE DOES OWN is the translation between the canonical model and
  * the two things the list needs: which rows count as unpaid, and what a row's
@@ -39,10 +39,14 @@ import { isPaymentUnconfirmed } from './orderState.js';
 export const ORDER_TZ = 'Asia/Kolkata';
 
 /**
- * The row limit get_store_orders applies (`order by created_at desc limit 500`).
- * The backend contract, not a UI preference — if that SQL changes, change this.
+ * The two separate limits get_store_orders applies
+ * (supabase/orders-separate-caps-forward.sql): the newest 500 real orders, and
+ * on top of them the newest 300 abandoned checkouts. An abandoned checkout can
+ * never push a real order out. The backend contract, not a UI preference -- if
+ * that SQL changes, change these.
  */
 export const DETAILED_ORDER_CAP = 500;
+export const ABANDONED_ORDER_CAP = 300;
 
 /**
  * Rows the Orders list shows. Abandoned checkouts are not orders anybody placed,
@@ -54,13 +58,19 @@ export function listableRows(rows) {
 }
 
 /**
- * Did the backend hand back a full page? Measured on the RAW row count, before
- * abandoned rows are dropped, because the LIMIT is applied before that filter —
- * on a store that is half abandoned checkouts, the list can be badly truncated
- * while holding far fewer than 500 rows.
+ * How many loaded rows count against the order limit: every row except an
+ * abandoned checkout (those have their own limit).
  */
-export function isAtDetailedCap(rawRowCount) {
-  return Number(rawRowCount) >= DETAILED_ORDER_CAP;
+export function orderRowCount(rows) {
+  return listableRows(rows).length;
+}
+
+/**
+ * Did the backend hand back a full page of orders? Measured on orderRowCount --
+ * abandoned checkouts are capped separately and can no longer fill the page.
+ */
+export function isAtDetailedCap(orderRows) {
+  return Number(orderRows) >= DETAILED_ORDER_CAP;
 }
 
 /**

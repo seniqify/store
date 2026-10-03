@@ -25,9 +25,9 @@ import { classifyOrder, paymentState, dayKeyInZone } from './commerceMetrics.js'
 import { isPaymentIncomplete, isPaymentUnconfirmed } from './orderState.js';
 import { classifyBucket } from './deliveryStatus.js';
 // The same backend fact Orders names: get_store_orders returns at most 500 rows.
-import { DETAILED_ORDER_CAP } from './ordersView.js';
+import { DETAILED_ORDER_CAP, orderRowCount } from './ordersView.js';
 
-export { DETAILED_ORDER_CAP };
+export { DETAILED_ORDER_CAP, orderRowCount };
 
 /** How collected money actually arrived. paid_via is the record of that; the
  *  customer's chosen payment_method is not evidence of anything. */
@@ -48,9 +48,9 @@ export const KIND_LABEL = {
   marked:        'Recorded as paid',
 };
 
-/** Did the detailed feed hand back a full page? Measured on the raw rows. */
-export function isAtDetailedCap(rawRowCount) {
-  return Number(rawRowCount) >= DETAILED_ORDER_CAP;
+/** Did the detailed feed hand back a full page of orders? Measured on orderRowCount (abandoned checkouts are capped separately). */
+export function isAtDetailedCap(orderRows) {
+  return Number(orderRows) >= DETAILED_ORDER_CAP;
 }
 
 /**

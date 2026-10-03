@@ -332,7 +332,8 @@ test('no summary number is derived from the detailed rows', () => {
     'the summary reads the facts envelope only');
   assert.ok(!/buildDeliveryMetrics\(orders/.test(board), 'never the capped rows');
   assert.ok(!/buildDeliveryMetrics\(pool/.test(board));
-  assert.match(board, /isAtDetailedCap\(rawCount\)/, 'and the list says when it is truncated');
+  assert.match(board, /isAtDetailedCap\(orderRows\)/, 'and the list says when it is truncated');
+  assert.match(board, /setOrderRows\(orderRowCount\(rows\)\)/, 'measured on real orders, not abandoned checkouts');
   assert.match(SRC('../src/components/manage/DeliveryBoard.jsx'),
     /newest \{DETAILED_ORDER_CAP\} orders/);
 });

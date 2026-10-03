@@ -297,7 +297,8 @@ test('the operational lists may cap independently of the totals', () => {
   const tab = code('../src/components/manage/PaymentsTab.jsx');
   assert.match(tab, /fetchOrderFacts/, 'accounting reads the uncapped feed');
   assert.match(tab, /buildPaymentsMetrics/, 'through the canonical projection');
-  assert.match(tab, /isAtDetailedCap\(rawCount\)/, 'the lists know when they are capped');
+  assert.match(tab, /isAtDetailedCap\(orderRows\)/, 'the lists know when they are capped');
+  assert.ok(!/setOrderRows\((detailed|first|fresh)\.length\)/.test(tab), 'measured on real orders, not every row');
   assert.match(tab, /listsCapped/, 'and say so');
   // Accounting must never be computed from the detailed rows.
   assert.ok(!/buildPaymentsMetrics\(orders/.test(tab), 'totals never read the capped feed');
