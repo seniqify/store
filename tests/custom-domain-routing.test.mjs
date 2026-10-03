@@ -489,7 +489,8 @@ test('vercel.json bundles the build\'s index.html into the render function; midd
   assert.equal(vj.functions['api/render.js'].includeFiles, 'dist/index.html');
   const { config } = await import('../middleware.js');
   assert.deepEqual(config.matcher, ['/((?!assets/|_vercel/|api/).*)', '/api/(render|sitemap|og|qr)(.*)']);
-  assert.equal(vj.crons, undefined);
+  // The one schedule is the domain reconciler (tests/custom-domains-scheduler.test.mjs).
+  assert.deepEqual(vj.crons, [{ path: '/api/domains/reconcile', schedule: '*/30 * * * *' }]);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
