@@ -233,29 +233,21 @@ test('week day letters come from the key, with no Date in the component', () => 
   assert.ok(!/toLocaleDateString/.test(chart), 'and no browser-local day name');
 });
 
-test('the abandoned window is 30 merchant CIVIL DAYS ending today, inclusive', () => {
-  // Day 1 of the window is 2026-08-22 (today minus 29 days). 2026-08-21 is out.
-  const inFirst = order({ id: 'in', status: 'abandoned', total: 100,
-    created_at: '2026-08-21T18:30:00.000Z' });   // 2026-08-22 00:00 IST
-  const justOut = order({ id: 'out', status: 'abandoned', total: 500,
-    created_at: '2026-08-21T18:29:59.000Z' });   // 2026-08-21 23:59:59 IST
-  const today = order({ id: 'now', status: 'abandoned', total: 70,
-    created_at: '2026-09-20T05:00:00.000Z' });
-
-  const h = H([inFirst, justOut, today]);
-  assert.equal(h.abandonedCount, 2, 'the first day of the window is in, the day before is out');
-  assert.equal(h.abandonedValue, 170);
-});
-
-test('the abandoned window length is a parameter, and it is honoured', () => {
+test('Home metrics count no abandoned carts: they come from the per-customer feed instead', () => {
+  // This feed has no phone number, so it cannot tell one customer from five
+  // visits by the same customer -- which is how Home said 406 while the
+  // Abandoned tab said 50. The 30-civil-day window and the one-per-customer
+  // rule are tested on the SQL itself in tests/abandoned-carts.test.mjs.
   const rows = [];
   for (let i = 0; i < 40; i++) {
     rows.push(order({ id: `ab-${i}`, status: 'abandoned', total: 10,
       created_at: new Date(NOW - i * DAY).toISOString() }));
   }
-  assert.equal(H(rows, { abandonedDays: 30 }).abandonedCount, 30);
-  assert.equal(H(rows, { abandonedDays: 7 }).abandonedCount, 7);
-  assert.equal(H(rows, { abandonedDays: 1 }).abandonedCount, 1, 'today only');
+  const h = H(rows);
+  assert.equal('abandonedCount' in h, false);
+  assert.equal('abandonedValue' in h, false);
+  assert.ok(!/abandoned/i.test(code('../src/utils/overviewMetrics.js')),
+    'overviewMetrics has no abandoned rule of its own any more');
 });
 
 // ── 9. the population cannot drift ──────────────────────────────────────────
@@ -274,7 +266,6 @@ test('cancelled, abandoned and payment-incomplete never leak into Home sales', (
   assert.equal(h.toCollect, 500, 'and only it is collectible');
   assert.equal(h.unpaidCount, 1);
   assert.equal(h.newCount, 1, 'the cancelled row is not awaiting action');
-  assert.equal(h.abandonedCount, 1, 'the abandoned row is counted as abandoned, not as a sale');
 });
 
 test('the new-order count uses canonical eligibility, not a fresh sale rule', () => {
@@ -325,10 +316,17 @@ test('Home renders no accounting figure from a failed read', () => {
   // Every accounting surface is gated on it.
   assert.match(src, /\{accountingOk \? \(/, 'the three tiles are gated');
   assert.match(src, /\{accountingOk && \(/, 'the week chart is gated');
-  for (const row of ['newCount', 'toCollect', 'abandonedCount']) {
+  for (const row of ['newCount', 'toCollect']) {
     const line = src.split('\n').find((l) => l.includes(`acc.${row} > 0`));
     assert.ok(line && line.includes('accountingOk'), `the ${row} attention row is gated`);
   }
+  // Abandoned carts have their own feed and their own flag, by the same rule.
+  assert.match(src, /const cartsOk = cartsResult\?\.ok === true/);
+  assert.match(src, /summarizeAbandoned\(cartsResult\?\.ok \? cartsResult\.data : \[\]\)/,
+    'only a successful read is summarised');
+  const carts = src.split('\n').find((l) => l.includes('carts.count > 0'));
+  assert.ok(carts && carts.includes('cartsOk'), 'the abandoned attention row is gated');
+  assert.ok(!/acc\.abandoned/.test(src), 'and nothing reads the old row count');
 });
 
 test('the failure state offers a retry through the existing load path', () => {
@@ -448,5 +446,4 @@ test('without a clock the balance still holds and the flows are simply empty', (
   assert.equal(h.toCollect, 28626, 'a position does not need a clock');
   assert.equal(h.unpaidCount, 63);
   assert.deepEqual(h.week, []);
-  assert.equal(h.abandonedCount, 0);
 });
