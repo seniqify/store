@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  listableRows, isAtDetailedCap, isOrdersUnpaid, isListedSale, countUnpaid,
+  listableRows, isAtDetailedCap, orderRowCount, isOrdersUnpaid, isListedSale, countUnpaid,
   statusCounts, paymentLabelState, orderDayKey, todayKeys, dayCounts,
-  DETAILED_ORDER_CAP, ORDER_TZ,
+  DETAILED_ORDER_CAP, ABANDONED_ORDER_CAP, ORDER_TZ,
 } from '../src/utils/ordersView.js';
 import {
   buildCommerceMetrics, classifyOrder, shipmentState,
@@ -256,26 +256,35 @@ test('an order status is never inferred from the shipment state', () => {
 
 // ── 14. the cap ─────────────────────────────────────────────────────────────
 
-test('the cap notice keys on the RAW page size, not the filtered list', () => {
-  assert.equal(DETAILED_ORDER_CAP, 500, 'matches get_store_orders LIMIT 500');
+test('the order limit counts real orders only: abandoned checkouts are capped separately', () => {
+  assert.equal(DETAILED_ORDER_CAP, 500, 'matches get_store_orders: newest 500 real orders');
+  assert.equal(ABANDONED_ORDER_CAP, 300, 'and, separately, the newest 300 abandoned checkouts');
   assert.equal(isAtDetailedCap(500), true);
   assert.equal(isAtDetailedCap(499), false);
   assert.equal(isAtDetailedCap(447), false, 'the audited store is not truncated');
-  // The point of measuring raw: a mostly-abandoned store is truncated long
-  // before its listable rows reach 500.
-  const raw = [];
-  for (let i = 0; i < 500; i++) raw.push(order({ id: `r-${i}`, status: i % 2 ? 'abandoned' : 'new' }));
-  assert.equal(listableRows(raw).length, 250, 'only 250 are listable');
-  assert.equal(isAtDetailedCap(raw.length), true, 'but the page was full, so the notice shows');
+  // 2026-10-03 (krupaagarbattiwork): abandoned checkouts used to fill the one
+  // shared limit. Now they cannot -- 250 orders beside 250 abandoned is a short page.
+  const mixed = [];
+  for (let i = 0; i < 500; i++) mixed.push(order({ id: `r-${i}`, status: i % 2 ? 'abandoned' : 'new' }));
+  assert.equal(orderRowCount(mixed), 250);
+  assert.equal(isAtDetailedCap(orderRowCount(mixed)), false, 'abandoned rows never make the order list look full');
+  // A full page of orders, with a full page of abandoned checkouts beside it.
+  const full = [];
+  for (let i = 0; i < DETAILED_ORDER_CAP; i++) full.push(order({ id: `o-${i}` }));
+  for (let i = 0; i < ABANDONED_ORDER_CAP; i++) full.push(order({ id: `a-${i}`, status: 'abandoned' }));
+  assert.equal(orderRowCount(full), DETAILED_ORDER_CAP);
+  assert.equal(isAtDetailedCap(orderRowCount(full)), true, 'the notice shows only when the ORDERS are full');
+  assert.equal(orderRowCount([order({ id: 'x', status: 'ABANDONED' }), order({ id: 'y', status: null })]), 1,
+    'the same rule as the SQL: abandoned in any case; anything else is an order');
 });
 
-test('the component measures the cap before dropping abandoned rows', () => {
+test('the component measures the order limit on the listable rows', () => {
   const tab = code('../src/components/manage/OrdersTab.jsx');
   assert.match(tab, /fetchOrders\(slug, pin, \{ includeAbandoned: true \}\)/,
-    'it asks for the raw page');
-  assert.match(tab, /setRawCount\(raw\.length\)/, 'measures it');
-  assert.match(tab, /listableRows\(raw\)/, 'then drops abandoned for the list');
-  assert.match(tab, /isAtDetailedCap\(rawCount\)/, 'and keys the notice on the raw count');
+    'it asks for both kinds');
+  assert.match(tab, /const rows = listableRows\(raw\)/, 'drops abandoned for the list');
+  assert.match(tab, /setOrderRows\(rows\.length\)/, 'measures the orders');
+  assert.match(tab, /isAtDetailedCap\(orderRows\)/, 'and keys the notice on them');
 });
 
 test('the cap notice does not claim the merchant has exactly 500 orders', () => {

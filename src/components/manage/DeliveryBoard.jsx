@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
-import { buildDeliveryMetrics, isAtDetailedCap, DETAILED_ORDER_CAP } from '../../utils/deliveryMetrics';
+import { buildDeliveryMetrics, isAtDetailedCap, orderRowCount, DETAILED_ORDER_CAP } from '../../utils/deliveryMetrics';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -59,7 +59,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   //           and drawer, which need a customer's name, phone and address.
   // No tile is ever computed from the capped rows.
   const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
-  const [rawCount, setRawCount] = useState(0);
+  const [orderRows, setOrderRows] = useState(0);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [syncing, setSyncing] = useState(false);
   // A courier refresh that failed is NOT the same as missing data: the board
@@ -87,11 +87,11 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   }, [courierMenu, statusMenu]);
 
   const grab = useCallback(async () => {
-    // includeAbandoned so the raw page size is visible: get_store_orders applies
-    // its LIMIT before anything is filtered, so the list can be truncated while
-    // holding far fewer than 500 shipments.
+    // The order limit counts real orders only (abandoned checkouts are capped
+    // separately), so measure it on those -- the list can still hold far fewer
+    // than 500 shipments when it is full.
     const rows = await fetchOrders(slug, pin, { includeAbandoned: true });
-    setRawCount(rows.length);
+    setOrderRows(orderRowCount(rows));
     return rows.filter((o) => o.awb);   // only booked shipments (they carry an AWB)
   }, [slug, pin]);
 
@@ -157,7 +157,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   // back still shows as in transit.
   const summary = buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []);
   const summaryOk = factsResult?.ok === true;
-  const listCapped = isAtDetailedCap(rawCount);
+  const listCapped = isAtDetailedCap(orderRows);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
   const TRIG = {

@@ -150,9 +150,9 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) 
 /** Owner-only: the UNCAPPED, PII-free scalar feed behind every canonical
  *  commerce metric (get_store_order_facts, added in commerce-metrics PR 1).
  *
- *  This is the accounting source. fetchOrders above is capped at the newest 500
- *  rows of EVERY kind - abandoned checkouts included - so on a busy store the
- *  sales it can see is a fraction of that again. This feed has no LIMIT, and it
+ *  This is the accounting source. fetchOrders above is capped (the newest 500
+ *  real orders, plus the newest 300 abandoned checkouts -- separate limits), so
+ *  on a busy store it cannot see every sale. This feed has no LIMIT, and it
  *  deliberately carries no items, no name, no phone and no address, so the
  *  screens that need those still go through fetchOrders.
  *

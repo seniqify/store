@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, Wallet, Clock, MessageCircle, Link2, BadgeCheck } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
-import { buildPaymentsLists, KIND_LABEL, isAtDetailedCap, DETAILED_ORDER_CAP } from '../../utils/paymentsLedger';
+import { buildPaymentsLists, KIND_LABEL, isAtDetailedCap, orderRowCount, DETAILED_ORDER_CAP } from '../../utils/paymentsLedger';
 import { buildPaymentsMetrics, PAYMENT_RANGES, periodKeys } from '../../utils/paymentsMetrics';
 import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, findPaymentOrphans, paymentLinkMessage } from '../../utils/paymentLinks';
 import { syncDeliveryStatuses } from '../../utils/shippingConnect';
@@ -74,7 +74,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
   // A sum over the capped feed is a wrong number with a confident face, so the
   // two are never mixed.
   const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
-  const [rawCount, setRawCount] = useState(0);
+  const [orderRows, setOrderRows] = useState(0);
   const [loadedAt, setLoadedAt] = useState(null);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [range, setRange]     = useState(1);
@@ -89,7 +89,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
     ]);
     setFactsResult(facts);
-    setRawCount(detailed.length);
+    setOrderRows(orderRowCount(detailed));
     setOrders(detailed);
     setLoadedAt(Date.now());
   }, [slug, pin]);
@@ -101,7 +101,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     ]);
     if (!alive()) return;
     setFactsResult(firstFacts);
-    setRawCount(first.length);
+    setOrderRows(orderRowCount(first));
     setOrders(first);
     setLoadedAt(Date.now());
     const jobs = [];
@@ -122,7 +122,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
     ]);
     setFactsResult(freshFacts);
-    setRawCount(fresh.length);
+    setOrderRows(orderRowCount(fresh));
     setOrders(fresh);
     setLoadedAt(Date.now());
     setSyncing(false);
@@ -150,7 +150,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     () => buildPaymentsLists(orders || [], { periodKeys: periodKeys(loadedAt, range) }),
     [orders, loadedAt, range],
   );
-  const listsCapped = isAtDetailedCap(rawCount);
+  const listsCapped = isAtDetailedCap(orderRows);
 
   async function sendLink(o) {
     setBusy(o.id); setNote('');
