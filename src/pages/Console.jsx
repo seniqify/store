@@ -2,14 +2,16 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard, Store as StoreIcon, LogOut, Search, RefreshCw, X, Check,
   ShieldAlert, ExternalLink, Moon, Sun, AlertTriangle, TrendingUp,
-  CalendarClock, MessageCircle, Wallet, Send, Sparkles, Box, Users, KeyRound,
+  CalendarClock, MessageCircle, Wallet, Send, Sparkles, Box, Users, KeyRound, MessageSquare, Copy,
 } from 'lucide-react';
 import {
   consoleSession, onConsoleAuthChange, consoleSignIn, consoleSignOut,
   fetchMyTeamRow, fetchStoresConsole, fetchConsoleOrders, fetchTeam,
   consoleUpdateStore, askAssistant, manageTeam, yearsFromNowIso,
   fetchReviewReports, resolveReviewReport,
+  fetchMessageTemplates, decideMessageTemplate, createReadyTemplate,
 } from '../utils/consoleService';
+import { seniqifyTemplate, requestError } from '../utils/offerText';
 import { formatINR } from '../utils/currency';
 import { isPaymentIncomplete } from '../utils/orderState';
 
@@ -166,6 +168,130 @@ function Panel({ title, icon: Icon, count, right, children }) {
   );
 }
 
+// ══ WhatsApp messages: approve shops' requests, manage ready-made ones ══════
+// The template's Seniqify link never reaches the browser; the Console only
+// learns whether one is set. Approving = pasting the /process URL Seniqify
+// shows once Meta has approved the template.
+
+/** Exactly what to type into Seniqify for a message. */
+function SeniqifyBox({ body, slug, onCopy }) {
+  const t = seniqifyTemplate(body, slug || 'krupaagarbattiwork');
+  return (
+    <div className="rounded-xl bg-white/[0.04] p-3 space-y-1.5 text-[12px]">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-bold text-emerald-300">In Seniqify: Marketing · English</p>
+        <button type="button" onClick={() => onCopy(t.text)}
+          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-white/[0.06] ${INK} hover:bg-white/[0.1]`}>
+          <Copy size={11} /> Copy body
+        </button>
+      </div>
+      <p className={`${BODY} whitespace-pre-line`}>{t.text}</p>
+      {t.samples.length > 0 && <p className={DIM}>Samples: {t.samples.map((x) => `{{${x.n}}} = ${x.sample}`).join(' · ')}</p>}
+      <p className={DIM}>
+        Button 1: Visit website · “{t.button.label}” · Dynamic · Website URL <span className="font-mono">{t.button.websiteUrl}</span>
+        {' '}· sample <span className="font-mono">{t.button.sample}</span>
+      </p>
+      <p className={DIM}>Button 2: Marketing opt-out · “Stop offers”</p>
+    </div>
+  );
+}
+
+function MessagesSection({ templates, onChanged, onToast }) {
+  const [urls, setUrls]   = useState({});
+  const [busy, setBusy]   = useState('');
+  const [ready, setReady] = useState({ name: '', body: '', url: '' });
+  const waiting = templates.filter((t) => t.status === 'requested');
+  const live    = templates.filter((t) => t.status === 'approved');
+  const readyErr = ready.body ? requestError(ready.name, ready.body) : '';
+
+  async function act(key, fn, ok) {
+    setBusy(key);
+    try { await fn(); onToast(ok); await onChanged(); return true; }
+    catch (e) { onToast(e?.message || 'Could not save.'); return false; }
+    finally { setBusy(''); }
+  }
+  function copy(text) {
+    navigator.clipboard?.writeText(text).then(() => onToast('Copied'), () => onToast('Copy failed — select the text instead'));
+  }
+  function reject(t) {
+    const why = window.prompt('Why not? The shop sees this.');
+    if (why) act(t.id, () => decideMessageTemplate(t.id, 'rejected', '', why), 'Rejected');
+  }
+  function retire(t) {
+    if (window.confirm(`Retire “${t.name}”? Shops can no longer send it.`)) act(t.id, () => decideMessageTemplate(t.id, 'retired'), 'Retired');
+  }
+  async function addReady() {
+    if (await act('ready', () => createReadyTemplate(ready.name, ready.body, ready.url), 'Added — every shop can send it now')) {
+      setReady({ name: '', body: '', url: '' });
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Panel title="Waiting for approval" icon={MessageSquare} count={waiting.length} right="create in Seniqify, then paste its API URL">
+        {waiting.length === 0 ? <div className={`p-6 text-center text-sm ${FAINT}`}>No shop messages waiting.</div>
+          : <div>{waiting.map((t) => (
+              <div key={t.id} className={`p-4 space-y-2 border-t ${LINE} first:border-t-0`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`font-mono text-[11px] ${DIM} truncate`}>{t.store_name || t.store_slug}</span>
+                  <span className={`text-[11px] ${FAINT} whitespace-nowrap`}>asked {timeAgo(t.created_at)} ago</span>
+                </div>
+                <p className={`text-sm font-bold ${INK}`}>{t.name}</p>
+                <p className={`text-sm ${BODY} whitespace-pre-line`}>{t.body}</p>
+                <SeniqifyBox body={t.body} slug={t.store_slug} onCopy={copy} />
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <input value={urls[t.id] || ''} onChange={(e) => setUrls((u) => ({ ...u, [t.id]: e.target.value }))}
+                    placeholder="Seniqify API URL (…/process)" className={darkInput} />
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button type="button" disabled={busy !== '' || !String(urls[t.id] || '').startsWith('https://')}
+                      onClick={() => act(t.id, () => decideMessageTemplate(t.id, 'approved', urls[t.id]), 'Approved — the shop can send it now')}
+                      className="text-[12px] font-bold px-3 py-2 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40">Approve</button>
+                    <button type="button" disabled={busy !== ''} onClick={() => reject(t)}
+                      className="text-[12px] font-bold px-3 py-2 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 disabled:opacity-40">Reject…</button>
+                  </div>
+                </div>
+              </div>))}</div>}
+      </Panel>
+
+      <Panel title="Live messages" icon={Check} count={live.length} right="ready-made: every shop · a shop's own: that shop only">
+        {live.length === 0 ? <div className={`p-6 text-center text-sm ${FAINT}`}>None yet. Add a ready-made message below.</div>
+          : <div>{live.map((t) => (
+              <div key={t.id} className={`p-4 flex items-start justify-between gap-3 border-t ${LINE} first:border-t-0`}>
+                <div className="min-w-0">
+                  <p className={`text-sm font-bold ${INK}`}>
+                    {t.name} <span className={`text-[11px] font-normal ${FAINT}`}>· {t.store_slug ? (t.store_name || t.store_slug) : 'every shop'}</span>
+                  </p>
+                  <p className={`text-[12px] ${BODY} mt-0.5`}>{t.body}</p>
+                </div>
+                <button type="button" disabled={busy !== ''} onClick={() => retire(t)}
+                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/[0.06] ${DIM} hover:bg-white/[0.1] flex-shrink-0`}>Retire</button>
+              </div>))}</div>}
+      </Panel>
+
+      <Panel title="Add a ready-made message" icon={Send} right="every shop can send it">
+        <div className="p-4 space-y-2.5">
+          <input value={ready.name} maxLength={40} onChange={(e) => setReady((r) => ({ ...r, name: e.target.value }))}
+            placeholder="Name shops see, e.g. Festival offer" className={darkInput} />
+          <textarea value={ready.body} rows={3} maxLength={600} onChange={(e) => setReady((r) => ({ ...r, body: e.target.value }))}
+            placeholder={'Hi {name}! {shop} has a special offer for you: {offer}. Tap below to shop now.'}
+            className={`${darkInput} resize-none`} />
+          <p className={`text-[11px] ${FAINT}`}>
+            Placeholders: {'{name} {shop}'} (filled per customer) · {'{offer} {item} {code} {date}'} (the shop fills them when sending).
+          </p>
+          {ready.body && (readyErr ? <p className="text-[12px] text-rose-300">{readyErr}</p> : <SeniqifyBox body={ready.body} onCopy={copy} />)}
+          <input value={ready.url} onChange={(e) => setReady((r) => ({ ...r, url: e.target.value }))}
+            placeholder="Seniqify API URL, once Meta has approved it" className={darkInput} />
+          <button type="button" onClick={addReady}
+            disabled={busy !== '' || !!readyErr || !ready.body || !ready.url.startsWith('https://')}
+            className="text-[12px] font-bold px-4 py-2 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40">
+            Add for every shop
+          </button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 // ══ Plan / payment modal ══════════════════════════════════════════════════════
 function PlanModal({ store, onClose, onApply, busy }) {
   const [plan, setPlan]     = useState(store.plan && SELECTABLE.includes(store.plan) ? store.plan : 'premium');
@@ -262,6 +388,7 @@ export default function Console() {
   const [orders, setOrders]   = useState([]);
   const [team, setTeam]       = useState([]);
   const [reports, setReports] = useState([]);   // reported reviews awaiting a decision
+  const [templates, setTemplates] = useState([]); // WhatsApp message templates + shops' requests
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState('overview');
   const [query, setQuery]     = useState('');
@@ -286,13 +413,14 @@ export default function Console() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [st, od, tm, rv] = await Promise.all([
+    const [st, od, tm, rv, mt] = await Promise.all([
       fetchStoresConsole(),
       fetchConsoleOrders(new Date(Date.now() - 7 * DAY).toISOString()),
       fetchTeam(),
       fetchReviewReports(),
+      fetchMessageTemplates(),
     ]);
-    setStores(st); setOrders(od); setTeam(tm); setReports(rv); setLoading(false);
+    setStores(st); setOrders(od); setTeam(tm); setReports(rv); setTemplates(mt); setLoading(false);
   }, []);
   useEffect(() => { if (isAdmin) loadAll(); }, [isAdmin, loadAll]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 3200); return () => clearTimeout(t); }, [toast]);
@@ -525,6 +653,7 @@ export default function Console() {
     { id: 'billing',  label: 'Billing',  icon: Wallet },
     { id: 'orders',   label: 'Orders',   icon: Box, count: orders.length || undefined },
     { id: 'reviews',  label: 'Reviews',  icon: ShieldAlert, count: reports.length || undefined },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, count: templates.filter((t) => t.status === 'requested').length || undefined },
     { id: 'assistant',label: 'Assistant',icon: Sparkles },
     { id: 'access',   label: 'Access',   icon: Users, count: team.length || undefined },
   ];
@@ -808,6 +937,8 @@ export default function Console() {
               </Panel>
             </div>
           )}
+
+          {tab === 'messages' && <MessagesSection templates={templates} onChanged={loadAll} onToast={setToast} />}
 
           {/* ACCESS */}
           {tab === 'access' && (
