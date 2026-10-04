@@ -7,6 +7,10 @@
 const RESERVED = new Set([
   'onboarding', 'landing', 'admin', 'api', 'login', 'dashboard',
   'demo', 'terms', 'privacy', 'manage', 'store', 'app', 'help',
+  // Top-level link paths: /cart/<token> (cart reminder), /order/<token>,
+  // /confirm/<token>, /review/<token>. A store with one of these names would
+  // clash with them.
+  'cart', 'order', 'confirm', 'review',
 ]);
 
 export function slugify(name) {

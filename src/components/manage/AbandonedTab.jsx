@@ -4,6 +4,7 @@ import { fetchAbandonedCarts } from '../../utils/orderService';
 import { summarizeAbandoned, ABANDONED_PAGE_SIZE, ABANDONED_WINDOW_DAYS } from '../../utils/abandonedCarts';
 import { formatINR } from '../../utils/currency';
 import WalletCard from './WalletCard';
+import CartReminderCard from './CartReminderCard';
 
 /**
  * Abandoned carts — customers who typed their phone number at checkout but
@@ -114,6 +115,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
   return (
     <div className="space-y-4">
       <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} waPhone={waPhone} />
+      <CartReminderCard slug={slug} pin={pin} themeColor={themeColor} />
 
       <div>
         <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
