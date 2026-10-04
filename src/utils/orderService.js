@@ -133,6 +133,20 @@ export async function saveAbandonedCheckout(customerDetails = {}, cart = [], con
   }
 }
 
+/** Best-effort: record the customer's WhatsApp marketing choice for this shop
+ *  (record_whatsapp_consent), the moment they tick or untick the checkout box.
+ *  `wording` is the exact sentence they saw. Never throws, never blocks the
+ *  checkout — like saveAbandonedCheckout above. */
+export async function recordWhatsappConsent(slug, phone, granted, wording) {
+  try {
+    await supabase.rpc('record_whatsapp_consent', {
+      p_slug: slug, p_phone: phone, p_granted: Boolean(granted), p_wording: wording,
+    });
+  } catch {
+    /* best-effort — a failed record must never disturb the order */
+  }
+}
+
 /** Owner-only: list this store's orders (PIN-checked server-side).
  *  Abandoned-checkout rows are excluded by default so Orders, Stats and
  *  Customers never count them — only the Customers CSV export opts in. The
