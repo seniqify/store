@@ -174,12 +174,12 @@ function Panel({ title, icon: Icon, count, right, children }) {
 // shows once Meta has approved the template.
 
 /** Exactly what to type into Seniqify for a message. */
-function SeniqifyBox({ body, slug, onCopy }) {
-  const t = seniqifyTemplate(body, slug || 'krupaagarbattiwork');
+function SeniqifyBox({ body, onCopy }) {
+  const t = seniqifyTemplate(body);
   return (
     <div className="rounded-xl bg-white/[0.04] p-3 space-y-1.5 text-[12px]">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-bold text-emerald-300">In Seniqify: Marketing · English</p>
+        <p className="font-bold text-emerald-300">In Seniqify: Marketing · {t.language}</p>
         <button type="button" onClick={() => onCopy(t.text)}
           className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-white/[0.06] ${INK} hover:bg-white/[0.1]`}>
           <Copy size={11} /> Copy body
@@ -191,7 +191,7 @@ function SeniqifyBox({ body, slug, onCopy }) {
         Button 1: Visit website · “{t.button.label}” · Dynamic · Website URL <span className="font-mono">{t.button.websiteUrl}</span>
         {' '}· sample <span className="font-mono">{t.button.sample}</span>
       </p>
-      <p className={DIM}>Button 2: Marketing opt-out · “Stop offers”</p>
+      <p className={DIM}>Button 2: Marketing opt-out · “{t.stopLabel}”</p>
     </div>
   );
 }
@@ -238,7 +238,7 @@ function MessagesSection({ templates, onChanged, onToast }) {
                 </div>
                 <p className={`text-sm font-bold ${INK}`}>{t.name}</p>
                 <p className={`text-sm ${BODY} whitespace-pre-line`}>{t.body}</p>
-                <SeniqifyBox body={t.body} slug={t.store_slug} onCopy={copy} />
+                <SeniqifyBox body={t.body} onCopy={copy} />
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <input value={urls[t.id] || ''} onChange={(e) => setUrls((u) => ({ ...u, [t.id]: e.target.value }))}
                     placeholder="Seniqify API URL (…/process)" className={darkInput} />

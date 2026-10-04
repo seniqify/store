@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, Send, Loader2, Plus, X, Check } from 'lucide-react';
+import { Megaphone, Send, Loader2, Plus, X, Check, Languages } from 'lucide-react';
 import { listTemplates, requestTemplate, offerAudience, sendOffer } from '../../utils/offerService';
 import { fetchOfferSummary } from '../../utils/cartReminderService';
-import { OFFER_FIELDS, placeholdersIn, fieldError, requestError, fillOffer } from '../../utils/offerText';
+import {
+  OFFER_FIELDS, OFFER_LANGS, OFFER_BUTTONS, offerLanguage, placeholdersIn, fieldError, requestError, fillOffer,
+} from '../../utils/offerText';
 import { formatPaise } from '../../utils/walletPacks';
 import { formatINR } from '../../utils/currency';
 
@@ -17,7 +19,11 @@ import { formatINR } from '../../utils/currency';
  * every 3 days, Rs 1.50 each from the wallet (supabase/offers-forward.sql).
  * Each offer carries its own link, so the results line shows opens and the
  * orders it brought (supabase/messages-v2-forward.sql).
+ * Ready-made messages come in English and Marathi; when both exist, an
+ * English | मराठी switch shows one language at a time (remembered per device).
  */
+
+const LANG_KEY = 'pl_offer_lang_v1';
 
 const STATUS = {
   requested: { text: 'Waiting for approval', cls: 'bg-amber-50 text-amber-700' },
@@ -43,6 +49,9 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
   const [writing, setWriting]     = useState(false);
   const [draft, setDraft]         = useState({ name: '', body: '' });
   const [draftMsg, setDraftMsg]   = useState('');
+  const [lang, setLang]           = useState(() => {
+    try { return localStorage.getItem(LANG_KEY) === 'mr' ? 'mr' : 'en'; } catch { return 'en'; }
+  });
 
   useEffect(() => {
     let alive = true;
@@ -56,13 +65,23 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
 
   const approved = useMemo(() => (templates || []).filter((t) => t.status === 'approved'), [templates]);
   const own = useMemo(() => (templates || []).filter((t) => t.own && t.status !== 'approved'), [templates]);
-  const picked = approved.find((t) => t.id === pickedId) || approved[0] || null;
+  const bothLangs = new Set(approved.map((t) => offerLanguage(t.body))).size > 1;
+  const shown = bothLangs ? approved.filter((t) => offerLanguage(t.body) === lang) : approved;
+  const picked = shown.find((t) => t.id === pickedId) || shown[0] || null;
+  const pickedLang = picked ? offerLanguage(picked.body) : 'en';
   const uniqueFields = picked ? [...new Set(placeholdersIn(picked.body).keys.filter((k) => k in OFFER_FIELDS))] : [];
   const phones = audience.map((c) => c.phone);
   const sample = audience[0];
   const who = audienceLabel === 'all' ? 'customers' : `${audienceLabel} customers`;
 
   function reset() { setCheck(null); setResult(null); setError(''); setProgress(null); }
+
+  function chooseLang(code) {
+    setLang(code);
+    setPickedId('');
+    reset();
+    try { localStorage.setItem(LANG_KEY, code); } catch { /* private mode */ }
+  }
 
   async function checkAudience() {
     reset();
@@ -121,9 +140,27 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
       <div className="px-4 pt-3 pb-4 space-y-3">
         {templates === false && <p className="text-[12px] text-rose-600">Could not load your messages. Refresh to try again.</p>}
 
-        {approved.length > 0 ? (
+        {bothLangs && (
+          <div className="flex justify-end">
+            <div className="inline-flex items-center gap-0.5 bg-white border border-gray-200 rounded-full p-0.5 shadow-sm">
+              <Languages size={13} className="text-gray-400 ml-1.5 mr-0.5 flex-shrink-0" />
+              {OFFER_LANGS.map((l) => {
+                const active = lang === l.code;
+                return (
+                  <button key={l.code} type="button" onClick={() => chooseLang(l.code)} aria-pressed={active}
+                    className={['text-xs font-bold px-2.5 py-1 rounded-full transition-colors', active ? 'text-white' : 'text-gray-600 hover:bg-gray-100'].join(' ')}
+                    style={active ? { backgroundColor: themeColor } : undefined}>
+                    {l.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {shown.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
-            {approved.map((t) => {
+            {shown.map((t) => {
               const on = picked?.id === t.id;
               return (
                 <button key={t.id} type="button" onClick={() => { setPickedId(t.id); reset(); }}
@@ -147,7 +184,7 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
                 <span className="block text-[11.5px] font-bold text-gray-600 mb-1">{OFFER_FIELDS[k].label}</span>
                 <input value={fields[k] || ''} maxLength={60}
                   onChange={(e) => { setFields((f) => ({ ...f, [k]: e.target.value })); setCheck(null); }}
-                  placeholder={OFFER_FIELDS[k].placeholder}
+                  placeholder={pickedLang === 'mr' ? OFFER_FIELDS[k].placeholderMr : OFFER_FIELDS[k].placeholder}
                   className="w-full h-[42px] border border-gray-200 rounded-xl px-3 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-emerald-200" />
               </label>
             ))}
@@ -155,8 +192,8 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
             <div className="rounded-2xl bg-[#e7ffdb] px-3 pt-2.5 text-[13px] leading-snug text-gray-800">
               <p className="whitespace-pre-line">{fillOffer(picked.body, { name: sample?.name, shop: businessName, fields })}</p>
               <div className="mt-2 border-t border-[#c7eab4] grid grid-cols-2">
-                <span className="py-2 text-center text-[12.5px] font-bold text-sky-600">Shop now</span>
-                <span className="py-2 text-center text-[12.5px] font-bold text-sky-600 border-l border-[#c7eab4]">Stop offers</span>
+                <span className="py-2 text-center text-[12.5px] font-bold text-sky-600">{OFFER_BUTTONS[pickedLang].shop}</span>
+                <span className="py-2 text-center text-[12.5px] font-bold text-sky-600 border-l border-[#c7eab4]">{OFFER_BUTTONS[pickedLang].stop}</span>
               </div>
             </div>
 
