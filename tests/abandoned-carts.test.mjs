@@ -294,9 +294,9 @@ test('the Abandoned tab has no hidden cap: a page size with "Show more", and no 
   const tab = code('src/components/manage/AbandonedTab.jsx');
   assert.ok(!/fetchOrders\b/.test(tab), 'it no longer reads the capped get_store_orders list');
   assert.ok(!/\.slice\(0,\s*\d+\)/.test(tab), 'no literal cut-off such as .slice(0, 50)');
-  assert.match(tab, /rows\.slice\(0, visible\)/);
+  assert.match(tab, /filtered\.slice\(0, visible\)/, 'the (filtered) list pages; nothing cuts it');
   assert.match(tab, /setVisible\(\(v\) => v \+ ABANDONED_PAGE_SIZE\)/);
-  assert.match(tab, /Showing \{shown\.length\} of \{rows\.length\} customers/);
+  assert.match(tab, /Showing \{shown\.length\} of \{filtered\.length\} customers/);
   assert.equal(ABANDONED_PAGE_SIZE, 50);
   // A failed read is a retry card, never an empty "nothing abandoned".
   assert.match(tab, /if \(!result\.ok\) \{/);

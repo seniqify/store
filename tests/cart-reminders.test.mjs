@@ -444,8 +444,9 @@ test('the link page, the shop page and the Abandoned tab are wired', () => {
   assert.match(home, /takeRestoreIntent\(config\.slug\)/);
   assert.match(home, /restoreCartLines\(saleProducts, items\)/, 'sale prices, as the grid shows them');
   assert.match(read('src/utils/slugify.js'), /'cart', 'order', 'confirm', 'review'/);
-  assert.match(read('src/components/manage/AbandonedTab.jsx'), /<CartReminderCard slug=\{slug\} pin=\{pin\}/);
-  const card = strip(read('src/components/manage/CartReminderCard.jsx'));
-  assert.match(card, /setCartReminders\(slug, pin, !on\)/);
+  // The switch now lives in the RecoveryCard ("Win back these carts").
+  assert.match(read('src/components/manage/AbandonedTab.jsx'), /<RecoveryCard slug=\{slug\} pin=\{pin\}/);
+  const card = strip(read('src/components/manage/RecoveryCard.jsx'));
+  assert.match(card, /setCartReminders\(slug, pin, !summary\.data\.enabled\)/);
   assert.match(card, /role="switch" aria-checked=\{on\}/);
 });

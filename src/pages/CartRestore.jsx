@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Loader2, ShoppingCart } from 'lucide-react';
 import { fetchCartReminder } from '../utils/cartReminderService';
 import { saveRestoreIntent } from '../utils/cartRestore';
+import { saveMessageAttribution } from '../utils/messageAttribution';
 import { storePath } from '../utils/storeUrls';
 
 /**
@@ -27,6 +28,7 @@ export default function CartRestore() {
       if (!alive) return;
       if (!r) { setExpired(true); return; }
       saveRestoreIntent(r.store_slug, r.items);
+      saveMessageAttribution(r.store_slug, 'cart', token);   // so the order is tagged to this reminder
       navigate(storePath(r.store_slug), { replace: true });
     });
     return () => { alive = false; };

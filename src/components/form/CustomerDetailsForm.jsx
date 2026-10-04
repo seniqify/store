@@ -8,6 +8,8 @@ import { whatsappLink } from '../../utils/theme';
 import { pixelTrack } from '../../utils/metaPixel';
 import { saveOrder, saveAbandonedCheckout, buildOrderRow, recordWhatsappConsent } from '../../utils/orderService';
 import { optInWording, rememberedOptIn, rememberOptIn } from '../../utils/whatsappConsent';
+import { takeMessageAttribution } from '../../utils/messageAttribution';
+import { attributePlacedOrder } from '../../utils/cartReminderService';
 import { sendShadowOrder } from '../../utils/orderShadow';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
@@ -453,6 +455,9 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
     // Report the sale to the store's Meta Pixel — checkout finishes in WhatsApp,
     // so order-placed is the conversion. No-op without a pixel.
     pixelTrack('Purchase', { value: finalTotal, currency: 'INR', num_items: itemCount }, orderId);
+    // Came from a WhatsApp reminder or offer link? Tag the order to that
+    // message, so the shop sees which messages brought orders. Best-effort.
+    attributePlacedOrder(takeMessageAttribution(config?.slug), orderId);
     onOrderPlaced?.();   // empty the cart now that the order is placed
   }
 
