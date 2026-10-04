@@ -37,10 +37,16 @@ async function readWallet(slug, pin) {
 
 const SETTLED = { tone: 'ok', text: 'Your payment came through — the messages are in your wallet.' };
 
-export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeName = '', waPhone = '' }) {
+/**
+ * `compact`: a one-line strip (messages left + Top up) that opens into the full
+ * card when tapped — used where sending is the main job (Abandoned, Customers).
+ * `version`: bump it to re-read the balance after the parent sent messages.
+ */
+export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeName = '', waPhone = '', compact = false, version = 0 }) {
   const [wallet, setWallet] = useState(null);     // null = loading; else { ok, data }
   const [buying, setBuying] = useState(0);        // the pack being bought
   const [notice, setNotice] = useState(null);     // { tone, text }
+  const [open, setOpen] = useState(false);        // compact strip opened into the full card
 
   useEffect(() => {
     let alive = true;
@@ -50,7 +56,7 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
       if (r.settled) setNotice(SETTLED);
     });
     return () => { alive = false; };
-  }, [slug, pin]);
+  }, [slug, pin, version]);
 
   const load = useCallback(async () => {
     const r = await readWallet(slug, pin);
@@ -77,7 +83,7 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
   }
 
   if (wallet === null) {
-    return <div className="h-40 rounded-2xl bg-white border border-gray-100 animate-pulse" />;
+    return <div className={`${compact ? 'h-14' : 'h-40'} rounded-2xl bg-white border border-gray-100 animate-pulse`} />;
   }
 
   if (!wallet.ok || !wallet.data) {
@@ -102,6 +108,30 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
   const left = messagesLeft(balance, price);
   const recent = Array.isArray(wallet.data.recent) ? wallet.data.recent.slice(0, 5) : [];
 
+  if (compact && !open) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <Wallet size={18} className="text-gray-500 flex-shrink-0" />
+          <div className="min-w-0 flex-grow">
+            <p className="text-[13px] font-extrabold text-gray-900 tabular-nums">
+              {left.toLocaleString('en-IN')} {left === 1 ? 'message' : 'messages'} left
+            </p>
+            <p className="text-[11.5px] text-gray-500">Wallet {formatPaise(balance)} · {formatPaise(price)} per message</p>
+          </div>
+          <button type="button" onClick={() => setOpen(true)}
+            className="h-9 px-3.5 rounded-xl border border-gray-200 bg-white text-[12.5px] font-bold text-gray-900
+                       hover:bg-gray-50 active:scale-[0.98] transition-all flex-shrink-0">
+            Top up
+          </button>
+        </div>
+        {notice && (
+          <p className={`mt-2 text-xs font-semibold px-3 py-2 rounded-xl border ${TONE[notice.tone] || TONE.wait}`}>{notice.text}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
       <div className="flex items-start justify-between gap-2">
@@ -117,10 +147,16 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
             Balance {formatPaise(balance)} · {formatPaise(price)} per message
           </p>
         </div>
-        <button type="button" onClick={load} aria-label="Refresh"
-          className="p-2 -mr-1 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95 transition flex-shrink-0">
-          <RefreshCw size={15} />
-        </button>
+        <div className="flex items-center flex-shrink-0">
+          <button type="button" onClick={load} aria-label="Refresh"
+            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95 transition">
+            <RefreshCw size={15} />
+          </button>
+          {compact && (
+            <button type="button" onClick={() => setOpen(false)}
+              className="text-xs font-bold text-gray-500 px-2 py-2 rounded-xl hover:bg-gray-100">Done</button>
+          )}
+        </div>
       </div>
 
       {notice && (

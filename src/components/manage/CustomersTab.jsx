@@ -89,22 +89,24 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
     );
   }
 
+  const repeat = customers.filter((c) => c.orderCount >= 2).length;
+
   return (
     <div className="space-y-4">
       <Header themeColor={themeColor} count={summary.total} onRefresh={load} onExport={handleExport} exporting={exporting} />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-2">
-        <Stat label="Customers"   value={summary.total} />
-        <Stat label="Repeat rate" value={`${summary.repeatRate}%`} tint={themeColor} />
-        <Stat label="Win-back"    value={summary.winback} tint={summary.winback > 0 ? '#dc2626' : undefined} />
-        <Stat label="Avg / customer" value={formatINR(summary.avgClv)} />
+      <div className="grid grid-cols-3 gap-2">
+        <Stat label="Customers" value={summary.total} />
+        <Stat label="Came back" value={repeat} />
+        <Stat label="Not seen 30+ days" value={summary.winback} alert={summary.winback > 0} />
       </div>
 
       {/* Search */}
-      <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 py-2">
+      <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 h-[42px]">
         <Search size={15} className="text-gray-400 flex-shrink-0" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name or number…"
+               aria-label="Search customers"
                className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none" />
       </div>
 
@@ -114,23 +116,23 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
         {Object.entries(SEGMENTS).map(([key, meta]) =>
           counts[key] > 0 ? (
             <Chip key={key} active={seg === key} onClick={() => setSeg(key)}
-                  label={`${meta.emoji} ${meta.label}`} n={counts[key]} title={meta.desc} />
+                  label={meta.label} n={counts[key]} title={meta.desc} />
           ) : null
         )}
       </div>
 
       {/* Segment hint */}
       {seg !== 'all' && SEGMENTS[seg] && (
-        <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
+        <p className="flex items-center gap-1.5 text-[11.5px] text-gray-500 px-1 -mt-2">
           <Megaphone size={12} className="flex-shrink-0" style={{ color: themeColor }} />
-          {SEGMENTS[seg].desc}.
+          {SEGMENTS[seg].label}: {SEGMENTS[seg].desc.charAt(0).toLowerCase() + SEGMENTS[seg].desc.slice(1)}.
         </p>
       )}
 
       {/* WhatsApp offers to the active segment, paid from the message wallet */}
-      <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} />
       <OffersPanel slug={slug} pin={pin} businessName={businessName} themeColor={themeColor}
                    audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
+      <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} compact />
 
       {/* Customer list */}
       <div className="space-y-2">
@@ -162,26 +164,25 @@ function Header({ themeColor, count, onRefresh, onExport, exporting }) {
       <div className="flex items-center gap-2 flex-shrink-0">
         <button onClick={onExport} disabled={exporting}
           title="Download all contacts (buyers + abandoned carts) as a CSV — for WhatsApp / contacts import"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white rounded-xl px-3 py-2
-                     active:scale-95 transition disabled:opacity-60 disabled:active:scale-100"
-          style={{ backgroundColor: themeColor }}>
-          <Download size={13} /> {exporting ? 'Exporting…' : 'Export CSV'}
+          className="inline-flex items-center gap-1.5 h-9 text-xs font-bold text-gray-700 border border-gray-200 bg-white
+                     rounded-xl px-3 hover:bg-gray-50 active:scale-95 transition disabled:opacity-60 disabled:active:scale-100">
+          <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
         </button>
-        <button onClick={onRefresh}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
-                     rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition">
-          <RefreshCw size={13} /> Refresh
+        <button onClick={onRefresh} aria-label="Refresh"
+          className="inline-flex items-center justify-center w-9 h-9 text-gray-500 border border-gray-200 bg-white
+                     rounded-xl hover:bg-gray-50 active:scale-95 transition">
+          <RefreshCw size={14} />
         </button>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value, tint }) {
+function Stat({ label, value, alert = false }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-      <p className="text-[11px] font-semibold text-gray-400">{label}</p>
-      <p className="text-xl font-extrabold text-gray-900 mt-0.5 tabular-nums" style={tint ? { color: tint } : undefined}>{value}</p>
+    <div className={['rounded-2xl border px-3 py-2.5', alert ? 'border-red-100 bg-red-50/60' : 'border-gray-100 bg-white shadow-sm'].join(' ')}>
+      <p className={['text-xl font-extrabold tabular-nums leading-tight', alert ? 'text-red-700' : 'text-gray-900'].join(' ')}>{value}</p>
+      <p className={['text-[11.5px] mt-0.5 leading-tight', alert ? 'text-red-700' : 'text-gray-500'].join(' ')}>{label}</p>
     </div>
   );
 }
@@ -190,13 +191,21 @@ function Chip({ active, onClick, label, n, title }) {
   return (
     <button onClick={onClick} title={title}
       className={[
-        'flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap',
-        active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+        'flex-shrink-0 h-[34px] px-3.5 rounded-full text-[12.5px] border transition whitespace-nowrap',
+        active ? 'bg-gray-900 text-white border-gray-900 font-bold' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 font-semibold',
       ].join(' ')}>
-      {label} {n > 0 && <span className={active ? 'opacity-70' : 'text-gray-400'}>({n})</span>}
+      {label} {n > 0 && <span className={active ? 'opacity-70' : 'text-gray-400'}>{n}</span>}
     </button>
   );
 }
+
+// Segment tags on each customer: words, not emoji, coloured by meaning.
+const TAG = {
+  winback:    'bg-red-50 text-red-700',
+  bigspender: 'bg-amber-50 text-amber-700',
+  loyal:      'bg-emerald-50 text-emerald-700',
+  new:        'bg-blue-50 text-blue-700',
+};
 
 function CustomerRow({ c, themeColor, businessName, slug, pin, open, onToggle }) {
   const waMsg = encodeURIComponent(reengageMsg(c, businessName));
@@ -220,13 +229,15 @@ function CustomerRow({ c, themeColor, businessName, slug, pin, open, onToggle })
           {initials(c.name, c.phone)}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="font-bold text-gray-900 truncate leading-tight">{c.name || `+91 ${c.phone}`}</p>
-            {c.segments.map((s) => (
-              <span key={s} title={SEGMENTS[s].label} className="text-[11px] leading-none flex-shrink-0">{SEGMENTS[s].emoji}</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-extrabold text-gray-900 truncate leading-tight max-w-full">{c.name || `+91 ${c.phone}`}</p>
+            {c.segments.filter((s) => s !== 'new').map((s) => (
+              <span key={s} className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0 ${TAG[s] || 'bg-gray-100 text-gray-600'}`}>
+                {SEGMENTS[s].label}
+              </span>
             ))}
           </div>
-          <p className="text-[11px] text-gray-400 truncate mt-0.5">
+          <p className="text-xs text-gray-500 truncate mt-0.5">
             {c.orderCount} order{c.orderCount === 1 ? '' : 's'} · {formatINR(c.totalSpent)} · last {lastSeen(c.daysSinceLast)}
           </p>
         </div>
@@ -241,12 +252,12 @@ function CustomerRow({ c, themeColor, businessName, slug, pin, open, onToggle })
 
       {/* Expanded: favourites + order history + actions */}
       {open && (
-        <div className="border-t border-gray-100 px-4 py-3 space-y-3 bg-gray-50/40">
+        <div className="border-t border-gray-100 px-4 py-3 space-y-3">
           {c.topItems.length > 0 && (
-            <p className="text-xs text-gray-500">
-              <span className="font-semibold text-gray-600">Usually buys:</span>{' '}
-              {c.topItems.map((it) => it.name).join(' · ')}
-            </p>
+            <div className="rounded-xl bg-gray-50 px-3 py-2">
+              <p className="text-[10.5px] font-extrabold uppercase tracking-wider text-gray-500">Usually buys</p>
+              <p className="text-xs text-gray-700 mt-0.5">{c.topItems.map((it) => `${it.name} × ${it.qty}`).join(' · ')}</p>
+            </div>
           )}
 
           <div className="space-y-1.5">
@@ -264,15 +275,15 @@ function CustomerRow({ c, themeColor, businessName, slug, pin, open, onToggle })
             ))}
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="grid grid-cols-2 gap-2 pt-1">
             <a href={waLink} target="_blank" rel="noopener noreferrer"
-               className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl active:scale-95"
+               className="inline-flex items-center justify-center gap-1.5 h-10 text-[13px] font-extrabold text-white rounded-xl active:scale-95"
                style={{ backgroundColor: '#25D366' }}>
-              <MessageCircle size={13} /> Message
+              <MessageCircle size={15} /> Message
             </a>
             <a href={`tel:+91${c.phone}`}
-               className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95">
-              <Phone size={13} /> Call
+               className="inline-flex items-center justify-center gap-1.5 h-10 text-[13px] font-bold text-gray-700 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 active:scale-95">
+              <Phone size={14} /> Call
             </a>
           </div>
           <button type="button" onClick={stopOffers} disabled={stopped === 'saving' || stopped === 'done'}

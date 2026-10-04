@@ -31,6 +31,7 @@ const Privacy    = lazy(() => import('./pages/Privacy'));
 const DataDeletion = lazy(() => import('./pages/DataDeletion'));
 const OrderTracking = lazy(() => import('./pages/OrderTracking'));
 const CartRestore = lazy(() => import('./pages/CartRestore'));
+const OfferLink = lazy(() => import('./pages/OfferLink'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
 const StoreNotFound = lazy(() => import('./pages/StoreNotFound'));
 
@@ -294,6 +295,8 @@ export default function App() {
             <Route path="/order/:token"          element={<OrderTracking />} />
             {/* "Complete my order" in the automatic WhatsApp cart reminder. */}
             <Route path="/cart/:token"           element={<CartRestore />} />
+            {/* "Shop now" in a WhatsApp offer (counts opens and orders). */}
+            <Route path="/o/:token"              element={<OfferLink />} />
             <Route path="/review/:token"         element={<ReviewInvite />} />
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/console"               element={<Console />} />
