@@ -6,7 +6,8 @@ import { openOrderOnWhatsApp } from '../../utils/generateWhatsAppMessage';
 import { calcCartTotals, formatINR } from '../../utils/currency';
 import { whatsappLink } from '../../utils/theme';
 import { pixelTrack } from '../../utils/metaPixel';
-import { saveOrder, saveAbandonedCheckout, buildOrderRow } from '../../utils/orderService';
+import { saveOrder, saveAbandonedCheckout, buildOrderRow, recordWhatsappConsent } from '../../utils/orderService';
+import { optInWording, rememberedOptIn, rememberOptIn } from '../../utils/whatsappConsent';
 import { sendShadowOrder } from '../../utils/orderShadow';
 import { sendOrderNotifications } from '../../utils/otpService';
 import { couponDiscountFor, isCouponLive } from '../../utils/offers';
@@ -127,6 +128,37 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const [couponError,   setCouponError]   = useState('');
 
   const config = useBusinessConfig();
+
+  // WhatsApp marketing consent (cart reminders, offers). UNTICKED unless this
+  // customer ticked it for THIS shop before, on this device. Each change is
+  // recorded the moment it happens — the cart reminder is for customers who
+  // never finish, so recording it with the order would be too late.
+  const [waOptIn, setWaOptIn] = useState(() => rememberedOptIn(config?.slug));
+  const consentSent = useRef('');                 // "phone:true|false" last recorded in this visit
+  const optIn = optInWording(config?.businessName);
+  useEffect(() => {
+    const ph = String(formData.mobile || '').replace(/\D/g, '');
+    const [prevPh, prevState] = consentSent.current.split(':');
+    // Ticked, then the number was changed: the earlier number (usually a typo)
+    // never agreed to anything, so take it back.
+    if (prevState === 'true' && prevPh !== ph && config?.slug) {
+      recordWhatsappConsent(config.slug, prevPh, false, optIn.recorded);
+      consentSent.current = '';
+    }
+    if (ph.length !== 10 || !config?.slug) return;
+    const key = `${ph}:${waOptIn}`;
+    if (consentSent.current === key) return;
+    // An untick is only worth recording for a number that was ticked in this
+    // visit; a customer who never ticked has nothing to withdraw.
+    if (!waOptIn && consentSent.current !== `${ph}:true`) return;
+    consentSent.current = key;
+    recordWhatsappConsent(config.slug, ph, waOptIn, optIn.recorded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waOptIn, formData.mobile, config?.slug]);
+  function toggleOptIn(value) {
+    setWaOptIn(value);
+    rememberOptIn(config?.slug, value);
+  }
 
   // Fulfilment: store settings decide what's offered; pickup skips the
   // delivery charge. Default (no settings) = delivery-only, as before.
@@ -764,6 +796,23 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             )}
           </>
         )}
+
+        {/* WhatsApp offers & cart reminders — the customer's own choice, unticked
+            by default, shown in both the form and the "welcome back" view. */}
+        <label htmlFor="cdf-wa-optin"
+          className="flex items-start gap-2.5 rounded-xl border border-gray-200 bg-white px-3.5 py-3
+                     cursor-pointer hover:border-gray-300 transition-colors">
+          <input id="cdf-wa-optin" type="checkbox" checked={waOptIn}
+            onChange={(e) => toggleOptIn(e.target.checked)}
+            className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#25D366]" />
+          <span className="min-w-0 leading-snug">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-800">
+              <span className="text-[#25D366] flex-shrink-0"><WhatsAppIcon size={14} /></span>
+              {optIn.title}
+            </span>
+            <span className="block text-[11px] text-gray-400 mt-0.5">{optIn.detail}</span>
+          </span>
+        </label>
 
         {/* Payment Method — tappable cards (bigger targets than a dropdown) */}
         <FormField
