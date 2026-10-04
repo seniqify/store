@@ -30,6 +30,7 @@ const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
 const DataDeletion = lazy(() => import('./pages/DataDeletion'));
 const OrderTracking = lazy(() => import('./pages/OrderTracking'));
+const CartRestore = lazy(() => import('./pages/CartRestore'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
 const StoreNotFound = lazy(() => import('./pages/StoreNotFound'));
 
@@ -291,6 +292,8 @@ export default function App() {
                 page); /order is the same page, read-only. */}
             <Route path="/confirm/:token"        element={<OrderTracking />} />
             <Route path="/order/:token"          element={<OrderTracking />} />
+            {/* "Complete my order" in the automatic WhatsApp cart reminder. */}
+            <Route path="/cart/:token"           element={<CartRestore />} />
             <Route path="/review/:token"         element={<ReviewInvite />} />
             <Route path="/hub"                   element={<SalesHub />} />
             <Route path="/console"               element={<Console />} />

@@ -25,6 +25,7 @@ import { applyOffersToProducts, isOfferLive } from '../utils/offers';
 import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
 import { resolveCategory, categoryLinkId } from '../../api/_categoryLink.js';
 import { storePath } from '../utils/storeUrls';
+import { takeRestoreIntent, restoreCartLines } from '../utils/cartRestore';
 
 /**
  * Home — the main storefront page.
@@ -83,6 +84,20 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const offers       = config.offers || [];
   const liveOffers   = offers.filter((o) => isOfferLive(o));
   const saleProducts = applyOffersToProducts(products, offers);
+
+  // Arrived from a WhatsApp cart reminder (/cart/<token>): refill the cart with
+  // what this customer left behind — rebuilt from today's catalogue and prices,
+  // leaving out anything no longer available — and open it.
+  useEffect(() => {
+    const items = takeRestoreIntent(config.slug);
+    if (!items) return;
+    const { lines } = restoreCartLines(saleProducts, items);
+    for (const { line, qty } of lines) addToCart(line, qty);
+    // One-time, on arrival from the link — not a render loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (lines.length) setCartOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.slug]);
 
   // The product to show full-screen (sale price applied), or null for the grid.
   const detailProduct = productId ? saleProducts.find((p) => String(p.id) === String(productId)) : null;
