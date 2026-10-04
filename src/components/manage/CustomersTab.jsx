@@ -14,8 +14,8 @@ import { recordOptOut } from '../../utils/offerService';
  * Groups orders by phone into profiles (orders, spend, last seen, favourites),
  * auto-tags segments (Loyal / Win-back / Big spender / New), and lets the owner
  * message any customer in one tap, or send an approved WhatsApp offer to the
- * whole segment (OffersPanel, paid from the message wallet, only to customers
- * who agreed at checkout). No new data is collected; this organises what they own.
+ * whole segment (OffersPanel, paid from the message wallet, never to customers
+ * who asked to stop). No new data is collected; this organises what they own.
  */
 export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '' }) {
   const [orders,    setOrders]    = useState(null);   // null = loading

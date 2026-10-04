@@ -14,9 +14,9 @@ import { formatINR } from '../../utils/currency';
  *
  * Pick an approved message (ready-made, or the shop's own), fill in the offer,
  * see the WhatsApp preview, then "Send to N customers": the server first says
- * how many can actually receive it and what it costs. Only customers who ticked
- * "Get offers on WhatsApp" at this shop's checkout receive it, at most once
- * every 3 days, Rs 1.50 each from the wallet (supabase/offers-forward.sql).
+ * how many can actually receive it and what it costs. Every customer of the
+ * shop can, except those who asked to stop, at most once every 3 days, Rs 1.50
+ * each from the wallet (supabase/offers-everyone-forward.sql).
  * Each offer carries its own link, so the results line shows opens and the
  * orders it brought (supabase/messages-v2-forward.sql).
  * Ready-made messages come in English and Marathi; when both exist, an
@@ -214,9 +214,9 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
                   <b>{check.eligible}</b> of {phones.length} {who} can receive it
                   {check.eligible > 0 && <> · <b>{formatPaise(check.cost_paise)}</b> from your wallet ({formatPaise(check.balance_paise)} left)</>}.
                 </p>
-                {(check.no_consent > 0 || check.recent > 0) && (
+                {(check.opted_out > 0 || check.recent > 0) && (
                   <p className="text-[11.5px] text-gray-500">
-                    {check.no_consent > 0 && `${check.no_consent} haven’t agreed to WhatsApp offers at your checkout yet. `}
+                    {check.opted_out > 0 && `${check.opted_out} asked to stop offers. `}
                     {check.recent > 0 && `${check.recent} got an offer in the last 3 days.`}
                   </p>
                 )}
