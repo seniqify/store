@@ -183,6 +183,36 @@ export async function resolveReviewReport(reportId, decision, note = '') {
   if (error) throw new Error(error.message || 'Could not save the decision.');
 }
 
+/** WhatsApp message templates: shops' requests + ready-made (crm_team admin
+ *  only). Never includes a template's Seniqify link, only whether one is set.
+ *  [] if unavailable (e.g. offers-forward.sql not applied yet). */
+export async function fetchMessageTemplates() {
+  try {
+    const { data, error } = await supabase.rpc('admin_list_message_templates');
+    if (error || !Array.isArray(data)) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+/** Approve (with the Seniqify /process URL), reject (with a reason the shop
+ *  sees) or retire a template. */
+export async function decideMessageTemplate(id, decision, templateUrl = '', reason = '') {
+  const { error } = await supabase.rpc('admin_decide_message_template', {
+    p_id: id, p_decision: decision, p_template_url: templateUrl || null, p_reason: reason || null,
+  });
+  if (error) throw new Error(error.message || 'Could not save the decision.');
+}
+
+/** Add a ready-made message every shop can use (already approved in Seniqify). */
+export async function createReadyTemplate(name, body, templateUrl) {
+  const { error } = await supabase.rpc('admin_create_ready_template', {
+    p_name: name, p_body: body, p_template_url: templateUrl,
+  });
+  if (error) throw new Error(error.message || 'Could not add the message.');
+}
+
 export function daysAgoIso(days) {
   return new Date(Date.now() - days * 86400000).toISOString();
 }

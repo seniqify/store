@@ -4,15 +4,18 @@ import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildCustomers, summarizeCustomers, segmentCounts, SEGMENTS } from '../../utils/customers';
 import { buildContactRows, contactsToCsv, downloadCsv, contactsFilename } from '../../utils/exportCustomers';
-import CampaignPanel from './CampaignPanel';
+import OffersPanel from './OffersPanel';
+import WalletCard from './WalletCard';
+import { recordOptOut } from '../../utils/offerService';
 
 /**
  * CustomersTab — the owner's customer list, built entirely from their orders.
  *
  * Groups orders by phone into profiles (orders, spend, last seen, favourites),
  * auto-tags segments (Loyal / Win-back / Big spender / New), and lets the owner
- * message any customer in one tap (manual wa.me for now — the segment broadcast
- * comes in Phase 2). No new data is collected; this just organises what they own.
+ * message any customer in one tap, or send an approved WhatsApp offer to the
+ * whole segment (OffersPanel, paid from the message wallet, only to customers
+ * who agreed at checkout). No new data is collected; this organises what they own.
  */
 export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '' }) {
   const [orders,    setOrders]    = useState(null);   // null = loading
@@ -124,14 +127,16 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
         </p>
       )}
 
-      {/* WhatsApp campaign — connect once, then broadcast to the active segment */}
-      <CampaignPanel slug={slug} pin={pin} businessName={businessName}
-                     audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
+      {/* WhatsApp offers to the active segment, paid from the message wallet */}
+      <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} />
+      <OffersPanel slug={slug} pin={pin} businessName={businessName} themeColor={themeColor}
+                   audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
 
       {/* Customer list */}
       <div className="space-y-2">
         {filtered.map((c) => (
           <CustomerRow key={c.phone} c={c} themeColor={themeColor} businessName={businessName}
+                       slug={slug} pin={pin}
                        open={openPhone === c.phone}
                        onToggle={() => setOpenPhone((p) => (p === c.phone ? null : c.phone))} />
         ))}
@@ -193,9 +198,18 @@ function Chip({ active, onClick, label, n, title }) {
   );
 }
 
-function CustomerRow({ c, themeColor, businessName, open, onToggle }) {
+function CustomerRow({ c, themeColor, businessName, slug, pin, open, onToggle }) {
   const waMsg = encodeURIComponent(reengageMsg(c, businessName));
   const waLink = `https://wa.me/91${c.phone}?text=${waMsg}`;
+  const [stopped, setStopped] = useState('');   // '' | 'saving' | 'done' | 'error'
+
+  // The customer asked the shop (in person, on a call, on WhatsApp) to stop
+  // offers: from now on no offer or cart reminder goes to them from this shop.
+  async function stopOffers() {
+    if (!window.confirm(`Stop WhatsApp offers and cart reminders to ${c.name || 'this customer'}?`)) return;
+    setStopped('saving');
+    try { await recordOptOut(slug, pin, c.phone); setStopped('done'); } catch { setStopped('error'); }
+  }
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -261,6 +275,12 @@ function CustomerRow({ c, themeColor, businessName, open, onToggle }) {
               <Phone size={13} /> Call
             </a>
           </div>
+          <button type="button" onClick={stopOffers} disabled={stopped === 'saving' || stopped === 'done'}
+            className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 underline underline-offset-2 disabled:no-underline">
+            {stopped === 'done' ? 'Offers stopped for this customer'
+              : stopped === 'error' ? 'Could not save — try again'
+              : 'Customer asked to stop offers'}
+          </button>
         </div>
       )}
     </div>
