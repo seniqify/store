@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase';
 
-/** Load Razorpay Checkout once (resolves false if the SDK can't be fetched). */
-function loadRazorpayScript() {
+/** Load Razorpay Checkout once (resolves false if the SDK can't be fetched).
+ *  Also used by the message wallet (wallet.js). */
+export function loadRazorpayScript() {
   return new Promise((resolve) => {
     if (window.Razorpay) { resolve(true); return; }
     const s = document.createElement('script');
