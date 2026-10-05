@@ -45,6 +45,42 @@ test('the sweep and the seller functions share identical courier and Razorpay ru
   assert.equal(fnText(OPS, 'delhiveryStatusText'), fnText(SYNC, 'delhiveryStatusText'));
 });
 
+test('every open shipment gets refreshed, not just the newest 80 (Krupa: 222 open, 111 over a week old)', () => {
+  for (const name of ['loadOpenShipments', 'pickForRefresh']) {
+    assert.equal(fnText(SWEEP, name), fnText(SYNC, name), `${name} drifted from shipping-sync`);
+  }
+  const pick = new Function(`${fnText(SWEEP, 'pickForRefresh').replace(/: any\[\]/g, '').replace(/: number/g, '')}; return pickForRefresh;`)();
+  const upTo = Array.from({ length: 222 }, (_, i) => i);
+  assert.deepEqual(pick(upTo, 300, 7), upTo, 'up to the cap: all of them, every run');
+  assert.deepEqual(pick([], 300, 7), []);
+  // Over the cap: every shipment within ceil(n / cap) consecutive runs, from any slot.
+  for (const [n, cap] of [[222, 80], [1000, 300], [301, 300], [81, 80]]) {
+    const all = Array.from({ length: n }, (_, i) => i);
+    for (const first of [0, 1, 12345, 2944512]) {
+      const seen = new Set();
+      for (let s = first; s < first + Math.ceil(n / cap); s++) {
+        const got = pick(all, cap, s);
+        assert.equal(got.length, cap);
+        assert.equal(new Set(got).size, cap, 'no repeats within one run');
+        got.forEach((x) => seen.add(x));
+      }
+      assert.equal(seen.size, n, `${n} open, ${cap} per run, from slot ${first}`);
+    }
+  }
+  const load = fnText(SWEEP, 'loadOpenShipments');
+  assert.match(load, /\.is\('shipment_outcome', null\)/, 'only shipments not yet delivered / returned / lost');
+  assert.match(load, /\.order\('created_at', \{ ascending: true \}\)/, 'a stable order for the moving window');
+  assert.match(load, /!isTerminal\(o\.shipment_status\)/);
+  assert.ok(!/toLowerCase\(\) === '(shadowfax|delhivery)'\)\.slice\(|\.limit\(300\)/.test(SWEEP + SYNC), 'no newest-N cut left');
+  assert.match(SWEEP, /const SWEEP_CAP = 300;/);
+  assert.match(SWEEP, /const slot = Math\.floor\(Date\.now\(\) \/ 1800000\);/);
+  assert.match(SWEEP, /pickForRefresh\(open\.filter\(\(o: any\) => String\(o\.courier\)\.toLowerCase\(\) === 'shadowfax'\), SWEEP_CAP, slot\)/);
+  assert.match(SWEEP, /pickForRefresh\(open\.filter\(\(o: any\) => String\(o\.courier \|\| 'delhivery'\)\.toLowerCase\(\) === 'delhivery'\), SWEEP_CAP, slot\)/);
+  assert.match(SYNC, /const slot = Math\.floor\(Date\.now\(\) \/ 60000\);/);
+  assert.match(SYNC, /const open = await loadOpenShipments\(supabase, slug\);/);
+  assert.match(SWEEP, /const open = await loadOpenShipments\(supabase, slug\);/);
+});
+
 test('"Out For Delivery" is no longer treated as finished, so it keeps refreshing', () => {
   const isTerminal = new Function(`${fnText(SYNC, 'isTerminal').replace(/: string/g, '').replace('): boolean', ')')}; return isTerminal;`)();
   assert.equal(isTerminal('Out For Delivery'), false);

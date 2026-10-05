@@ -4,9 +4,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // Scheduled status sweep (pg_cron -> net.http_post every 30 minutes; see
 // supabase/payments-automation-schedule.sql). For EVERY store:
 //
-//   1. couriers  refresh open shipments from Delhivery / Shadowfax. Writing
-//                shipment_status fires orders_payment_automation, which marks
-//                delivered COD collected and returned COD returned.
+//   1. couriers  refresh open shipments from Delhivery / Shadowfax -- every one
+//                of them (up to SWEEP_CAP per run, rotating past that), not
+//                just the newest. Writing shipment_status fires
+//                orders_payment_automation, which marks delivered COD collected
+//                and returned COD returned.
 //   2. Razorpay  confirm payment links and checkout payments that were paid but
 //                never confirmed (customer closed the app, verify hiccuped).
 //
@@ -46,6 +48,42 @@ function delhiveryStatusText(status: any): string {
   return status?.StatusType === 'RT' && !/rto|return/i.test(raw) ? `RTO ${raw}` : raw;
 }
 
+/**
+ * The store's open shipments: booked, not yet delivered / returned / lost (the
+ * trigger's shipment_outcome), from the last 90 days, OLDEST first -- a stable
+ * order, so pickForRefresh's window moves through them run after run. A
+ * courier-side cancellation is dropped by isTerminal.
+ */
+async function loadOpenShipments(supabase: any, slug: string): Promise<any[]> {
+  const since = new Date(Date.now() - 90 * 86400000).toISOString();
+  const { data: rows } = await supabase
+    .from('orders')
+    .select('id, awb, courier, shipment_status')
+    .eq('store_slug', slug)
+    .not('awb', 'is', null)
+    .is('shipment_outcome', null)
+    .gte('created_at', since)
+    .order('created_at', { ascending: true })
+    .limit(1000);
+  return (rows || []).filter((o: any) => !isTerminal(o.shipment_status));
+}
+
+/**
+ * Which of `rows` to ask the courier about on this run. All of them while there
+ * are at most `cap`. Past that, a window of `cap` that moves on by `cap` every
+ * run (`slot` = the run's number), wrapping around: every open shipment is asked
+ * about within ceil(rows / cap) runs, so the oldest are never starved. (It used
+ * to be the newest 80 only, so a busy store's older parcels never updated and
+ * their delivered cash-on-delivery never turned Paid.)
+ */
+function pickForRefresh(rows: any[], cap: number, slot: number): any[] {
+  const n = rows.length;
+  if (n <= cap) return rows;
+  const start = (((slot * cap) % n) + n) % n;
+  const end = start + cap;
+  return end <= n ? rows.slice(start, end) : rows.slice(start).concat(rows.slice(0, end - n));
+}
+
 /** True only when Razorpay says this link is fully paid, for this order, at this order's total. */
 function linkIsPaidFor(link: any, order: any): boolean {
   return link?.status === 'paid'
@@ -64,23 +102,20 @@ function checkoutIsPaidFor(rz: any, order: any): boolean {
 
 type Supa = ReturnType<typeof createClient>;
 
+/** Open shipments asked about per courier per store on one run (every 30 minutes). */
+const SWEEP_CAP = 300;
+
 async function syncCouriers(supabase: Supa, slug: string, accts: any[]): Promise<number> {
   const acctOf = (p: string) => accts.find((a) => a.provider === p && a.status === 'connected' && a.api_token);
-  const { data: rows } = await supabase
-    .from('orders')
-    .select('id, awb, courier, shipment_status')
-    .eq('store_slug', slug)
-    .not('awb', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(300);
-  const open = (rows || []).filter((o: any) => !isTerminal(o.shipment_status));
+  const open = await loadOpenShipments(supabase, slug);
+  const slot = Math.floor(Date.now() / 1800000);   // this half-hour's run
   const updates: { id: string; status: string }[] = [];
 
   const sfx = acctOf('shadowfax');
   if (sfx) {
     const sBase = sfx.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
-    const sfxOrders = open.filter((o: any) => String(o.courier).toLowerCase() === 'shadowfax').slice(0, 80);
-    await inChunks(sfxOrders, 8, async (o: any) => {
+    const sfxOrders = pickForRefresh(open.filter((o: any) => String(o.courier).toLowerCase() === 'shadowfax'), SWEEP_CAP, slot);
+    await inChunks(sfxOrders, 10, async (o: any) => {
       try {
         const r = await fetch(`${sBase}/v4/clients/orders/${o.awb}/track/`, { headers: { Authorization: `Token ${sfx.api_token}` } });
         const d = await r.json().catch(() => ({}));
@@ -92,7 +127,7 @@ async function syncCouriers(supabase: Supa, slug: string, accts: any[]): Promise
 
   const dlv = acctOf('delhivery');
   if (dlv) {
-    const dlvOrders = open.filter((o: any) => String(o.courier || 'delhivery').toLowerCase() === 'delhivery').slice(0, 160);
+    const dlvOrders = pickForRefresh(open.filter((o: any) => String(o.courier || 'delhivery').toLowerCase() === 'delhivery'), SWEEP_CAP, slot);
     for (let i = 0; i < dlvOrders.length; i += 40) {
       const chunk = dlvOrders.slice(i, i + 40);
       try {

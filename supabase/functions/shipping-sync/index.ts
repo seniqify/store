@@ -23,6 +23,42 @@ function delhiveryStatusText(status: any): string {
   return status?.StatusType === 'RT' && !/rto|return/i.test(raw) ? `RTO ${raw}` : raw;
 }
 
+/**
+ * The store's open shipments: booked, not yet delivered / returned / lost (the
+ * trigger's shipment_outcome), from the last 90 days, OLDEST first -- a stable
+ * order, so pickForRefresh's window moves through them run after run. A
+ * courier-side cancellation is dropped by isTerminal.
+ */
+async function loadOpenShipments(supabase: any, slug: string): Promise<any[]> {
+  const since = new Date(Date.now() - 90 * 86400000).toISOString();
+  const { data: rows } = await supabase
+    .from('orders')
+    .select('id, awb, courier, shipment_status')
+    .eq('store_slug', slug)
+    .not('awb', 'is', null)
+    .is('shipment_outcome', null)
+    .gte('created_at', since)
+    .order('created_at', { ascending: true })
+    .limit(1000);
+  return (rows || []).filter((o: any) => !isTerminal(o.shipment_status));
+}
+
+/**
+ * Which of `rows` to ask the courier about on this run. All of them while there
+ * are at most `cap`. Past that, a window of `cap` that moves on by `cap` every
+ * run (`slot` = the run's number), wrapping around: every open shipment is asked
+ * about within ceil(rows / cap) runs, so the oldest are never starved. (It used
+ * to be the newest 80 only, so a busy store's older parcels never updated and
+ * their delivered cash-on-delivery never turned Paid.)
+ */
+function pickForRefresh(rows: any[], cap: number, slot: number): any[] {
+  const n = rows.length;
+  if (n <= cap) return rows;
+  const start = (((slot * cap) % n) + n) % n;
+  const end = start + cap;
+  return end <= n ? rows.slice(start, end) : rows.slice(start).concat(rows.slice(0, end - n));
+}
+
 async function inChunks<T>(items: T[], size: number, fn: (x: T) => Promise<void>) {
   for (let i = 0; i < items.length; i += size) {
     await Promise.all(items.slice(i, i + size).map(fn));
@@ -57,23 +93,19 @@ serve(async (req) => {
       .eq('store_slug', slug);
     const acctOf = (p: string) => (accts || []).find((a: any) => a.provider === p && a.status === 'connected' && a.api_token);
 
-    // Open shipments only (skip delivered/cancelled/RTO — they won't change), newest first.
-    const { data: rows } = await supabase
-      .from('orders')
-      .select('id, awb, courier, shipment_status')
-      .eq('store_slug', slug)
-      .not('awb', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(300);
-    const open = (rows || []).filter((o: any) => !isTerminal(o.shipment_status));
+    // Open shipments only (skip delivered/cancelled/RTO — they won't change).
+    const open = await loadOpenShipments(supabase, slug);
+    // A seller is waiting on this one, so it asks about fewer at a time; the
+    // window moves on every minute, and the 30-minute sweep covers the rest.
+    const slot = Math.floor(Date.now() / 60000);
 
     const updates: { id: string; status: string }[] = [];
 
-    // ── Shadowfax: parallel single-AWB track (cap 80 per run; backlog clears over a few opens) ──
+    // ── Shadowfax: parallel single-AWB track (80 per run, rotating, so the backlog clears) ──
     const sfx = acctOf('shadowfax');
     if (sfx) {
       const sBase = sfx.mode === 'production' ? 'https://dale.shadowfax.in/api' : 'https://dale.staging.shadowfax.in/api';
-      const sfxOrders = open.filter((o: any) => String(o.courier).toLowerCase() === 'shadowfax').slice(0, 80);
+      const sfxOrders = pickForRefresh(open.filter((o: any) => String(o.courier).toLowerCase() === 'shadowfax'), 80, slot);
       await inChunks(sfxOrders, 8, async (o: any) => {
         try {
           const r = await fetch(`${sBase}/v4/clients/orders/${o.awb}/track/`, { headers: { Authorization: `Token ${sfx.api_token}` } });
@@ -87,7 +119,7 @@ serve(async (req) => {
     // ── Delhivery: one multi-waybill call per 40 AWBs ──
     const dlv = acctOf('delhivery');
     if (dlv) {
-      const dlvOrders = open.filter((o: any) => String(o.courier || 'delhivery').toLowerCase() === 'delhivery').slice(0, 160);
+      const dlvOrders = pickForRefresh(open.filter((o: any) => String(o.courier || 'delhivery').toLowerCase() === 'delhivery'), 160, slot);
       for (let i = 0; i < dlvOrders.length; i += 40) {
         const chunk = dlvOrders.slice(i, i + 40);
         try {
