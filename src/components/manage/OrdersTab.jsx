@@ -93,8 +93,8 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const noun    = leads ? 'lead' : 'order';
 
   const [orders,     setOrders]     = useState(null);   // null = loading
-  // Orders open on "To ship" -- the work still to do. Leads keep their status chips.
-  const [filter,     setFilter]     = useState(leads ? 'all' : 'to_ship');
+  // The list always opens on All (founder, 2026-10-05); the stage tabs narrow it.
+  const [filter,     setFilter]     = useState('all');
   const [query,      setQuery]      = useState('');     // find one customer / order fast
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -340,9 +340,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           {/* Stage tabs (orders): where each order stands, read from what happened. */}
           {!leads && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1" role="tablist" aria-label="Order stages">
-              {[...STAGE_TABS.filter((t) => t.key === 'to_ship' || t.key === 'on_the_way' || t.key === 'delivered'
-                  || stages[t.key] > 0 || filter === t.key),
-                { key: 'all', label: 'All' }].map(({ key, label }) => {
+              {[{ key: 'all', label: 'All' },
+                ...STAGE_TABS.filter((t) => t.key === 'to_ship' || t.key === 'on_the_way' || t.key === 'delivered'
+                  || stages[t.key] > 0 || filter === t.key)].map(({ key, label }) => {
                 const active = filter === key;
                 const n = key === 'all' ? orders.length : stages[key];
                 return (
