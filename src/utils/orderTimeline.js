@@ -1,4 +1,4 @@
-import { classifyBucket, prettyStatus } from './deliveryStatus';
+import { classifyBucket, prettyStatus } from './deliveryStatus.js';
 
 /**
  * Buyer-facing view of where an order has got to.
@@ -7,11 +7,11 @@ import { classifyBucket, prettyStatus } from './deliveryStatus';
  * buckets (classifyBucket); this reuses that vocabulary so buyer and seller are
  * never looking at different truths about the same parcel.
  *
- * The one rule here: NEVER show progress we don't have. A store that doesn't
- * ship through PocketLink produces no courier events at all, so the timeline
- * stops after "confirmed" and says why (`note`), instead of leaving ghost steps
- * that sit unticked forever. A tracker that pretends is worse than no tracker —
- * it generates exactly the "where is my order?" message this page exists to stop.
+ * It is a TRACKER (founder, 2026-10-05): the whole journey is shown, the steps
+ * still to come in grey, with the current one marked. That is honest now for
+ * every order, not just courier ones: a shop delivering itself moves the order
+ * from its Orders card -- "Send to delivery boy" makes it Out for delivery, and
+ * "Delivered" finishes it -- so no step sits unticked forever.
  */
 
 // Hero tones map to the same colours as BUCKET_META on the seller board.
@@ -38,6 +38,10 @@ export function buildTimeline(o = {}) {
   const cancelled = o.status === 'cancelled';
   const delivered = o.status === 'delivered' || bucket === 'delivered';
   const cod       = String(o.paymentMethod || '').toLowerCase() === 'cod' && !o.paid;
+  // The shop's own delivery person has it (Orders card: "Send to delivery boy").
+  const withRider = !shipped && !delivered && o.status === 'dispatched';
+  // The shop is getting it ready: the buyer confirmed, or the shop accepted it.
+  const accepted  = Boolean(o.confirmedAt) || ['confirmed', 'dispatched', 'delivered'].includes(o.status);
 
   // ── Steps ────────────────────────────────────────────────────────────────
   const steps = [
@@ -45,6 +49,15 @@ export function buildTimeline(o = {}) {
     { key: 'confirmed', label: o.confirmedAt ? 'You confirmed' : 'Confirm your order',
       at: o.confirmedAt, state: o.confirmedAt ? 'done' : 'todo' },
   ];
+
+  if (!shipped && !cancelled) {
+    // Not with a courier (yet): the shop moves these from its Orders card.
+    steps.push({ key: 'packing', label: 'Packing your order',
+                 state: delivered || withRider ? 'done' : accepted ? 'now' : 'todo' });
+    steps.push({ key: 'ofd', label: 'Out for delivery',
+                 state: delivered ? 'done' : withRider ? 'now' : 'todo' });
+    steps.push({ key: 'delivered', label: 'Delivered', state: delivered ? 'done' : 'todo' });
+  }
 
   if (shipped) {
     steps.push({
@@ -84,17 +97,20 @@ export function buildTimeline(o = {}) {
   } else if (shipped) {
     hero = { tone: 'emerald', icon: 'box', title: 'Packed & ready',
              sub: 'Waiting for the courier to pick it up.' };
-  } else if (o.confirmedAt) {
-    hero = { tone: 'emerald', icon: 'check', title: 'Order confirmed',
-             sub: 'The shop is preparing it.' };
+  } else if (withRider) {
+    hero = { tone: 'indigo', icon: 'truck', title: 'Out for delivery',
+             sub: 'The shop’s delivery person is on the way to you.' };
+  } else if (accepted) {
+    hero = { tone: 'emerald', icon: 'box', title: 'Preparing your order',
+             sub: 'The shop is packing it. Every step shows up here.' };
   } else {
     hero = { tone: 'emerald', icon: 'check', title: 'Order placed',
              sub: 'Tap confirm below so the shop can start packing.' };
   }
 
-  // The honest stop — say why there is nothing more to show.
-  const note = (!shipped && !cancelled && !delivered)
-    ? 'This shop arranges delivery themselves, so there are no courier updates to show here. They’ll message you directly.'
+  // Before it leaves the shop, say when the next step appears.
+  const note = (!shipped && !cancelled && !delivered && !withRider)
+    ? 'This page updates as soon as the shop sends your order. Keep the WhatsApp message to come back here.'
     : null;
 
   return { hero, steps, note, cod, delivered, cancelled, shipped };
