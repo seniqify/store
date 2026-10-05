@@ -77,7 +77,7 @@ test('no WhatsApp template credential URL is committed anywhere', () => {
 
 test('every Seniqify template URL comes from a secret, with no fallback', () => {
   for (const name of ['SENIQIFY_TEMPLATE_URL', 'SENIQIFY_WELCOME_TEMPLATE_URL',
-                      'SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL']) {
+                      'SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL', 'SENIQIFY_ORDER_CONFIRM_TRACK_TEMPLATE_URL']) {
     const re = new RegExp(`Deno\\.env\\.get\\('${name}'\\)\\s*\\?\\?\\s*''`);
     assert.match(OTPFN, re, `${name} must default to '' (fail closed)`);
   }
@@ -100,9 +100,23 @@ test('a missing welcome credential fails closed', () => {
 test('a missing order-confirm credential degrades, it does not block the order', () => {
   // COD buyers fall through to the plain thank-you; the seller alert is untouched.
   assert.match(OTPFN, /const confirmUrl\s*=\s*Deno\.env\.get\('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL'\) \?\? ''/);
-  assert.match(OTPFN, /if \(cust && isCod && confirmUrl && order\?\.id\)/);
-  assert.equal(/if \(!confirmUrl\)[\s\S]{0,80}return json/.test(OTPFN), false,
+  assert.match(OTPFN, /const confirmSend = confirmTrackUrl \|\| confirmUrl;/);
+  assert.match(OTPFN, /if \(cust && isCod && confirmSend && order\?\.id\)/);
+  assert.equal(/if \(!confirm(Url|Send)\)[\s\S]{0,80}return json/.test(OTPFN), false,
     'a missing confirm template must not refuse the request');
+});
+
+test('the two-button confirm adds ONLY the Track button: {{6}} = order/<token>, and only with its own template', () => {
+  const block = OTPFN.slice(OTPFN.indexOf("const values: Record<string, string> = {"), OTPFN.indexOf("order-notify confirm ${r.status}"));
+  assert.match(block, /'5': `confirm\/\$\{token\}`/, 'Confirm is unchanged');
+  assert.match(block, /if \(confirmTrackUrl\) values\['6'\] = `order\/\$\{token\}`;/, 'Track only on the two-button template');
+  assert.match(block, /await fetch\(confirmSend, /);
+  // The one-button template keeps getting exactly its 5 values (a 6th could be refused).
+  assert.equal((block.match(/values\['6'\]/g) || []).length, 1);
+  // Both routes exist: /confirm confirms, /order only shows.
+  const app = read('src/App.jsx');
+  assert.match(app, /path="\/confirm\/:token"/);
+  assert.match(app, /path="\/order\/:token"/);
 });
 
 // ── P1-2  the OTP rate limit ─────────────────────────────────────────────────

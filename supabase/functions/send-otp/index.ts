@@ -14,6 +14,8 @@ const CORS = {
 //   SENIQIFY_TEMPLATE_URL                OTP code
 //   SENIQIFY_WELCOME_TEMPLATE_URL        store-registration welcome
 //   SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL  COD "Confirm my order"
+//   SENIQIFY_ORDER_CONFIRM_TRACK_TEMPLATE_URL  COD "Confirm my order" + "Track order"
+//                                        (when set, it replaces the one above)
 //   SENIQIFY_ORDER_SELLER_TEMPLATE_URL   seller new-order alert
 //   SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL buyer thank-you
 const SENIQIFY_URL = Deno.env.get('SENIQIFY_TEMPLATE_URL') ?? '';
@@ -338,7 +340,11 @@ serve(async (req: Request) => {
       // so it is secret-only with no fallback. Unset degrades to the plain
       // thank-you below; it never blocks the order or the seller's alert.
       const confirmUrl  = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL') ?? '';
-      if (!confirmUrl) console.error('send-otp: SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL is not set — COD buyers get the plain thank-you');
+      // The same message with a second button, "Track order". Once its secret is
+      // set it replaces the one-button template; unsetting it goes back.
+      const confirmTrackUrl = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TRACK_TEMPLATE_URL') ?? '';
+      const confirmSend = confirmTrackUrl || confirmUrl;
+      if (!confirmSend) console.error('send-otp: SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL is not set — COD buyers get the plain thank-you');
       const isCod = String(order?.payment_method || '').toLowerCase() === 'cod';
 
       // Not set up yet → tell the client to fall back to wa.me. The seller alert
@@ -392,7 +398,7 @@ serve(async (req: Request) => {
           // saved — read it back rather than minting one here. Both the client
           // insert and the safety-net upsert have already run, so the row is there.
           let token = '';
-          if (cust && isCod && confirmUrl && order?.id) {
+          if (cust && isCod && confirmSend && order?.id) {
             const { data: saved } = await supabase
               .from('orders').select('confirm_token').eq('id', order.id).maybeSingle();
             token = saved?.confirm_token ? String(saved.confirm_token) : '';
@@ -405,16 +411,18 @@ serve(async (req: Request) => {
             // Suffix ONLY — a full URL here would double the domain and Meta
             // rejects it. Tapping it opens /confirm/<token>, which calls
             // confirm_order_by_token and stamps orders.customer_confirmed_at.
-            const r = await fetch(confirmUrl, { method: 'POST', headers, body: JSON.stringify({
-              receiver: cust,
-              values: {
-                '1': String(customerName || 'there'),
-                '2': String(storeName    || 'the store'),
-                '3': String(itemsSummary || 'your items'),
-                '4': String(orderTotal   || ''),
-                '5': `confirm/${token}`,
-              },
-            }) });
+            const values: Record<string, string> = {
+              '1': String(customerName || 'there'),
+              '2': String(storeName    || 'the store'),
+              '3': String(itemsSummary || 'your items'),
+              '4': String(orderTotal   || ''),
+              '5': `confirm/${token}`,
+            };
+            // Two-button version: {{6}} = the "Track order" button's suffix →
+            // /order/<token>, the read-only tracking page (same token; it never
+            // confirms). Suffix only, like {{5}}.
+            if (confirmTrackUrl) values['6'] = `order/${token}`;
+            const r = await fetch(confirmSend, { method: 'POST', headers, body: JSON.stringify({ receiver: cust, values }) });
             if (!r.ok) console.error(`order-notify confirm ${r.status}: ${await r.text()}`);
           } else if (customerUrl && cust) {
             const r = await fetch(customerUrl, { method: 'POST', headers, body: JSON.stringify({
