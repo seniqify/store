@@ -165,6 +165,9 @@ export default function OrderTracking() {
   const [data,  setData]  = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [copied, setCopied] = useState(false);
+  // The buyer's tap on "Confirm my order" gets its own moment, so the Confirm
+  // and Track buttons (which open the same order page) do not feel identical.
+  const [justConfirmed, setJustConfirmed] = useState(null);   // null | 'now' | 'already'
   const navigate = useNavigate();
 
   // Below the tracking: the shop's offer and more of its products. Loaded after
@@ -223,9 +226,11 @@ export default function OrderTracking() {
         // lands in the outer catch and shows "Something went wrong" instead of
         // the order. Errors surface on the returned { error } field, so a plain
         // await inside its own try is the correct shape here.
+        let confirmed = null;   // 'now' | 'already' -- shown only on the Confirm link
         if (isConfirmRoute) {
           try {
-            await supabase.rpc('confirm_order_by_token', { p_token: token });
+            const { data: c } = await supabase.rpc('confirm_order_by_token', { p_token: token });
+            if (c?.ok) confirmed = c.already ? 'already' : 'now';
           } catch { /* a failed confirm must not stop the order rendering */ }
         }
         // Back from a Razorpay payment link: ask the server to confirm with
@@ -239,6 +244,7 @@ export default function OrderTracking() {
         if (d.err)  { setState('error');   return; }
         if (!d.ok)  { setState('invalid'); return; }
         setData(d);
+        setJustConfirmed(confirmed);
         setState('ready');
       } catch {
         if (alive) setState('error');
@@ -251,9 +257,10 @@ export default function OrderTracking() {
   async function confirmNow() {
     setConfirming(true);
     try {
-      await supabase.rpc('confirm_order_by_token', { p_token: token });
+      const { data: c } = await supabase.rpc('confirm_order_by_token', { p_token: token });
       const d = await load();
       if (d.ok) setData(d);
+      if (c?.ok) setJustConfirmed(c.already ? 'already' : 'now');
     } catch { /* leave the page as-is; the buyer can retry */ }
     setConfirming(false);
   }
@@ -333,6 +340,23 @@ export default function OrderTracking() {
             <p className="text-[11px] text-gray-400">Order #{o.ref}</p>
           </div>
         </div>
+
+        {/* The Confirm tap's own moment (Track opens this page without it). */}
+        {justConfirmed && !cancelled && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex gap-3 items-start" role="status">
+            <span className="w-9 h-9 rounded-full bg-emerald-600 text-white grid place-items-center flex-shrink-0">
+              <Check size={18} strokeWidth={3} />
+            </span>
+            <div>
+              <p className="text-[15px] font-extrabold text-emerald-900 leading-tight">
+                {justConfirmed === 'now' ? 'Thank you! Your order is confirmed.' : 'Your order is already confirmed.'}
+              </p>
+              <p className="text-[12px] text-emerald-800 mt-1 leading-snug">
+                {store.name} will pack it now. To follow your order any time, tap <b>Track order</b> in the WhatsApp message.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Status hero */}
         <div className="rounded-2xl p-5 text-center text-white" style={heroStyle(hero.tone)}>

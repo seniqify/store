@@ -124,6 +124,19 @@ test('the tracking page: tracking first, then the offer and products; Order agai
   assert.match(page, /fetchStore\(shopSlug\)\.catch\(\(\) => null\)/);
 });
 
+test('the Confirm link gets its own "Thank you" moment; the Track link (read-only) does not', () => {
+  const page = read('src/pages/OrderTracking.jsx');
+  // Only the /confirm route sets it, from what the confirm RPC answered.
+  assert.match(page, /if \(isConfirmRoute\) \{\s*try \{\s*const \{ data: c \} = await supabase\.rpc\('confirm_order_by_token'/);
+  assert.match(page, /if \(c\?\.ok\) confirmed = c\.already \? 'already' : 'now';/);
+  assert.match(page, /setJustConfirmed\(confirmed\);/);
+  assert.equal((page.match(/setJustConfirmed\(/g) || []).length, 2, '/confirm on arrival, and the on-page Confirm button');
+  assert.match(page, /\{justConfirmed && !cancelled && \(/);
+  assert.match(page, /Thank you! Your order is confirmed\./);
+  const ready = page.slice(page.indexOf('// ── Ready'));
+  assert.ok(ready.indexOf('Thank you! Your order is confirmed.') < ready.indexOf('{/* Status hero */}'), 'at the top');
+});
+
 test('Offers tab: a coupon is shown on order pages only when the shop ticks it', () => {
   const tab = read('src/components/manage/OffersTab.jsx');
   assert.match(tab, /showOnOrderPage: false,/, 'off for new coupons');
