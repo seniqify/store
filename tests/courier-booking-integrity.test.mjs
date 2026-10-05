@@ -166,16 +166,21 @@ test('an unanswered courier is reported as unknown, not as a failure to retry', 
   const { bookingUnknown } = load(['bookingUnknown']);
   const r = bookingUnknown();
   assert.equal(r.bookingUnknown, true);
-  assert.match(r.error, /cannot tell whether a shipment was created/);
-  assert.match(r.error, /Check your courier panel/);
+  assert.match(r.error, /cannot tell yet whether a shipment was created/);
+  // Booking again is safe ONLY because it re-sends the SAME reference (RESUME).
+  assert.match(r.error, /re-sends the same booking/);
+  assert.match(r.error, /cannot create a second shipment/);
   assert.equal(r.awb, undefined, 'no AWB is invented');
-  assert.equal(/try again/i.test(r.error), false, 'a blind retry could create a second parcel');
+  assert.equal(/try again/i.test(r.error), false, 'never a blind retry: a new reference could create a second parcel');
+  const dup = bookingUnknown('Shadowfax', 'REF123', 'already exists', true);
+  assert.match(dup.error, /Check your courier panel for reference REF123/, 'a duplicate reference needs a human');
+  assert.equal(/press Book Shipment again/.test(dup.error), false);
 });
 
 test('the create call is wrapped so a throw cannot be mistaken for a refusal', () => {
   const fn = BOOK.slice(BOOK.indexOf('async function bookShipment('));
-  const create = fn.indexOf('await deps.fetch(url, init)');
-  const around = fn.slice(Math.max(0, create - 200), create + 300);
+  const create = fn.indexOf('await deps.fetch(url, { ...init');
+  const around = fn.slice(Math.max(0, create - 200), create + 500);
   assert.match(around, /try \{/, 'the create call is inside a try');
   assert.match(around, /bookingUnknown\(name, reference\)/, 'and a throw becomes the unknown state');
 });

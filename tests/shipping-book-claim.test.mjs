@@ -66,10 +66,12 @@ const FLOW = [
   'trackUrlFor', 'readCurrentShipment', 'askRpc', 'orderHex', 'fnv1a32', 'delhiveryReference',
   'shadowfaxReference', 'jsonObject', 'createReason', 'mentionsDuplicate', 'shadowfaxCancelConfirmed',
   'shadowfaxReplyAwb', 'hasShadowfaxErrors', 'isShadowfaxRefusal', 'createLog',
-  'delhiveryCancelConfirmed', 'cancelAtCourier', 'bookingUnknown', 'claimRefused',
+  'delhiveryCancelConfirmed', 'cancelAtCourier', 'bookingUnknown', 'resumeRefused', 'claimRefused',
   'finalizeUnheard', 'finalizeRefused', 'settleDuplicate', 'bookShipment',
 ];
-const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], { BASE });
+const CREATE_TIMEOUT_MS = Number(((BOOK.match(/\nconst CREATE_TIMEOUT_MS = ([\d_]+);/) || [])[1] || '').replace(/_/g, ''));
+assert.equal(CREATE_TIMEOUT_MS, 60000, 'the courier gets at most 60 s -- well inside the 2 quiet minutes a resume needs');
+const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], { BASE, CREATE_TIMEOUT_MS });
 
 // ── a stateful fake database that honours the RPC contracts ─────────────────
 
@@ -80,7 +82,8 @@ const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], 
  * answers ({data,error} or an Error to throw) that are used first.
  */
 function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
-  const state = { orderAwb, orderCourier, attempts: [], nextId: 100 };
+  // `now` is the database clock (ms); later() moves it on.
+  const state = { orderAwb, orderCourier, attempts: [], nextId: 100, now: Date.parse('2026-10-05T06:00:00Z') };
   const log = { rpc: [], writes: [] };
   const handlers = {
     claim_shipment_attempt(a) {
@@ -93,9 +96,23 @@ function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
       }
       const no = state.attempts.reduce((m, x) => Math.max(m, x.attempt_no), 0) + 1;
       const row = { id: ++state.nextId, attempt_no: no, courier: a.p_courier, awb: null,
-        end_reason: null, final_status: null };
+        end_reason: null, final_status: null, claimed_at: state.now };
       state.attempts.push(row);
       return { outcome: 'claimed', attempt_id: row.id, attempt_no: no, courier: a.p_courier };
+    },
+    // The contract of supabase/shipment-resume-forward.sql (tested on Postgres
+    // itself in tests/shipment-resume.test.mjs).
+    resume_shipment_attempt(a) {
+      if (state.orderAwb) return { outcome: 'already_booked', awb: state.orderAwb };
+      const open = state.attempts.find((x) => x.end_reason === null);
+      if (!open) return { outcome: 'nothing_open' };
+      if (open.awb) return { outcome: 'open_with_awb', attempt_id: open.id, awb: open.awb };
+      if (open.courier !== a.p_courier) return { outcome: 'other_courier', attempt_id: open.id, courier: open.courier };
+      if (open.claimed_at != null && open.claimed_at > state.now - 120000) {
+        return { outcome: 'too_soon', attempt_id: open.id, retry_in: Math.max(1, Math.ceil((open.claimed_at + 120000 - state.now) / 1000)) };
+      }
+      open.claimed_at = state.now;
+      return { outcome: 'resumed', attempt_id: open.id, attempt_no: open.attempt_no, courier: open.courier };
     },
     finalize_shipment_attempt(a) {
       const att = state.attempts.find((x) => x.id === a.p_attempt_id);
@@ -161,6 +178,7 @@ function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
   };
 }
 const calls = (db, fn) => db.log.rpc.filter((r) => r.fn === fn);
+const later = (db, ms) => { db.state.now += ms; };
 
 /** A courier with scripted answers to create and cancel. */
 function fakeCourier({ create = SFX_CREATED, cancel = SFX_CANCELLED, onCreate } = {}) {
@@ -232,12 +250,13 @@ const NOT_CLAIMED = [
   { outcome: 'something_new' },
 ];
 
-test('every non-claimed outcome => ZERO courier calls, and nothing else is asked', async () => {
+test('every non-claimed outcome => ZERO courier calls, and nothing else is asked (open_without_awb: only the resume)', async () => {
   for (const data of NOT_CLAIMED) {
     const db = ledgerDb({ script: { claim_shipment_attempt: [{ data, error: null }] } });
     const { reply, courier } = await book({ db });
     assert.equal(courier.seen.create.length + courier.seen.cancel.length, 0, data.outcome);
-    assert.deepEqual(db.log.rpc.map((r) => r.fn), ['claim_shipment_attempt'], data.outcome);
+    assert.deepEqual(db.log.rpc.map((r) => r.fn), data.outcome === 'open_without_awb'
+      ? ['claim_shipment_attempt', 'resume_shipment_attempt'] : ['claim_shipment_attempt'], data.outcome);
     assert.ok(reply.error || reply.alreadyBooked, data.outcome);
   }
 });
@@ -252,13 +271,15 @@ test('an unheard claim contacts no courier and is not retried', async () => {
   }
 });
 
-test('open_without_awb blocks -- a booking is in progress or unconfirmed', async () => {
+test('open_without_awb sent under 2 minutes ago => nothing is sent; the merchant is told how long to wait', async () => {
   const db = ledgerDb();
-  db.state.attempts.push({ id: 1, attempt_no: 1, courier: 'shadowfax', awb: null, end_reason: null });
+  db.state.attempts.push({ id: 1, attempt_no: 1, courier: 'shadowfax', awb: null, end_reason: null, claimed_at: db.state.now - 30000 });
   const { reply, courier } = await book({ db });
   assert.equal(courier.seen.create.length, 0);
   assert.equal(reply.bookingInProgress, true);
-  assert.equal(reply.needsReconciliation, true);
+  assert.equal(reply.canRetry, true);
+  assert.match(reply.error, /less than 2 minutes ago[\s\S]*Wait 2 minutes, then press Book Shipment again/);
+  assert.equal(db.state.attempts[0].claimed_at, db.state.now - 30000, 'a refused resume changes nothing');
 });
 
 test('open_with_awb blocks -- a live parcel not yet attached', async () => {
@@ -309,18 +330,157 @@ for (const [label, create] of UNKNOWN_CREATES) {
     assert.equal(att.end_reason, null, 'the claim is still open');
     assert.equal(att.awb, null);
     assert.equal(reply.bookingUnknown, true);
-    assert.equal(reply.needsReconciliation, true);
+    const duplicate = /duplicate/.test(label);
+    assert.equal(reply.needsReconciliation, duplicate, 'only a duplicate reference needs a human');
+    assert.equal(reply.canRetry, duplicate ? undefined : true);
     assert.equal(reply.reference, referenceSent(courier), 'the merchant is told what to look for');
   });
 }
 
-test('UNKNOWN: an open claim then blocks the next booking outright', async () => {
+test('UNKNOWN: the next booking within 2 minutes sends nothing', async () => {
   const db = ledgerDb();
   await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+  later(db, 119000);
   const second = fakeCourier();
   const { reply } = await book({ db, courier: second });
-  assert.equal(second.seen.create.length, 0, 'no second parcel');
+  assert.equal(second.seen.create.length, 0, 'no second send while the first may be in flight');
   assert.equal(reply.bookingInProgress, true);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESUME -- an unconfirmed booking never locks the order for good
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('RESUME: after 2 quiet minutes, Book re-sends the SAME attempt with the SAME reference, and books', async () => {
+  for (const provider of ['shadowfax', 'delhivery']) {
+    const db = ledgerDb();
+    const first = fakeCourier({ create: { status: 400, body: { message: 'Insufficient wallet balance' } } });
+    const r1 = await book({ db, courier: first, c: ctx({ provider }) });
+    assert.equal(r1.reply.bookingUnknown, true, provider);
+    assert.match(r1.reply.error, /Insufficient wallet balance[\s\S]*wait 2 minutes[\s\S]*cannot create a second shipment/, provider);
+    later(db, 120000);
+    const second = fakeCourier({ create: provider === 'shadowfax' ? SFX_CREATED : DLV_CREATED });
+    const r2 = await book({ db, courier: second, c: ctx({ provider }) });
+    assert.equal(r2.out.booked, true, provider);
+    assert.equal(referenceSent(second), referenceSent(first), `${provider}: the same reference -- the courier's duplicate check stands guard`);
+    assert.equal(db.state.attempts.length, 1, `${provider}: the same attempt, never a new one`);
+    assert.equal(db.state.orderAwb, provider === 'shadowfax' ? 'SFAWB0001' : 'DLAWB0001');
+    assert.equal(calls(db, 'fail_shipment_attempt').length, 0, provider);
+    assert.deepEqual(calls(db, 'resume_shipment_attempt')[0].args,
+      { p_store_slug: 'store-a', p_order_id: ORDER, p_courier: provider }, provider);
+  }
+});
+
+test('RESUME: Shadowfax says OUR reference already exists with an AWB => that parcel is attached, nothing new is made', async () => {
+  const db = ledgerDb();
+  const first = fakeCourier({ create: new Error('timed out') });       // the parcel was made; the answer was lost
+  await book({ db, courier: first });
+  const ref = referenceSent(first);
+  later(db, 180000);
+  const dup = { status: 200, body: { message: 'Failure', errors: `Order for COID : ${ref} is already created with AWB : SF777`, COID: ref, AWB: 'SF777' } };
+  const second = fakeCourier({ create: dup });
+  const { out, reply } = await book({ db, courier: second });
+  assert.equal(out.booked, true);
+  assert.equal(reply.awb, 'SF777');
+  assert.equal(db.state.orderAwb, 'SF777');
+  assert.equal(db.state.attempts.length, 1);
+  assert.equal(second.seen.cancel.length, 0, 'nothing to cancel: there is one parcel');
+});
+
+test('RESUME: a duplicate naming ANOTHER reference, or no AWB, is never attached', async () => {
+  for (const body of [
+    { message: 'Failure', errors: 'Order for COID : 0000000000000000zzzz is already created with AWB : SF1', COID: '0000000000000000zzzz', AWB: 'SF1' },
+    { message: 'Failure', errors: 'Order already created' },
+  ]) {
+    const db = ledgerDb();
+    await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+    later(db, 180000);
+    const { out, reply } = await book({ db, courier: fakeCourier({ create: { status: 200, body } }) });
+    assert.equal(out.booked, false);
+    assert.equal(db.state.orderAwb, null);
+    assert.equal(reply.needsReconciliation, true);
+    assert.match(reply.error, /reference already exists/);
+    assert.equal(db.state.attempts[0].end_reason, null);
+  }
+  assert.equal(F.classifyShadowfaxCreate(200, JSON.stringify({ message: 'Failure', errors: 'already created', COID: 'abc', AWB: 'SF1' })).kind,
+    'unknown', 'without our reference to compare, never');
+});
+
+test('RESUME: a refused RESEND never releases the claim -- the first send may still have made a parcel', async () => {
+  const db = ledgerDb();
+  await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+  later(db, 180000);
+  const refusal = { status: 401, body: { status: 'FAILED', message: 'Authentication failed' } };   // a documented refusal
+  const { out, reply } = await book({ db, courier: fakeCourier({ create: refusal }) });
+  assert.equal(out.booked, false);
+  assert.equal(calls(db, 'fail_shipment_attempt').length, 0, 'not released');
+  assert.equal(db.state.attempts[0].end_reason, null);
+  assert.equal(reply.canRetry, true);
+  assert.match(reply.error, /could not book this shipment[\s\S]*re-sends the same booking/);
+  later(db, 180000);
+  const third = fakeCourier();
+  const r3 = await book({ db, courier: third });
+  assert.equal(r3.out.booked, true, 'the next resume books it');
+  assert.equal(db.state.attempts.length, 1);
+});
+
+test('RESUME: an attempt with another courier is not re-sent -- switching couriers could ship twice', async () => {
+  const db = ledgerDb();
+  await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });   // shadowfax
+  later(db, 180000);
+  const dlv = fakeCourier({ create: DLV_CREATED });
+  const { out, reply } = await book({ db, courier: dlv, c: ctx({ provider: 'delhivery' }) });
+  assert.equal(out.booked, false);
+  assert.equal(dlv.seen.create.length, 0);
+  assert.match(reply.error, /earlier Shadowfax booking[\s\S]*Make Shadowfax your active courier again/);
+});
+
+test('RESUME: simultaneous presses on a stale order => exactly ONE resend', async () => {
+  const db = ledgerDb();
+  await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+  later(db, 180000);
+  const courier = fakeCourier();
+  const outs = await Promise.all(Array.from({ length: 5 }, () => F.bookShipment({ supabase: db, fetch: courier.fetch }, ctx())));
+  assert.equal(courier.seen.create.length, 1);
+  assert.equal(outs.filter((o) => o.booked).length, 1);
+  assert.equal(outs.filter((o) => o.reply.bookingInProgress || o.reply.alreadyBooked).length, 4);
+});
+
+test('RESUME: an unheard resume, or one that finds nothing open, sends nothing', async () => {
+  for (const [answer, re] of [
+    [new Error('timeout'), /nothing was sent/],
+    [{ data: { outcome: 'nothing_open' }, error: null }, /just finished/],
+    [{ data: { outcome: 'open_with_awb', attempt_id: 1, awb: 'LIVE9' }, error: null }, /already has a shipment \(LIVE9\)/],
+    [{ data: { outcome: 'already_booked', awb: 'SF5' }, error: null }, null],
+  ]) {
+    const db = ledgerDb({ script: { resume_shipment_attempt: [answer] } });
+    await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+    later(db, 180000);
+    const courier = fakeCourier();
+    const { reply } = await book({ db, courier });
+    assert.equal(courier.seen.create.length, 0);
+    if (re) assert.match(reply.error, re); else assert.equal(reply.alreadyBooked, true);
+  }
+});
+
+test('RESUME: a resend whose reference cannot be built sends nothing and releases nothing', async () => {
+  const db = ledgerDb({ script: { resume_shipment_attempt: [{ data: { outcome: 'resumed', attempt_id: 101, attempt_no: 0, courier: 'shadowfax' }, error: null }] } });
+  await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+  later(db, 180000);
+  const courier = fakeCourier();
+  const { reply } = await book({ db, courier });
+  assert.equal(courier.seen.create.length, 0);
+  assert.equal(calls(db, 'fail_shipment_attempt').length, 0, 'the first send may have made a parcel: never released here');
+  assert.equal(db.state.attempts[0].end_reason, null);
+  assert.match(reply.error, /nothing was sent to the courier/);
+});
+
+test('RESUME: the courier call is given at most CREATE_TIMEOUT_MS', async () => {
+  const courier = fakeCourier();
+  await book({ courier });
+  const sig = courier.seen.create[0].init.signal;
+  assert.ok(sig && typeof sig.aborted === 'boolean', 'an AbortSignal goes with every create');
+  assert.match(BOOK_CODE, /deps\.fetch\(url, \{ \.\.\.init, signal: AbortSignal\.timeout\(CREATE_TIMEOUT_MS\) \}\)/);
 });
 
 test('UNKNOWN: a duplicate reference says so -- the first create may have succeeded', async () => {
@@ -385,11 +545,11 @@ for (const status of GENERIC_4XX) {
       assert.equal(calls(db, 'fail_shipment_attempt').length, 0, 'a generic 4xx never calls fail');
       assert.equal(db.state.attempts[0].end_reason, null, 'the claim stays open');
       assert.equal(reply.bookingUnknown, true);
-      assert.equal(reply.needsReconciliation, true);
+      assert.equal(reply.canRetry, true);
       assert.match(reply.error, /Pincode not serviceable/, 'the merchant still sees what the courier said');
       const next = fakeCourier();
       const again = await book({ db, courier: next, c: ctx({ provider }) });
-      assert.equal(next.seen.create.length, 0, 'the order stays blocked: no second parcel');
+      assert.equal(next.seen.create.length, 0, 'within 2 minutes: nothing is sent again');
       assert.equal(again.reply.bookingInProgress, true);
     });
   }
@@ -545,10 +705,11 @@ const SFX_NOT_REFUSALS = [
 const PROVEN_TEST_ONLY = { status: 400, body: { test_only_proven_refusal: true, errors: ['Pincode not serviceable'] } };
 const S = load(FLOW, {
   BASE,
-  classifyShadowfaxCreate: (status, body) => (
+  CREATE_TIMEOUT_MS,
+  classifyShadowfaxCreate: (status, body, reference) => (
     status === PROVEN_TEST_ONLY.status && body === JSON.stringify(PROVEN_TEST_ONLY.body)
       ? { kind: 'rejected', reason: 'Pincode not serviceable' }
-      : F.classifyShadowfaxCreate(status, body)),
+      : F.classifyShadowfaxCreate(status, body, reference)),
   classifyDelhiveryCreate: F.classifyDelhiveryCreate,
 });
 async function bookProven({ db = ledgerDb(), courier = fakeCourier(), c = ctx() } = {}) {
@@ -1075,8 +1236,10 @@ test('no reply carries the courier token or a raw provider body', async () => {
 test('source: in bookShipment the claim comes BEFORE the courier create', () => {
   const fn = BOOK_CODE.slice(BOOK_CODE.indexOf('async function bookShipment('));
   const claim = fn.indexOf("'claim_shipment_attempt'");
-  const create = fn.indexOf('deps.fetch(url, init)');
+  const create = fn.indexOf('deps.fetch(url, { ...init');
   assert.ok(claim > 0 && create > claim);
+  assert.ok(fn.indexOf("'resume_shipment_attempt'") > claim && fn.indexOf("'resume_shipment_attempt'") < create,
+    'a resume is asked for after the claim and before any create');
   assert.match(fn.slice(claim, create), /if \(claim\.outcome !== 'claimed'\)/);
 });
 
