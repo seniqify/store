@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star } from 'lucide-react';
+import {
+  RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star,
+  Bike, Link2, RotateCcw, AlertTriangle, CheckCircle2,
+} from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
@@ -13,6 +16,10 @@ import {
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
+import {
+  STAGE_TABS, orderStage, stageTab, tabCounts, orderSteps, nextStep, needsCallFirst, courierProgress, paymentChip,
+} from '../../utils/orderCard';
+import { BUCKET_META, courierInfo } from '../../utils/deliveryStatus';
 
 // Two vocabularies over the same rows: product stores see Orders (delivery
 // lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
@@ -86,7 +93,8 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const noun    = leads ? 'lead' : 'order';
 
   const [orders,     setOrders]     = useState(null);   // null = loading
-  const [filter,     setFilter]     = useState('all');
+  // Orders open on "To ship" -- the work still to do. Leads keep their status chips.
+  const [filter,     setFilter]     = useState(leads ? 'all' : 'to_ship');
   const [query,      setQuery]      = useState('');     // find one customer / order fast
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -146,6 +154,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     setOrders((os) => os.map((o) => (o.id === id ? { ...o, status } : o)));
     await setOrderStatus(slug, pin, id, status);
     setBusy(false);
+    // The database fills in what follows from a status (orders_payment_automation:
+    // delivered COD -> paid, delivered_at), so read the row back.
+    if (!leads) refresh();
   }
 
   async function markPaid(id, paid) {
@@ -158,6 +169,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // Counts over the LOADED list - this screen answers "how many can I open?",
   // never "what are my books?". Accounting totals live on Home/Stats/Payments.
   const counts = statusCounts(orders || []);
+  const stages = tabCounts(orders || []);
   // Unpaid = a real order whose money has not arrived. The SAME predicate runs
   // the filter below, so the chip's number and the rows it opens cannot diverge.
   const unpaidCount = countUnpaid(orders || [], { leads });
@@ -203,7 +215,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const filtered = searching
     ? (orders || []).filter(matchQuery)
     : (orders || [])
-        .filter((o) => (filter === 'all' ? true : o.status === filter))
+        .filter((o) => (filter === 'all' ? true : leads ? o.status === filter : stageTab(orderStage(o)) === filter))
         .filter((o) => (unpaidOnly ? isOrdersUnpaid(o) : true))
         .filter(matchDate);
 
@@ -234,7 +246,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             {leads ? 'Leads' : 'Orders'}
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {orders.length === 0 ? `No ${noun}s yet` : `${orders.length} total · ${counts.new || 0} new`}
+            {orders.length === 0 ? `No ${noun}s yet`
+              : leads ? `${orders.length} total · ${counts.new || 0} new`
+              : `${stages.to_ship} to ship · ${stages.on_the_way} on the way`}
           </p>
           {atCap && (
             <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1.5 inline-block">
@@ -323,9 +337,30 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             </label>
           </div>
 
+          {/* Stage tabs (orders): where each order stands, read from what happened. */}
+          {!leads && (
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1" role="tablist" aria-label="Order stages">
+              {[...STAGE_TABS.filter((t) => t.key === 'to_ship' || t.key === 'on_the_way' || t.key === 'delivered'
+                  || stages[t.key] > 0 || filter === t.key),
+                { key: 'all', label: 'All' }].map(({ key, label }) => {
+                const active = filter === key;
+                const n = key === 'all' ? orders.length : stages[key];
+                return (
+                  <button key={key} type="button" role="tab" aria-selected={active} onClick={() => setFilter(key)}
+                    className={[
+                      'flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition',
+                      active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                    ].join(' ')}>
+                    {label}{n > 0 && <span className={active ? 'opacity-70' : 'text-gray-400'}> · {n}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Filter chips */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
-            {FILTERS.map((f) => {
+            {leads && FILTERS.map((f) => {
               const active = filter === f;
               const n = f === 'all' ? orders.length : (counts[f] || 0);
               const label = f === 'all' ? 'All' : STATUS[f].label;
@@ -355,19 +390,26 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           {/* How updates work */}
           <p className="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
             <MessageCircle size={12} className="text-emerald-500 flex-shrink-0" />
-            Status buttons just update the order. Tap “Send update” to WhatsApp the customer a ready-made note — only when you want.
+            {leads
+              ? 'Status buttons just update the lead. Tap “Send update” to WhatsApp the customer a ready-made note — only when you want.'
+              : 'Orders move by themselves: the buyer confirms on WhatsApp, the courier updates delivery, and delivered cash-on-delivery turns Paid.'}
           </p>
 
           {/* Order / lead cards */}
           <div className="space-y-3">
-            {filtered.map((o) => (
-              <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
-                         storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads={leads} riders={riders} payInfo={payInfo} store={store} />
+            {filtered.map((o) => (leads
+              ? <LeadCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
+                          storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads riders={riders} payInfo={payInfo} store={store} />
+              : <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin} now={loadedAt}
+                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} riders={riders} payInfo={payInfo} store={store} />
             ))}
             {/* The searching case already has its own message above the list. */}
             {filtered.length === 0 && !searching && (
               <p className="text-center text-sm text-gray-400 py-8">
-                No {filter === 'all' ? '' : `${STATUS[filter]?.label.toLowerCase()} `}{noun}s
+                {leads
+                  ? <>No {filter === 'all' ? '' : `${STATUS[filter]?.label.toLowerCase()} `}{noun}s</>
+                  : filter === 'to_ship' ? <>Nothing to ship</>
+                  : <>No {filter === 'all' ? '' : `${(STAGE_TABS.find((t) => t.key === filter)?.label || '').toLowerCase()} `}orders</>}
                 {dateFilter === 'all' ? '' : dateFilter === 'today' ? ' today' : dateFilter === 'yesterday' ? ' yesterday' : ` on ${prettyDate(dateFilter)}`}.
               </p>
             )}
@@ -378,11 +420,87 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
+// One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
+// Settings). Without a saved number it opens WhatsApp's chat picker instead.
+function riderLink(o, storeName, phone, riderPhone) {
+  const msg = [
+    `🛵 *Delivery* — ${storeName || 'Store'}`,
+    `👤 ${o.customer_name || 'Customer'}${phone ? ` · +91 ${phone}` : ''}`,
+    `📍 ${o.destination || 'Address on order'}`,
+    Array.isArray(o.items) && o.items.length
+      ? `🛍️ ${o.items.map((it) => `${it.qty}× ${it.name}`).join(', ')}`
+      : `🛍️ ${o.item_count} item${o.item_count === 1 ? '' : 's'}`,
+    o.payment_method === 'cod'
+      ? `💰 COLLECT ₹${Number(o.total).toLocaleString('en-IN')} (cash on delivery)`
+      : `💰 ₹${Number(o.total).toLocaleString('en-IN')} — ${(o.payment_method || 'paid').toUpperCase()}`,
+  ].join('\n');
+  return riderPhone
+    ? `https://wa.me/91${riderPhone}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
+// "Request payment" — prefilled with the details matching the payment mode
+// the customer chose at checkout. Deliberately plain text: no emoji (they
+// mangle to � on some WhatsApp clients) and no upi:// link (WhatsApp doesn't
+// linkify that scheme, so it renders as scammy-looking URL garbage).
+// COD orders don't get the button; cash changes hands at the door.
+function paymentRequestMessage(o, storeName, payInfo = {}) {
+  if (o.payment_method === 'cod' || !(Number(o.total) > 0)) return null;
+  const totalStr = `₹${Number(o.total).toLocaleString('en-IN')}`;
+  const head = `Hi ${o.customer_name || 'there'}, this is *${storeName || 'our store'}*.\n` +
+               `Your order of *${totalStr}* is confirmed.\n\n`;
+  const tail = `\n\nOnce paid, kindly send the screenshot here and we will process your order right away. Thank you!`;
+  const wantsUpi  = o.payment_method === 'upi' || o.payment_method === 'qr';
+  const bank      = payInfo.bank;
+  const hasBank   = Boolean(bank?.accountNumber);
+  if ((wantsUpi || !hasBank) && payInfo.upi) {
+    return head +
+      `Please pay using UPI (GPay / PhonePe / Paytm):\n` +
+      `UPI ID: *${payInfo.upi}*` +
+      tail;
+  }
+  if (hasBank) {
+    return head +
+      `Please pay by bank transfer:\n` +
+      (bank.accountName ? `Account Name: ${bank.accountName}\n` : '') +
+      `Account No: ${bank.accountNumber}\n` +
+      (bank.ifsc ? `IFSC: ${bank.ifsc}\n` : '') +
+      (bank.bankName ? `Bank: ${bank.bankName}` : '').trim() +
+      tail;
+  }
+  return null;   // no payment details saved in Settings yet
+}
+
+// Per-order profit (owner-only) — goods revenue minus this order's cost of
+// goods, the ACTUAL courier charge saved at booking (order.shipping_cost, else
+// the store's flat delivery cost), and the flat packaging cost. Known only when
+// every item in the order has a cost price set, so the number is complete and
+// honest. Mirrors the aggregate maths in Stats → Profit. Revenue is what the
+// store actually COLLECTS (the order total, delivery and COD fees included).
+function orderProfit(o, store = {}) {
+  const prodByName = {};
+  for (const p of (store.products || [])) { if (p && p.name) prodByName[p.name] = p; }
+  const items = Array.isArray(o.items) ? o.items : [];
+  let goods = 0, cogs = 0, uncovered = 0;
+  for (const it of items) {
+    const qty = Number(it.qty) || 0;
+    goods += (Number(it.price) || 0) * qty;
+    const c = unitCostForItem(prodByName[it.name], it);
+    if (c != null) cogs += c * qty; else if (qty) uncovered++;
+  }
+  const delivery = Number(o.shipping_cost) > 0 ? Number(o.shipping_cost)
+                 : Number(store.cart?.deliveryCost) > 0 ? Number(store.cart.deliveryCost) : 0;
+  const packing  = Number(store.cart?.packagingCost) > 0 ? Number(store.cart.packagingCost) : 0;
+  const collected = Number(o.total) > 0 ? Number(o.total) : goods;
+  const known = items.length > 0 && uncovered === 0 && goods > 0 && o.status !== 'cancelled';
+  return { known, profit: collected - cogs - delivery - packing, collected, cogs, delivery, packing };
+}
+
 // "Ask for a review" — creates a one-order review link on the server (PIN-gated,
 // delivered orders only) and opens WhatsApp with it prefilled. Each tap makes a
 // fresh link and retires the previous one, so a lost or forwarded link can be
 // replaced.
-function AskReviewButton({ o, slug, pin, storeName, phone }) {
+function AskReviewButton({ o, slug, pin, storeName, phone, primary = false, themeColor }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
 
@@ -410,16 +528,21 @@ function AskReviewButton({ o, slug, pin, storeName, phone }) {
   return (
     <div>
       <button type="button" onClick={ask} disabled={busy}
-        className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-800 border border-amber-200 bg-amber-50 py-2 rounded-xl hover:bg-amber-100 active:scale-95 disabled:opacity-60"
+        className={primary
+          ? 'w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl text-[15px] font-bold text-white active:scale-[0.98] disabled:opacity-60'
+          : 'w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-800 border border-amber-200 bg-amber-50 py-2 rounded-xl hover:bg-amber-100 active:scale-95 disabled:opacity-60'}
+        style={primary ? { backgroundColor: themeColor } : undefined}
         title="Sends the customer a review link for this order only — nothing sends until you press send in WhatsApp">
-        <Star size={13} /> {busy ? 'Creating link…' : 'Ask for a review'}
+        <Star size={primary ? 17 : 13} /> {busy ? 'Creating link…' : 'Ask for a review'}
       </button>
       {err && <p className="text-[11px] text-red-500 mt-1" role="alert">{err}</p>}
     </div>
   );
 }
 
-function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
+// Leads (service businesses) keep the status-button card: a lead is moved along
+// by the conversation, not by a courier. Orders use OrderCard below.
+function LeadCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
@@ -465,55 +588,10 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   const pProfit    = pCollected - pCogs - pDelivery - pPacking;
   const showProfit = !leads && oItems.length > 0 && pUncovered === 0 && pGoods > 0 && o.status !== 'cancelled';
 
-  // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
-  // Settings). Without a saved number it opens WhatsApp's chat picker instead.
-  const riderMsg = [
-    `🛵 *Delivery* — ${storeName || 'Store'}`,
-    `👤 ${o.customer_name || 'Customer'}${phone ? ` · +91 ${phone}` : ''}`,
-    `📍 ${o.destination || 'Address on order'}`,
-    Array.isArray(o.items) && o.items.length
-      ? `🛍️ ${o.items.map((it) => `${it.qty}× ${it.name}`).join(', ')}`
-      : `🛍️ ${o.item_count} item${o.item_count === 1 ? '' : 's'}`,
-    o.payment_method === 'cod'
-      ? `💰 COLLECT ₹${Number(o.total).toLocaleString('en-IN')} (cash on delivery)`
-      : `💰 ₹${Number(o.total).toLocaleString('en-IN')} — ${(o.payment_method || 'paid').toUpperCase()}`,
-  ].join('\n');
-  const riderWa = (p) => p
-    ? `https://wa.me/91${p}?text=${encodeURIComponent(riderMsg)}`
-    : `https://wa.me/?text=${encodeURIComponent(riderMsg)}`;
+  const riderWa = (p) => riderLink(o, storeName, phone, p);
   const dispatchRiders = riders.filter((r) => r?.phone);
-
-  // "Request payment" — prefilled with the details matching the payment mode
-  // the customer chose at checkout. Deliberately plain text: no emoji (they
-  // mangle to � on some WhatsApp clients) and no upi:// link (WhatsApp doesn't
-  // linkify that scheme, so it renders as scammy-looking URL garbage).
-  // COD orders don't get the button; cash changes hands at the door.
   const totalStr = `₹${Number(o.total).toLocaleString('en-IN')}`;
-  const payMsg = (() => {
-    if (leads || o.payment_method === 'cod' || !(Number(o.total) > 0)) return null;
-    const head = `Hi ${o.customer_name || 'there'}, this is *${storeName || 'our store'}*.\n` +
-                 `Your order of *${totalStr}* is confirmed.\n\n`;
-    const tail = `\n\nOnce paid, kindly send the screenshot here and we will process your order right away. Thank you!`;
-    const wantsUpi  = o.payment_method === 'upi' || o.payment_method === 'qr';
-    const bank      = payInfo.bank;
-    const hasBank   = Boolean(bank?.accountNumber);
-    if ((wantsUpi || !hasBank) && payInfo.upi) {
-      return head +
-        `Please pay using UPI (GPay / PhonePe / Paytm):\n` +
-        `UPI ID: *${payInfo.upi}*` +
-        tail;
-    }
-    if (hasBank) {
-      return head +
-        `Please pay by bank transfer:\n` +
-        (bank.accountName ? `Account Name: ${bank.accountName}\n` : '') +
-        `Account No: ${bank.accountNumber}\n` +
-        (bank.ifsc ? `IFSC: ${bank.ifsc}\n` : '') +
-        (bank.bankName ? `Bank: ${bank.bankName}` : '').trim() +
-        tail;
-    }
-    return null;   // no payment details saved in Settings yet
-  })();
+  const payMsg = leads ? null : paymentRequestMessage(o, storeName, payInfo);
   const waMsg = encodeURIComponent(
     `Hi ${o.customer_name || 'there'}, thank you for your ${leads ? 'inquiry' : 'order'}${storeName ? ` at ${storeName}` : ''}! 🙏`
   );
@@ -811,16 +889,20 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
   );
 }
 
-// Courier shipping controls for one order: Book → AWB, then Label / Track / Cancel.
-function ShipBlock({ o, slug, pin, themeColor, courier }) {
+// Courier booking state for one order: Book → AWB, then Label / Track / Cancel.
+// What this card did itself (a booking, a cancel, a tracking refresh) overrides
+// the loaded row until the list catches up; otherwise the row is the truth, so a
+// status the courier pushed in the background shows on the next refresh.
+function useShipment(o, slug, pin, courier) {
   const isSfx = String(courier || '').toLowerCase() === 'shadowfax';
   const cName = isSfx ? 'Shadowfax' : 'Delhivery';
-  const [awb, setAwb]       = useState(o.awb || null);
-  const [status, setStatus] = useState(o.shipment_status || '');
+  const [over, setOver]     = useState(null);    // { awb, status } set by this card
   const [busy, setBusy]     = useState('');
   const [err, setErr]       = useState('');
   const [modal, setModal]   = useState(false);   // 2-step book modal
   const [pickup, setPickup] = useState(null);    // pickup result from booking
+  const awb    = over ? over.awb : (o.awb || null);
+  const status = over?.status ?? o.shipment_status ?? '';
 
   async function run(kind, fn) {
     setErr(''); setBusy(kind);
@@ -829,15 +911,395 @@ function ShipBlock({ o, slug, pin, themeColor, courier }) {
     finally { setBusy(''); }
   }
   const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
-  const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setStatus(r.status || status); });
-  const cancel = () => { if (!window.confirm(`Cancel this ${cName} shipment?`)) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) { setAwb(null); setStatus('Cancelled'); } else setErr(`${cName} could not cancel it.`); }); };
+  const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setOver({ awb, status: r.status || status }); });
+  const cancel = () => { if (!window.confirm(`Cancel this ${cName} shipment?`)) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) setOver({ awb: null, status: 'Cancelled' }); else setErr(`${cName} could not cancel it.`); }); };
+  const booked = (r) => { setOver({ awb: r.awb, status: r.status || 'Manifested' }); setPickup(r.pickup || null); setModal(false); };
+  return { isSfx, cName, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked };
+}
+
+const STAGE_PILL = {
+  to_ship:    { label: 'To ship',           cls: 'bg-amber-50 text-amber-800' },
+  not_paid:   { label: 'Not a sale yet',    cls: 'bg-rose-50 text-rose-700' },
+  with_rider: { label: 'With delivery boy', cls: 'bg-blue-50 text-blue-700' },
+  delivered:  { label: 'Delivered',         cls: 'bg-emerald-50 text-emerald-700' },
+  returned:   { label: 'Returned',          cls: 'bg-gray-100 text-gray-600' },
+  cancelled:  { label: 'Cancelled',         cls: 'bg-gray-100 text-gray-600' },
+};
+const PAY_CHIP = {
+  paid:  'bg-emerald-100 text-emerald-700',
+  bad:   'bg-rose-50 text-rose-700 border border-rose-200',
+  muted: 'bg-gray-100 text-gray-600',
+  due:   'bg-amber-50 text-amber-700 border border-amber-200',
+};
+const NEXT_HINT = {
+  book: 'Next: ship it', rider: 'Next: hand it over', picked_up: 'Next: when they collect it',
+  pay_link: 'Next: get paid', request_pay: 'Next: get paid', delivered: 'Next: when it reaches them',
+  received: 'Next: when the money arrives', review: 'Next: win the next order',
+};
+
+// The order card: one next step (founder-approved mockup, 2026-10-05). Where the
+// order stands is read from what happened (src/utils/orderCard.js); the shop is
+// shown a button only when there is something for it to do.
+function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, riders = [], payInfo = {}, store = {}, now }) {
+  const phone = (o.customer_phone || '').replace(/\D/g, '');
+  const firstName = String(o.customer_name || '').trim().split(/\s+/)[0] || 'the customer';
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkMsg, setLinkMsg]   = useState('');
+
+  const ship = useShipment(o, slug, pin, o.courier || store.shipping?.courier);
+  const live = { ...o, awb: ship.awb, shipment_status: ship.status };
+  const stage = orderStage(live);
+  const pickupOrder = /pickup/i.test(o.destination || '');
+  const courierConnected = Boolean(store.shipping?.delhivery || store.shipping?.shadowfax) && Boolean(o.destination) && !pickupOrder;
+  const isCod = String(o.payment_method || '').toLowerCase() === 'cod';
+  const totalStr = `₹${Number(o.total).toLocaleString('en-IN')}`;
+  const payMsg = paymentRequestMessage(o, storeName, payInfo);
+  const dispatchRiders = riders.filter((r) => r?.phone);
+  const riderWa = (p) => riderLink(o, storeName, phone, p);
+  const canRequestPay = Boolean(payMsg) && Boolean(phone) && stage !== 'cancelled';
+  const canPayLink = !o.paid && Boolean(store.payments?.razorpay) && Boolean(phone)
+                     && !ship.awb && Number(o.total) > 0 && stage !== 'cancelled';
+  const step = nextStep(live, {
+    courier: courierConnected ? ship.cName : null, pickup: pickupOrder, canPayLink, canRequestPay, now,
+  });
+  const callFirst = needsCallFirst(live, now);
+  const prog = stage === 'courier' ? courierProgress(live) : null;
+  const pill = stage === 'courier'
+    ? { label: BUCKET_META[prog.bucket]?.label || 'On the way', cls: BUCKET_META[prog.bucket]?.chip || 'bg-blue-50 text-blue-700' }
+    : STAGE_PILL[stage];
+  const pay = paymentChip(live);
+  const steps = orderSteps(live, (iso) => (iso ? timeAgo(iso) : ''));
+  const nowColor = stage === 'not_paid' ? '#be123c' : callFirst || (stage === 'to_ship' && steps[1].state === 'now') ? '#d97706' : themeColor;
+  const pnl = orderProfit(o, store);   // this one order only
+  const facts = [
+    o.customer_confirmed_at && 'Buyer confirmed on WhatsApp',
+    o.paid && (o.paid_via === 'razorpay' || o.paid_via === 'payment_link') && 'Paid online',
+    o.paid && o.paid_via === 'cod_delivery' && ship.awb && `Cash collected by ${courierInfo(o.courier).name}`,
+  ].filter(Boolean);
+
+  async function sendPayLink() {
+    setMoreOpen(false); setLinkMsg(''); setLinkBusy(true);
+    // Open the tab inside the tap: browsers block window.open after an await.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
+    try {
+      const r = await createPaymentLink(slug, pin, o.id);
+      if (r.paid) { if (win) win.close(); setLinkMsg('This order is already paid — tap Refresh.'); return; }
+      const text = paymentLinkMessage({ customerName: o.customer_name, storeName, total: o.total, url: r.url });
+      const wa = `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
+      if (win) win.location.href = wa; else window.location.href = wa;
+    } catch (e) {
+      if (win) win.close();
+      setLinkMsg(e.message || 'Could not create the payment link.');
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  const primaryCls = 'w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl text-[15px] font-bold text-white active:scale-[0.98] disabled:opacity-50';
+  const altCls = 'w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white text-[13.5px] font-semibold text-gray-700 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50';
+  // One action button. `main` = the card's single filled button.
+  function action(kind, main) {
+    const cls = main ? primaryCls : altCls;
+    const style = main ? { backgroundColor: themeColor } : undefined;
+    const icon = main ? 17 : 15;
+    switch (kind) {
+      case 'book':
+        return <button type="button" onClick={() => ship.setModal(true)} className={cls} style={style}><Truck size={icon} /> Book {ship.cName}</button>;
+      case 'rider':
+        return (
+          <a href={riderWa(dispatchRiders.length === 1 ? dispatchRiders[0].phone : null)} target="_blank" rel="noopener noreferrer"
+             onClick={() => onStatus(o.id, 'dispatched')} className={cls} style={style}
+             title="Opens WhatsApp to your delivery boy with the address, and moves the order to On the way">
+            <Bike size={icon} /> {main ? 'Send to delivery boy' : 'Deliver it yourself'}
+          </a>
+        );
+      case 'picked_up':
+        return <button type="button" disabled={busy} onClick={() => onStatus(o.id, 'delivered')} className={cls} style={style}><Check size={icon} /> Mark picked up</button>;
+      case 'pay_link':
+        return <button type="button" disabled={linkBusy} onClick={sendPayLink} className={cls} style={style}><Link2 size={icon} /> {linkBusy ? 'Creating link…' : o.payment_link_url ? 'Resend payment link' : 'Send payment link'}</button>;
+      case 'request_pay':
+        return <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`} target="_blank" rel="noopener noreferrer" className={cls} style={style}><MessageCircle size={icon} /> Request payment · {totalStr}</a>;
+      case 'delivered':
+        return (
+          <button type="button" disabled={busy} onClick={() => onStatus(o.id, 'delivered')} className={cls} style={style}
+            title={isCod && !o.paid ? 'Marks it delivered — the cash your delivery boy collected is marked received too' : undefined}>
+            <Check size={icon} /> {isCod && !o.paid ? `Delivered · ${totalStr} collected` : 'Mark delivered'}
+          </button>
+        );
+      case 'received':
+        return <button type="button" disabled={busy} onClick={() => onPaid(o.id, true)} className={cls} style={style}><Check size={icon} /> Mark {totalStr} received</button>;
+      case 'review':
+        return phone && Number(o.total) > 0
+          ? <AskReviewButton o={o} slug={slug} pin={pin} storeName={storeName} phone={phone} primary={main} themeColor={themeColor} />
+          : null;
+      case 'call':
+        return phone ? <a href={`tel:+91${phone}`} className={cls} style={style}><Phone size={icon} /> {stage === 'to_ship' ? `Call ${firstName} first` : `Call ${firstName}`}</a> : null;
+      case 'restore':
+        return <button type="button" disabled={busy} onClick={() => onStatus(o.id, 'new')} className={cls} style={style}><RotateCcw size={icon} /> Restore order</button>;
+      default:
+        return null;
+    }
+  }
+
+  // "More": every other tool, minus whatever is already the card's button.
+  const shown = new Set([step.primary, step.alt]);
+  const moreRiders = (stage === 'to_ship' || stage === 'with_rider') && !(dispatchRiders.length <= 1 && shown.has('rider'));
+  const canCancel = o.status !== 'cancelled' && stage !== 'delivered' && stage !== 'returned';
+  const toolBtn = 'flex-1 flex flex-col items-center justify-center gap-1 h-[52px] rounded-xl border border-gray-200 text-[10.5px] font-bold hover:bg-gray-50 active:scale-95';
+  const moreItem = 'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold hover:bg-gray-50 border-t border-gray-100 first:border-t-0';
+  const calm = (tone, text) => (
+    <p className={`mx-4 mt-3 flex gap-2 items-start rounded-xl px-3 py-2.5 text-[12.5px] leading-snug ${tone === 'gray' ? 'bg-gray-50 text-gray-600' : 'bg-emerald-50 text-emerald-800'}`}>
+      <CheckCircle2 size={15} className="flex-shrink-0 mt-px" /> <span>{text}</span>
+    </p>
+  );
+  const alert = (tone, text) => (
+    <p className={`mx-4 mt-3 flex gap-2 items-start rounded-xl border px-3 py-2.5 text-[12.5px] leading-snug ${
+      tone === 'red' ? 'bg-rose-50 border-rose-200 text-rose-800' : tone === 'gray' ? 'bg-gray-50 border-gray-200 text-gray-700' : 'bg-amber-50 border-amber-200 text-amber-900'}`}
+      role="note">
+      <AlertTriangle size={15} className="flex-shrink-0 mt-px" /> <span>{text}</span>
+    </p>
+  );
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      {ship.modal && (
+        <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier}
+          onClose={() => ship.setModal(false)} onBooked={ship.booked} />
+      )}
+
+      {/* Who · when · where — and the money */}
+      <div className="flex items-start gap-3 px-4 pt-4">
+        <div className="flex-1 min-w-0">
+          <p className="font-extrabold text-gray-900 leading-tight truncate">{o.customer_name || 'Customer'}</p>
+          <div className="flex items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] text-gray-500 flex-wrap">
+            <span className="inline-flex items-center gap-1"><Clock size={10} /> {timeAgo(o.created_at)}</span>
+            {o.destination && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="inline-flex items-center gap-0.5 min-w-0"><MapPin size={10} /><span className="truncate max-w-[9.5rem]">{o.destination}</span></span></>)}
+            {phone && (<><span className="w-0.5 h-0.5 rounded-full bg-gray-300" /><span className="tabular-nums">+91 {phone}</span></>)}
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-xl font-extrabold text-gray-900 tabular-nums leading-none">{formatINR(o.total || 0)}</p>
+          <button type="button" onClick={() => onPaid(o.id, !o.paid)} disabled={busy}
+            className={`mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full active:scale-95 disabled:opacity-50 transition ${PAY_CHIP[pay.tone]}`}
+            title={o.paid ? 'Paid — tap to mark unpaid' : 'Tap once you’ve received payment'}>
+            {pay.tone === 'paid' && <Check size={10} strokeWidth={3} />} {pay.text}
+          </button>
+        </div>
+      </div>
+
+      {/* Where it stands, and what is already known */}
+      <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ${pill.cls}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current" /> {pill.label}
+        </span>
+        {facts.map((f) => (
+          <span key={f} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+            <Check size={11} strokeWidth={3} /> {f}
+          </span>
+        ))}
+      </div>
+
+      {/* Progress: filled in by what happened, never by a button */}
+      {stage !== 'cancelled' && (
+        <ol className="grid grid-cols-4 px-4 pt-3.5" aria-label="Order progress">
+          {steps.map((s, i) => {
+            const nxt = steps[i + 1];
+            const ring = s.state === 'done' ? themeColor : s.state === 'now' ? nowColor : s.state === 'stop' ? '#9ca3af' : '#d1d5db';
+            return (
+              <li key={s.key} className="min-w-0 flex flex-col gap-0.5">
+                <div className="flex items-center">
+                  <span className="w-[18px] h-[18px] rounded-full border-2 grid place-items-center flex-shrink-0"
+                        style={{ borderColor: ring, backgroundColor: s.state === 'done' ? themeColor : '#fff' }}>
+                    {s.state === 'done' && <Check size={10} strokeWidth={4} className="text-white" />}
+                  </span>
+                  {nxt && <span className="flex-1 h-0.5 mx-1 rounded" style={{ backgroundColor: s.state === 'done' && nxt.state === 'done' ? themeColor : '#e5e7eb' }} />}
+                </div>
+                <span className={`text-[11px] font-bold ${s.state === 'pending' || s.state === 'stop' ? 'text-gray-400' : 'text-gray-900'}`}>{s.label}</span>
+                <span className="text-[10.5px] text-gray-500 leading-tight pr-1 truncate">{s.sub || ' '}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {/* Items, profit, note */}
+      <div className="px-4 pt-3">
+        {(Array.isArray(o.items) ? o.items : []).map((it, i) => (
+          <div key={i} className="flex items-center justify-between gap-3 text-[13px] py-0.5">
+            <span className="truncate text-gray-700">
+              {it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''} <span className="text-gray-500">× {it.qty}</span>
+            </span>
+            <span className="tabular-nums flex-shrink-0 font-semibold text-gray-900">{formatINR((it.price || 0) * (it.qty || 0))}</span>
+          </div>
+        ))}
+        {pnl.known && (
+          <p className="mt-1 text-xs font-bold tabular-nums" style={{ color: pnl.profit >= 0 ? '#047857' : '#dc2626' }}>
+            Profit {formatINR(Math.round(pnl.profit))}
+            <span className="font-medium text-gray-500">
+              {' '}· {formatINR(Math.round(pnl.collected))} collected − {formatINR(Math.round(pnl.cogs))} cost
+              {pnl.delivery > 0 ? ` − ${formatINR(Math.round(pnl.delivery))} delivery` : ''}
+              {pnl.packing > 0 ? ` − ${formatINR(Math.round(pnl.packing))} packing` : ''}
+            </span>
+          </p>
+        )}
+        {o.notes && <p className="mt-1 text-xs text-gray-600"><span className="font-semibold text-gray-700">Note:</span> {o.notes}</p>}
+      </div>
+
+      {/* What is going on, when the shop needs to know */}
+      {callFirst && alert('amber', 'Not confirmed on WhatsApp yet. Unconfirmed cash-on-delivery orders are often refused at the door — call before you ship.')}
+      {stage === 'not_paid' && alert('red', `${firstName === 'the customer' ? 'The customer' : firstName} chose Pay Online but left before paying, so this is not a sale yet. Send a payment link — it turns Paid by itself when they pay.`)}
+
+      {stage === 'courier' && (
+        <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gray-900"><Truck size={15} style={{ color: themeColor }} /> {ship.cName}</span>
+            <span className="text-[11px] font-mono text-gray-500">AWB {ship.awb}</span>
+          </div>
+          <p className="flex items-center gap-1.5 text-xs text-gray-700">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: BUCKET_META[prog.bucket]?.stripe || '#9ca3af' }} /> {prog.label}
+          </p>
+          {ship.pickup && (ship.pickup.scheduled
+            ? <p className="text-[11px] text-green-700">🚚 {ship.pickup.covered ? (ship.isSfx ? 'Pickup requested' : 'Added to today’s pickup') : `Pickup scheduled${ship.pickup.date ? ` · ${ship.pickup.date}` : ''}`} — {ship.cName} will collect</p>
+            : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in {ship.cName} for this parcel.</p>)}
+          <div className="flex items-center gap-2 pt-0.5">
+            {!ship.isSfx && (
+              <button type="button" disabled={!!ship.busy} onClick={ship.label}
+                className="flex-1 h-9 inline-flex items-center justify-center gap-1 text-[11.5px] font-semibold text-gray-700 border border-gray-200 bg-white rounded-lg disabled:opacity-50">
+                <Printer size={12} /> {ship.busy === 'label' ? '…' : 'Label'}
+              </button>
+            )}
+            <button type="button" disabled={!!ship.busy} onClick={ship.track}
+              className="flex-1 h-9 text-[11.5px] font-semibold text-gray-700 border border-gray-200 bg-white rounded-lg disabled:opacity-50">
+              {ship.busy === 'track' ? '…' : 'Track'}
+            </button>
+            <button type="button" disabled={!!ship.busy} onClick={ship.cancel}
+              className="h-9 px-3 text-[11.5px] font-semibold text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50">
+              {ship.busy === 'cancel' ? '…' : 'Cancel shipment'}
+            </button>
+          </div>
+          {ship.isSfx && <span className="block text-[10.5px] text-gray-500 leading-tight">The pickup rider carries the label.</span>}
+          {ship.err && <p className="text-[11px] text-red-600">{ship.err}</p>}
+        </div>
+      )}
+      {stage === 'courier' && (prog.bucket === 'cancelled'
+        ? alert('gray', `${ship.cName} cancelled this booking at their end. Contact support to ship it again.`)
+        : prog.problem
+          ? alert('amber', `Delivery problem: ${prog.label}. Call ${firstName} to sort it out, or ${ship.cName} may send it back.`)
+          : calm('green', prog.bucket === 'pickup' ? `Nothing to do. Pack it — ${ship.cName} collects it.`
+            : prog.bucket === 'ofd' ? `Nothing to do. ${ship.cName} is delivering it today.`
+            : 'Nothing to do. It is on the way — tracking updates by itself.'))}
+
+      {stage === 'with_rider' && (
+        <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3">
+          <p className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gray-900"><Bike size={15} style={{ color: themeColor }} /> With your delivery boy</p>
+          {isCod && !o.paid && <p className="text-xs text-gray-700 mt-1">Collect {totalStr} cash on delivery</p>}
+        </div>
+      )}
+      {stage === 'returned' && calm('gray', 'It came back to you. No money is due on it.')}
+      {stage === 'cancelled' && calm('gray', 'Not counted in your sales. The customer was not messaged.')}
+      {stage === 'to_ship' && !ship.awb && ship.err && <p className="px-4 pt-2 text-[11px] text-red-600">{ship.err}</p>}
+
+      {/* The one next step */}
+      {step.primary && action(step.primary, true) && (
+        <div className="px-4 pt-3.5">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">{NEXT_HINT[step.primary]}</p>
+          {action(step.primary, true)}
+        </div>
+      )}
+      {step.alt && action(step.alt, false) && <div className="px-4 pt-2">{action(step.alt, false)}</div>}
+
+      {(linkBusy || linkMsg) && (
+        <p className="px-4 pt-2 text-[11px] font-semibold text-gray-600" role="status">{linkBusy ? 'Creating payment link…' : linkMsg}</p>
+      )}
+
+      {/* Tool row — WhatsApp · Call · Slip · More */}
+      <div className="px-4 py-3 mt-3.5 border-t border-gray-100">
+        <div className="flex items-stretch gap-2">
+          {phone && (
+            <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(`Hi ${o.customer_name || 'there'}, thank you for your order${storeName ? ` at ${storeName}` : ''}! 🙏`)}`}
+               target="_blank" rel="noopener noreferrer" className={`${toolBtn} text-emerald-700`} title="Chat with the customer on WhatsApp">
+              <MessageCircle size={17} /> WhatsApp
+            </a>
+          )}
+          {phone && (<a href={`tel:+91${phone}`} className={`${toolBtn} text-gray-600`}><Phone size={16} /> Call</a>)}
+          <button type="button" onClick={() => openDeliverySlip(o, store)} className={`${toolBtn} text-gray-600`} title="Print a delivery / packing slip">
+            <Printer size={16} /> Slip
+          </button>
+          <div className="flex-1 relative">
+            <button type="button" onClick={() => setMoreOpen((v) => !v)}
+              className={`${toolBtn} text-gray-600 w-full`} aria-haspopup="menu" aria-expanded={moreOpen}>
+              <MoreHorizontal size={17} /> More
+            </button>
+            {moreOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+                <div className="absolute right-0 bottom-full mb-2 w-60 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-20" role="menu">
+                  {canRequestPay && !shown.has('request_pay') && (
+                    <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`} target="_blank" rel="noopener noreferrer"
+                       onClick={() => setMoreOpen(false)} className={`${moreItem} text-gray-700`}>
+                      <span className="text-sm">💰</span> Request payment · {totalStr}
+                    </a>
+                  )}
+                  {canPayLink && !shown.has('pay_link') && (
+                    <button type="button" disabled={linkBusy} onClick={sendPayLink} className={`${moreItem} text-gray-700 disabled:opacity-50`}>
+                      <span className="text-sm">💳</span> {o.payment_link_url ? 'Resend payment link' : 'Send payment link'}
+                    </button>
+                  )}
+                  {moreRiders && (dispatchRiders.length > 1
+                    ? dispatchRiders.map((r) => (
+                        <a key={r.phone} href={riderWa(r.phone)} target="_blank" rel="noopener noreferrer"
+                           onClick={() => { setMoreOpen(false); if (stage === 'to_ship') onStatus(o.id, 'dispatched'); }} className={`${moreItem} text-gray-700`}>
+                          <span className="text-sm">🛵</span> Send to {r.name?.trim() || `…${r.phone.slice(-4)}`}
+                        </a>
+                      ))
+                    : (
+                      <a href={riderWa(dispatchRiders[0]?.phone)} target="_blank" rel="noopener noreferrer"
+                         onClick={() => { setMoreOpen(false); if (stage === 'to_ship') onStatus(o.id, 'dispatched'); }} className={`${moreItem} text-gray-700`}>
+                        <span className="text-sm">🛵</span> Send to delivery boy
+                      </a>
+                    ))}
+                  {stage === 'courier' && (
+                    <button type="button" disabled={busy} onClick={() => { setMoreOpen(false); onStatus(o.id, 'delivered'); }}
+                      className={`${moreItem} text-gray-700 disabled:opacity-50`}
+                      title="Only if the courier's tracking is stuck: marks it delivered (cash on delivery counts as collected)">
+                      <span className="text-sm">✅</span> Mark delivered
+                    </button>
+                  )}
+                  {canCancel && (
+                    <button type="button" disabled={busy} onClick={() => { setMoreOpen(false); onStatus(o.id, 'cancelled'); }}
+                      className={`${moreItem} text-red-600 disabled:opacity-50`}
+                      title="Cancel — removes it from Sales & Profit. The customer is NOT messaged. Restore anytime.">
+                      <span className="text-sm">🚫</span> Cancel order
+                    </button>
+                  )}
+                  {o.status === 'cancelled' && (
+                    <button type="button" disabled={busy} onClick={() => { setMoreOpen(false); onStatus(o.id, 'new'); }}
+                      className={`${moreItem} text-gray-700 disabled:opacity-50`}>
+                      <span className="text-sm">↩️</span> Restore order
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Courier shipping controls for one order (the lead card's old layout).
+function ShipBlock({ o, slug, pin, themeColor, courier }) {
+  const { isSfx, cName, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked } = useShipment(o, slug, pin, courier);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
       {modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={courier}
           onClose={() => setModal(false)}
-          onBooked={(r) => { setAwb(r.awb); setStatus(r.status || 'Manifested'); setPickup(r.pickup || null); setModal(false); }} />
+          onBooked={booked} />
       )}
       {!awb ? (
         <button onClick={() => setModal(true)}
