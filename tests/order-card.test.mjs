@@ -159,5 +159,7 @@ test('OrdersTab: orders use the new card, leads keep theirs; nothing advances an
   assert.match(tab, /unpaidOnly \? isOrdersUnpaid\(o\)/);
   // Tabs.
   assert.match(tab, /stageTab\(orderStage\(o\)\) === filter/);
-  assert.match(tab, /useState\(leads \? 'all' : 'to_ship'\)/);
+  // The list always opens on All, and All is the first tab (founder, 2026-10-05).
+  assert.match(tab, /const \[filter, +setFilter\] += useState\('all'\);/);
+  assert.match(tab, /\{\[\{ key: 'all', label: 'All' \},\s*\.\.\.STAGE_TABS\.filter/);
 });
