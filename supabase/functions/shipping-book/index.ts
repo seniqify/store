@@ -55,19 +55,33 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 //   2. claim_shipment_attempt lets exactly ONE request per order through (a
 //      row lock plus the one-open-attempt index). Every other request is
 //      turned away having spoken to nobody;
-//   3. the courier's create call runs exactly once and is never retried, with
-//      a reference that is a pure function of (order, attempt number);
+//   3. the courier's create call runs exactly once per request and is never
+//      retried within it, with a reference that is a pure function of (order,
+//      attempt number);
 //   4. its answer is classified strictly: CREATED (an explicit AWB), REJECTED
 //      (a refusal shape PROVEN, for that courier, to mean nothing was created
 //      -- none is proven yet, and HTTP status alone never is), or UNKNOWN
 //      (everything else, including every answer without an AWB);
 //   5. CREATED -> finalize_shipment_attempt writes the AWB to the attempt AND
 //      the order, together. REJECTED -> fail_shipment_attempt releases the
-//      claim. UNKNOWN -> the claim stays OPEN and blocks the order until a
-//      person checks the courier panel. An open claim is the safe state: it
-//      costs a manual check. Releasing it wrongly costs a duplicate parcel.
+//      claim. UNKNOWN -> the claim stays OPEN. An open claim is the safe
+//      state; releasing it wrongly costs a duplicate parcel.
+//   6. RESUME. An open claim without an AWB never locks the order for good:
+//      once it has been quiet for 2 minutes, the next "Book" gets the SAME
+//      attempt back (resume_shipment_attempt) and sends its SAME reference
+//      again. Both couriers refuse a reference they have seen, so this cannot
+//      make a second parcel: if the first send made nothing, the courier books
+//      now; if it made one, Shadowfax answers "already created with AWB"
+//      naming OUR reference, and that AWB is attached. A resend never releases
+//      the claim on a refusal -- a refusal of the resend says nothing about the
+//      first send -- it only ever finalizes, or stays open for the next try.
 //
 // shipping-book never writes orders.awb itself. The RPCs are the only writers.
+
+/** The longest PocketLink waits for a courier's create answer. Well inside the
+ *  2 quiet minutes resume_shipment_attempt requires, so a resend never races
+ *  a send of ours that is still in flight. */
+const CREATE_TIMEOUT_MS = 60_000;
 
 /** The buyer-facing tracking link, by the courier that actually carries it. */
 function trackUrlFor(courier: unknown, awb: unknown): string | null {
@@ -296,17 +310,23 @@ function isShadowfaxRefusal(status: number, b: Record<string, any> | null): bool
  *   REJECTED  exactly the documented refusal shapes (isShadowfaxRefusal):
  *             nothing was created, so the claim is released and the merchant
  *             sees Shadowfax's reason and can fix the order and book again.
- *   UNKNOWN   everything else -- a 5xx, a timeout, an undocumented shape, a
- *             duplicate-reference message (the first create under this
+ *   CREATED   also: the documented DUPLICATE reply when its COID is exactly
+ *             the reference we sent and it names an AWB -- our parcel already
+ *             exists (a resend after a lost answer), so that AWB is ours.
+ *   UNKNOWN   everything else -- a 5xx, a timeout, an undocumented shape, any
+ *             other duplicate-reference message (the first create under this
  *             reference may have succeeded with its answer lost), and an AWB
  *             beside anything short of a clean success.
  */
-function classifyShadowfaxCreate(status: number, bodyText: string): CreateResult {
+function classifyShadowfaxCreate(status: number, bodyText: string, reference = ''): CreateResult {
   const b = jsonObject(bodyText);
   const reason = createReason(bodyText);
   const raw = b?.data?.awb_number;
   const awb = raw === null || raw === undefined ? '' : String(raw).trim();
   if (b ? mentionsDuplicate(reason) : mentionsDuplicate(bodyText)) {
+    const coid = String(b?.COID ?? b?.coid ?? '').trim();
+    const existing = shadowfaxReplyAwb(b);
+    if (reference && coid === reference && existing) return { kind: 'created', awb: existing, status: 'new' };
     return { kind: 'unknown', reason, duplicate: true };
   }
   const ok = status >= 200 && status < 300;
@@ -447,18 +467,23 @@ async function cancelAtCourier(
  */
 function createLog(
   courier: string, store: string, attemptId: unknown, httpStatus: number, created: CreateResult,
+  resend = false,
 ): string {
   const reason = 'reason' in created ? created.reason : '';
   return JSON.stringify({
     event: 'courier_create_not_booked',
-    courier, store, attempt_id: attemptId, http_status: httpStatus,
+    courier, store, attempt_id: attemptId, http_status: httpStatus, resend,
     outcome: created.kind,
     duplicate: created.kind === 'unknown' ? created.duplicate : false,
     reason: String(reason ?? '').replace(/\d{7,}/g, (d) => `${d.slice(0, 2)}…${d.slice(-2)}`).slice(0, 160),
   });
 }
 
-/** We never learned whether the courier made a parcel. Never guess, never retry. PURE. */
+/**
+ * We never learned whether the courier made a parcel. Never guess. Unless the
+ * courier says the reference already exists, the merchant can safely press
+ * Book again after 2 minutes: the SAME reference is sent (see RESUME). PURE.
+ */
 function bookingUnknown(
   courierName?: string, reference?: string, said?: string, duplicate?: boolean,
 ): Record<string, unknown> {
@@ -466,14 +491,45 @@ function bookingUnknown(
   return {
     error: (duplicate
       ? `${who} says this booking's reference already exists, so a shipment may already have been created. `
-      : `${who} did not give a clear answer, so we cannot tell whether a shipment was created. `)
-      + (said ? `${who} said: "${said}". ` : '')
-      + `Check your courier panel${reference ? ` for reference ${reference}` : ''} before booking this order again. `
-      + 'The order stays locked until it is checked.',
+        + (said ? `${who} said: "${said}". ` : '')
+        + `Check your courier panel${reference ? ` for reference ${reference}` : ''} before booking this order again.`
+      : `${who} did not confirm this booking${said ? ` ("${said}")` : ''}, so we cannot tell yet whether a shipment was created. `
+        + 'Fix the problem if there is one (for example, add balance to your courier wallet), wait 2 minutes, '
+        + `then press Book Shipment again. It re-sends the same booking${reference ? ` (reference ${reference})` : ''}, `
+        + `so ${who} cannot create a second shipment.`),
     bookingUnknown: true,
-    needsReconciliation: true,
+    needsReconciliation: !!duplicate,
+    ...(duplicate ? {} : { canRetry: true }),
     ...(reference ? { reference } : {}),
   };
+}
+
+/** resume_shipment_attempt did not hand the attempt back. Nothing was sent. PURE. */
+function resumeRefused(courierName: string, resume: Record<string, any>): Record<string, unknown> {
+  switch (resume.outcome) {
+    case 'too_soon': {
+      const s = Math.max(1, Math.ceil(Number(resume.retry_in) || 120));
+      return {
+        error: `This order's booking was sent to ${courierName} less than 2 minutes ago and is not confirmed yet. `
+          + `Wait ${s >= 60 ? `${Math.ceil(s / 60)} minute${Math.ceil(s / 60) === 1 ? '' : 's'}` : `${s} seconds`}, `
+          + 'then press Book Shipment again.',
+        bookingInProgress: true,
+        canRetry: true,
+      };
+    }
+    case 'other_courier': {
+      const other = String(resume.courier || '') === 'delhivery' ? 'Delhivery' : 'Shadowfax';
+      return {
+        error: `An earlier ${other} booking for this order was never confirmed. Make ${other} your active courier `
+          + 'again and press Book Shipment to finish it safely -- booking with another courier now could ship it twice.',
+        needsReconciliation: true,
+      };
+    }
+    case 'nothing_open':
+      return { error: 'This order\'s booking just finished. Refresh the order to see it.' };
+    default:
+      return { error: 'Could not start this booking, so nothing was sent to the courier. Please try again in a moment.' };
+  }
 }
 
 /** The claim was refused, so the courier was never contacted. */
@@ -600,45 +656,84 @@ async function bookShipment(
   if (!claim) {
     return { booked: false, reply: { error: 'Could not start this booking, so nothing was sent to the courier. Please try again in a moment.' } };
   }
-  if (claim.outcome !== 'claimed') {
+  let attemptId = claim.attempt_id;
+  let attemptNo = Number(claim.attempt_no);
+  let resend = false;
+  if (claim.outcome === 'open_without_awb') {
+    // RESUME: the same attempt, its same reference -- never a new one. Asked
+    // once; an unheard answer sends nothing.
+    const resume = await askRpc(deps.supabase, 'resume_shipment_attempt', {
+      p_store_slug: c.slug, p_order_id: c.orderId, p_courier: c.provider,
+    });
+    if (!resume) return { booked: false, reply: resumeRefused(name, { outcome: 'unheard' }) };
+    if (resume.outcome !== 'resumed') {
+      return {
+        booked: false,
+        reply: ['too_soon', 'other_courier', 'nothing_open', 'unheard'].includes(resume.outcome)
+          ? resumeRefused(name, resume)
+          : await claimRefused(deps.supabase, c.slug, c.orderId, resume),
+      };
+    }
+    attemptId = resume.attempt_id;
+    attemptNo = Number(resume.attempt_no);
+    resend = true;
+  } else if (claim.outcome !== 'claimed') {
     return { booked: false, reply: await claimRefused(deps.supabase, c.slug, c.orderId, claim) };
   }
-  const attemptId = claim.attempt_id;
-  const attemptNo = Number(claim.attempt_no);
 
   // 2. The reference, from (order, attempt). If it cannot be built, nothing has
-  //    been sent, so releasing the claim is provably safe.
+  //    been sent, so releasing the claim is provably safe -- for a first send.
+  //    A resend's attempt was sent before, so it is never released here.
   const reference = c.provider === 'shadowfax'
     ? shadowfaxReference(c.orderId, attemptNo)
     : delhiveryReference(c.orderId, attemptNo);
   if (!reference) {
-    await askRpc(deps.supabase, 'fail_shipment_attempt', {
-      p_attempt_id: attemptId, p_store_slug: c.slug, p_final_status: 'booking reference could not be built',
-    });
+    if (!resend) {
+      await askRpc(deps.supabase, 'fail_shipment_attempt', {
+        p_attempt_id: attemptId, p_store_slug: c.slug, p_final_status: 'booking reference could not be built',
+      });
+    }
     return { booked: false, reply: { error: 'Could not prepare this booking, so nothing was sent to the courier.' } };
   }
 
-  // 3. CREATE -- exactly once. It is never retried, whatever it answers.
+  // 3. CREATE -- exactly once per request, never retried within it, and given
+  //    at most CREATE_TIMEOUT_MS. (A later request may RESUME it; see step 6.)
   const { url, init } = c.request(reference);
   let status = 0;
   let body = '';
   try {
-    const res = await deps.fetch(url, init);
+    const res = await deps.fetch(url, { ...init, signal: AbortSignal.timeout(CREATE_TIMEOUT_MS) });
     status = Number(res?.status) || 0;
     body = await res.text();
   } catch {
-    console.log(createLog(c.provider, c.slug, attemptId, 0, { kind: 'unknown', reason: 'no answer', duplicate: false }));
+    console.log(createLog(c.provider, c.slug, attemptId, 0, { kind: 'unknown', reason: 'no answer', duplicate: false }, resend));
     return { booked: false, reply: bookingUnknown(name, reference) };
   }
   const created: CreateResult = c.provider === 'shadowfax'
-    ? classifyShadowfaxCreate(status, body)
+    ? classifyShadowfaxCreate(status, body, reference)
     : classifyDelhiveryCreate(status, body);
-  if (created.kind !== 'created') console.log(createLog(c.provider, c.slug, attemptId, status, created));
+  if (created.kind !== 'created') console.log(createLog(c.provider, c.slug, attemptId, status, created, resend));
 
-  // 4a. UNKNOWN: the claim stays OPEN, so this order stays blocked. No fail, no
-  //     retry, no new reference.
+  // 4a. UNKNOWN: the claim stays OPEN. No fail, no new reference. The merchant
+  //     may press Book again after 2 minutes: that RESUMES this attempt.
   if (created.kind === 'unknown') {
     return { booked: false, reply: bookingUnknown(name, reference, created.reason, created.duplicate) };
+  }
+
+  // 4b'. A RESEND that was refused: the refusal is about THIS send only. The
+  //      first send under this reference may still have made a parcel, so the
+  //      claim is NOT released -- it stays open for the next resume.
+  if (created.kind === 'rejected' && resend) {
+    return {
+      booked: false,
+      reply: {
+        error: `${name} could not book this shipment: ${created.reason}. Fix it, wait 2 minutes, then press `
+          + `Book Shipment again -- it re-sends the same booking (reference ${reference}), so ${name} cannot `
+          + 'create a second shipment.',
+        canRetry: true,
+        reference,
+      },
+    };
   }
 
   // 4b. REJECTED: a refusal shape PROVEN for this courier to mean nothing was
