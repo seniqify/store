@@ -9,12 +9,27 @@
  */
 
 export const OFFER_FIELDS = Object.freeze({
-  offer: { label: 'Your offer',  placeholder: 'e.g. 20% off all agarbatti' },
-  item:  { label: 'Product',     placeholder: 'e.g. Six-Fragrance Combo' },
-  code:  { label: 'Coupon code', placeholder: 'e.g. DIWALI20' },
-  date:  { label: 'Valid till',  placeholder: 'e.g. 31 Oct' },
+  offer: { label: 'Your offer',  placeholder: 'e.g. 20% off all agarbatti', placeholderMr: 'उदा. सर्व अगरबत्त्यांवर 20% सूट' },
+  item:  { label: 'Product',     placeholder: 'e.g. Six-Fragrance Combo',   placeholderMr: 'उदा. सहा सुगंधांचा कॉम्बो' },
+  code:  { label: 'Coupon code', placeholder: 'e.g. DIWALI20',              placeholderMr: 'उदा. DIWALI20' },
+  date:  { label: 'Valid till',  placeholder: 'e.g. 31 Oct',                placeholderMr: 'उदा. 31 ऑक्टोबर' },
 });
 const ALLOWED = new Set(['name', 'shop', ...Object.keys(OFFER_FIELDS)]);
+
+/** The languages messages come in. A message with Devanagari letters is Marathi. */
+export const OFFER_LANGS = Object.freeze([
+  { code: 'en', label: 'English', name: 'English' },
+  { code: 'mr', label: 'मराठी',   name: 'Marathi' },
+]);
+export function offerLanguage(body) {
+  return /[\u0900-\u097F]/.test(String(body || '')) ? 'mr' : 'en';
+}
+
+/** The two buttons on every message, worded as in the approved templates. */
+export const OFFER_BUTTONS = Object.freeze({
+  en: { shop: 'Shop now',          stop: 'Stop offers' },
+  mr: { shop: 'आत्ताच खरेदी करा', stop: 'ऑफर थांबवा' },
+});
 
 /** Customers per send-offer call; the screen sends a big group in batches. */
 export const OFFER_BATCH = 100;
@@ -56,8 +71,10 @@ export function fillOffer(body, { name = '', shop = '', fields = {} } = {}) {
 }
 
 const SAMPLE = {
-  name: 'Asha', shop: 'Krupa Agarbatti Work', offer: '20% off all agarbatti',
-  item: 'Six-Fragrance Combo', code: 'DIWALI20', date: '31 Oct',
+  en: { name: 'Asha', shop: 'Krupa Agarbatti Work', offer: '20% off all agarbatti',
+        item: 'Six-Fragrance Combo', code: 'DIWALI20', date: '31 Oct' },
+  mr: { name: 'आशा', shop: 'Krupa Agarbatti Work', offer: 'सर्व अगरबत्त्यांवर 20% सूट',
+        item: 'सहा सुगंधांचा कॉम्बो', code: 'DIWALI20', date: '31 ऑक्टोबर' },
 };
 
 /**
@@ -65,27 +82,31 @@ const SAMPLE = {
  * {{1}}, {{2}}, ... in order of appearance (exactly offer_value_map's order),
  * the "Shop now" button is the next number, plus sample values for Meta's
  * review. The button URL follows the approved "order confirm" pattern:
- * https://www.pocketlink.store/ + {{n}} = the shop's slug.
+ * https://www.pocketlink.store/ + {{n}} = o/<token>, the customer's own offer
+ * link. Seniqify only accepts a FULL link as the button's sample.
  */
-export function seniqifyTemplate(body, sampleSlug = 'krupaagarbattiwork') {
+export function seniqifyTemplate(body) {
+  const lang = offerLanguage(body);
   let n = 0;
   const samples = [];
   const text = String(body || '').replace(/\{([^{}]*)\}/g, (all, k) => {
-    if (!(k in SAMPLE)) return all;
+    if (!(k in SAMPLE[lang])) return all;
     n += 1;
-    samples.push({ n, key: k, sample: SAMPLE[k] });
+    samples.push({ n, key: k, sample: SAMPLE[lang][k] });
     return `{{${n}}}`;
   });
   const button = n + 1;
   return {
     text,
     samples,
+    language: OFFER_LANGS.find((l) => l.code === lang).name,
     button: {
       number: button,
-      label: 'Shop now',
+      label: OFFER_BUTTONS[lang].shop,
       websiteUrl: 'https://www.pocketlink.store/',
-      sample: `https://www.pocketlink.store/${sampleSlug}`,
+      sample: 'https://www.pocketlink.store/o/3f9c2a7e',
     },
+    stopLabel: OFFER_BUTTONS[lang].stop,
   };
 }
 

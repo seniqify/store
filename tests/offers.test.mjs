@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import {
   placeholdersIn, fieldError, requestError, fillOffer, seniqifyTemplate, batches, OFFER_BATCH,
+  offerLanguage, OFFER_BUTTONS, OFFER_FIELDS,
 } from '../src/utils/offerText.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -339,4 +340,63 @@ test('Customers shows the wallet and offers instead of the paste-a-link card; th
   const consolePage = read('src/pages/Console.jsx');
   assert.match(consolePage, /\{ id: 'messages', label: 'Messages'/);
   assert.match(consolePage, /<MessagesSection templates=\{templates\}/);
+});
+
+// ═══ English and Marathi ═════════════════════════════════════════════════════
+
+// The approved ready-made messages (the bodies only; their send links stay in the database).
+const READY = {
+  en: 'Hi {name}, here is a gift from {shop}: use code {code} to get {offer} on your next order. Tap below to shop.',
+  mr: 'नमस्कार {name}, {shop} कडून तुमच्यासाठी भेट! पुढच्या ऑर्डरवर {code} हा कोड वापरा आणि {offer} मिळवा. खरेदीसाठी खालील बटण दाबा.',
+};
+
+test('a message with Devanagari letters is Marathi; its buttons and samples are Marathi too', () => {
+  assert.equal(offerLanguage(READY.en), 'en');
+  assert.equal(offerLanguage(READY.mr), 'mr');
+  assert.equal(offerLanguage('Hi {name}! 20% सूट at {shop}'), 'mr');
+  assert.equal(offerLanguage(''), 'en');
+  assert.equal(offerLanguage(null), 'en');
+  assert.deepEqual(OFFER_BUTTONS.mr, { shop: 'आत्ताच खरेदी करा', stop: 'ऑफर थांबवा' });
+  for (const f of Object.values(OFFER_FIELDS)) assert.match(f.placeholderMr, /^उदा\. /);
+
+  const mr = seniqifyTemplate(READY.mr);
+  assert.equal(mr.language, 'Marathi');
+  assert.equal(mr.text, 'नमस्कार {{1}}, {{2}} कडून तुमच्यासाठी भेट! पुढच्या ऑर्डरवर {{3}} हा कोड वापरा आणि {{4}} मिळवा. खरेदीसाठी खालील बटण दाबा.');
+  assert.deepEqual(mr.samples.map((s) => s.key), ['name', 'shop', 'code', 'offer']);
+  assert.equal(mr.samples[0].sample, 'आशा');
+  assert.equal(mr.button.number, 5);
+  assert.equal(mr.button.label, 'आत्ताच खरेदी करा');
+  assert.equal(mr.stopLabel, 'ऑफर थांबवा');
+  assert.equal(seniqifyTemplate(READY.en).language, 'English');
+  assert.equal(seniqifyTemplate(READY.en).button.label, 'Shop now');
+});
+
+test('the Seniqify button sample is a FULL offer link — a bare slug or token is refused by Seniqify', () => {
+  for (const body of [READY.en, READY.mr]) {
+    const { button } = seniqifyTemplate(body);
+    assert.ok(button.sample.startsWith(button.websiteUrl), 'the sample starts with the Website URL');
+    const suffix = button.sample.slice(button.websiteUrl.length);
+    assert.match(suffix, /^o\/[A-Za-z0-9]+$/, 'the rest is what we send: o/<token>');
+  }
+  const app = read('src/App.jsx');
+  assert.match(app, /path="\/o\/:token"/, 'and that link opens a real page');
+  const consolePage = strip(read('src/pages/Console.jsx'));
+  assert.match(consolePage, /seniqifyTemplate\(body\)/);
+  assert.match(consolePage, /Marketing · \{t\.language\}/);
+  assert.match(consolePage, /\{t\.stopLabel\}/);
+});
+
+test('Send an offer shows one language at a time when both exist, with matching buttons in the preview', () => {
+  const panel = strip(read('src/components/manage/OffersPanel.jsx'));
+  assert.match(panel, /new Set\(approved\.map\(\(t\) => offerLanguage\(t\.body\)\)\)\.size > 1/, 'the switch only when both languages exist');
+  assert.match(panel, /approved\.filter\(\(t\) => offerLanguage\(t\.body\) === lang\)/);
+  assert.match(panel, /shown\.find\(\(t\) => t\.id === pickedId\) \|\| shown\[0\]/, 'the picked message is always one on screen');
+  assert.match(panel, /\{bothLangs && \(/);
+  assert.match(panel, /\{OFFER_BUTTONS\[pickedLang\]\.shop\}/);
+  assert.match(panel, /\{OFFER_BUTTONS\[pickedLang\]\.stop\}/);
+  assert.ok(!/text-sky-600[^>]*>(Shop now|Stop offers)</.test(panel), 'no English-only preview buttons left');
+  // The remembered language never breaks the page (private mode, blocked storage).
+  assert.match(panel, /try \{ return localStorage\.getItem\(LANG_KEY\) === 'mr' \? 'mr' : 'en'; \} catch \{ return 'en'; \}/);
+  assert.match(panel, /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch/);
+  assert.ok(!/template_url|backendprod/.test(panel), 'the shop never handles a template link');
 });
