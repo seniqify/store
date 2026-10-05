@@ -337,7 +337,7 @@ export default function OrderTracking() {
               </span>}
           <div className="min-w-0">
             <p className="font-bold text-[14px] text-gray-900 leading-tight truncate">{store.name}</p>
-            <p className="text-[11px] text-gray-400">Order #{o.ref}</p>
+            <p className="text-[11px] text-gray-500">{isConfirmRoute ? 'Order' : 'Tracking order'} #{o.ref}</p>
           </div>
         </div>
 
