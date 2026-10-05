@@ -23,6 +23,7 @@ Set all five in **Supabase → Project settings → Edge Functions → Secrets**
 | `SENIQIFY_TEMPLATE_URL` | the OTP code | **`send` returns 503 — nobody can register or reset a PIN** |
 | `SENIQIFY_WELCOME_TEMPLATE_URL` | welcome message after registration | `welcome` returns 503; registration itself still works |
 | `SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL` | COD "Confirm my order" | COD buyers get the plain thank-you instead; orders unaffected |
+| `SENIQIFY_ORDER_CONFIRM_TRACK_TEMPLATE_URL` | COD "Confirm my order" + "Track order" (optional; replaces the one above when set) | the one-button template is used |
 | `SENIQIFY_ORDER_SELLER_TEMPLATE_URL` | seller new-order alert | already set — leave it |
 | `SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL` | buyer thank-you | already set — leave it |
 
