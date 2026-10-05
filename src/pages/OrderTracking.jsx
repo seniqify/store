@@ -1,14 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, PackageCheck, Loader2, Truck, MapPin,
-  AlertTriangle, MessageCircle, Package, Star, Copy, Check,
+  AlertTriangle, MessageCircle, Package, Star, Copy, Check, Gift, ArrowRight, RotateCw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatINR } from '../utils/currency';
 import { buildTimeline, heroStyle, courierName } from '../utils/orderTimeline';
 import { confirmPaymentLinkByToken } from '../utils/paymentLinks';
-import { storePath } from '../utils/storeUrls';
+import { storePath, isAbsoluteUrl } from '../utils/storeUrls';
+import { fetchStore } from '../utils/storeService';
+import { fetchProductSales, proofFor } from '../utils/salesService';
+import { saveRestoreIntent } from '../utils/cartRestore';
+import { pickShopOffer, suggestProducts, reorderLines } from '../utils/trackingExtras';
 
 /**
  * OrderTracking — the buyer's page for one order, served at two routes:
@@ -42,6 +46,82 @@ function fmtDate(iso, withTime = true) {
   const day = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
   if (!withTime) return day;
   return `${day}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** The shop's offer: a live sale, or a coupon it chose to show here (trackingExtras). */
+function ShopOffer({ offer, brand, onShop }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    const p = navigator.clipboard?.writeText(offer.code);
+    if (!p) return;
+    p.then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {});
+  }
+  return (
+    <section aria-label="Offer from the shop" className="rounded-2xl p-4 space-y-2.5"
+             style={{ background: `${brand}12`, border: `1px solid ${brand}33` }}>
+      <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: brand }}>
+        <Gift size={14} /> {offer.label}
+      </p>
+      <p className="text-xl font-extrabold text-gray-900 leading-tight">{offer.title}</p>
+      {offer.code && (
+        <div className="flex items-center justify-between h-11 pl-3.5 pr-1.5 rounded-xl bg-white" style={{ border: `1.5px dashed ${brand}` }}>
+          <span className="font-mono text-[15px] font-bold tracking-wider text-gray-900">{offer.code}</span>
+          <button type="button" onClick={copy} className="h-8 px-3 rounded-lg text-xs font-bold"
+                  style={{ background: `${brand}1f`, color: brand }}>
+            {copied ? 'Copied' : 'Copy code'}
+          </button>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] text-gray-600">{offer.note}</span>
+        <button type="button" onClick={onShop} className="inline-flex items-center gap-1 h-11 text-[13px] font-bold flex-shrink-0"
+                style={{ color: brand }}>
+          Shop now <ArrowRight size={14} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** "More from <shop>": a few of its best sellers, each one tap from the cart. */
+function MoreFromShop({ storeName, products, proof, brand, onAdd, onSeeAll }) {
+  return (
+    <section aria-label={`More from ${storeName}`} className="bg-white rounded-2xl border border-gray-100 p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <p className="text-[15px] font-bold text-gray-900 truncate">More from {storeName}</p>
+        <button type="button" onClick={onSeeAll} className="text-[12.5px] font-bold flex-shrink-0" style={{ color: brand }}>See all</button>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        {products.map((p) => {
+          const pr = proof(p.name);
+          return (
+            <div key={p.id} className="rounded-xl border border-gray-100 overflow-hidden flex flex-col">
+              <div className="aspect-square bg-gray-50">
+                {p.image
+                  ? <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover" />
+                  : <div className="w-full h-full grid place-items-center text-gray-300"><Package size={28} /></div>}
+              </div>
+              <div className="p-2.5 flex flex-col gap-1 flex-1">
+                <p className="text-[12.5px] font-semibold text-gray-800 leading-snug line-clamp-2">{p.name}</p>
+                {pr && <p className={`text-[10.5px] font-semibold ${pr.hot ? 'text-orange-700' : 'text-amber-700'}`}>{pr.text}</p>}
+                <div className="mt-auto pt-1 flex items-center justify-between gap-1.5">
+                  <span className="text-sm font-extrabold text-gray-900 tabular-nums">
+                    {formatINR(p.price)}
+                    {p.mrp && <span className="ml-1 text-[11px] font-medium text-gray-400 line-through">{formatINR(p.mrp)}</span>}
+                  </span>
+                  <button type="button" onClick={() => onAdd(p)} aria-label={`${p.hasOptions ? 'View' : 'Add'} ${p.name}`}
+                          className="h-8 px-2.5 rounded-lg text-[12px] font-extrabold bg-white flex-shrink-0"
+                          style={{ border: `1.5px solid ${brand}`, color: brand }}>
+                    {p.hasOptions ? 'View' : '+ Add'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 /** One row of the progress list. */
@@ -85,6 +165,43 @@ export default function OrderTracking() {
   const [data,  setData]  = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
+
+  // Below the tracking: the shop's offer and more of its products. Loaded after
+  // the order shows and never in its way -- any failure simply shows nothing.
+  const [extras, setExtras] = useState(null);   // { offer, products, sales, reorder }
+  const shopSlug = data?.store?.slug || '';
+  const orderItems = data?.order?.items;
+  useEffect(() => {
+    if (!shopSlug) return undefined;
+    let alive = true;
+    Promise.all([fetchStore(shopSlug).catch(() => null), fetchProductSales(shopSlug)]).then(([cfg, sales]) => {
+      if (!alive || !cfg) return;
+      setExtras({
+        offer: pickShopOffer(cfg), products: suggestProducts(cfg, orderItems, sales), sales,
+        reorder: reorderLines(orderItems, cfg.products),   // older orders matched by name
+      });
+    });
+    return () => { alive = false; };
+  }, [shopSlug, orderItems]);
+
+  // To the shop page. On a merchant's own domain another shop is an absolute URL.
+  function go(path) {
+    if (isAbsoluteUrl(path)) window.location.href = path;
+    else navigate(path);
+  }
+  // "Order again" and "+ Add" leave the lines for the shop page, which rebuilds
+  // them from today's catalogue and opens the cart (cartRestore, as /cart/<token>).
+  const reorder = extras?.reorder ?? reorderLines(orderItems);
+  function orderAgain() {
+    saveRestoreIntent(shopSlug, reorder);
+    go(storePath(shopSlug));
+  }
+  function addProduct(p) {
+    if (p.hasOptions) { go(storePath(shopSlug, { productId: p.id })); return; }   // pick a size / colour first
+    saveRestoreIntent(shopSlug, [{ productId: p.id, qty: 1 }]);
+    go(storePath(shopSlug));
+  }
 
   const load = useCallback(async () => {
     const { data: d, error } = await supabase.rpc('get_order_by_token', { p_token: token });
@@ -330,16 +447,36 @@ export default function OrderTracking() {
           </a>
         )}
 
+        {/* Order again: the same items back in the cart, at today's prices. */}
+        {delivered && store.slug && reorder.length > 0 && (
+          <section className="bg-white rounded-2xl p-4 space-y-3" style={{ border: `1.5px solid ${brand}55` }}>
+            <div>
+              <p className="text-[15px] font-bold text-gray-900">Loved it? Get it again</p>
+              <p className="text-[12px] text-gray-500 mt-0.5 line-clamp-2">
+                {items.map((it) => `${it.qty}× ${it.name}`).join(', ')}
+              </p>
+            </div>
+            <button type="button" onClick={orderAgain}
+              className="w-full h-12 rounded-xl text-white text-[15px] font-extrabold flex items-center justify-center gap-2 active:scale-[0.98] transition"
+              style={{ background: brand }}>
+              <RotateCw size={17} /> Order again
+            </button>
+            <p className="text-[11px] text-gray-500 text-center">Puts the same items in your cart at today’s prices</p>
+          </section>
+        )}
+
+        {/* The shop's offer, then more of its products. */}
+        {!cancelled && extras?.offer && store.slug && (
+          <ShopOffer offer={extras.offer} brand={brand} onShop={() => go(storePath(store.slug))} />
+        )}
+        {!cancelled && extras?.products?.length > 0 && store.slug && (
+          <MoreFromShop storeName={store.name} products={extras.products} brand={brand}
+            proof={(name) => proofFor(extras.sales?.get?.(name))}
+            onAdd={addProduct} onSeeAll={() => go(storePath(store.slug))} />
+        )}
+
         {/* Actions */}
         <div className="space-y-2 pt-1">
-          {delivered && store.slug && (
-            <Link to={storePath(store.slug)}
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-white
-                         text-sm font-bold active:scale-[0.98] transition"
-              style={{ background: brand }}>
-              <Package size={15} /> Order again
-            </Link>
-          )}
           {wa && (
             <a href={`https://wa.me/${wa}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-white

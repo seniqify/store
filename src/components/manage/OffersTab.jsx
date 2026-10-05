@@ -21,6 +21,9 @@ const EMPTY_SALE = {
 const EMPTY_COUPON = {
   code: '', discountType: 'percent', discountValue: '',
   minOrder: '', expiresAt: '', active: true,
+  // Off by default: a code may be private (staff, one customer), and the order
+  // tracking page reaches every buyer.
+  showOnOrderPage: false,
 };
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -125,6 +128,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
       minOrder: couponForm.minOrder === '' ? '' : Number(couponForm.minOrder),
       expiresAt: couponForm.expiresAt || '',
       active: couponForm.active !== false,
+      showOnOrderPage: couponForm.showOnOrderPage === true,
     };
     const next = couponEditId === 'new' ? [...coupons, clean] : coupons.map((c) => (c.id === couponEditId ? clean : c));
     update({ coupons: next });
@@ -274,6 +278,9 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
                         )}
                         {c.expiresAt && !live && (
                           <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">Expired</span>
+                        )}
+                        {c.showOnOrderPage === true && (
+                          <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-full flex-shrink-0">On order pages</span>
                         )}
                       </div>
                       <p className="text-xs text-gray-400 truncate">{describeCoupon(c)}</p>
@@ -491,6 +498,18 @@ function CouponForm({ form, setForm, themeColor, isNew, onSave, onCancel }) {
           <input type="date" value={form.expiresAt} onChange={(e) => set({ expiresAt: e.target.value })} className={inputCls} />
         </div>
       </div>
+
+      <label className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 cursor-pointer">
+        <input type="checkbox" checked={form.showOnOrderPage === true}
+          onChange={(e) => set({ showOnOrderPage: e.target.checked })}
+          className="mt-0.5 w-4 h-4 flex-shrink-0" style={{ accentColor: themeColor }} />
+        <span>
+          <span className="block text-xs font-bold text-gray-800">Show on customers’ order pages</span>
+          <span className="block text-[11px] text-gray-500 leading-snug mt-0.5">
+            Every buyer sees this code when they track an order, for their next order. Leave it off for a private code.
+          </span>
+        </span>
+      </label>
     </FormShell>
   );
 }
