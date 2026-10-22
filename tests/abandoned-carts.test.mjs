@@ -287,7 +287,12 @@ test('Home and the Abandoned tab read the same feed and the same summary', () =>
     assert.match(src, /summarizeAbandoned\(/, `${name} counts through the shared summary`);
   }
   assert.match(home, /title: `\$\{carts\.count\} abandoned/, 'Home shows the summary count');
-  assert.match(tab, /\{sum\.count\}<\/span>/, 'the tab header shows the same count');
+  // The header counts the cards on screen; the tab opens on the 30 days, whose
+  // cards are exactly this feed (abandoned-all-time.test.mjs covers "All time").
+  assert.match(tab, /\{shownSum\.count\}<\/span>/, 'the tab header shows the count of what is listed');
+  assert.match(tab, /const shownSum = summarizeAbandoned\(listed\);/);
+  assert.match(tab, /useState\('30d'\)/, 'the tab opens on the 30 days Home counts');
+  assert.match(tab, /allTime \? \(allResult\?\.ok \? allResult\.data : \[\]\) : rows/, 'the 30 days list is this feed');
 });
 
 test('the Abandoned tab has no hidden cap: a page size with "Show more", and no capped list', () => {

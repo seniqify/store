@@ -13,11 +13,13 @@ import RecoveryCard from './RecoveryCard';
  * never sent the order. Growth+ feature: paid stores see the list and win them
  * back; Free stores see the count + upgrade tease.
  *
- * The list is get_store_abandoned_carts, the same feed as Home's "N abandoned
- * carts" row, so the two numbers are always equal: ONE card per customer (their
- * latest cart in the last 30 days), and a customer who has ordered since is not
- * listed. Every customer is reachable: cards render a page at a time behind
- * "Show more", never silently cut off.
+ * The list opens on "Last 30 days": get_store_abandoned_carts, the same feed as
+ * Home's "N abandoned carts" row, so the two numbers are always equal: ONE card
+ * per customer (their latest cart), and a customer who has ordered since is not
+ * listed. "All time" (founder, 2026-10-22: no caps anywhere) is the same rule
+ * with no window, read the first time it is opened. Every customer is
+ * reachable: cards render a page at a time behind "Show more", never silently
+ * cut off.
  *
  * Winning them back (RecoveryCard): "Send reminder to all" and the automatic
  * switch send the WhatsApp cart reminder from PocketLink, Rs 1.50 each from the
@@ -36,9 +38,12 @@ function timeAgo(iso) {
 }
 
 const FILTERS = [['all', 'All'], ['none', 'Not reminded'], ['reminded', 'Reminded']];
+const RANGES = [['30d', `Last ${ABANDONED_WINDOW_DAYS} days`], ['all', 'All time']];
 
 export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeName = '', allowed = false, waPhone = '' }) {
-  const [result, setResult] = useState(null);   // null = loading; else { ok, data }
+  const [result, setResult] = useState(null);   // last 30 days. null = loading; else { ok, data }
+  const [range, setRange] = useState('30d');     // '30d' (Home's number) | 'all'
+  const [allResult, setAllResult] = useState(null); // all time, read when first opened
   const [statuses, setStatuses] = useState([]);
   const [visible, setVisible] = useState(ABANDONED_PAGE_SIZE);
   const [filter, setFilter] = useState('all');
@@ -47,6 +52,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
 
   const load = useCallback(async () => {
     setResult(null);
+    setAllResult(null);
     setVisible(ABANDONED_PAGE_SIZE);
     const [carts, st] = await Promise.all([fetchAbandonedCarts(slug, pin), fetchReminderStatuses(slug, pin)]);
     setStatuses(st);
@@ -55,12 +61,33 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
 
   useEffect(() => { load(); }, [load]);
 
+  // "All time" is read the first time it is opened (and again after a retry),
+  // not on every visit: most visits only need the 30 days Home counts.
+  useEffect(() => {
+    if (range !== 'all' || allResult) return undefined;
+    let live = true;
+    fetchAbandonedCarts(slug, pin, { allTime: true }).then((r) => { if (live) setAllResult(r); });
+    return () => { live = false; };
+  }, [range, allResult, slug, pin]);
+
+  function pickRange(key) {
+    setRange(key);
+    setVisible(ABANDONED_PAGE_SIZE);
+  }
+
   const refreshAfterSend = useCallback(async () => {
     setVersion((v) => v + 1);
     setStatuses(await fetchReminderStatuses(slug, pin));
   }, [slug, pin]);
 
   const rows = useMemo(() => (result?.ok ? result.data : []), [result]);
+  const allTime = range === 'all';
+  const loadingAll = allTime && allResult === null;
+  // The cards on screen: the 30 days, or every customer still to win back.
+  const listed = useMemo(
+    () => (allTime ? (allResult?.ok ? allResult.data : []) : rows),
+    [allTime, allResult, rows],
+  );
   const byPhone = useMemo(() => statusMap(statuses), [statuses]);
 
   async function sendOne(o) {
@@ -148,8 +175,10 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
   }
 
   const now = Date.now();
-  const counts = reminderCounts(rows, byPhone, now);
-  const filtered = filter === 'all' ? rows : rows.filter((o) => {
+  const shownSum = summarizeAbandoned(listed);
+  const allFailed = allTime && allResult !== null && !allResult.ok;
+  const counts = reminderCounts(listed, byPhone, now);
+  const filtered = filter === 'all' ? listed : listed.filter((o) => {
     const k = cartReminderState(o, byPhone.get(String(o.customer_phone)), now).key;
     return filter === 'none' ? k === 'none' : k !== 'none';
   });
@@ -161,11 +190,13 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
       <div>
         <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
           <ShoppingCart size={18} className="text-gray-400" /> Abandoned carts
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{sum.count}</span>
+          {!loadingAll && !allFailed && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{shownSum.count}</span>
+          )}
         </h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          {sum.count > 0
-            ? <>{sum.count} {sum.count === 1 ? 'customer' : 'customers'} · {formatINR(sum.value)} in their carts · last {ABANDONED_WINDOW_DAYS} days</>
+          {!loadingAll && !allFailed && shownSum.count > 0
+            ? <>{shownSum.count} {shownSum.count === 1 ? 'customer' : 'customers'} · {formatINR(shownSum.value)} in their carts · {allTime ? 'all time' : `last ${ABANDONED_WINDOW_DAYS} days`}</>
             : 'Started an order, typed their number, never sent it.'}
         </p>
       </div>
@@ -176,11 +207,54 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
       )}
       <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} waPhone={waPhone} compact version={version} />
 
-      {rows.length === 0 ? (
+      {/* Window: the 30 days Home counts, or every customer still to win back. */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+        {RANGES.map(([key, label]) => {
+          const active = range === key;
+          const n = key === '30d' ? rows.length : allResult?.ok ? allResult.data.length : 0;
+          return (
+            <button key={key} type="button" onClick={() => pickRange(key)}
+              className={[
+                'flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition',
+                active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+              ].join(' ')}>
+              {label}{n > 0 && <span className={active ? 'opacity-70' : 'text-gray-400'}> ({n})</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {loadingAll ? (
+        <div className="space-y-3">
+          {[0, 1].map((i) => (
+            <div key={i} className="rounded-2xl border border-gray-100 bg-white p-4 animate-pulse">
+              <div className="h-3.5 w-1/3 bg-gray-200 rounded mb-3" />
+              <div className="h-3 w-2/3 bg-gray-100 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : allFailed ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3">
+          <ShoppingCart size={18} className="text-amber-500 flex-shrink-0" />
+          <div className="min-w-0 flex-grow">
+            <p className="text-sm font-bold text-gray-900">Older abandoned carts unavailable</p>
+            <p className="text-xs text-gray-500 mt-0.5">Nothing is lost — this screen couldn&rsquo;t reach them.</p>
+          </div>
+          <button type="button" onClick={() => setAllResult(null)}
+            className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform"
+            style={{ backgroundColor: themeColor }}>
+            Try again
+          </button>
+        </div>
+      ) : listed.length === 0 ? (
         <div className="text-center py-10 px-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50">
           <div className="text-3xl mb-2">🎉</div>
           <p className="text-sm font-semibold text-gray-700">Nothing abandoned right now</p>
-          <p className="text-xs text-gray-400 mt-1">Customers who bail at checkout will appear here for the last {ABANDONED_WINDOW_DAYS} days.</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {allTime
+              ? 'Customers who bail at checkout will appear here until they order.'
+              : <>Customers who bail at checkout will appear here for the last {ABANDONED_WINDOW_DAYS} days.</>}
+          </p>
         </div>
       ) : (
         <>
@@ -221,7 +295,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
                     </span>
                     {o.attempts > 1 && (
                       <span className="text-[10.5px] font-bold text-gray-500"
-                            title={`Reached checkout on ${o.attempts} different days in the last ${ABANDONED_WINDOW_DAYS} days`}>
+                            title={`Reached checkout on ${o.attempts} different days${allTime ? '' : ` in the last ${ABANDONED_WINDOW_DAYS} days`}`}>
                         Tried {o.attempts}×
                       </span>
                     )}
