@@ -309,8 +309,10 @@ test('export: every lead still to win back, all time, counted by attempts; buyer
 test('fetchAbandonedCarts: all time reads the new function with no window; the default is unchanged', () => {
   const svc = code('src/utils/orderService.js');
   assert.match(svc, /export async function fetchAbandonedCarts\(slug, pin, \{ allTime = false \} = \{\}\)/);
-  assert.match(svc, /supabase\.rpc\('get_store_abandoned_carts_since', \{ p_slug: slug, p_hashed_pin: hashed, p_since: null \}\)/);
-  assert.match(svc, /: await supabase\.rpc\('get_store_abandoned_carts', \{ p_slug: slug, p_hashed_pin: hashed \}\)/);
+  assert.match(svc, /\['get_store_abandoned_carts_since', \{ p_slug: slug, p_hashed_pin: hashed, p_since: null \}\]/);
+  assert.match(svc, /: \['get_store_abandoned_carts', \{ p_slug: slug, p_hashed_pin: hashed \}\]/);
+  // Read page by page: the API stops at 1,000 rows a request (rpc-pages.test.mjs).
+  assert.match(svc, /readAllRpcRows\(\(withCount\) =>\s+supabase\.rpc\(fn, args, withCount \? \{ count: 'exact' \} : undefined\)\)/);
   // Home still reads the 30 days, so its number equals the tab's default.
   assert.match(code('src/components/manage/OverviewTab.jsx'), /fetchAbandonedCarts\(slug, pin\)/);
 });
