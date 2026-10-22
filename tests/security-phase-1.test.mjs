@@ -101,11 +101,32 @@ test('a missing order-confirm credential degrades, it does not block the order',
   // COD / paid-online buyers fall through to the plain thank-you; the seller alert is untouched.
   assert.match(OTPFN, /const confirmUrl\s*=\s*Deno\.env\.get\('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL'\) \?\? ''/);
   assert.match(OTPFN, /const confirmSend = confirmTrackUrl \|\| confirmUrl;/);
-  assert.match(OTPFN, /if \(cust && getsConfirm && confirmSend && order\?\.id\)/);
+  assert.match(OTPFN, /if \(cust && \(sendPaidTrack \|\| \(getsConfirm && confirmSend\)\) && order\?\.id\)/);
   // Paid-online buyers get the same Confirm + Track message as COD buyers.
   assert.match(OTPFN, /const getsConfirm = method === 'cod' \|\| method === 'online';/);
   assert.equal(/if \(!confirm(Url|Send)\)[\s\S]{0,80}return json/.test(OTPFN), false,
     'a missing confirm template must not refuse the request');
+});
+
+test('paid-online buyers get "order paid track" once its secret is set', () => {
+  assert.match(OTPFN, /const paidTrackUrl = Deno\.env\.get\('SENIQIFY_ORDER_PAID_TRACK_TEMPLATE_URL'\) \?\? '';/,
+    'secret-only, no fallback URL');
+  assert.match(OTPFN, /const sendPaidTrack = method === 'online' && !!paidTrackUrl;/, 'online orders only');
+  const block = OTPFN.slice(OTPFN.indexOf('if (token && sendPaidTrack) {'), OTPFN.indexOf('} else if (token) {'));
+  // {{1}} buyer, {{2}} store, {{3}} amount, {{4}} items, {{5}} Track button suffix.
+  assert.match(block, /'1': String\(customerName \|\| 'there'\)/);
+  assert.match(block, /'2': String\(storeName\s+\|\| 'the store'\)/);
+  assert.match(block, /'3': String\(orderTotal\s+\|\| ''\)/);
+  assert.match(block, /'4': String\(itemsSummary \|\| 'your items'\)/);
+  assert.match(block, /'5': `order\/\$\{token\}`/, 'the read-only tracking page, suffix only');
+  assert.equal(/confirm\//.test(block), false, 'a paid buyer is never sent the confirm link');
+  assert.equal(/values\['6'\]|'6':/.test(block), false, 'exactly five values');
+  assert.match(block, /await fetch\(paidTrackUrl, /);
+  // It still needs the token, and it is one message: paid-track OR confirm OR thank-you.
+  assert.match(OTPFN, /if \(cust && \(sendPaidTrack \|\| \(getsConfirm && confirmSend\)\) && order\?\.id\)/);
+  assert.match(OTPFN, /if \(token && sendPaidTrack\) \{[\s\S]*?\} else if \(token\) \{[\s\S]*?\} else if \(customerUrl && cust\) \{/);
+  // The /process URL is a credential: it never appears in the repository.
+  assert.equal(/campaignadmin\.backendprod\.com\/webhook\/template\/[0-9a-f-]{36}/.test(OTPFN), false);
 });
 
 test('the two-button confirm adds ONLY the Track button: {{6}} = order/<token>, and only with its own template', () => {
