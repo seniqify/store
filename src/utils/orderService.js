@@ -6,6 +6,7 @@ import { lineProductId } from './reviewShape';
 import { getMetaMatchData } from './metaPixel';
 import { factsFromRpc, factsFailed } from './orderFactsResult';
 import { readAllOrders } from './orderPages.js';
+import { readAllRpcRows, newestFirst } from './rpcPages.js';
 
 /**
  * Order capture + retrieval.
@@ -214,9 +215,13 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false, reuse =
 export async function fetchOrderFacts(slug, pin) {
   try {
     const hashed = await hashPin(pin);
-    return factsFromRpc(
-      await supabase.rpc('get_store_order_facts', { p_slug: slug, p_hashed_pin: hashed }),
-    );
+    // Paged: the API returns at most 1,000 rows a request, so one call stopped
+    // a store's totals at its newest 1,000 rows (Krupa's Stats: 429 of 964
+    // orders, 2026-10-22). readAllRpcRows reads them all or fails.
+    const facts = factsFromRpc(await readAllRpcRows((withCount) =>
+      supabase.rpc('get_store_order_facts', { p_slug: slug, p_hashed_pin: hashed },
+        withCount ? { count: 'exact' } : undefined)));
+    return facts.ok ? { ...facts, data: newestFirst(facts.data) } : facts;
   } catch {
     // Network down, request aborted, hashing unavailable - all "we do not know".
     return factsFailed('unavailable');
@@ -241,10 +246,13 @@ export async function fetchOrderFacts(slug, pin) {
 export async function fetchAbandonedCarts(slug, pin, { allTime = false } = {}) {
   try {
     const hashed = await hashPin(pin);
-    return factsFromRpc(allTime
-      ? await supabase.rpc('get_store_abandoned_carts_since', { p_slug: slug, p_hashed_pin: hashed, p_since: null })
-      : await supabase.rpc('get_store_abandoned_carts', { p_slug: slug, p_hashed_pin: hashed }),
-    );
+    const [fn, args] = allTime
+      ? ['get_store_abandoned_carts_since', { p_slug: slug, p_hashed_pin: hashed, p_since: null }]
+      : ['get_store_abandoned_carts', { p_slug: slug, p_hashed_pin: hashed }];
+    // Paged like fetchOrderFacts: past 1,000 customers one call would stop.
+    const carts = factsFromRpc(await readAllRpcRows((withCount) =>
+      supabase.rpc(fn, args, withCount ? { count: 'exact' } : undefined)));
+    return carts.ok ? { ...carts, data: newestFirst(carts.data) } : carts;
   } catch {
     return factsFailed('unavailable');
   }
