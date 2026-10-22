@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { readAllRowsOrEmpty, newestFirst } from './rpcPages.js';
 
 /**
  * PocketLink Console data layer (founder mission-control).
@@ -69,25 +70,23 @@ export async function fetchMyTeamRow(userId) {
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────────
+// Every list read here goes through readAllRowsOrEmpty: the Supabase API returns
+// at most 1,000 rows a request whatever .limit() asks for (2026-10-22: no list
+// in the Console may stop there), so each is read page by page, oldest first.
+
 /** Every store with the fields the Console needs. Public config read (same as
  *  the marketplace); theme + billingNote come back as whole JSON objects so a
  *  write can patch them without dropping sibling keys. */
 export async function fetchStoresConsole() {
-  try {
-    const { data, error } = await supabase
-      .from('stores')
-      .select(`slug, created_at, updated_at,
-               name:config->>businessName, plan:config->>plan,
-               exp:config->>planExpiresAt, bt:config->>businessType,
-               wa:config->>whatsappNumber, city:config->>city,
-               sub:config->>razorpaySubscriptionId, logoEmoji:config->>logoEmoji,
-               mgr:config->>managedBy, theme:config->theme, billing:config->billingNote`)
-      .limit(2000);
-    if (error) return [];
-    return data || [];
-  } catch {
-    return [];
-  }
+  return readAllRowsOrEmpty((withCount) => supabase
+    .from('stores')
+    .select(`slug, created_at, updated_at,
+             name:config->>businessName, plan:config->>plan,
+             exp:config->>planExpiresAt, bt:config->>businessType,
+             wa:config->>whatsappNumber, city:config->>city,
+             sub:config->>razorpaySubscriptionId, logoEmoji:config->>logoEmoji,
+             mgr:config->>managedBy, theme:config->theme, billing:config->billingNote`,
+    withCount ? { count: 'exact' } : undefined), { order: [['created_at', true], ['slug', true]], key: 'slug' });
 }
 
 /** All team members (RLS: members only). For the Access tab. */
@@ -101,21 +100,14 @@ export async function fetchTeam() {
   }
 }
 
-/** Orders across all stores since an ISO timestamp (RLS: crm team only). */
+/** Every order across all stores since an ISO timestamp, newest first (RLS: crm team only). */
 export async function fetchConsoleOrders(sinceIso) {
-  try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('id, store_slug, created_at, total, item_count, status, paid, payment_method, customer_name')
-      .neq('status', 'abandoned')
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: false })
-      .limit(1000);
-    if (error) return [];
-    return data || [];
-  } catch {
-    return [];
-  }
+  return newestFirst(await readAllRowsOrEmpty((withCount) => supabase
+    .from('orders')
+    .select('id, store_slug, created_at, total, item_count, status, paid, payment_method, customer_name',
+      withCount ? { count: 'exact' } : undefined)
+    .neq('status', 'abandoned')
+    .gte('created_at', sinceIso)));
 }
 
 // ── Write (founder-only, server-gated + audited) ──────────────────────────────

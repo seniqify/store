@@ -13,7 +13,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { readAllRpcRows, newestFirst, RPC_PAGE_SIZE } from '../src/utils/rpcPages.js';
+import { readAllRpcRows, readAllRowsOrEmpty, newestFirst, RPC_PAGE_SIZE } from '../src/utils/rpcPages.js';
 import { buildStatsMetrics } from '../src/utils/statsMetrics.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -124,7 +124,7 @@ test('a failed page fails the whole read: never a short total', async () => {
   for (const failPage of [0, 1, 2]) {
     const { data, error } = await readAllRpcRows(api(krupa(), { failPage }));
     assert.equal(data, null, `page ${failPage}`);
-    assert.ok(error);
+    assert.equal(error?.message, 'boom', 'the server error itself, not a guess from the count');
   }
   const thrown = await readAllRpcRows(() => ({ order() { return this; }, range: async () => { throw new Error('offline'); } }));
   assert.equal(thrown.data, null);
@@ -182,4 +182,70 @@ test('the totals feed and the abandoned-cart feed are read page by page', () => 
   // No other single, unpaged read of either feed.
   assert.equal((svc.match(/rpc\('get_store_order_facts'/g) || []).length, 1);
   assert.ok(!/await supabase\.rpc\('get_store_abandoned_carts/.test(svc));
+});
+
+// ── parallel pages, other keys, and the founder screens ─────────────────────
+
+test('after the first page the rest are read a few at a time, and kept in order', async () => {
+  const rows = Array.from({ length: 12500 }, (_, i) => row({ created_at: new Date(NOW - (12500 - i) * 60000).toISOString() }));
+  let inFlight = 0, peak = 0;
+  const base = api(rows);
+  const call = (withCount) => {
+    const b = base(withCount);
+    const range = b.range;
+    b.range = async (from, to) => {
+      inFlight++; peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 2));
+      try { return await range(from, to); } finally { inFlight--; }
+    };
+    return b;
+  };
+  const { data, error } = await readAllRpcRows(call);
+  assert.equal(error, null);
+  assert.equal(data.length, 12500, 'a week of views across every store - the Hub asked for 10,000 and got 1,000');
+  assert.deepEqual(data.map((r) => r.id), rows.map((r) => r.id), 'oldest first, nothing out of place');
+  assert.ok(peak > 1 && peak <= 4, `pages in flight at once: ${peak}`);
+});
+
+test('rows keyed by another column (stores by slug) are each kept once', async () => {
+  const stores = Array.from({ length: 2300 }, (_, i) => ({
+    slug: `shop-${String(i).padStart(4, '0')}`, created_at: new Date(NOW - (2300 - i) * DAY).toISOString(),
+  }));
+  // A store backdated mid-read shifts every later row one place: the row at a
+  // page boundary comes back twice, and only its slug can tell.
+  const call = api(stores, { beforePage: (page, live) => {
+    if (page === 1) live.push({ slug: 'shop-early', created_at: new Date(NOW - 9999 * DAY).toISOString() });
+  } });
+  const { data, error } = await readAllRpcRows(call, { order: [['created_at', true], ['slug', true]], key: 'slug' });
+  assert.equal(error, null);
+  assert.equal(data.length, 2300, 'nothing twice');
+  assert.equal(new Set(data.map((s) => s.slug)).size, 2300);
+});
+
+test('readAllRowsOrEmpty: every row, or [] when a page fails - as those screens did before', async () => {
+  assert.equal((await readAllRowsOrEmpty(api(krupa()))).length, 2209);
+  assert.deepEqual(await readAllRowsOrEmpty(api(krupa(), { failPage: 1 })), []);
+  assert.deepEqual(await readAllRowsOrEmpty(() => { throw new Error('no client'); }), []);
+});
+
+test('the Console and Sales Hub read every row: no .limit(), every list paged, newest first where it was', () => {
+  for (const f of ['src/utils/consoleService.js', 'src/utils/hubService.js']) {
+    const src = code(f);
+    assert.ok(!/\.limit\(/.test(src), `${f}: no .limit() - the API clamps it to 1,000 anyway`);
+    assert.match(src, /import \{ readAllRowsOrEmpty, newestFirst \} from '\.\/rpcPages\.js';/);
+  }
+  const con = code('src/utils/consoleService.js');
+  const hub = code('src/utils/hubService.js');
+  const paged = (src, fn) => new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return (newestFirst\(await )?readAllRowsOrEmpty\(\(withCount\) => supabase`).test(src);
+  for (const fn of ['fetchStoresConsole', 'fetchConsoleOrders']) assert.ok(paged(con, fn), fn);
+  for (const fn of ['listLeads', 'fetchStoresLite', 'fetchRecentOrders', 'fetchViewsSince']) assert.ok(paged(hub, fn), fn);
+  for (const [src, fn] of [[con, 'fetchConsoleOrders'], [hub, 'listLeads'], [hub, 'fetchRecentOrders']]) {
+    assert.match(src, new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return newestFirst\(`), `${fn} stays newest first`);
+  }
+  assert.equal((con + hub).match(/withCount \? \{ count: 'exact' \} : undefined/g).length, 6, 'each of the 6 lists asks for its total');
+  assert.match(hub, /\.select\('id, store_slug, viewed_on'/, 'views carry their id, so a row is never counted twice');
+  // Stores have no id column: they page by created_at + slug and dedupe by slug.
+  const storeOpts = /\{ order: \[\['created_at', true\], \['slug', true\]\], key: 'slug' \}\);/g;
+  assert.equal((con.match(storeOpts) || []).length, 1, 'Console stores');
+  assert.equal((hub.match(storeOpts) || []).length, 1, 'Hub stores');
 });
