@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, Wallet, Clock, MessageCircle, Link2, BadgeCheck } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
-import { buildPaymentsLists, KIND_LABEL, isAtDetailedCap, orderRowCount, DETAILED_ORDER_CAP } from '../../utils/paymentsLedger';
+import { buildPaymentsLists, KIND_LABEL, isPartialList } from '../../utils/paymentsLedger';
 import { buildPaymentsMetrics, PAYMENT_RANGES, periodKeys } from '../../utils/paymentsMetrics';
 import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, findPaymentOrphans, paymentLinkMessage } from '../../utils/paymentLinks';
 import { syncDeliveryStatuses } from '../../utils/shippingConnect';
@@ -69,12 +69,12 @@ function Tile({ label, value, sub, tone = 'text-gray-900' }) {
 export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false }) {
   // TWO feeds, kept apart on purpose.
   //  facts  - get_store_order_facts: UNCAPPED, PII-free. EVERY money total.
-  //  orders - get_store_orders: newest 500, detailed. The two worklists only,
+  //  orders - fetchOrders: every order, detailed. The two worklists only,
   //           because they show a customer's name and hand off to WhatsApp.
-  // A sum over the capped feed is a wrong number with a confident face, so the
-  // two are never mixed.
+  // That feed pages and can come back partial; a sum over it could be a wrong
+  // number with a confident face, so the two are never mixed.
   const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
-  const [orderRows, setOrderRows] = useState(0);
+  const [listPartial, setListPartial] = useState(false);
   const [loadedAt, setLoadedAt] = useState(null);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [range, setRange]     = useState(1);
@@ -89,7 +89,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
     ]);
     setFactsResult(facts);
-    setOrderRows(orderRowCount(detailed));
+    setListPartial(isPartialList(detailed));
     setOrders(detailed);
     setLoadedAt(Date.now());
   }, [slug, pin]);
@@ -101,7 +101,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     ]);
     if (!alive()) return;
     setFactsResult(firstFacts);
-    setOrderRows(orderRowCount(first));
+    setListPartial(isPartialList(first));
     setOrders(first);
     setLoadedAt(Date.now());
     const jobs = [];
@@ -122,7 +122,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       fetchOrderFacts(slug, pin), fetchOrders(slug, pin, { includeAbandoned: true }),
     ]);
     setFactsResult(freshFacts);
-    setOrderRows(orderRowCount(fresh));
+    setListPartial(isPartialList(fresh));
     setOrders(fresh);
     setLoadedAt(Date.now());
     setSyncing(false);
@@ -145,12 +145,11 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     [factsResult, loadedAt, range],
   );
   const accountingOk = factsResult?.ok === true;
-  // Worklists: detailed rows, capped, never summed.
+  // Worklists: detailed rows, never summed.
   const lists = useMemo(
     () => buildPaymentsLists(orders || [], { periodKeys: periodKeys(loadedAt, range) }),
     [orders, loadedAt, range],
   );
-  const listsCapped = isAtDetailedCap(orderRows);
 
   async function sendLink(o) {
     setBusy(o.id); setNote('');
@@ -428,7 +427,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         )}
         <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100">
           COD is counted as collected when the courier or your delivery marks it delivered, and as returned when it comes back. Nothing to mark.
-          {listsCapped && ` This list reads your newest ${DETAILED_ORDER_CAP} orders; the totals above read all of them.`}
+          {listPartial && ' Some older orders didn’t load, so this list may be missing a few; the totals above read all of them.'}
         </p>
       </div>
     </div>

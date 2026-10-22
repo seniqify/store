@@ -25,9 +25,9 @@ import { classifyOrder, paymentState, dayKeyInZone } from './commerceMetrics.js'
 import { isPaymentIncomplete, isPaymentUnconfirmed } from './orderState.js';
 import { classifyBucket } from './deliveryStatus.js';
 // The same backend fact Orders names: get_store_orders returns at most 500 rows.
-import { DETAILED_ORDER_CAP, orderRowCount } from './ordersView.js';
+import { DETAILED_ORDER_CAP, orderRowCount, isPartialList } from './ordersView.js';
 
-export { DETAILED_ORDER_CAP, orderRowCount };
+export { DETAILED_ORDER_CAP, orderRowCount, isPartialList };
 
 /** How collected money actually arrived. paid_via is the record of that; the
  *  customer's chosen payment_method is not evidence of anything. */

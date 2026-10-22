@@ -117,8 +117,9 @@ test('it orders deterministically, so two calls agree', () => {
 test('get_store_orders is NOT modified and keeps its cap', () => {
   assert.equal(/get_store_orders/.test(FWD_CODE), false,
     'this PR must not touch the capped list feed');
-  // The client still uses it, unchanged.
-  assert.match(ORDER_SVC, /supabase\.rpc\('get_store_orders'/);
+  // The client still uses it, unchanged: the first page of every order read.
+  assert.match(read('src/utils/orderPages.js'), /rpc\('get_store_orders', \{ p_slug: slug, p_hashed_pin: hashed \}\)/);
+  assert.match(ORDER_SVC, /readAllOrders\(\(fn, args\) => supabase\.rpc\(fn, args\)/);
   // ...and the verifier fails if its source or grants move.
   assert.match(VERIFY, /G1 get_store_orders source UNCHANGED, still capped at 500/);
   assert.match(VERIFY, /4fc814c21f3e367777063cf3005f2048/);

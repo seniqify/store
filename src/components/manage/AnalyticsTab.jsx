@@ -10,9 +10,6 @@ import { unitCostForItem, hasAnyCost } from '../../utils/variants';
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // The merchant's clock. Day and hour buckets are theirs, not the browser's.
 const STORE_TZ = 'Asia/Kolkata';
-// get_store_orders returns at most this many rows; at the cap the detailed
-// sections below are a window, not the whole story, and say so.
-const DETAILED_CAP = 500;
 const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h < 12 ? 'am' : 'pm'}`; };
 
 /**
@@ -25,10 +22,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // TWO feeds, deliberately.
   //  facts  - get_store_order_facts: UNCAPPED and PII-free. Every accounting
   //           scalar on this screen is built from it, through commerceMetrics.
-  //  orders - get_store_orders: the newest 500 rows of every kind, abandoned
-  //           checkouts included. It is the only feed carrying items and phone
-  //           numbers, so top products, profit and customer counts still need
-  //           it - and those sections say on screen that they are capped.
+  //  orders - fetchOrders: every real order. It is the only feed carrying
+  //           items and phone numbers, so top products, profit and customer
+  //           counts need it. It pages and can come back partial (an older
+  //           page failed) - and then those sections say so on screen.
   // The facts RESULT, not its rows: { ok, data, reason }. Keeping the envelope
   // is the whole point - see the failure branch below.
   const [factsResult, setFactsResult] = useState(null);
@@ -139,12 +136,12 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const thisWeek = stats.thisWeekOrders;
   const wow      = stats.wow;
 
-  // ── Detailed-order metrics: CAPPED at the newest 500 rows ─────────────
+  // ── Detailed-order metrics: every order, unless a page failed ─────────
   // Everything below needs items or a phone number, which the facts feed does
-  // not carry, so it stays on get_store_orders. Kept separate from the numbers
-  // above on purpose: do not mix a capped figure into an uncapped one.
+  // not carry, so it stays on fetchOrders. Kept separate from the numbers
+  // above on purpose: do not mix a possibly partial figure into a complete one.
   const valid   = orders.filter((o) => o.status !== 'cancelled' && !isPaymentIncomplete(o));
-  const capped  = orders.length >= DETAILED_CAP;
+  const capped  = orders.partial === true;   // fetchOrders: an older page failed
   const customers = new Set(valid.map((o) => o.customer_phone).filter(Boolean)).size;
 
   // Reach → orders funnel. Compared on the same 7-day window so it's apples-to-
@@ -279,12 +276,12 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   }
 
   // Says, on the sections that cannot see past the cap, that they cannot.
-  // Only present once the cap is actually reached, so a small store - where the
-  // detailed feed really does hold everything - sees nothing extra. An element,
+  // Only present when older orders failed to load, so a complete list - the
+  // normal case - sees nothing extra. An element,
   // not a component, so it is not redeclared on every render.
   const capNote = capped ? (
     <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg whitespace-nowrap">
-      last {DETAILED_CAP} orders
+      last {orders.length} orders
     </span>
   ) : null;
 
@@ -309,7 +306,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
         <Stat label="Avg order" value={formatINR(Math.round(aov))} />
         <Stat label="Customers" value={customers} sub={
           <span className="text-[11px] text-gray-400">
-            unique buyers{capped ? ' · last ' + DETAILED_CAP + ' orders' : ''}
+            unique buyers{capped ? ' · last ' + orders.length + ' orders' : ''}
           </span>} />
         <Stat label="Page views" value={totalViews.toLocaleString('en-IN')} sub={<span className="text-[11px] text-gray-400">{weekViews.toLocaleString('en-IN')} this week</span>} />
         <Stat label="Conversion" value={conv === null ? '—' : `${conv}%`} sub={<span className="text-[11px] text-gray-400">visitors → orders (7d)</span>} />
@@ -467,7 +464,7 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Returning customers" value={returning}
                   sub={<span className="text-[11px] text-gray-400">
-                    {repeatRate}% of buyers reorder{capped ? ' · last ' + DETAILED_CAP : ''}
+                    {repeatRate}% of buyers reorder{capped ? ' · last ' + orders.length : ''}
                   </span>} />
             <Stat label="Busiest day" value={bestDow === null ? '—' : DOW[bestDow]}
                   sub={<span className="text-[11px] text-gray-400">most orders land here</span>} />
