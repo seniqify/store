@@ -98,10 +98,12 @@ test('a missing welcome credential fails closed', () => {
 });
 
 test('a missing order-confirm credential degrades, it does not block the order', () => {
-  // COD buyers fall through to the plain thank-you; the seller alert is untouched.
+  // COD / paid-online buyers fall through to the plain thank-you; the seller alert is untouched.
   assert.match(OTPFN, /const confirmUrl\s*=\s*Deno\.env\.get\('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL'\) \?\? ''/);
   assert.match(OTPFN, /const confirmSend = confirmTrackUrl \|\| confirmUrl;/);
-  assert.match(OTPFN, /if \(cust && isCod && confirmSend && order\?\.id\)/);
+  assert.match(OTPFN, /if \(cust && getsConfirm && confirmSend && order\?\.id\)/);
+  // Paid-online buyers get the same Confirm + Track message as COD buyers.
+  assert.match(OTPFN, /const getsConfirm = method === 'cod' \|\| method === 'online';/);
   assert.equal(/if \(!confirm(Url|Send)\)[\s\S]{0,80}return json/.test(OTPFN), false,
     'a missing confirm template must not refuse the request');
 });

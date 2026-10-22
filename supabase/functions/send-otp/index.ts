@@ -334,18 +334,21 @@ serve(async (req: Request) => {
       const apiKey      = Deno.env.get('SENIQIFY_API_KEY');
       const sellerUrl   = Deno.env.get('SENIQIFY_ORDER_SELLER_TEMPLATE_URL');
       const customerUrl = Deno.env.get('SENIQIFY_ORDER_CUSTOMER_TEMPLATE_URL');
-      // "order confirm" — the buyer's thank-you PLUS a "Confirm my order" button.
-      // Only COD orders get it: that's where RTO and fake orders come from, and a
-      // prepaid buyer has already committed. The /process URL is the credential,
-      // so it is secret-only with no fallback. Unset degrades to the plain
-      // thank-you below; it never blocks the order or the seller's alert.
+      // "order confirm" — the buyer's thank-you PLUS a "Confirm my order" button
+      // (and "Track order" on the two-button template). COD and paid-online orders
+      // get it: COD is where RTO and fake orders come from, and a prepaid buyer
+      // needs their tracking link just as much. The client only calls order-notify
+      // for an online order once the payment went through. The /process URL is the
+      // credential, so it is secret-only with no fallback. Unset degrades to the
+      // plain thank-you below; it never blocks the order or the seller's alert.
       const confirmUrl  = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL') ?? '';
       // The same message with a second button, "Track order". Once its secret is
       // set it replaces the one-button template; unsetting it goes back.
       const confirmTrackUrl = Deno.env.get('SENIQIFY_ORDER_CONFIRM_TRACK_TEMPLATE_URL') ?? '';
       const confirmSend = confirmTrackUrl || confirmUrl;
-      if (!confirmSend) console.error('send-otp: SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL is not set — COD buyers get the plain thank-you');
-      const isCod = String(order?.payment_method || '').toLowerCase() === 'cod';
+      if (!confirmSend) console.error('send-otp: SENIQIFY_ORDER_CONFIRM_TEMPLATE_URL is not set — buyers get the plain thank-you');
+      const method = String(order?.payment_method || '').toLowerCase();
+      const getsConfirm = method === 'cod' || method === 'online';
 
       // Not set up yet → tell the client to fall back to wa.me. The seller alert
       // is the critical one (they must not miss an order), so gate on it.
@@ -388,9 +391,10 @@ serve(async (req: Request) => {
           }
         } catch (e) { console.error('order-notify seller error:', (e as Error)?.message); }
 
-        // Customer — exactly ONE message, never two. A COD buyer gets the "order
-        // confirm" template (order details + a "Confirm my order" button); every
-        // other payment method gets the plain thank-you.
+        // Customer — exactly ONE message, never two. A COD or paid-online buyer
+        // gets the "order confirm" template (order details + "Confirm my order",
+        // plus "Track order" on the two-button one); every other payment method
+        // gets the plain thank-you.
         try {
           const cust = toWa(customerPhone);
 
@@ -398,7 +402,7 @@ serve(async (req: Request) => {
           // saved — read it back rather than minting one here. Both the client
           // insert and the safety-net upsert have already run, so the row is there.
           let token = '';
-          if (cust && isCod && confirmSend && order?.id) {
+          if (cust && getsConfirm && confirmSend && order?.id) {
             const { data: saved } = await supabase
               .from('orders').select('confirm_token').eq('id', order.id).maybeSingle();
             token = saved?.confirm_token ? String(saved.confirm_token) : '';
