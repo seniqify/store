@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, RefreshCw, Search, MessageCircle, Phone, ChevronDown, Megaphone, Download } from 'lucide-react';
-import { fetchOrders, fetchAbandonedCarts } from '../../utils/orderService';
+import { fetchOrders } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildCustomers, summarizeCustomers, segmentCounts, SEGMENTS } from '../../utils/customers';
 import { buildContactRows, contactsToCsv, downloadCsv, contactsFilename } from '../../utils/exportCustomers';
@@ -27,22 +27,16 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
   const load = useCallback(async () => { setOrders(null); setOrders(await fetchOrders(slug, pin)); }, [slug, pin]);
   useEffect(() => { load(); }, [load]);
 
-  // Export ALL contacts — buyers + abandoned-cart leads — as a CSV the owner can
-  // import into WhatsApp / contacts to win repeat sales. Buyers come from every
-  // order; leads from every abandoned cart still to win back, all time (not the
-  // newest 300 that ride along with the orders feed).
+  // Export the shop's customers - everyone who ordered - as a CSV the owner can
+  // import into WhatsApp / contacts to win repeat sales. Abandoned-cart
+  // customers are not in it: their numbers are PocketLink's (2026-10-22), and
+  // the shop reaches them through the paid reminder in the Abandoned tab.
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const [all, carts] = await Promise.all([
-        fetchOrders(slug, pin),
-        fetchAbandonedCarts(slug, pin, { allTime: true }),
-      ]);
-      // A list without its leads would look complete. Say it failed instead.
-      if (!carts.ok) throw new Error('abandoned carts unavailable');
-      const rows = buildContactRows(all, carts.data);
+      const rows = buildContactRows(await fetchOrders(slug, pin));
       if (!rows.length) {
-        alert('No customer contacts yet — they’ll appear here as orders (and abandoned carts) come in.');
+        alert('No customer contacts yet — they’ll appear here as orders come in.');
         return;
       }
       downloadCsv(contactsFilename(businessName, slug), contactsToCsv(rows));
@@ -169,7 +163,7 @@ function Header({ themeColor, count, onRefresh, onExport, exporting }) {
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <button onClick={onExport} disabled={exporting}
-          title="Download all contacts (buyers + abandoned carts) as a CSV — for WhatsApp / contacts import"
+          title="Download your customers as a CSV — for WhatsApp / contacts import"
           className="inline-flex items-center gap-1.5 h-9 text-xs font-bold text-gray-700 border border-gray-200 bg-white
                      rounded-xl px-3 hover:bg-gray-50 active:scale-95 transition disabled:opacity-60 disabled:active:scale-100">
           <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
