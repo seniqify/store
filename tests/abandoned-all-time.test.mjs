@@ -270,38 +270,17 @@ test('verifier: every A row passes after the forward; after the undo A1 fails an
 
 // ── the CSV export ──────────────────────────────────────────────────────────
 
-test('export: every lead still to win back, all time, counted by attempts; buyers folded in', () => {
+test('export: buyers only - abandoned-cart customers are never in the CSV (abandoned-private, 2026-10-22)', () => {
   const orders = [
     { id: 'o1', status: 'delivered', customer_name: 'Ravi', customer_phone: '9000000001',
       total: 500, items: [{ name: 'Dhoop', qty: 1, price: 500 }], created_at: ago(200), paid: true },
+    // Abandoned rows handed in by mistake are ignored, whatever their case.
+    { id: 'a1', status: 'abandoned', customer_name: 'Meena', customer_phone: '9000000002', items: [], created_at: ago(2) },
+    { id: 'a2', status: 'ABANDONED', customer_name: 'Asha', customer_phone: '9000000003', items: [], created_at: ago(1) },
   ];
-  const carts = [
-    // A buyer who left a cart after ordering: folded into their row.
-    { id: 'a1', customer_name: 'Ravi', customer_phone: '9000000001', items: [{ name: 'Agarbatti' }],
-      total: 100, attempts: 2, destination: '', created_at: ago(10) },
-    // Leads from long before any 300-row window.
-    { id: 'a2', customer_name: 'Meena', customer_phone: '9000000002', items: [{ name: 'Kapur' }],
-      total: 80, attempts: 3, destination: 'Navi Peth, Solapur', created_at: ago(150) },
-    { id: 'a3', customer_name: '', customer_phone: '9000000003', items: [],
-      total: 0, attempts: 1, destination: null, created_at: ago(400) },
-  ];
-  const rows = buildContactRows(orders, carts);
-  assert.deepEqual(rows.map((r) => [r.phone, r.type, r.orders, r.abandoned]), [
-    ['919000000001', 'Customer', 1, 2],
-    ['919000000002', 'Abandoned cart', 0, 3],
-    ['919000000003', 'Abandoned cart', 0, 1],
-  ]);
-  assert.equal(rows[1].area, 'Navi Peth, Solapur');
-  assert.equal(rows[1].buys, 'Kapur');
-  assert.equal(rows[1].name, 'Meena');
-  // Abandoned rows riding along in the orders are ignored once the carts are given.
-  const withRaw = buildContactRows([...orders, { status: 'abandoned', customer_phone: '9000000009', created_at: ago(1) }], carts);
-  assert.equal(withRaw.length, 3);
-  // Without carts it still works from raw abandoned rows, one checkout each.
-  const raw = buildContactRows([...orders,
-    { status: 'abandoned', customer_phone: '9000000009', customer_name: 'X', items: [], created_at: ago(2) },
-    { status: 'abandoned', customer_phone: '9000000009', customer_name: 'X', items: [], created_at: ago(1) }]);
-  assert.deepEqual(raw.map((r) => [r.phone, r.abandoned]), [['919000000001', 0], ['919000000009', 2]]);
+  const rows = buildContactRows(orders);
+  assert.deepEqual(rows.map((r) => [r.phone, r.type, r.orders]), [['919000000001', 'Customer', 1]]);
+  assert.ok(!('abandoned' in rows[0]), 'no abandoned-cart count either');
 });
 
 // ── the screens ─────────────────────────────────────────────────────────────
@@ -325,7 +304,7 @@ test('the Abandoned tab: opens on the 30 days, "All time" is one tap, read once,
   assert.match(tab, /fetchAbandonedCarts\(slug, pin, \{ allTime: true \}\)/);
   assert.match(tab, /RANGES\.map\(/, 'both chips are rendered');
   assert.match(tab, /const filtered = filter === 'all' \? listed : listed\.filter\(/, 'the cards are the chosen window');
-  assert.match(tab, /const counts = reminderCounts\(listed, byPhone, now\);/);
+  assert.match(tab, /const counts = reminderCounts\(listed, byCart, now\);/);
   assert.match(tab, /Older abandoned carts unavailable/);
   assert.match(tab, /onClick=\{\(\) => setAllResult\(null\)\}/, 'Try again re-reads all time');
   // Reminders stay on the 30-day list the server sends to.
@@ -333,10 +312,9 @@ test('the Abandoned tab: opens on the 30 days, "All time" is one tap, read once,
   assert.ok(!/\.slice\(0,\s*\d+\)/.test(tab), 'no literal cut-off');
 });
 
-test('Customers -> Export: leads from every abandoned cart, all time, and it refuses to hand out a list without them', () => {
+test('Customers -> Export reads the orders only, never the abandoned carts', () => {
   const tab = code('src/components/manage/CustomersTab.jsx');
-  assert.match(tab, /fetchAbandonedCarts\(slug, pin, \{ allTime: true \}\)/);
-  assert.match(tab, /if \(!carts\.ok\) throw new Error\(/);
-  assert.match(tab, /buildContactRows\(all, carts\.data\)/);
-  assert.ok(!/includeAbandoned: true/.test(tab), 'no longer the newest-300 abandoned rows of the orders feed');
+  assert.match(tab, /const rows = buildContactRows\(await fetchOrders\(slug, pin\)\);/);
+  assert.ok(!/fetchAbandonedCarts/.test(tab), 'abandoned-cart customers are PocketLink\u2019s to reach');
+  assert.ok(!/includeAbandoned: true/.test(tab));
 });

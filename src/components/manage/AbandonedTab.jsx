@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShoppingCart, MessageCircle, Sparkles, Loader2 } from 'lucide-react';
+import { ShoppingCart, Sparkles, Loader2, Lock } from 'lucide-react';
 import { fetchAbandonedCarts } from '../../utils/orderService';
 import { summarizeAbandoned, ABANDONED_PAGE_SIZE, ABANDONED_WINDOW_DAYS } from '../../utils/abandonedCarts';
 import { fetchReminderStatuses, sendRemindersNow } from '../../utils/cartReminderService';
-import { statusMap, cartReminderState, reminderCounts } from '../../utils/reminderStatus';
+import { statusMap, reminderFor, cartReminderState, reminderCounts } from '../../utils/reminderStatus';
 import { formatINR } from '../../utils/currency';
 import WalletCard from './WalletCard';
 import RecoveryCard from './RecoveryCard';
@@ -23,8 +23,13 @@ import RecoveryCard from './RecoveryCard';
  *
  * Winning them back (RecoveryCard): "Send reminder to all" and the automatic
  * switch send the WhatsApp cart reminder from PocketLink, Rs 1.50 each from the
- * wallet; each card shows its reminder state and can send its own. The green
- * WhatsApp button stays for a personal note from the shop's own phone.
+ * wallet; each card shows its reminder state and can send its own.
+ *
+ * NUMBERS ARE PRIVATE (founder, 2026-10-22): shops copied numbers from here and
+ * messaged customers by hand, so nobody topped up. The database no longer sends
+ * an abandoned customer's number to the shop at all
+ * (supabase/abandoned-private-forward.sql); a card shows the name, the cart and
+ * the reminder, and PocketLink's paid reminder is the way to reach them.
  */
 
 function timeAgo(iso) {
@@ -88,7 +93,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
     () => (allTime ? (allResult?.ok ? allResult.data : []) : rows),
     [allTime, allResult, rows],
   );
-  const byPhone = useMemo(() => statusMap(statuses), [statuses]);
+  const byCart = useMemo(() => statusMap(statuses), [statuses]);
 
   async function sendOne(o) {
     setSending((m) => ({ ...m, [o.id]: 'sending' }));
@@ -136,7 +141,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
         <div className="px-5 py-5 space-y-3">
           <p className="text-sm text-gray-600">
             {rows.length > 0
-              ? <><b>{sum.count} customer{sum.count === 1 ? '' : 's'}</b> started an order at {storeName || 'your store'} in the last {ABANDONED_WINDOW_DAYS} days but never sent it — name, number and cart already captured.</>
+              ? <><b>{sum.count} customer{sum.count === 1 ? '' : 's'}</b> started an order at {storeName || 'your store'} in the last {ABANDONED_WINDOW_DAYS} days but never sent it — PocketLink can remind them for you.</>
               : <>When a customer types their number at checkout but doesn’t finish, they’ll show up here — with their cart, ready for a one-tap WhatsApp nudge.</>}
           </p>
           <ul className="space-y-1.5 text-sm text-gray-500">
@@ -177,9 +182,9 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
   const now = Date.now();
   const shownSum = summarizeAbandoned(listed);
   const allFailed = allTime && allResult !== null && !allResult.ok;
-  const counts = reminderCounts(listed, byPhone, now);
+  const counts = reminderCounts(listed, byCart, now);
   const filtered = filter === 'all' ? listed : listed.filter((o) => {
-    const k = cartReminderState(o, byPhone.get(String(o.customer_phone)), now).key;
+    const k = cartReminderState(o, reminderFor(byCart, o), now).key;
     return filter === 'none' ? k === 'none' : k !== 'none';
   });
   const shown = filtered.slice(0, visible);
@@ -198,6 +203,9 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
           {!loadingAll && !allFailed && shownSum.count > 0
             ? <>{shownSum.count} {shownSum.count === 1 ? 'customer' : 'customers'} · {formatINR(shownSum.value)} in their carts · {allTime ? 'all time' : `last ${ABANDONED_WINDOW_DAYS} days`}</>
             : 'Started an order, typed their number, never sent it.'}
+        </p>
+        <p className="text-[11px] text-gray-400 mt-1 inline-flex items-center gap-1">
+          <Lock size={11} /> Numbers stay private — PocketLink sends the reminder for you.
         </p>
       </div>
 
@@ -274,19 +282,15 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
 
           {shown.map((o) => {
             const items = Array.isArray(o.items) ? o.items : [];
-            const st = cartReminderState(o, byPhone.get(String(o.customer_phone)), now);
+            const st = cartReminderState(o, reminderFor(byCart, o), now);
             const local = sending[o.id];
             const problem = local && local !== 'sending' && local !== 'sent' ? local : '';
-            const nudge =
-              `Hi${o.customer_name ? ` ${o.customer_name}` : ''}! 😊 You started an order at ${storeName || 'our store'}` +
-              ` — ${items.map((i) => `${i.qty}× ${i.name}`).join(', ')} (${formatINR(o.total)}).` +
-              ` Want me to confirm it for you? Happy to help!`;
             return (
               <div key={o.id} className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-extrabold text-gray-900 leading-tight truncate">{o.customer_name || 'Customer'}</p>
-                    <p className="text-xs text-gray-500 mt-0.5 tabular-nums">+91 {o.customer_phone} · {timeAgo(o.created_at)}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{timeAgo(o.created_at)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <span className={['text-[11px] font-bold px-2 py-0.5 rounded-full',
@@ -324,12 +328,6 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
                   ) : (
                     <p className="flex-grow text-[11.5px] text-gray-500">{problem || st.note}</p>
                   )}
-                  <a href={`https://wa.me/91${o.customer_phone}?text=${encodeURIComponent(nudge)}`}
-                     target="_blank" rel="noopener noreferrer" aria-label={`Message ${o.customer_name || 'customer'} on WhatsApp`}
-                     className="w-[42px] h-[42px] rounded-xl inline-flex items-center justify-center text-white flex-shrink-0 active:scale-95"
-                     style={{ backgroundColor: '#25D366' }}>
-                    <MessageCircle size={18} />
-                  </a>
                 </div>
                 {st.canSend && problem && <p className="text-[11.5px] text-amber-700">{problem}</p>}
               </div>

@@ -2,10 +2,11 @@
  * Customer contact export → CSV.
  * ────────────────────────────────────────────────────────────────────────────
  * Turns the store's OWN orders (which the owner already fetches, PIN-checked)
- * into a downloadable contact list for re-marketing: everyone who ordered, PLUS
- * everyone who reached checkout but didn't finish (abandoned carts) — deduped by
- * phone. No new data is collected; this just packages what the store already owns
- * so the owner can import it into WhatsApp / their contacts and win repeat sales.
+ * into a downloadable contact list for re-marketing: everyone who ordered,
+ * deduped by phone. Abandoned-cart customers are not included - only PocketLink
+ * holds their numbers. No new data is collected; this just packages what the
+ * store already owns so the owner can import it into WhatsApp / their contacts
+ * and win repeat sales.
  *
  * Phones are emitted as `91XXXXXXXXXX` (country code, no +, no spaces) — the
  * format WhatsApp broadcast tools and contact imports expect.
@@ -26,97 +27,44 @@ function fmtDate(tsOrIso) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Group abandoned carts by phone (kept separate from real customers). A row from
-// get_store_abandoned_carts_since already stands for `attempts` checkouts; a raw
-// abandoned order row is one.
-function groupAbandoned(orders) {
-  const m = new Map();
-  for (const o of orders) {
-    const phone = String(o.customer_phone || '').replace(/\D/g, '').slice(-10);
-    if (phone.length !== 10) continue;
-    const t = new Date(o.created_at).getTime() || 0;
-    let g = m.get(phone);
-    if (!g) { g = { phone, name: '', _nameAt: -1, count: 0, lastAt: 0, last: null }; m.set(phone, g); }
-    const n = Math.trunc(Number(o.attempts));
-    g.count += Number.isFinite(n) && n > 1 ? n : 1;
-    const nm = String(o.customer_name || '').trim();
-    if (nm && t >= g._nameAt) { g.name = nm; g._nameAt = t; }
-    if (t >= g.lastAt) { g.lastAt = t; g.last = o; }
-  }
-  return m;
-}
-
 /**
- * Build one contact row per unique phone number.
- *   • Buyers first (from buildCustomers), with an `abandoned` count if the same
- *     number also has an abandoned cart.
- *   • Abandoned-only leads (never completed an order) after, flagged as such.
+ * Build one contact row per customer who ordered (from buildCustomers).
  *
- * @param {Array} allOrders  the store's orders. Abandoned rows in it are used only
- *   when `abandonedCarts` is not given.
- * @param {Array} [abandonedCarts]  rows from fetchAbandonedCarts({ allTime: true }):
- *   every customer still to win back, all time - one row each, with `attempts`.
- *   Customers -> Export passes these (get_store_orders carries only the newest
- *   300 abandoned checkouts). A buyer then shows an abandoned count only for
- *   carts left since their last order.
+ * Abandoned-cart customers are NOT exported (founder, 2026-10-22): their
+ * numbers are PocketLink's, and the shop reaches them through the paid reminder
+ * in the Abandoned tab. Any abandoned row handed in is ignored.
+ *
+ * @param {Array} allOrders  the store's orders
  */
-export function buildContactRows(allOrders = [], abandonedCarts = null) {
-  const ordered   = allOrders.filter((o) => o.status !== 'abandoned');
-  const abandoned = Array.isArray(abandonedCarts)
-    ? abandonedCarts
-    : allOrders.filter((o) => o.status === 'abandoned');
-  const customers = buildCustomers(ordered);
-  const abMap     = groupAbandoned(abandoned);
-
-  const rows = [];
-
-  for (const c of customers) {
+export function buildContactRows(allOrders = []) {
+  const ordered = (Array.isArray(allOrders) ? allOrders : [])
+    .filter((o) => String(o?.status ?? '').toLowerCase() !== 'abandoned');
+  return buildCustomers(ordered).map((c) => {
     const latest = c.history[0] || {};
-    const ab = abMap.get(c.phone);
-    rows.push({
-      name:      c.name || '',
-      phone:     '91' + c.phone,
-      type:      c.orderCount >= 2 ? 'Repeat customer' : 'Customer',
-      orders:    c.orderCount,
-      abandoned: ab ? ab.count : 0,
-      spent:     c.totalSpent,
-      last:      fmtDate(c.lastOrderAt),
-      area:      latest.destination || '',
-      pincode:   latest.pincode || '',
-      buys:      c.topItems.map((i) => i.name).join(' · '),
-    });
-    if (ab) abMap.delete(c.phone);   // folded into the buyer's row
-  }
-
-  for (const g of abMap.values()) {
-    const last = g.last || {};
-    rows.push({
-      name:      g.name || '',
-      phone:     '91' + g.phone,
-      type:      'Abandoned cart',
-      orders:    0,
-      abandoned: g.count,
-      spent:     0,
-      last:      fmtDate(g.lastAt),
-      area:      last.destination || '',
-      pincode:   last.pincode || '',
-      buys:      (last.items || []).map((i) => i.name).join(' · '),
-    });
-  }
-
-  return rows;
+    return {
+      name:    c.name || '',
+      phone:   '91' + c.phone,
+      type:    c.orderCount >= 2 ? 'Repeat customer' : 'Customer',
+      orders:  c.orderCount,
+      spent:   c.totalSpent,
+      last:    fmtDate(c.lastOrderAt),
+      area:    latest.destination || '',
+      pincode: latest.pincode || '',
+      buys:    c.topItems.map((i) => i.name).join(' · '),
+    };
+  });
 }
 
 /** Render contact rows as CSV text (UTF-8 BOM so Excel reads Marathi/Hindi names). */
 export function contactsToCsv(rows = []) {
   const headers = [
-    'Name', 'Phone', 'Type', 'Orders', 'Abandoned carts',
-    'Total spent (INR)', 'Last activity', 'Area / City', 'Pincode', 'Usually buys',
+    'Name', 'Phone', 'Type', 'Orders',
+    'Total spent (INR)', 'Last order', 'Area / City', 'Pincode', 'Usually buys',
   ];
   const lines = [headers.join(',')];
   for (const r of rows) {
     lines.push([
-      cell(r.name), cell(r.phone), cell(r.type), cell(r.orders), cell(r.abandoned),
+      cell(r.name), cell(r.phone), cell(r.type), cell(r.orders),
       cell(r.spent), cell(r.last), cell(r.area), cell(r.pincode), cell(r.buys),
     ].join(','));
   }

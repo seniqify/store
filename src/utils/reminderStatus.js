@@ -20,11 +20,27 @@ function day(iso) {
   return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-/** phone → its latest reminder (the server already returns one per phone). */
+/**
+ * Each customer's latest reminder, keyed by their latest abandoned cart.
+ *
+ * cart_reminder_statuses returns `cart_id` (supabase/abandoned-private-forward.sql):
+ * the shop never gets an abandoned customer's number, so the number cannot be
+ * the key. `phone` is still read when present, for the database version before
+ * that migration - so the app can ship first.
+ */
 export function statusMap(statuses) {
   const m = new Map();
-  for (const s of Array.isArray(statuses) ? statuses : []) if (s?.phone) m.set(String(s.phone), s);
+  for (const s of Array.isArray(statuses) ? statuses : []) {
+    if (s?.cart_id) m.set(`cart:${s.cart_id}`, s);
+    else if (s?.phone) m.set(`phone:${s.phone}`, s);
+  }
   return m;
+}
+
+/** The reminder for one cart from statusMap, or undefined. */
+export function reminderFor(map, cart) {
+  if (!map || !cart) return undefined;
+  return map.get(`cart:${cart.id}`) ?? (cart.customer_phone ? map.get(`phone:${cart.customer_phone}`) : undefined);
 }
 
 /**
@@ -38,7 +54,7 @@ export function cartReminderState(cart, reminder, now = Date.now()) {
       key: 'none',
       badge: 'Not reminded',
       canSend: !tooOld,
-      note: tooOld ? `Older than ${MANUAL_MAX_AGE_DAYS} days — use WhatsApp` : '',
+      note: tooOld ? `Older than ${MANUAL_MAX_AGE_DAYS} days — too late for a reminder` : '',
     };
   }
   const waitOver = now >= Date.parse(reminder.next_at);
@@ -56,7 +72,7 @@ export function cartReminderState(cart, reminder, now = Date.now()) {
 export function reminderCounts(carts, map, now = Date.now()) {
   let reminded = 0;
   for (const c of Array.isArray(carts) ? carts : []) {
-    if (cartReminderState(c, map.get(String(c.customer_phone)), now).key !== 'none') reminded += 1;
+    if (cartReminderState(c, reminderFor(map, c), now).key !== 'none') reminded += 1;
   }
   const all = Array.isArray(carts) ? carts.length : 0;
   return { all, reminded, notReminded: all - reminded };
