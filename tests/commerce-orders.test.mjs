@@ -278,24 +278,23 @@ test('the order limit counts real orders only: abandoned checkouts are capped se
     'the same rule as the SQL: abandoned in any case; anything else is an order');
 });
 
-test('the component measures the order limit on the listable rows', () => {
+test('the component reads every order and says when older ones failed to load', () => {
   const tab = code('../src/components/manage/OrdersTab.jsx');
-  assert.match(tab, /fetchOrders\(slug, pin, \{ includeAbandoned: true \}\)/,
+  assert.match(tab, /fetchOrders\(slug, pin, \{ includeAbandoned: true, reuse \}\)/,
     'it asks for both kinds');
   assert.match(tab, /const rows = listableRows\(raw\)/, 'drops abandoned for the list');
-  assert.match(tab, /setOrderRows\(rows\.length\)/, 'measures the orders');
-  assert.match(tab, /isAtDetailedCap\(orderRows\)/, 'and keys the notice on them');
+  assert.match(tab, /setListPartial\(isPartialList\(raw\)\)/, 'and keys the notice on a failed page');
+  // Only the silent poll reuses the older orders on screen; everything else re-reads them.
+  assert.match(tab, /refresh\(\{ quick: true \}\)/, 'the poll is quick');
+  assert.match(tab, /const reuse = quick && /, 'and only the quick path reuses');
 });
 
-test('the cap notice does not claim the merchant has exactly 500 orders', () => {
+test('the Orders list no longer stops at 500', () => {
   const tab = SRC('../src/components/manage/OrdersTab.jsx');
-  assert.match(tab, /Showing the newest \{DETAILED_ORDER_CAP\}/, 'it says "newest", not "total"');
-  assert.ok(!/500 (orders|total|lifetime)/.test(tab), 'it never claims 500 is the whole story');
-  // The cap number itself is the named constant, never typed out as a count.
-  const tabCode = code('../src/components/manage/OrdersTab.jsx');
-  assert.ok(!/=\s*500\b/.test(tabCode), 'no hard-coded 500 threshold in the component');
-  assert.ok(!/>=?\s*500\b/.test(tabCode), 'and no hard-coded 500 comparison');
-  assert.match(tabCode, /DETAILED_ORDER_CAP/, 'it uses the named constant');
+  assert.ok(!/Showing the newest/.test(tab), 'no "newest 500" notice');
+  assert.ok(!/DETAILED_ORDER_CAP|isAtDetailedCap/.test(code('../src/components/manage/OrdersTab.jsx')),
+    'the component no longer knows about the page size');
+  assert.match(tab, /Some older \{noun\}s didn&rsquo;t load/, 'a failed page is said plainly');
 });
 
 test('with 600 rows the list stays capped and no uncapped number appears', () => {

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
-import { buildDeliveryMetrics, isAtDetailedCap, orderRowCount, DETAILED_ORDER_CAP } from '../../utils/deliveryMetrics';
+import { buildDeliveryMetrics, isPartialList } from '../../utils/deliveryMetrics';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -55,11 +55,11 @@ function trackWaLink(o, trackUrl, storeName) {
 export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', storeName = '' }) {
   // TWO feeds, kept apart.
   //  facts  - get_store_order_facts: UNCAPPED, PII-free. The summary tiles.
-  //  orders - get_store_orders: newest 500, detailed. The shipment list, search
+  //  orders - fetchOrders: every order, detailed. The shipment list, search
   //           and drawer, which need a customer's name, phone and address.
-  // No tile is ever computed from the capped rows.
+  // No tile is ever computed from the detailed rows.
   const [factsResult, setFactsResult] = useState(null);   // { ok, data, reason }
-  const [orderRows, setOrderRows] = useState(0);
+  const [listPartial, setListPartial] = useState(false);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [syncing, setSyncing] = useState(false);
   // A courier refresh that failed is NOT the same as missing data: the board
@@ -87,11 +87,9 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   }, [courierMenu, statusMenu]);
 
   const grab = useCallback(async () => {
-    // The order limit counts real orders only (abandoned checkouts are capped
-    // separately), so measure it on those -- the list can still hold far fewer
-    // than 500 shipments when it is full.
+    // fetchOrders reads every order; `partial` means some older ones failed.
     const rows = await fetchOrders(slug, pin, { includeAbandoned: true });
-    setOrderRows(orderRowCount(rows));
+    setListPartial(isPartialList(rows));
     return rows.filter((o) => o.awb);   // only booked shipments (they carry an AWB)
   }, [slug, pin]);
 
@@ -157,7 +155,6 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   // back still shows as in transit.
   const summary = buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []);
   const summaryOk = factsResult?.ok === true;
-  const listCapped = isAtDetailedCap(orderRows);
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
   const TRIG = {
@@ -299,9 +296,9 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       )}
 
-      {listCapped && (
+      {listPartial && (
         <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mb-2.5">
-          The list below reads your newest {DETAILED_ORDER_CAP} orders; the totals above read all of them.
+          Some older orders didn&rsquo;t load, so the list below may be missing a few; the totals above read all of them.
         </p>
       )}
 

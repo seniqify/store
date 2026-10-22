@@ -10,8 +10,8 @@
  *
  * Nothing here is an accounting total. Gross Sales, Collected, Outstanding and
  * Written Off belong to commerceMetrics and are shown on Home, Stats and
- * Payments — never on this screen, because this screen can only ever see the
- * newest 500 orders.
+ * Payments — never on this screen, because this screen's list is read in pages
+ * and can come back partial (see isPartialList).
  *
  * WHAT THIS MODULE DOES OWN is the translation between the canonical model and
  * the two things the list needs: which rows count as unpaid, and what a row's
@@ -44,6 +44,10 @@ export const ORDER_TZ = 'Asia/Kolkata';
  * on top of them the newest 300 abandoned checkouts. An abandoned checkout can
  * never push a real order out. The backend contract, not a UI preference -- if
  * that SQL changes, change these.
+ *
+ * 500 is a PAGE size, not a limit on what Manage shows: when that first page is
+ * full, fetchOrders reads the older real orders 500 at a time through
+ * get_store_orders_before (supabase/orders-history-forward.sql).
  */
 export const DETAILED_ORDER_CAP = 500;
 export const ABANDONED_ORDER_CAP = 300;
@@ -63,6 +67,14 @@ export function listableRows(rows) {
  */
 export function orderRowCount(rows) {
   return listableRows(rows).length;
+}
+
+/**
+ * Did fetchOrders come back without some older orders (a page failed)? The
+ * newest are still there; the screen says the list is incomplete.
+ */
+export function isPartialList(rows) {
+  return Boolean(rows && rows.partial);
 }
 
 /**

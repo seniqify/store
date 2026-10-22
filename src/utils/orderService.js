@@ -5,6 +5,7 @@ import { hashPin } from './pinHash';
 import { lineProductId } from './reviewShape';
 import { getMetaMatchData } from './metaPixel';
 import { factsFromRpc, factsFailed } from './orderFactsResult';
+import { readAllOrders } from './orderPages.js';
 
 /**
  * Order capture + retrieval.
@@ -150,13 +151,29 @@ export async function recordWhatsappConsent(slug, phone, granted, wording) {
 /** Owner-only: list this store's orders (PIN-checked server-side).
  *  Abandoned-checkout rows are excluded by default so Orders, Stats and
  *  Customers never count them — only the Customers CSV export opts in. The
- *  Abandoned tab reads fetchAbandonedCarts instead. */
-export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) {
+ *  Abandoned tab reads fetchAbandonedCarts instead.
+ *
+ *  EVERY real order, not just the newest 500. get_store_orders returns the
+ *  newest DETAILED_ORDER_CAP real orders (plus the newest ABANDONED_ORDER_CAP
+ *  abandoned checkouts); when that page is full, get_store_orders_before reads
+ *  the older ones 500 at a time until the store's first order.
+ *
+ *  `reuse`: the array a previous fetchOrders for this store returned. The first
+ *  page is re-read and the older orders are taken from `reuse` instead of being
+ *  paged again — for silent polling, where re-reading years of orders every few
+ *  seconds would be wasteful. Ignored when `reuse` was itself partial.
+ *
+ *  The result carries `partial: true` when older orders could not all be read
+ *  (a page failed): the newest orders are still there, and screens say so —
+ *  see isPartialList. */
+export async function fetchOrders(slug, pin, { includeAbandoned = false, reuse = null } = {}) {
   try {
     const hashed = await hashPin(pin);
-    const { data, error } = await supabase.rpc('get_store_orders', { p_slug: slug, p_hashed_pin: hashed });
-    if (error) return [];
-    return (data || []).filter((o) => includeAbandoned || o.status !== 'abandoned');
+    const rows = await readAllOrders((fn, args) => supabase.rpc(fn, args), slug, hashed, { reuse });
+    if (!rows) return [];
+    const out = rows.filter((o) => includeAbandoned || o.status !== 'abandoned');
+    if (rows.partial) out.partial = true;
+    return out;
   } catch {
     return [];
   }
@@ -165,9 +182,9 @@ export async function fetchOrders(slug, pin, { includeAbandoned = false } = {}) 
 /** Owner-only: the UNCAPPED, PII-free scalar feed behind every canonical
  *  commerce metric (get_store_order_facts, added in commerce-metrics PR 1).
  *
- *  This is the accounting source. fetchOrders above is capped (the newest 500
- *  real orders, plus the newest 300 abandoned checkouts -- separate limits), so
- *  on a busy store it cannot see every sale. This feed has no LIMIT, and it
+ *  This is the accounting source. fetchOrders above now reads every real order
+ *  (only abandoned checkouts stay capped, at the newest 300), but it pages and
+ *  can come back partial. This feed has no LIMIT, is one request, and it
  *  deliberately carries no items, no name, no phone and no address, so the
  *  screens that need those still go through fetchOrders.
  *

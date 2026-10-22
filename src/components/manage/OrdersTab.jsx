@@ -10,8 +10,8 @@ import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
 import {
-  listableRows, isAtDetailedCap, isOrdersUnpaid, countUnpaid, statusCounts,
-  paymentLabelState, orderDayKey, todayKeys, dayCounts, DETAILED_ORDER_CAP,
+  listableRows, isPartialList, isOrdersUnpaid, countUnpaid, statusCounts,
+  paymentLabelState, orderDayKey, todayKeys, dayCounts,
 } from '../../utils/ordersView';
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
@@ -102,22 +102,27 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const dateRef = useRef(null);
 
   const [refreshing, setRefreshing] = useState(false);
-  // Real orders loaded (abandoned checkouts excluded) - what the order limit
-  // counts, so a full page can be told from a short one.
-  const [orderRows,  setOrderRows]  = useState(0);
+  // Some older orders could not be read (a page failed) - the list says so.
+  const [listPartial, setListPartial] = useState(false);
+  // The rows on screen, for the silent poll to keep older orders from instead
+  // of re-reading the whole history every 20 seconds.
+  const shownRef = useRef({ rows: null, partial: false });
+  useEffect(() => { shownRef.current = { rows: orders, partial: listPartial }; }, [orders, listPartial]);
   // The clock, read once when rows land rather than during render, so "Today"
   // does not quietly change meaning between two renders of the same list.
   const [loadedAt,   setLoadedAt]   = useState(null);
 
   // Initial load shows the skeleton; refresh() updates in place (no flash) so it
   // can run silently on a timer / focus without disrupting the list.
-  // get_store_orders caps real orders and abandoned checkouts separately, so the
-  // order limit is measured on the listable rows alone. The list itself still
-  // shows only what it always did.
-  const take = useCallback(async () => {
-    const raw = await fetchOrders(slug, pin, { includeAbandoned: true });
+  // fetchOrders reads every order, newest first. `quick` (the silent poll)
+  // re-reads only the newest page and keeps the older orders already on screen;
+  // opening the tab, Refresh and every action read the whole history again.
+  const take = useCallback(async ({ quick = false } = {}) => {
+    const shown = shownRef.current;
+    const reuse = quick && Array.isArray(shown.rows) && !shown.partial ? shown.rows : null;
+    const raw = await fetchOrders(slug, pin, { includeAbandoned: true, reuse });
     const rows = listableRows(raw);
-    setOrderRows(rows.length);
+    setListPartial(isPartialList(raw));
     setLoadedAt(Date.now());
     return rows;
   }, [slug, pin]);
@@ -127,9 +132,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     setOrders(await take());
   }, [take]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ quick = false } = {}) => {
     setRefreshing(true);
-    try { setOrders(await take()); } finally { setRefreshing(false); }
+    try { setOrders(await take({ quick })); } finally { setRefreshing(false); }
   }, [take]);
 
   useEffect(() => { load(); }, [load]);
@@ -138,7 +143,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // manual refresh (it wouldn't just appear). Now we refetch when the tab regains
   // focus and gently poll (~20s) while it's visible.
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh({ quick: true }); };
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
     const id = setInterval(onVisible, 20000);
@@ -173,7 +178,6 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // Unpaid = a real order whose money has not arrived. The SAME predicate runs
   // the filter below, so the chip's number and the rows it opens cannot diverge.
   const unpaidCount = countUnpaid(orders || [], { leads });
-  const atCap = isAtDetailedCap(orderRows);
 
   // Date filtering - collapse the endless list to a single day. Keys are the
   // MERCHANT's civil date (Asia/Kolkata), so "Today" means their today wherever
@@ -250,13 +254,13 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
               : leads ? `${orders.length} total · ${counts.new || 0} new`
               : `${stages.to_ship} to ship · ${stages.on_the_way} on the way`}
           </p>
-          {atCap && (
+          {listPartial && (
             <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1.5 inline-block">
-              Showing the newest {DETAILED_ORDER_CAP} {noun}s
+              Some older {noun}s didn&rsquo;t load. Tap Refresh to try again.
             </p>
           )}
         </div>
-        <button onClick={refresh} disabled={refreshing}
+        <button onClick={() => refresh()} disabled={refreshing}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200
                      rounded-xl px-3 py-2 hover:bg-gray-50 active:scale-95 transition disabled:opacity-60">
           <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh

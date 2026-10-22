@@ -332,10 +332,11 @@ test('no summary number is derived from the detailed rows', () => {
     'the summary reads the facts envelope only');
   assert.ok(!/buildDeliveryMetrics\(orders/.test(board), 'never the capped rows');
   assert.ok(!/buildDeliveryMetrics\(pool/.test(board));
-  assert.match(board, /isAtDetailedCap\(orderRows\)/, 'and the list says when it is truncated');
-  assert.match(board, /setOrderRows\(orderRowCount\(rows\)\)/, 'measured on real orders, not abandoned checkouts');
+  assert.match(board, /setListPartial\(isPartialList\(rows\)\)/, 'the list knows when older orders failed to load');
   assert.match(SRC('../src/components/manage/DeliveryBoard.jsx'),
-    /newest \{DETAILED_ORDER_CAP\} orders/);
+    /\{listPartial && \([\s\S]{0,200}Some older orders didn&rsquo;t load/, 'and says so');
+  assert.ok(!/newest \{DETAILED_ORDER_CAP\} orders/.test(SRC('../src/components/manage/DeliveryBoard.jsx')),
+    'it no longer claims to show only the newest 500');
 });
 
 // ── 29. failure ─────────────────────────────────────────────────────────────

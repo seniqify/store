@@ -62,9 +62,9 @@ import {
   buildCommerceMetrics, checkInvariants, classifyOrder, shipmentState, paymentState,
 } from './commerceMetrics.js';
 // One backend fact, named once: get_store_orders returns at most 500 rows.
-import { DETAILED_ORDER_CAP, orderRowCount } from './ordersView.js';
+import { DETAILED_ORDER_CAP, orderRowCount, isPartialList } from './ordersView.js';
 
-export { DETAILED_ORDER_CAP, orderRowCount };
+export { DETAILED_ORDER_CAP, orderRowCount, isPartialList };
 
 const paise = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) : 0; };
 const empty = () => ({ count: 0, amount: 0 });

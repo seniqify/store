@@ -163,12 +163,12 @@ test('the detailed, capped analytics are still fed by the detailed feed', () => 
   assert.ok(src.includes('customer_phone'), 'customer counts still read phones');
 });
 
-test('a capped section says so on screen', () => {
+test('a partial section says so on screen', () => {
   const src = SRC('../src/components/manage/AnalyticsTab.jsx');
-  assert.ok(src.includes('DETAILED_CAP'), 'the cap is named');
-  assert.ok(/last \{DETAILED_CAP\} orders/.test(src), 'and shown to the merchant');
-  assert.ok(/capped\s*=\s*orders\.length\s*>=\s*DETAILED_CAP/.test(src),
-    'and only claimed when the feed is actually at the cap');
+  assert.ok(!src.includes('DETAILED_CAP'), 'no 500 cap any more: fetchOrders reads every order');
+  assert.ok(/last \{orders\.length\} orders/.test(src), 'a partial read shows how many loaded');
+  assert.ok(/capped\s*=\s*orders\.partial === true/.test(src),
+    'and is only claimed when an older page actually failed');
 });
 
 // ── SEMANTICS THAT MUST NOT DRIFT ───────────────────────────────────────────
