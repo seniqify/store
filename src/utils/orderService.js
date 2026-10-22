@@ -229,14 +229,21 @@ export async function fetchOrderFacts(slug, pin) {
  *  both Home's abandoned-carts row and the Abandoned tab, so the two always show
  *  the same number. Uncapped: the 30-day window bounds it.
  *
+ *  `allTime`: the same rule with no 30-day window (get_store_abandoned_carts_since,
+ *  supabase/abandoned-all-time-forward.sql) - every customer who ever reached
+ *  checkout and has not ordered since, for the tab's "All time" and the CSV
+ *  export. Those rows also carry the address typed at checkout; `attempts`
+ *  counts all time.
+ *
  *  Same envelope as fetchOrderFacts - { ok, data } or { ok: false, data: [],
  *  reason } - because "no abandoned carts" and "could not load them" must not
  *  look alike. A wrong PIN is an empty set, as everywhere else. */
-export async function fetchAbandonedCarts(slug, pin) {
+export async function fetchAbandonedCarts(slug, pin, { allTime = false } = {}) {
   try {
     const hashed = await hashPin(pin);
-    return factsFromRpc(
-      await supabase.rpc('get_store_abandoned_carts', { p_slug: slug, p_hashed_pin: hashed }),
+    return factsFromRpc(allTime
+      ? await supabase.rpc('get_store_abandoned_carts_since', { p_slug: slug, p_hashed_pin: hashed, p_since: null })
+      : await supabase.rpc('get_store_abandoned_carts', { p_slug: slug, p_hashed_pin: hashed }),
     );
   } catch {
     return factsFailed('unavailable');

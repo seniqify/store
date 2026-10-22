@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, RefreshCw, Search, MessageCircle, Phone, ChevronDown, Megaphone, Download } from 'lucide-react';
-import { fetchOrders } from '../../utils/orderService';
+import { fetchOrders, fetchAbandonedCarts } from '../../utils/orderService';
 import { formatINR } from '../../utils/currency';
 import { buildCustomers, summarizeCustomers, segmentCounts, SEGMENTS } from '../../utils/customers';
 import { buildContactRows, contactsToCsv, downloadCsv, contactsFilename } from '../../utils/exportCustomers';
@@ -28,13 +28,19 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
   useEffect(() => { load(); }, [load]);
 
   // Export ALL contacts — buyers + abandoned-cart leads — as a CSV the owner can
-  // import into WhatsApp / contacts to win repeat sales. Re-fetches with
-  // abandoned rows included (the on-screen list hides those by default).
+  // import into WhatsApp / contacts to win repeat sales. Buyers come from every
+  // order; leads from every abandoned cart still to win back, all time (not the
+  // newest 300 that ride along with the orders feed).
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const all  = await fetchOrders(slug, pin, { includeAbandoned: true });
-      const rows = buildContactRows(all);
+      const [all, carts] = await Promise.all([
+        fetchOrders(slug, pin),
+        fetchAbandonedCarts(slug, pin, { allTime: true }),
+      ]);
+      // A list without its leads would look complete. Say it failed instead.
+      if (!carts.ok) throw new Error('abandoned carts unavailable');
+      const rows = buildContactRows(all, carts.data);
       if (!rows.length) {
         alert('No customer contacts yet — they’ll appear here as orders (and abandoned carts) come in.');
         return;

@@ -11,7 +11,7 @@
  * format WhatsApp broadcast tools and contact imports expect.
  */
 
-import { buildCustomers } from './customers';
+import { buildCustomers } from './customers.js';
 
 // Quote a CSV cell only when it contains a comma, quote or newline.
 function cell(v) {
@@ -26,7 +26,9 @@ function fmtDate(tsOrIso) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Group abandoned-checkout rows by phone (kept separate from real customers).
+// Group abandoned carts by phone (kept separate from real customers). A row from
+// get_store_abandoned_carts_since already stands for `attempts` checkouts; a raw
+// abandoned order row is one.
 function groupAbandoned(orders) {
   const m = new Map();
   for (const o of orders) {
@@ -35,7 +37,8 @@ function groupAbandoned(orders) {
     const t = new Date(o.created_at).getTime() || 0;
     let g = m.get(phone);
     if (!g) { g = { phone, name: '', _nameAt: -1, count: 0, lastAt: 0, last: null }; m.set(phone, g); }
-    g.count += 1;
+    const n = Math.trunc(Number(o.attempts));
+    g.count += Number.isFinite(n) && n > 1 ? n : 1;
     const nm = String(o.customer_name || '').trim();
     if (nm && t >= g._nameAt) { g.name = nm; g._nameAt = t; }
     if (t >= g.lastAt) { g.lastAt = t; g.last = o; }
@@ -48,11 +51,20 @@ function groupAbandoned(orders) {
  *   • Buyers first (from buildCustomers), with an `abandoned` count if the same
  *     number also has an abandoned cart.
  *   • Abandoned-only leads (never completed an order) after, flagged as such.
- * @param {Array} allOrders  orders INCLUDING abandoned (fetchOrders includeAbandoned:true)
+ *
+ * @param {Array} allOrders  the store's orders. Abandoned rows in it are used only
+ *   when `abandonedCarts` is not given.
+ * @param {Array} [abandonedCarts]  rows from fetchAbandonedCarts({ allTime: true }):
+ *   every customer still to win back, all time - one row each, with `attempts`.
+ *   Customers -> Export passes these (get_store_orders carries only the newest
+ *   300 abandoned checkouts). A buyer then shows an abandoned count only for
+ *   carts left since their last order.
  */
-export function buildContactRows(allOrders = []) {
+export function buildContactRows(allOrders = [], abandonedCarts = null) {
   const ordered   = allOrders.filter((o) => o.status !== 'abandoned');
-  const abandoned = allOrders.filter((o) => o.status === 'abandoned');
+  const abandoned = Array.isArray(abandonedCarts)
+    ? abandonedCarts
+    : allOrders.filter((o) => o.status === 'abandoned');
   const customers = buildCustomers(ordered);
   const abMap     = groupAbandoned(abandoned);
 
