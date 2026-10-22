@@ -133,6 +133,13 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const revenue  = stats.revenue;
   const count    = stats.orders;
   const aov      = stats.aov;
+  // The till-date total, the same number as Orders -> All dates. Revenue and
+  // the average are over `count`: cancelled and unpaid orders earned nothing.
+  const placed   = stats.placed;
+  const notCounted = [
+    stats.cancelledOrders > 0 && `${stats.cancelledOrders} cancelled`,
+    stats.unpaidOrders > 0 && `${stats.unpaidOrders} payment not completed`,
+  ].filter(Boolean).join(' · ');
   const thisWeek = stats.thisWeekOrders;
   const wow      = stats.wow;
 
@@ -297,12 +304,13 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     <div className="space-y-4">
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Revenue" value={formatINR(revenue)} sub={<span className="text-[11px] text-gray-400">across {count} orders</span>} />
-        <Stat label="Orders" value={count} sub={
+        <Stat label="Revenue" value={formatINR(revenue)} sub={<span className="text-[11px] text-gray-400">from {count} orders</span>} />
+        <Stat label="Total orders" value={placed} sub={<>
+          {notCounted && <span className="block text-[11px] text-gray-400">{notCounted}</span>}
           <span className={['text-[11px] font-semibold inline-flex items-center gap-0.5', wow >= 0 ? 'text-emerald-600' : 'text-red-500'].join(' ')}>
             {wow >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(wow)}% vs last week
           </span>
-        } />
+        </>} />
         <Stat label="Avg order" value={formatINR(Math.round(aov))} />
         <Stat label="Customers" value={customers} sub={
           <span className="text-[11px] text-gray-400">

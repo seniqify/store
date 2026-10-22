@@ -543,3 +543,56 @@ test('the empty state is decided by the canonical feed, not the capped one', () 
   assert.match(src, /factsResult\.data\.length === 0/, 'keyed on the population of record');
   assert.ok(!/if \(orders\.length === 0\)/.test(src), 'not on the capped list');
 });
+
+// ── TOTAL ORDERS TILL DATE ──────────────────────────────────────────────────
+// Founder, 2026-10-22: "stats still shows less orders, it should show the till
+// date total". The Orders tile counted Sales Orders only (no cancelled, no
+// unpaid online), so it read below Orders -> All dates. It now shows every
+// order taken; Revenue and the average stay on Sales Orders.
+
+test('Total orders = every order taken till date, the same rows Orders -> All dates counts', () => {
+  const rows = [];
+  const kinds = ['new', 'abandoned', 'cancelled', 'delivered', 'online-unpaid', 'zero', 'CANCELLED', null];
+  for (let i = 0; i < 1600; i++) {
+    const k = kinds[i % kinds.length];
+    rows.push(order({
+      id: `t-${i}`,
+      created_at: new Date(NOW - i * 3 * 3600000).toISOString(),   // ~200 days back
+      status: k === 'online-unpaid' || k === 'zero' ? 'new' : k,
+      payment_method: k === 'online-unpaid' ? 'online' : 'cod',
+      total: k === 'zero' ? 0 : 120,
+    }));
+  }
+  const s = buildStatsMetrics(rows, { timeZone: TZ, now: NOW });
+  const ordersTabAll = rows.filter((o) => classifyOrder(o) !== 'abandoned').length;
+  assert.equal(s.placed, ordersTabAll, 'Stats total = Orders tab "All dates"');
+  assert.equal(s.placed, 1400, 'only the 200 abandoned checkouts are left out');
+  assert.equal(s.cancelledOrders, 400, 'cancelled, in any case');
+  assert.equal(s.unpaidOrders, 200, 'online orders never paid');
+  assert.equal(s.orders, 800, 'Sales Orders: sales and enquiries (null status is an order)');
+  assert.equal(s.placed, s.orders + s.cancelledOrders + s.unpaidOrders);
+  assert.equal(s.revenue, 600 * 120, 'revenue still counts only real sales');
+});
+
+test('Total orders adds nothing for a store with only sales, and Royal Foods keeps its gates', () => {
+  const clean = [order({ id: 'a' }), order({ id: 'b', status: 'delivered' })];
+  const s = buildStatsMetrics(clean, { timeZone: TZ, now: NOW });
+  assert.deepEqual([s.placed, s.orders, s.cancelledOrders, s.unpaidOrders], [2, 2, 0, 0]);
+  const rf = buildStatsMetrics(FIXTURE, { timeZone: TZ, now: NOW });
+  assert.equal(rf.orders, 182);
+  assert.equal(rf.placed, FIXTURE.filter((o) => classifyOrder(o) !== 'abandoned').length);
+  assert.ok(rf.placed >= rf.orders);
+});
+
+test('the Stats screen shows the till-date total, with what Revenue leaves out', () => {
+  const src = code('../src/components/manage/AnalyticsTab.jsx');
+  assert.match(src, /<Stat label="Total orders" value=\{placed\}/);
+  assert.match(src, /const placed\s+= stats\.placed;/);
+  assert.match(src, /`\$\{stats\.cancelledOrders\} cancelled`/);
+  assert.match(src, /`\$\{stats\.unpaidOrders\} payment not completed`/);
+  assert.match(src, /<Stat label="Revenue" value=\{formatINR\(revenue\)\} sub=\{<span[^>]*>from \{count\} orders<\/span>\}/);
+  const metrics = code('../src/utils/statsMetrics.js');
+  assert.match(metrics, /const placed = orders \+ cancelledOrders \+ unpaidOrders;/);
+  assert.match(metrics, /canonical\.population\.excluded\.cancelled\.count/);
+  assert.match(metrics, /canonical\.population\.excluded\.paymentIncomplete\.count/);
+});

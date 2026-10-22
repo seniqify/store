@@ -54,6 +54,15 @@ export function buildStatsMetrics(facts, { timeZone = 'Asia/Kolkata', now, chart
   const orders = canonical.population.saleOrders.count;
   const aov = canonical.money.averageOrderValue;
 
+  // Every order the store has taken till date (founder, 2026-10-22: "Stats
+  // should show the till-date total"): the Sales Orders plus the cancelled
+  // ones and the online ones whose payment never completed - the same rows the
+  // Orders list counts under "All dates". Only abandoned checkouts are left
+  // out: nobody placed those. Revenue and AOV stay on Sales Orders.
+  const cancelledOrders = canonical.population.excluded.cancelled.count;
+  const unpaidOrders = canonical.population.excluded.paymentIncomplete.count;
+  const placed = orders + cancelledOrders + unpaidOrders;
+
   // ── Flows. Every one is bounded by an explicit range built from `now`. ──
   const empty = { days: [], thisWeekOrders: 0, lastWeekOrders: 0, wow: 0 };
   let flow = empty;
@@ -116,6 +125,9 @@ export function buildStatsMetrics(facts, { timeZone = 'Asia/Kolkata', now, chart
     revenue,   // Gross Sales
     orders,    // Sales Orders
     aov,       // Average Order Value
+    placed,           // every order taken till date = Sales Orders + the two below
+    cancelledOrders,  // cancelled
+    unpaidOrders,     // online, payment never completed
     // flows
     days: flow.days,
     thisWeekOrders: flow.thisWeekOrders,
