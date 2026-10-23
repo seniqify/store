@@ -6,12 +6,14 @@ import { buildPaymentsLists, buildMoneyLists, KIND_LABEL, isPartialList } from '
 import { buildMoneyHome, periodKeys } from '../../utils/paymentsMetrics';
 import { returnsInsights } from '../../utils/returnsInsights';
 import { isPaymentUnconfirmed } from '../../utils/orderState';
+import { hasSales } from '../../utils/hisaabMetrics';
 import { createPaymentLink, checkPaymentLinks, reconcileOnlinePayments, findPaymentOrphans, paymentLinkMessage } from '../../utils/paymentLinks';
 import { syncDeliveryStatuses } from '../../utils/shippingConnect';
 import MoneyHome from './payments/MoneyHome';
 import ComingIn from './payments/ComingIn';
 import NotPaidOnline from './payments/NotPaidOnline';
 import LostToReturns from './payments/LostToReturns';
+import HisaabTab from './hisaab/HisaabTab';
 
 // Why a "Payment to check" order is waiting.
 const REASON = {
@@ -42,8 +44,14 @@ function fmtWhen(ms) {
  * screen (MoneyHome) and three it opens - Coming in, Online payments that
  * didn't go through, and Lost to returns. This component loads, refreshes and
  * runs every action; the screens only present.
+ *
+ * Hisaab (part 2) is the second section: what the shop keeps after every
+ * cost. It reuses the detailed orders loaded here and loads its own book.
  */
-export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false, onGoTab }) {
+export default function PaymentsTab({
+  slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false, onGoTab,
+  products = [], packagingCost = 0, deliveryCost = 0,
+}) {
   // TWO feeds, kept apart on purpose.
   //  facts  - get_store_order_facts: UNCAPPED, PII-free. EVERY money total.
   //  orders - fetchOrders: every order, detailed. The two worklists only,
@@ -55,6 +63,7 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
   const [loadedAt, setLoadedAt] = useState(null);
   const [orders, setOrders]   = useState(null);   // null = loading
   const [range, setRange]     = useState(7);
+  const [section, setSection] = useState('money');   // 'money' | 'hisaab'
   // Which Money screen: home, or one it opened (with an optional starting list).
   const [view, setView]       = useState({ name: 'home', tab: null });
   const [busy, setBusy]       = useState('');     // order id being actioned
@@ -140,6 +149,11 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
     setView({ name, tab });
     try { window.scrollTo({ top: 0 }); } catch { /* not in a browser */ }
   };
+  // Hisaab opens a Money screen (Lost to returns, Coming in) in place.
+  const openMoney = (name, tab = null) => { setSection('money'); open(name, tab); };
+  // fetchOrders answers [] when it fails. With sales on record and no sale in
+  // the detailed list, Hisaab would read "no sales": say it did not load.
+  const salesMissing = accountingOk && acc.canonical.population.revenueOrders.count > 0 && !hasSales(orders);
 
   const reasonLabel = (o) => (isPaymentUnconfirmed(o) ? REASON.unconfirmed.label
     : o?.payment_link_id ? REASON.link_pending.label
@@ -237,7 +251,19 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         </button>
       </div>
 
-      {note && (
+      <div className="grid grid-cols-2 border-b border-gray-200 -mt-1" role="tablist" aria-label="Payments sections">
+        {[['money', 'Money'], ['hisaab', 'Hisaab']].map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={section === k}
+                  onClick={() => { setSection(k); if (k === 'money') setView({ name: 'home', tab: null }); }}
+                  className={['min-h-[48px] text-sm border-b-[3px] -mb-px transition-colors',
+                    section === k ? 'font-extrabold' : 'font-semibold text-gray-500 border-transparent'].join(' ')}
+                  style={section === k ? { color: themeColor, borderColor: themeColor } : undefined}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {note && section === 'money' && (
         <p className="text-xs font-semibold text-gray-700 bg-white border border-gray-100 rounded-xl px-3 py-2.5" role="status">{note}</p>
       )}
 
@@ -276,7 +302,31 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
         </div>
       )}
 
+      {/* Hisaab: what the shop kept. It loads its own book. */}
+      {section === 'hisaab' && (
+        salesMissing ? (
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3" role="alert">
+            <Wallet size={18} className="text-amber-500 flex-shrink-0" />
+            <div className="min-w-0 flex-grow">
+              <p className="text-sm font-bold text-gray-900">Your orders didn&rsquo;t load</p>
+              <p className="text-xs text-gray-500 mt-0.5">Hisaab needs them to work out what you kept.</p>
+            </div>
+            <button type="button" onClick={() => refresh()}
+                    className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform"
+                    style={{ backgroundColor: themeColor }}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          <HisaabTab slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} orders={orders}
+                     listPartial={listPartial} comingIn={accountingOk ? acc.comingIn : null} loadedAt={loadedAt}
+                     products={products} packagingCost={packagingCost} deliveryCost={deliveryCost}
+                     onGoTab={onGoTab} onOpenMoney={openMoney} />
+        )
+      )}
+
       {/* Money. A failed read shows a retry, never a row of zeroes. */}
+      {section === 'money' && (<>
       {!accountingOk ? (
         <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3" role="alert">
           <Wallet size={18} className="text-amber-500 flex-shrink-0" />
@@ -305,8 +355,9 @@ export default function PaymentsTab({ slug, pin, themeColor = '#0d9488', storeNa
       ) : (
         <MoneyHome acc={acc} range={range} setRange={setRange} themeColor={themeColor} onOpen={open} received={received} />
       )}
+      </>)}
 
-      {listPartial && view.name === 'home' && (
+      {listPartial && section === 'money' && view.name === 'home' && (
         <p className="text-[11px] text-gray-500 text-center">Some older orders didn&rsquo;t load, so a list may be missing a few. The totals above count all of them.</p>
       )}
     </div>
