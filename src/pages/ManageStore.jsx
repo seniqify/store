@@ -3231,6 +3231,8 @@ export default function ManageStore() {
             <PaymentsTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                          razorpayConnected={Boolean(config.payments?.razorpay)}
                          hasCourier={Boolean(config.shipping?.delhivery || config.shipping?.shadowfax)}
+                         products={config.products} packagingCost={config.cart?.packagingCost}
+                         deliveryCost={config.cart?.deliveryCost}
                          onGoTab={setTab} />
           </div>
         ) : tab === 'abandoned' ? (

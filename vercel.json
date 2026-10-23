@@ -6,6 +6,7 @@
     "api/meta/campaign-launch.js": { "maxDuration": 60 },
     "api/domains/manage.js": { "maxDuration": 60 },
     "api/domains/reconcile.js": { "maxDuration": 60 },
+    "api/bill-read.js": { "maxDuration": 60 },
     "api/render.js": { "includeFiles": "dist/index.html" }
   },
   "crons": [
