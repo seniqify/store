@@ -37,9 +37,14 @@
  * payment. Those now sit in `other`, where "we do not know" belongs.
  */
 import {
-  buildCommerceMetrics, checkInvariants, classifyOrder, paymentState,
+  buildCommerceMetrics, checkInvariants, classifyOrder, paymentState, shipmentState,
   dayKeyInZone, dayKeysBetween,
 } from './commerceMetrics.js';
+// The shared operational helpers, reused rather than re-derived: an online order
+// already shipped whose payment Razorpay has not confirmed, and the courier
+// status families the Delivery board shows.
+import { isPaymentUnconfirmed } from './orderState.js';
+import { classifyBucket } from './deliveryStatus.js';
 
 /** The merchant's clock. Every period boundary on this screen is a civil day. */
 export const PAYMENTS_TZ = 'Asia/Kolkata';
@@ -154,3 +159,131 @@ export function buildPaymentsMetrics(facts, {
     invariants: checkInvariants(canonical),
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  The Money tab (Payments redesign, 2026-10-23)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const lower = (v) => String(v ?? '').toLowerCase().trim();
+
+/**
+ * "Coming in": where an unpaid sale's money is right now. Every sale whose
+ * paymentState is 'outstanding' lands in exactly one place, so the places add
+ * up to Still to collect to the paise. Tested in this order:
+ *
+ *   to_check      the money may already be on its way or in: a payment link
+ *                 is out, Razorpay has not confirmed an online order that
+ *                 shipped, or the order is delivered and no payment is recorded
+ *   stuck         with a courier who reports a problem (not contactable, ...)
+ *   with_courier  with a courier, moving
+ *   with_rider    the shop's own delivery person has it (status dispatched)
+ *   not_shipped   not sent yet, including a courier booking that was cancelled
+ */
+export const COMING_IN_KEYS = Object.freeze(['with_rider', 'not_shipped', 'stuck', 'to_check', 'with_courier']);
+
+export function comingInBucket(o) {
+  if (isPaymentUnconfirmed(o) || lower(o?.payment_link_id)) return 'to_check';
+  const ship = shipmentState(o);
+  if (ship === 'delivered') return 'to_check';
+  if (ship === 'in_flight') return classifyBucket(o) === 'attention' ? 'stuck' : 'with_courier';
+  if (lower(o?.status) === 'dispatched') return 'with_rider';
+  return 'not_shipped';
+}
+
+/** An online order the buyer never paid for is "recent" for this many days. */
+export const NOT_PAID_RECENT_DAYS = 3;
+
+/** Months the returns chart shows, ending with the current one. */
+export const RETURN_MONTHS = 4;
+
+function monthKeysEnding(now, n, timeZone) {
+  const today = dayKeyInZone(now, timeZone);
+  if (!today) return [];
+  let y = Number(today.slice(0, 4));
+  let m = Number(today.slice(5, 7));
+  const keys = [];
+  for (let i = 0; i < n; i++) {
+    keys.unshift(`${y}-${String(m).padStart(2, '0')}`);
+    m -= 1;
+    if (m === 0) { m = 12; y -= 1; }
+  }
+  return keys;
+}
+
+/**
+ * Everything the Money tab's home screen shows, from the uncapped facts feed.
+ *
+ * @param {Array<object>} facts  rows from get_store_order_facts (UNCAPPED)
+ * @param {object}  opts
+ * @param {number}   opts.now   epoch ms; the only clock reading, supplied
+ * @param {number}  [opts.days] the period chip (1, 7, 30)
+ * @returns the balances and channels of buildPaymentsMetrics, plus
+ *   comingIn     { [key]: { count, amount } } over COMING_IN_KEYS
+ *   period       received (paid_at flow, as before) AND `orders`: the sales
+ *                PLACED in the window, split by where their money is now -
+ *                dated by order time, so no payment needs a recorded date
+ *   notPaid      online orders whose payment never went through: all, recent,
+ *                older (not sales; kept out of every total above)
+ *   returns      { months: [{ key, count, amount }], shipped, rate }
+ */
+export function buildMoneyHome(facts, { timeZone = PAYMENTS_TZ, now, days = 7 } = {}) {
+  const rows = Array.isArray(facts) ? facts : [];
+  const base = buildPaymentsMetrics(rows, { timeZone, now, days });
+
+  const coming = Object.fromEntries(COMING_IN_KEYS.map((k) => [k, emptyBucket()]));
+  const notPaid = { all: emptyBucket(), recent: emptyBucket(), older: emptyBucket() };
+  const placed = { sold: emptyBucket(), collected: emptyBucket(), outstanding: emptyBucket(), writtenOff: emptyBucket() };
+  const window = new Set(base.period.keys);
+  const months = new Map(monthKeysEnding(now, RETURN_MONTHS, timeZone).map((k) => [k, emptyBucket()]));
+  let shipped = 0;
+  let returned = 0;
+
+  for (const o of rows) {
+    const kind = classifyOrder(o);
+    const amount = paise(o?.total);
+    if (kind === 'payment_incomplete') {
+      add(notPaid.all, amount);
+      const t = Date.parse(o?.created_at);
+      const older = typeof now === 'number' && Number.isFinite(t) && now - t > NOT_PAID_RECENT_DAYS * DAY;
+      add(older ? notPaid.older : notPaid.recent, amount);
+      continue;
+    }
+    if (kind !== 'sale') continue;
+    const state = paymentState(o);
+    if (shipmentState(o) !== null) shipped += 1;
+    if (state === 'outstanding') add(coming[comingInBucket(o)], amount);
+
+    // Dated by when the order was placed - the one timestamp every row has.
+    const placedOn = dayKeyInZone(Date.parse(o?.created_at), timeZone);
+    if (placedOn && window.has(placedOn)) {
+      add(placed.sold, amount);
+      add(state === 'collected' ? placed.collected : state === 'written_off' ? placed.writtenOff : placed.outstanding, amount);
+    }
+    if (state === 'written_off') {
+      returned += 1;
+      const month = placedOn ? months.get(placedOn.slice(0, 7)) : null;
+      if (month) add(month, amount);
+    }
+  }
+
+  return {
+    ...base,
+    comingIn: Object.fromEntries(COMING_IN_KEYS.map((k) => [k, done(coming[k])])),
+    period: {
+      ...base.period,
+      orders: {
+        sold: done(placed.sold),
+        collected: done(placed.collected),
+        outstanding: done(placed.outstanding),
+        writtenOff: done(placed.writtenOff),
+      },
+    },
+    notPaid: { all: done(notPaid.all), recent: done(notPaid.recent), older: done(notPaid.older) },
+    returns: {
+      months: [...months.entries()].map(([key, b]) => ({ key, ...done(b) })),
+      shipped,
+      rate: shipped ? returned / shipped : 0,
+    },
+  };
+}
+

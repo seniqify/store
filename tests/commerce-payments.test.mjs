@@ -249,11 +249,12 @@ test('undated money is never silently added to a period', () => {
   assert.equal(p30.period.received.amount, 6410);
   assert.notEqual(p30.period.received.amount,
     p30.period.received.amount + p30.balances.undatedCollected.amount);
-  // and the screen shows it as its own line
-  const tab = SRC('../src/components/manage/PaymentsTab.jsx');
-  assert.match(tab, /undatedCollected/, 'it is rendered');
-  assert.match(tab, /payment date not recorded/, 'and named honestly');
-  assert.ok(!/collected earlier/.test(tab), 'we do not know when it was collected');
+  // and the screen says so where the period is shown (Money home, 2026-10-23)
+  const home = SRC('../src/components/manage/payments/MoneyHome.jsx');
+  assert.match(home, /acc\.balances\.undatedCollected\.count > 0/, 'it is rendered');
+  assert.match(home, /no recorded date: counted in In your hand, not here/, 'and named honestly');
+  assert.match(home, /acc\.period\.received\.amount/, 'the received figure is the paid_at flow');
+  assert.ok(!/collected earlier/.test(home), 'we do not know when it was collected');
 });
 
 // ── 25-28. balances do not move with the range ──────────────────────────────
@@ -296,13 +297,14 @@ test('accounting is uncapped: 600 synthetic orders all count', () => {
 test('the operational lists may cap independently of the totals', () => {
   const tab = code('../src/components/manage/PaymentsTab.jsx');
   assert.match(tab, /fetchOrderFacts/, 'accounting reads the uncapped feed');
-  assert.match(tab, /buildPaymentsMetrics/, 'through the canonical projection');
+  assert.match(tab, /buildMoneyHome\(factsResult\?\.ok \? factsResult\.data : \[\]/, 'through the canonical projection');
+  assert.match(code('../src/utils/paymentsMetrics.js'), /const base = buildPaymentsMetrics\(rows/, 'which builds on buildPaymentsMetrics');
   for (const v of ['detailed', 'first', 'fresh']) {
     assert.match(tab, new RegExp(`setListPartial\\(isPartialList\\(${v}\\)\\)`), 'the lists know when older orders failed to load');
   }
   assert.match(tab, /\{listPartial && /, 'and say so');
   // Accounting must never be computed from the detailed rows.
-  assert.ok(!/buildPaymentsMetrics\(orders/.test(tab), 'totals never read the capped feed');
+  assert.ok(!/buildPaymentsMetrics\(orders|buildMoneyHome\(orders/.test(tab), 'totals never read the capped feed');
 });
 
 test('a failed read does not render accounting zeroes', () => {
@@ -316,8 +318,9 @@ test('a failed read does not render accounting zeroes', () => {
   assert.match(tab, /const accountingOk = factsResult\?\.ok === true/);
   assert.match(tab, /\{!accountingOk \? \(/, 'the money block is gated');
   const guard = tab.indexOf('!accountingOk');
-  const firstTile = tab.indexOf('label={`Received');
-  assert.ok(guard !== -1 && firstTile !== -1 && guard < firstTile,
+  const firstFigure = Math.min(...['<MoneyHome', '<ComingIn', '<NotPaidOnline', '<LostToReturns']
+    .map((t) => tab.indexOf(t)).filter((i) => i !== -1));
+  assert.ok(guard !== -1 && Number.isFinite(firstFigure) && guard < firstFigure,
     'the error state comes before any figure');
 });
 

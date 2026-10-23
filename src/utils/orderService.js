@@ -287,6 +287,20 @@ export async function setOrderStatus(slug, pin, orderId, status) {
   }
 }
 
+/** Owner-only: turn an unpaid online order into cash on delivery, after the
+ *  buyer agreed (switch_order_to_cod, supabase/switch-to-cod-forward.sql). The
+ *  database only changes an online order with no payment and not cancelled.
+ *  Resolves true when it changed. */
+export async function switchOrderToCod(slug, pin, orderId) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('switch_order_to_cod', { p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Owner-only: mark an order paid / unpaid (PIN-checked server-side). */
 export async function setOrderPaid(slug, pin, orderId, paid) {
   try {

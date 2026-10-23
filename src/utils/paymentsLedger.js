@@ -22,6 +22,7 @@
  *                  "received" figure by order date.
  */
 import { classifyOrder, paymentState, dayKeyInZone } from './commerceMetrics.js';
+import { comingInBucket, COMING_IN_KEYS, NOT_PAID_RECENT_DAYS } from './paymentsMetrics.js';
 import { isPaymentIncomplete, isPaymentUnconfirmed } from './orderState.js';
 import { classifyBucket } from './deliveryStatus.js';
 // The same backend fact Orders names: get_store_orders returns at most 500 rows.
@@ -105,3 +106,53 @@ export function buildPaymentsLists(orders = [], { periodKeys = [], timeZone = 'A
 
   return { attention, recent: recent.slice(0, 50) };
 }
+
+/**
+ * The Money tab's drill-down lists (Payments redesign, 2026-10-23). Rows only,
+ * never a total: every amount on the screens above these lists comes from
+ * buildMoneyHome over the uncapped facts feed.
+ *
+ *   comingIn  { [COMING_IN_KEYS]: [{ order, amount, ageDays }] }, the same
+ *             places buildMoneyHome counts, by the same comingInBucket
+ *   notPaid   { recent, older }: online orders whose payment never went
+ *             through, split at NOT_PAID_RECENT_DAYS
+ *   returns   every sale written off (parcel came back), newest first
+ *
+ * Oldest first inside comingIn and notPaid (the longest-waiting money first);
+ * returns newest first.
+ *
+ * @param {Array}  orders  detailed rows from fetchOrders
+ * @param {object} opts
+ * @param {number} opts.now  epoch ms, supplied
+ */
+export function buildMoneyLists(orders = [], { now } = {}) {
+  const comingIn = Object.fromEntries(COMING_IN_KEYS.map((k) => [k, []]));
+  const notPaid = { recent: [], older: [] };
+  const returns = [];
+  const ageOf = (o) => {
+    const t = Date.parse(o?.created_at);
+    return typeof now === 'number' && Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 86400000)) : null;
+  };
+
+  for (const o of (Array.isArray(orders) ? orders : [])) {
+    const kind = classifyOrder(o);
+    const amount = Number(o?.total) || 0;
+    if (kind === 'payment_incomplete') {
+      const ageDays = ageOf(o);
+      (ageDays !== null && ageDays >= NOT_PAID_RECENT_DAYS ? notPaid.older : notPaid.recent).push({ order: o, amount, ageDays });
+      continue;
+    }
+    if (kind !== 'sale') continue;
+    const state = paymentState(o);
+    if (state === 'outstanding') comingIn[comingInBucket(o)].push({ order: o, amount, ageDays: ageOf(o) });
+    else if (state === 'written_off') returns.push({ order: o, amount });
+  }
+
+  const placedAt = (x) => { const t = Date.parse(x.order?.created_at); return Number.isNaN(t) ? 0 : t; };
+  for (const k of COMING_IN_KEYS) comingIn[k].sort((a, b) => placedAt(a) - placedAt(b));
+  notPaid.recent.sort((a, b) => placedAt(b) - placedAt(a));
+  notPaid.older.sort((a, b) => placedAt(b) - placedAt(a));
+  returns.sort((a, b) => placedAt(b) - placedAt(a));
+  return { comingIn, notPaid, returns };
+}
+
