@@ -9,6 +9,7 @@ import HisaabHome from './HisaabHome';
 import ProductProfit from './ProductProfit';
 import MoneyInOut from './MoneyInOut';
 import AddExpense from './AddExpense';
+import SalesStatement from './SalesStatement';
 
 /**
  * Payments → Hisaab (Payments redesign part 2, founder-approved 2026-10-23).
@@ -20,7 +21,7 @@ import AddExpense from './AddExpense';
  */
 export default function HisaabTab({
   slug, pin, themeColor = '#0d9488', storeName = '', orders, listPartial = false, comingIn, loadedAt,
-  products = [], packagingCost = 0, deliveryCost = 0, onGoTab, onOpenMoney,
+  products = [], packagingCost = 0, deliveryCost = 0, store = {}, onGoTab, onOpenMoney,
 }) {
   const [book, setBook] = useState(null);           // { ok, data: { expenses, goals } }
   const [view, setView] = useState({ name: 'home', arg: null });
@@ -127,6 +128,10 @@ export default function HisaabTab({
       ) : view.name === 'flow' ? (
         <MoneyInOut h={h} days={days} upcoming={upcoming} onItsWay={onItsWay} themeColor={themeColor} busy={busy}
                     onBack={home} onAdd={() => open('add')} onOpenMoney={onOpenMoney} onDelete={remove} onStop={stop} />
+      ) : view.name === 'statement' ? (
+        <SalesStatement orders={orders || []} expenses={expenses} bookOk={book.ok} products={products} packagingCost={packagingCost}
+                        deliveryCost={deliveryCost} now={loadedAt} store={store} slug={slug} themeColor={themeColor}
+                        listPartial={listPartial} onBack={home} />
       ) : view.name === 'add' ? (
         <AddExpense today={today} recent={recentExpenses(expenses)} packagingCost={packagingCost} themeColor={themeColor}
                     saving={busy} onBack={home} onSave={save} onReadBill={(image) => readBill(slug, pin, image)} />
