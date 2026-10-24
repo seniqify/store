@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Flag, Pencil, TrendingDown, TrendingUp, Check, CalendarDays, Plus, FileSpreadsheet, AlertTriangle, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Flag, Pencil, TrendingDown, TrendingUp, Check, CalendarDays, Plus, FileSpreadsheet, FileText, AlertTriangle, Truck } from 'lucide-react';
 import { formatINR } from '../../../utils/currency';
 import { monthLabel, dayLabel } from '../../../utils/hisaabMetrics';
 
@@ -12,7 +12,8 @@ import { monthLabel, dayLabel } from '../../../utils/hisaabMetrics';
  *   3. The month's sales goal.
  *   4. The same days last month.
  *   5. Worth knowing: a product that loses money, returns, delivery.
- *   6. Money in & out, Add expense, and the month's file for the CA.
+ *   6. Sales statement, Money in & out, Add expense, and the month's file
+ *      for the CA.
  *
  * Every figure is from buildHisaab. Pure presentation: the parent owns
  * loading and every action.
@@ -359,6 +360,17 @@ export default function HisaabHome({
       )}
 
       {/* 6. Actions */}
+      <button type="button" onClick={() => onOpen('statement')}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-gray-100 bg-white shadow-sm text-left">
+        <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0"><FileText size={18} /></span>
+        <span className="flex-grow min-w-0">
+          <span className="block text-sm font-bold text-gray-900">
+            Sales statement <span className="ml-1 align-[1px] text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded-full">New</span>
+          </span>
+          <span className="block text-xs text-gray-500">Like a bank statement: pick From and To dates, get every order as a PDF.</span>
+        </span>
+        <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+      </button>
       {!noCosts && h.products.some((p) => p.costKnown) && (
         <button type="button" onClick={() => onOpen('products')}
                 className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-gray-100 bg-white shadow-sm text-left">
