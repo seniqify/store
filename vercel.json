@@ -3,6 +3,7 @@
     "api/meta/callback.js": { "maxDuration": 30 },
     "api/meta/campaign-preview.js": { "maxDuration": 30 },
     "api/meta/ads.js": { "maxDuration": 30 },
+    "api/meta/pixel-health.js": { "maxDuration": 60 },
     "api/meta/campaign-launch.js": { "maxDuration": 60 },
     "api/domains/manage.js": { "maxDuration": 60 },
     "api/domains/reconcile.js": { "maxDuration": 60 },
