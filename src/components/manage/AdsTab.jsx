@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, TrendingUp, Plus } from 'lucide-react';
-import { fetchAdsPerformance } from '../../utils/metaAds';
+import { useState, useEffect, useCallback } from 'react';
+import { Megaphone, RefreshCw, AlertCircle, TrendingUp, Plus, ShieldAlert, BadgeCheck, ExternalLink } from 'lucide-react';
+import { fetchAdsPerformance, fetchPixelHealth } from '../../utils/metaAds';
 import { fetchMetaConnection } from '../../utils/metaConnect';
+import { purchaseGap, topPixelProblem, eventWords, shortPage } from '../../utils/adsTruth';
 import BoostPanel from './BoostPanel';
 import AdsConnection from './AdsConnection';
 import AdsCampaigns from './AdsCampaigns';
@@ -52,8 +53,53 @@ const OBJECTIVE_LABEL = {
 };
 const objLabel = (o) => OBJECTIVE_LABEL[o] || (o ? o.replace(/^OUTCOME_/, '').toLowerCase() : '');
 
+const EVENTS_MANAGER = 'https://business.facebook.com/events_manager2';
+
+// A rule saved on the store's pixel in Meta Events Manager that logs a
+// Purchase (or another conversion) whenever a page opens. PocketLink already
+// tells Meta about every real order, so such a rule only adds fake ones.
+function PixelWarning({ problem, checking, onRecheck }) {
+  const purchases = problem.event === 'Purchase';
+  const words = eventWords(problem.event);
+  const page = problem.pages?.[0] ? shortPage(problem.pages[0]) : 'your shop';
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4" role="alert">
+      <div className="flex items-start gap-3">
+        <ShieldAlert size={20} className="text-rose-600 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-extrabold text-rose-900">Meta is counting visits as {words}</p>
+          <p className="text-xs text-rose-900/80 leading-relaxed">
+            Your Meta Pixel has a rule, saved in Meta Events Manager, that logs a {problem.event} whenever someone opens{' '}
+            <b className="break-all">{page}</b>.
+            {purchases
+              ? ' So Meta shows more purchases than real orders, and ads that aim for purchases learn from people who only visited.'
+              : ` So Meta shows more ${words} than really happened.`}
+            {' '}PocketLink already tells Meta about every real order, so this rule is not needed.
+          </p>
+          <ol className="text-xs text-rose-900/80 leading-relaxed list-decimal pl-4 space-y-0.5">
+            <li>Open Meta Events Manager and choose Pixel <b className="tabular-nums">{problem.pixelId}</b>.</li>
+            <li>In its settings, find the events set up without code, by page address.</li>
+            <li>Delete the {problem.event} rule for this page, then tap Check again.</li>
+          </ol>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <a href={EVENTS_MANAGER} target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 px-3 py-2 rounded-lg">
+              Open Events Manager <ExternalLink size={12} />
+            </a>
+            <button type="button" onClick={onRecheck} disabled={checking}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 border border-rose-200 bg-white px-3 py-2 rounded-lg disabled:opacity-50">
+              <RefreshCw size={12} className={checking ? 'animate-spin' : ''} /> Check again
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 2E-2 measurement — one PocketLink campaign: funnel + Meta-vs-truth reconciliation.
-function MeasuredCard({ mc, cur, themeColor }) {
+function MeasuredCard({ mc, cur, themeColor, pixelBad = false }) {
+  const gap = purchaseGap(mc.meta.purchases, mc.pl.orders);
   const [open, setOpen] = useState(false);
   const s = mc.snapshot || {};
   const d = mc.derived || {};
@@ -99,6 +145,12 @@ function MeasuredCard({ mc, cur, themeColor }) {
       {mc.pl.deliveredOrders > 0 && (
         <p className="text-[10px] text-gray-400 mt-1">Delivered: {fmtInt(mc.pl.deliveredOrders)} orders · {money(mc.pl.deliveredRevenue, cur)}</p>
       )}
+      {gap.inflated && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mt-2 leading-relaxed">
+          Meta reports {fmtInt(gap.meta)} purchases, but your shop got {fmtInt(gap.real)} {gap.real === 1 ? 'order' : 'orders'} since this campaign started
+          {pixelBad ? ', mostly because of the Pixel rule above' : ''}. Judge this campaign by your orders.
+        </p>
+      )}
 
       <button type="button" onClick={() => setOpen((v) => !v)} className="mt-2 text-[11px] font-semibold text-gray-400 hover:text-gray-600">
         {open ? 'Hide' : 'Show'} what PocketLink recommended
@@ -117,7 +169,7 @@ function MeasuredCard({ mc, cur, themeColor }) {
 }
 
 // Live results for the chosen ad account.
-function AdsPerformance({ config, pin, themeColor, canCreate, createNote, onCreate }) {
+function AdsPerformance({ config, pin, themeColor, canCreate, createNote, onCreate, pixelBad = false }) {
   const [range, setRange] = useState('7d');
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState({ loading: true, data: null, error: '' });
@@ -239,7 +291,9 @@ function AdsPerformance({ config, pin, themeColor, canCreate, createNote, onCrea
             <Tile
               label="Results"
               value={fmtInt(t.results)}
-              sub={t.resultLabel
+              sub={t.resultLabel === 'purchases' && pixelBad
+                ? 'Meta-attributed purchases · too high, see the Pixel warning'
+                : t.resultLabel
                 ? `${t.resultLabel === 'purchases' ? 'Meta-attributed purchases' : t.resultLabel}${t.results > 0 && t.costPerResult != null ? ` · ${money(t.costPerResult, cur)} each` : ''}`
                 : '—'}
             />
@@ -301,7 +355,7 @@ function AdsPerformance({ config, pin, themeColor, canCreate, createNote, onCrea
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">PocketLink campaigns — measurement</p>
               </div>
               <div className="space-y-2">
-                {data.measured.map((mc) => <MeasuredCard key={mc.campaignId} mc={mc} cur={cur} themeColor={themeColor} />)}
+                {data.measured.map((mc) => <MeasuredCard key={mc.campaignId} mc={mc} cur={cur} themeColor={themeColor} pixelBad={pixelBad} />)}
               </div>
               <p className="text-[11px] text-gray-400 mt-2">
                 Meta figures are ad-attributed (modeled); PocketLink figures are your actual orders in the campaign window. Shown separately, never blended.
@@ -319,6 +373,19 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488', onConfig }
   const [showBoost, setShowBoost] = useState(false);
   const [perfKey, setPerfKey] = useState(0);
   const [campaignsKey, setCampaignsKey] = useState(0);
+  // The store's pixel, checked for rules that log conversions by themselves.
+  // Runs whether or not Meta is connected: an owner can paste a pixel alone.
+  const hasPixel = Boolean(config.metaPixelId || config.meta?.pixelId);
+  const [pixel, setPixel] = useState({ checking: hasPixel, data: null });
+  const checkPixel = useCallback(async () => {
+    if (!hasPixel) return;
+    setPixel((p) => ({ ...p, checking: true }));
+    const d = await fetchPixelHealth(config.slug, pin);
+    setPixel({ checking: false, data: d?.error ? null : d });
+  }, [config.slug, pin, hasPixel]);
+  useEffect(() => { checkPixel(); }, [checkPixel]);
+  const pixelProblem = topPixelProblem(pixel.data);
+  const pixelOk = Boolean(pixel.data?.pixels?.length) && !pixelProblem && pixel.data.pixels.every((p) => p.status === 'ok');
 
   useEffect(() => {
     let alive = true;
@@ -379,10 +446,16 @@ export default function AdsTab({ config, pin, themeColor = '#0d9488', onConfig }
 
   return (
     <div className="animate-pl-fade-up space-y-4">
+      {pixelProblem && <PixelWarning problem={pixelProblem} checking={pixel.checking} onRecheck={checkPixel} />}
       <AdsConnection config={config} pin={pin} themeColor={themeColor} conn={conn} onRefresh={refreshConnection} />
+      {pixelOk && (
+        <p className="text-[11px] text-gray-500 inline-flex items-center gap-1.5">
+          <BadgeCheck size={13} className="text-emerald-600" /> Meta Pixel checked: no rule turns visits into purchases.
+        </p>
+      )}
       {connected && conn.canRead && (
         <>
-          <AdsPerformance key={perfKey} config={config} pin={pin} themeColor={themeColor}
+          <AdsPerformance key={perfKey} config={config} pin={pin} themeColor={themeColor} pixelBad={pixelProblem?.event === 'Purchase'}
             canCreate={canCreate} createNote={createNote} onCreate={() => setShowBoost(true)} />
           <AdsCampaigns config={config} pin={pin} themeColor={themeColor} canWrite={Boolean(conn.writesEnabled)} refreshKey={campaignsKey} />
         </>
