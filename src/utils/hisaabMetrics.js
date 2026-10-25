@@ -174,7 +174,7 @@ export function goalFor(goals, month) {
 
 // ── one order ───────────────────────────────────────────────────────────────
 
-function productsByName(products) {
+export function productsByName(products) {
   const map = new Map();
   for (const p of Array.isArray(products) ? products : []) if (p && p.name) map.set(p.name, p);
   return map;

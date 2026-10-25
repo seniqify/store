@@ -3233,6 +3233,9 @@ export default function ManageStore() {
                          hasCourier={Boolean(config.shipping?.delhivery || config.shipping?.shadowfax)}
                          products={config.products} packagingCost={config.cart?.packagingCost}
                          deliveryCost={config.cart?.deliveryCost}
+                         store={{ businessName: config.businessName, logo: config.logo, logoEmoji: config.logoEmoji,
+                                  whatsappNumber: config.whatsappNumber, address: config.address, city: config.city,
+                                  gst: config.gst, theme: config.theme }}
                          onGoTab={setTab} />
           </div>
         ) : tab === 'abandoned' ? (

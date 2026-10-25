@@ -50,7 +50,7 @@ function fmtWhen(ms) {
  */
 export default function PaymentsTab({
   slug, pin, themeColor = '#0d9488', storeName = '', razorpayConnected = false, hasCourier = false, onGoTab,
-  products = [], packagingCost = 0, deliveryCost = 0,
+  products = [], packagingCost = 0, deliveryCost = 0, store = {},
 }) {
   // TWO feeds, kept apart on purpose.
   //  facts  - get_store_order_facts: UNCAPPED, PII-free. EVERY money total.
@@ -320,7 +320,7 @@ export default function PaymentsTab({
         ) : (
           <HisaabTab slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} orders={orders}
                      listPartial={listPartial} comingIn={accountingOk ? acc.comingIn : null} loadedAt={loadedAt}
-                     products={products} packagingCost={packagingCost} deliveryCost={deliveryCost}
+                     products={products} packagingCost={packagingCost} deliveryCost={deliveryCost} store={store}
                      onGoTab={onGoTab} onOpenMoney={openMoney} />
         )
       )}
