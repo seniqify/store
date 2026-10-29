@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { hashPin }  from './pinHash';
+import { planTermEnded } from './planLimits';
 
 /** Fetch a store config from DB by slug. Returns null if not found. */
 export async function fetchStore(slug) {
@@ -197,7 +198,12 @@ export async function savePendingSignup(phone, plan, planExpiresAt = null, subsc
   );
 }
 
-/** Look up a pending paid signup. Returns { plan, planExpiresAt, subscriptionId } or null. */
+/**
+ * Look up a pending paid signup. Returns { plan, planExpiresAt, subscriptionId } or null.
+ * A plan whose term has already ended counts as none: resuming onto it would
+ * launch a store that is expired on day one (a free month claimed in August,
+ * finished in October), so the caller sends them to pick a plan instead.
+ */
 export async function getPendingSignup(phone) {
   const last10 = String(phone).replace(/\D/g, '').slice(-10);
   if (!last10) return null;
@@ -207,6 +213,7 @@ export async function getPendingSignup(phone) {
     .eq('phone', last10)
     .maybeSingle();
   if (!data) return null;
+  if (planTermEnded(data.plan_expires_at)) return null;
   return { plan: data.plan, planExpiresAt: data.plan_expires_at, subscriptionId: data.subscription_id };
 }
 

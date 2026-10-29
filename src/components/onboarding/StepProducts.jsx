@@ -522,7 +522,7 @@ export default function StepProducts({ data, onChange, onNext, onBack, themeColo
           <span className="text-sm font-semibold text-gray-700">
             {labels.plural}
             <span className="ml-1.5 text-xs font-normal text-gray-400">
-              ({data.products.length}/{limits.products})
+              ({data.products.length}/{limits.products === Infinity ? '∞' : limits.products})
             </span>
           </span>
           {activeForm !== 'product' && (

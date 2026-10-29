@@ -116,6 +116,14 @@ export function effectivePlan(config) {
   return plan;
 }
 
+// True when an expiry date is set and already in the past: a plan that ended
+// before the store was even built (sign-up resumes onto it must not happen).
+export function planTermEnded(expiresAt, now = Date.now()) {
+  if (!expiresAt) return false;
+  const t = new Date(expiresAt).getTime();
+  return Number.isFinite(t) && t <= now;
+}
+
 // Whole days left on a trial (`planExpiresAt`). null if no expiry; 0 if past.
 export function trialDaysLeft(config) {
   const exp = config?.planExpiresAt;
