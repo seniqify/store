@@ -193,12 +193,21 @@ export function createSupabase(db) {
     if (url.pathname === '/rest/v1/stores' && method === 'GET') {
       if (knobs.storesDown) throw new TypeError('fetch failed');
       const slugFilter = (url.searchParams.get('slug') || '').replace(/^eq\./, '');
+      // The columns anon may read, as in production (supabase/owner-phone-private-*.sql):
+      // public_config (config without ownerPhone), never config itself, and no `*`.
       const rows = (await db.query(
-        slugFilter ? 'select slug, config from public.stores where slug = $1' : 'select slug, config from public.stores',
-        slugFilter ? [slugFilter] : [])).rows.map((r) => ({ ...r, updated_at: '2026-09-01T00:00:00Z' }));
-      const select = (url.searchParams.get('select') || '*').split(',');
-      const shaped = rows.map((r) => (select.includes('*') ? r
-        : Object.fromEntries(select.filter((k) => k in r).map((k) => [k, r[k]]))));
+        `select slug, (config - 'ownerPhone') as public_config from public.stores${slugFilter ? ' where slug = $1' : ''}`,
+        slugFilter ? [slugFilter] : [])).rows.map((r) => ({ ...r, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }));
+      // PostgREST select items: column, alias:column, column->key, column->>key.
+      const items = (url.searchParams.get('select') || '*').split(',').map((s) => s.trim()).filter(Boolean)
+        .map((s) => /^(?:([A-Za-z_]\w*):)?([A-Za-z_]\w*|\*)(?:(->>?)(\w+))?$/.exec(s));
+      if (items.some((m) => !m || m[2] === '*' || m[2] === 'config')) {
+        return jsonResponse(401, { code: '42501', message: 'permission denied for table stores' });
+      }
+      const shaped = rows.map((r) => Object.fromEntries(items.map(([, alias, col, op, key]) => {
+        const v = op ? (r[col] ?? {})[key] : r[col];
+        return [alias || key || col, op === '->>' && v !== undefined && v !== null && typeof v === 'object' ? JSON.stringify(v) : (v ?? null)];
+      })));
       if (accept.includes('vnd.pgrst.object')) {
         return shaped.length === 1 ? jsonResponse(200, shaped[0]) : jsonResponse(406, { code: 'PGRST116', message: 'no rows' });
       }

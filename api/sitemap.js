@@ -125,7 +125,7 @@ async function merchantSitemap(res, { env, fetchImpl, host, resolver }) {
   let row;
   try {
     const resp = await fetchImpl(
-      `${env.VITE_SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(r.slug)}&select=slug,config,updated_at&limit=1`,
+      `${env.VITE_SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(r.slug)}&select=slug,config:public_config,updated_at&limit=1`,
       { headers: { apikey: env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}` } },
     );
     if (!resp.ok) throw new Error('store ' + resp.status);

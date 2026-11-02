@@ -81,11 +81,11 @@ export async function fetchStoresConsole() {
   return readAllRowsOrEmpty((withCount) => supabase
     .from('stores')
     .select(`slug, created_at, updated_at,
-             name:config->>businessName, plan:config->>plan,
-             exp:config->>planExpiresAt, bt:config->>businessType,
-             wa:config->>whatsappNumber, city:config->>city,
-             sub:config->>razorpaySubscriptionId, logoEmoji:config->>logoEmoji,
-             mgr:config->>managedBy, theme:config->theme, billing:config->billingNote`,
+             name:public_config->>businessName, plan:public_config->>plan,
+             exp:public_config->>planExpiresAt, bt:public_config->>businessType,
+             wa:public_config->>whatsappNumber, city:public_config->>city,
+             sub:public_config->>razorpaySubscriptionId, logoEmoji:public_config->>logoEmoji,
+             mgr:public_config->>managedBy, theme:public_config->theme, billing:public_config->billingNote`,
     withCount ? { count: 'exact' } : undefined), { order: [['created_at', true], ['slug', true]], key: 'slug' });
 }
 

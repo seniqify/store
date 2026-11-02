@@ -196,7 +196,7 @@ export default async function handler(req, res, deps = {}) {
           // Slim selection: the listing only needs name + tagline per store —
           // never pull full configs (products) for the whole table.
           const r = await fetchImpl(
-            `${SUPABASE_URL}/rest/v1/stores?select=slug,name:config->>businessName,tagline:config->>tagline,category:config->>category,city:config->>city&limit=200`,
+            `${SUPABASE_URL}/rest/v1/stores?select=slug,name:public_config->>businessName,tagline:public_config->>tagline,category:public_config->>category,city:public_config->>city&limit=200`,
             { headers: dbHeaders },
           );
           if (r.ok) {
@@ -236,7 +236,7 @@ export default async function handler(req, res, deps = {}) {
       let config = null;
       try {
         const r = await fetchImpl(
-          `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config&limit=1`,
+          `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config&limit=1`,
           { headers: dbHeaders },
         );
         if (r.ok) { const rows = await r.json(); if (rows[0]) config = rows[0].config; }
@@ -361,7 +361,7 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps, mode
   let config;
   try {
     const resp = await fetchImpl(
-      `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config&limit=1`,
+      `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config&limit=1`,
       { headers: dbHeaders },
     );
     if (!resp.ok) throw new Error('store ' + resp.status);

@@ -17,7 +17,7 @@ const MODEL = 'claude-haiku-4-5';
 
 async function loadStore(slug) {
   try {
-    const r = await fetch(`${SB}/rest/v1/stores?slug=eq.${slug}&select=config&limit=1`, {
+    const r = await fetch(`${SB}/rest/v1/stores?slug=eq.${slug}&select=config:public_config&limit=1`, {
       headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
     });
     if (!r.ok) return null;
