@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue, memo } from 'react';
 import {
   RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star,
   Bike, Link2, RotateCcw, AlertTriangle, CheckCircle2,
@@ -13,6 +13,7 @@ import {
   listableRows, isPartialList, isOrdersUnpaid, countUnpaid, statusCounts,
   paymentLabelState, orderDayKey, todayKeys, dayCounts,
 } from '../../utils/ordersView';
+import { LIST_PAGE_SIZE } from '../../utils/listPage';
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
@@ -86,7 +87,13 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = [], payInfo = {}, store = {} }) {
+// Fixed defaults: a fresh [] or {} on every render would look like a changed
+// prop to every memoised card and redraw the whole list on each keystroke.
+const NO_RIDERS = [];
+const NO_PAY_INFO = {};
+const NO_STORE = {};
+
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE }) {
   const leads   = mode === 'leads';
   const STATUS  = leads ? STATUS_LEADS : STATUS_ORDERS;
   const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
@@ -96,9 +103,15 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // The list always opens on All (founder, 2026-10-05); the stage tabs narrow it.
   const [filter,     setFilter]     = useState('all');
   const [query,      setQuery]      = useState('');     // find one customer / order fast
+  // The box shows every letter at once; the list follows a beat behind, so
+  // filtering hundreds of cards never holds up the typing.
+  const searchText = useDeferredValue(query);
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);
+  // Cards drawn, for one view of the list: a new search or chip starts again at
+  // the first page; a refresh keeps what the seller already opened.
+  const [more,       setMore]       = useState({ view: '', n: LIST_PAGE_SIZE });
   const dateRef = useRef(null);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -154,7 +167,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     };
   }, [refresh]);
 
-  async function changeStatus(id, status) {
+  // Stable across renders, so the memoised cards below are not redrawn on
+  // every keystroke of the search just because these were remade.
+  const changeStatus = useCallback(async (id, status) => {
     setBusy(true);
     setOrders((os) => os.map((o) => (o.id === id ? { ...o, status } : o)));
     await setOrderStatus(slug, pin, id, status);
@@ -162,66 +177,77 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     // The database fills in what follows from a status (orders_payment_automation:
     // delivered COD -> paid, delivered_at), so read the row back.
     if (!leads) refresh();
-  }
+  }, [slug, pin, leads, refresh]);
 
-  async function markPaid(id, paid) {
+  const markPaid = useCallback(async (id, paid) => {
     setBusy(true);
     setOrders((os) => os.map((o) => (o.id === id ? { ...o, paid } : o)));
     await setOrderPaid(slug, pin, id, paid);
     setBusy(false);
-  }
+  }, [slug, pin]);
 
   // Counts over the LOADED list - this screen answers "how many can I open?",
   // never "what are my books?". Accounting totals live on Home/Stats/Payments.
-  const counts = statusCounts(orders || []);
-  const stages = tabCounts(orders || []);
-  // Unpaid = a real order whose money has not arrived. The SAME predicate runs
-  // the filter below, so the chip's number and the rows it opens cannot diverge.
-  const unpaidCount = countUnpaid(orders || [], { leads });
+  // Worked out once per list, not once per keystroke of the search.
+  const { counts, stages, unpaidCount, dateCounts } = useMemo(() => ({
+    counts: statusCounts(orders || []),
+    stages: tabCounts(orders || []),
+    // Unpaid = a real order whose money has not arrived. The SAME predicate runs
+    // the filter below, so the chip's number and the rows it opens cannot diverge.
+    unpaidCount: countUnpaid(orders || [], { leads }),
+    dateCounts: dayCounts(orders || []),
+  }), [orders, leads]);
 
   // Date filtering - collapse the endless list to a single day. Keys are the
   // MERCHANT's civil date (Asia/Kolkata), so "Today" means their today wherever
   // they happen to be looking from.
-  const dateKey  = (iso) => orderDayKey(iso);
   const { today: todayKey, yesterday: yestKey } = todayKeys(loadedAt);
-  const dateCounts = dayCounts(orders || []);
   const isSpecificDate = dateFilter !== 'all' && dateFilter !== 'today' && dateFilter !== 'yesterday';
-  const matchDate = (o) => {
-    if (dateFilter === 'all') return true;
-    const k = dateKey(o.created_at);
-    if (dateFilter === 'today')     return k === todayKey;
-    if (dateFilter === 'yesterday') return k === yestKey;
-    return k === dateFilter;
-  };
   const prettyDate = (ymd) => new Date(ymd + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
   // ── Search — the way to find ONE customer without scrolling ────────────────
   // A search deliberately IGNORES the date/status/unpaid chips and looks at every
   // order. Searching a name while "Today" is selected and getting nothing is the
   // exact frustration this is here to remove — if the order exists, it is found.
-  const q         = query.trim().toLowerCase();
-  const qDigits   = q.replace(/\D/g, '');
+  const q         = searchText.trim().toLowerCase();
   const searching = q.length > 0;
-  // The short reference the customer sees on their order page / WhatsApp
-  // ("Order #A7F2C"), so a seller can paste back whatever the buyer quotes.
-  const orderRef  = (o) => String(o.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5);
-  const matchQuery = (o) => {
-    if (!searching) return true;
-    // Phone: compare digits only, so "98765 43210" and "+919876543210" both hit.
-    if (qDigits.length >= 3 && String(o.customer_phone || '').replace(/\D/g, '').includes(qDigits)) return true;
-    const hay = [
-      o.customer_name, o.destination, o.awb, o.courier, orderRef(o),
-      ...(Array.isArray(o.items) ? o.items.map((i) => i?.name) : []),
-    ].filter(Boolean).join(' ').toLowerCase();
-    return hay.includes(q);
-  };
 
-  const filtered = searching
-    ? (orders || []).filter(matchQuery)
-    : (orders || [])
-        .filter((o) => (filter === 'all' ? true : leads ? o.status === filter : stageTab(orderStage(o)) === filter))
-        .filter((o) => (unpaidOnly ? isOrdersUnpaid(o) : true))
-        .filter(matchDate);
+  // Worked out only when the list, the chips or the (deferred) search change.
+  const filtered = useMemo(() => {
+    const qDigits   = q.replace(/\D/g, '');
+    // The short reference the customer sees on their order page / WhatsApp
+    // ("Order #A7F2C"), so a seller can paste back whatever the buyer quotes.
+    const orderRef  = (o) => String(o.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+    const matchQuery = (o) => {
+      // Phone: compare digits only, so "98765 43210" and "+919876543210" both hit.
+      if (qDigits.length >= 3 && String(o.customer_phone || '').replace(/\D/g, '').includes(qDigits)) return true;
+      const hay = [
+        o.customer_name, o.destination, o.awb, o.courier, orderRef(o),
+        ...(Array.isArray(o.items) ? o.items.map((i) => i?.name) : []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    };
+    const dateKey  = (iso) => orderDayKey(iso);
+    const matchDate = (o) => {
+      if (dateFilter === 'all') return true;
+      const k = dateKey(o.created_at);
+      if (dateFilter === 'today')     return k === todayKey;
+      if (dateFilter === 'yesterday') return k === yestKey;
+      return k === dateFilter;
+    };
+    return searching
+      ? (orders || []).filter(matchQuery)
+      : (orders || [])
+          .filter((o) => (filter === 'all' ? true : leads ? o.status === filter : stageTab(orderStage(o)) === filter))
+          .filter((o) => (unpaidOnly ? isOrdersUnpaid(o) : true))
+          .filter(matchDate);
+  }, [orders, q, searching, filter, leads, unpaidOnly, dateFilter, todayKey, yestKey]);
+
+  // A page at a time behind "Show more", never silently cut off.
+  const view      = `${q}|${filter}|${dateFilter}|${unpaidOnly}`;
+  const visible   = more.view === view ? more.n : LIST_PAGE_SIZE;
+  const pageRows  = filtered.slice(0, visible);
+  const remaining = filtered.length - pageRows.length;
 
   // ── Loading ──
   if (orders === null) {
@@ -287,7 +313,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             <input value={query} onChange={(e) => setQuery(e.target.value)}
                    placeholder={leads ? 'Search name, number or requirement…' : 'Search name, number, item or order #…'}
                    className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none" />
-            {searching && (
+            {query.trim() && (
               <button onClick={() => setQuery('')} aria-label="Clear search"
                 className="flex-shrink-0 w-5 h-5 grid place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                 <X size={13} />
@@ -299,7 +325,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           {searching && (
             <p className="text-[11px] text-gray-400 px-1 -mt-1">
               {filtered.length === 0
-                ? <>No {noun} matches “{query.trim()}”.</>
+                ? <>No {noun} matches “{searchText.trim()}”.</>
                 : <><b className="text-gray-600">{filtered.length}</b> {filtered.length === 1 ? noun : `${noun}s`} found — searching all dates and statuses.</>}
             </p>
           )}
@@ -401,7 +427,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
 
           {/* Order / lead cards */}
           <div className="space-y-3">
-            {filtered.map((o) => (leads
+            {pageRows.map((o) => (leads
               ? <LeadCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads riders={riders} payInfo={payInfo} store={store} />
               : <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin} now={loadedAt}
@@ -416,6 +442,19 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
                   : <>No {filter === 'all' ? '' : `${(STAGE_TABS.find((t) => t.key === filter)?.label || '').toLowerCase()} `}orders</>}
                 {dateFilter === 'all' ? '' : dateFilter === 'today' ? ' today' : dateFilter === 'yesterday' ? ' yesterday' : ` on ${prettyDate(dateFilter)}`}.
               </p>
+            )}
+
+            {/* A page size, never a cap: every order is one tap away. */}
+            {remaining > 0 && (
+              <div className="flex flex-col items-center gap-2 pt-1">
+                <button type="button"
+                  onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
+                  className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800
+                             shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all">
+                  Show {Math.min(LIST_PAGE_SIZE, remaining)} more
+                </button>
+                <p className="text-xs text-gray-400">Showing {pageRows.length} of {filtered.length} {noun}s</p>
+              </div>
             )}
           </div>
         </>
@@ -546,7 +585,9 @@ function AskReviewButton({ o, slug, pin, storeName, phone, primary = false, them
 
 // Leads (service businesses) keep the status-button card: a lead is moved along
 // by the conversation, not by a courier. Orders use OrderCard below.
-function LeadCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
+// Both cards are memoised: a card redraws only when its own order (or a prop it
+// reads) changes, not on every keystroke of the search above the list.
+const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, leads = false, riders = [], payInfo = {}, store = {} }) {
   const STATUS = leads ? STATUS_LEADS : STATUS_ORDERS;
   const st = STATUS[o.status] || STATUS.new;
   const phone = (o.customer_phone || '').replace(/\D/g, '');
@@ -891,7 +932,7 @@ function LeadCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid,
       </div>
     </div>
   );
-}
+});
 
 // Courier booking state for one order: Book → AWB, then Label / Track / Cancel.
 // What this card did itself (a booking, a cancel, a tracking refresh) overrides
@@ -944,7 +985,7 @@ const NEXT_HINT = {
 // The order card: one next step (founder-approved mockup, 2026-10-05). Where the
 // order stands is read from what happened (src/utils/orderCard.js); the shop is
 // shown a button only when there is something for it to do.
-function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, riders = [], payInfo = {}, store = {}, now }) {
+const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, riders = [], payInfo = {}, store = {}, now }) {
   const phone = (o.customer_phone || '').replace(/\D/g, '');
   const firstName = String(o.customer_name || '').trim().split(/\s+/)[0] || 'the customer';
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1292,7 +1333,7 @@ function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid
       </div>
     </div>
   );
-}
+});
 
 // Courier shipping controls for one order (the lead card's old layout).
 function ShipBlock({ o, slug, pin, themeColor, courier }) {

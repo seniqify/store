@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
@@ -7,6 +7,7 @@ import {
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { buildDeliveryMetrics, isPartialList } from '../../utils/deliveryMetrics';
+import { LIST_PAGE_SIZE } from '../../utils/listPage';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -71,6 +72,11 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const [statusMenu, setStatusMenu]   = useState(false);   // status dropdown open
   const [active, setActive]           = useState(null);    // order open in the drawer
   const [query, setQuery]             = useState('');      // search: name, number or AWB
+  // The box shows every letter at once; the list follows a beat behind.
+  const searchText = useDeferredValue(query);
+  // Cards drawn, for one view of the board: a new search or filter starts again
+  // at the first page; a courier refresh keeps what the seller already opened.
+  const [more, setMore]               = useState({ view: '', n: LIST_PAGE_SIZE });
   const ddRef = useRef(null);
   const sdRef = useRef(null);
 
@@ -136,24 +142,44 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const showCourierSel = courierKeys.length > 1;
   const activeCourier = showCourierSel ? courier : 'all';
 
-  // Courier-scoped pool → buckets. Courier + status filters compose.
-  const pool = (orders || []).filter((o) => activeCourier === 'all' || courierInfo(o.courier).key === activeCourier);
-  const groups = {};
-  LIST_BUCKETS.forEach((b) => { groups[b] = []; });
-  pool.forEach((o) => { const b = classifyBucket(o); (groups[b] || (groups[b] = [])).push(o); });
+  // Courier-scoped pool → buckets. Courier + status filters compose. Sorted
+  // once per load, not on every keystroke of the search.
+  const { pool, groups } = useMemo(() => {
+    const p = (orders || []).filter((o) => activeCourier === 'all' || courierInfo(o.courier).key === activeCourier);
+    const g = {};
+    LIST_BUCKETS.forEach((b) => { g[b] = []; });
+    p.forEach((o) => { const b = classifyBucket(o); (g[b] || (g[b] = [])).push(o); });
+    return { pool: p, groups: g };
+  }, [orders, activeCourier]);
   const count = (b) => (groups[b] || []).length;
   const total = pool.length;
   // if the active status filter emptied out under this courier, fall back to All
   const effFilter = (filter === 'all' || count(filter)) ? filter : 'all';
   // Search narrows the list only; the tiles and counts above still cover the whole board.
-  const shown = (b) => (groups[b] || []).filter((o) => matchesShipmentSearch(o, query));
+  const matched = useMemo(() => {
+    const m = {};
+    LIST_BUCKETS.forEach((b) => { m[b] = (groups[b] || []).filter((o) => matchesShipmentSearch(o, searchText)); });
+    return m;
+  }, [groups, searchText]);
+  const shown = (b) => matched[b] || [];
   const shownTotal = LIST_BUCKETS.reduce((n, b) => n + ((effFilter === 'all' || effFilter === b) ? shown(b).length : 0), 0);
+  // A page at a time behind "Show more": the first `visible` shipments in board
+  // order, split back into their sections. Section counts stay whole.
+  const view = `${searchText}|${effFilter}|${activeCourier}`;
+  const visible = more.view === view ? more.n : LIST_PAGE_SIZE;
+  const page = {};
+  let left = visible;
+  LIST_BUCKETS.forEach((b) => {
+    page[b] = (effFilter === 'all' || effFilter === b) ? shown(b).slice(0, Math.max(0, left)) : [];
+    left -= page[b].length;
+  });
+  const remaining = shownTotal - Math.min(visible, shownTotal);
 
   // The canonical fulfilment summary. Built from the UNCAPPED facts feed and
   // classified by shipmentState, never by the display buckets above - a bucket
   // reads only shipment_status, so a parcel whose shipment_outcome says it came
   // back still shows as in transit.
-  const summary = buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []);
+  const summary = useMemo(() => buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []), [factsResult]);
   const summaryOk = factsResult?.ok === true;
 
   const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
@@ -424,7 +450,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
       ) : shownTotal === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <Search size={26} className="mx-auto text-gray-300" />
-          <p className="text-sm font-bold text-gray-800 mt-3">No shipment matches “{query.trim()}”</p>
+          <p className="text-sm font-bold text-gray-800 mt-3">No shipment matches “{searchText.trim()}”</p>
           <p className="text-xs text-gray-500 mt-1">
             {effFilter === 'all' ? 'Check the spelling, or search by phone number or AWB.' : `Only “${BUCKET_META[effFilter].label}” is showing. Try All statuses.`}
           </p>
@@ -435,7 +461,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         </div>
       ) : (
         <div className="space-y-5">
-          {LIST_BUCKETS.filter((b) => shown(b).length && (effFilter === 'all' || effFilter === b)).map((b) => {
+          {LIST_BUCKETS.filter((b) => page[b].length).map((b) => {
             const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
             return (
               <section key={b}>
@@ -445,13 +471,26 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
                   <span className="text-[11px] font-bold text-gray-400 tabular-nums">{shown(b).length}</span>
                 </div>
                 <div className="space-y-2.5">
-                  {shown(b).map((o) => (
-                    <OrderCard key={o.id} o={o} bucket={b} themeColor={themeColor} onOpen={() => setActive(o)} />
+                  {page[b].map((o) => (
+                    <OrderCard key={o.id} o={o} bucket={b} themeColor={themeColor} onOpen={setActive} />
                   ))}
                 </div>
               </section>
             );
           })}
+
+          {/* A page size, never a cap: every shipment is one tap away. */}
+          {remaining > 0 && (
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <button type="button"
+                onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
+                className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800
+                           shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all">
+                Show {Math.min(LIST_PAGE_SIZE, remaining)} more
+              </button>
+              <p className="text-xs text-gray-400">Showing {Math.min(visible, shownTotal)} of {shownTotal} shipments</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -463,8 +502,11 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   );
 }
 
-function OrderCard({ o, bucket, themeColor, onOpen }) {
+// Memoised, with onOpen taking the order, so a card redraws only when its own
+// shipment changes, not on every keystroke of the search.
+const OrderCard = memo(function OrderCard({ o, bucket, themeColor, onOpen }) {
   const M = BUCKET_META[bucket];
+  const open = () => onOpen(o);
   const c = courierInfo(o.courier);
   const isCod = o.payment_method === 'cod';
   const codCollected = isCod && bucket === 'delivered';   // COD delivered = cash taken at the door
@@ -477,7 +519,7 @@ function OrderCard({ o, bucket, themeColor, onOpen }) {
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      <button type="button" onClick={onOpen} className="w-full text-left">
+      <button type="button" onClick={open} className="w-full text-left">
         <div className="flex gap-3 px-3.5 pt-3.5 pb-2.5">
           <span className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: M.stripe }} />
           <div className="flex-1 min-w-0">
@@ -515,7 +557,7 @@ function OrderCard({ o, bucket, themeColor, onOpen }) {
             className={`flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold py-2 rounded-xl border ${phone ? 'text-gray-800 border-gray-200 hover:bg-gray-50' : 'text-gray-300 border-gray-100 pointer-events-none'}`}>
             <Phone size={13} /> Call customer
           </a>
-          <button type="button" onClick={onOpen}
+          <button type="button" onClick={open}
             className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold py-2 rounded-xl text-white active:scale-95"
             style={{ backgroundColor: themeColor }}>
             <MapPin size={13} /> Track & fix
@@ -524,7 +566,7 @@ function OrderCard({ o, bucket, themeColor, onOpen }) {
       )}
     </div>
   );
-}
+});
 
 function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
   const M = BUCKET_META[bucket];
