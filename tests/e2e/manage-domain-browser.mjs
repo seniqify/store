@@ -119,6 +119,7 @@ let seq = 0;
 const pending = new Map();
 const pageErrors = [];
 const send = (method, params = {}) => new Promise((res) => { const id = ++seq; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
+const saves = [];         // every p_config Settings saved
 const json = (status, obj) => ({ status, headers: { 'content-type': 'application/json' }, body: Buffer.from(JSON.stringify(obj)) });
 
 async function answer({ requestId, request }) {
@@ -129,6 +130,15 @@ async function answer({ requestId, request }) {
       if (u.pathname === '/rest/v1/rpc/verify_store_pin') {
         const b = JSON.parse(request.postData || '{}');
         res = json(200, b.p_slug === SLUG && b.p_hashed_pin === HASHED);
+      } else if (u.pathname === '/rest/v1/rpc/update_store_config') {
+        // Settings → Save: recorded, and applied so a reload shows it.
+        const b = JSON.parse(request.postData || '{}');
+        const ok = b.p_slug === SLUG && b.p_hashed_pin === HASHED;
+        if (ok) {
+          saves.push(b.p_config);
+          await db.query('update public.stores set config = $1 where slug = $2', [JSON.stringify(b.p_config), SLUG]);
+        }
+        res = json(200, ok);
       } else {
         const r = await supabase.handle(request.url, { method: request.method, headers: request.headers, body: request.postData });
         res = { status: r.status, headers: Object.fromEntries(r.headers), body: Buffer.from(await r.arrayBuffer()) };
@@ -268,10 +278,38 @@ check('connected + served: hero link switches to the domain', hero?.text === 'ht
 check('connected + served: WhatsApp share uses the domain', (await waShareHref())?.includes('https://brand.test'));
 check('connected + served: sidebar shows the domain', await ev(`[...document.querySelectorAll('p')].some(p => p.innerText.trim() === 'brand.test')`));
 
+// ═══ PR-F: what the shop's own Razorpay and Meta pixel need on the domain ═══
+const panel = `document.querySelector('[data-testid="domain-integrations"]')`;
+const panelText = (s) => `!!${panel} && ${panel}.innerText.toLowerCase().includes(${JSON.stringify(s.toLowerCase())})`;
+check('PR-F: no Razorpay and no pixel: no extra panel', !(await ev(`!!${panel}`)));
+await db.query(`update public.stores set config = config || $1::jsonb where slug = $2`,
+  [JSON.stringify({ payments: { razorpay: true, mode: 'live', keyIdMasked: 'rzp_live_…ab12' }, metaPixelId: '908070605040302' }), SLUG]);
+await openSettings();
+await waitFor(cardText('brand.test is live'));
+check('PR-F: live Razorpay: the Razorpay steps for this domain',
+  await waitFor(panelText('online payments on brand.test')) && await ev(panelText('business website detail → add additional website/app'))
+  && await ev(panelText('https://brand.test')) && await ev(panelText('24–48 hours')));
+check('PR-F: the Razorpay link opens Razorpay\'s dashboard in a new tab',
+  await ev(`(() => { const a = [...${panel}.querySelectorAll('a')].find(e => /open razorpay/i.test(e.innerText)); return !!a && a.href === 'https://dashboard.razorpay.com/' && a.target === '_blank' && /noopener/.test(a.rel); })()`));
+check('PR-F: a pixel: the Meta allow-list note', await ev(panelText('traffic permissions in meta events manager')));
+await shot('7-razorpay-waiting');
+await clickIn(panel, 'razorpay has approved brand.test');
+check('PR-F: approved: "on" for the domain', await waitFor(panelText('online payments are on for brand.test')));
+await clickIn(`document.body`, 'save changes');
+await waitFor(bodyText('saved successfully'));
+const saved = saves.at(-1)?.payments;
+check('PR-F: Save sends the domain with the rest of payments kept',
+  JSON.stringify(saved?.razorpayDomains) === '["brand.test"]' && saved?.razorpay === true && saved?.mode === 'live' && saved?.keyIdMasked === 'rzp_live_…ab12',
+  JSON.stringify(saved));
+await openSettings();
+check('PR-F: after a reload it is still on', await waitFor(panelText('online payments are on for brand.test')));
+await shot('8-razorpay-on');
+
 // Connected but not served (routing off for it): note shown, links stay on PocketLink.
 api.serving = false;
 await openSettings();
 check('connected, not served: amber note', await waitFor(cardText('switch it on for customers soon')));
+check('PR-F: connected, not served: no payments/pixel panel yet', !(await ev(`!!${panel}`)));
 hero = await heroLink();
 check('connected, not served: hero link stays on PocketLink', hero?.text === `https://www.pocketlink.store/${SLUG}`, JSON.stringify(hero));
 api.serving = true;
@@ -286,6 +324,7 @@ await waitFor(`!!document.querySelector('[data-testid="domain-connect"] input[au
 await typeInto(`[data-testid="domain-connect"] input[autocomplete="one-time-code"]`, '123456');
 await clickIn(card, 'make it the main address');
 check('set primary: www is now the live main address', await waitFor(cardText('www.brand.test is live')));
+check('PR-F: a new main address needs its own Razorpay approval', await waitFor(panelText('online payments on www.brand.test')));
 const sp = api.calls.find((c) => c.action === 'set_primary');
 check('set primary: request names the www host and the code', sp?.hostname === 'www.brand.test' && sp?.code === '123456' && /^[0-9a-f-]{36}$/.test(sp?.challengeId || ''));
 

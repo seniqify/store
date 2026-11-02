@@ -16,6 +16,7 @@ import { couponDiscountFor, isCouponLive } from '../../utils/offers';
 import { fetchReviews, reviewStats } from '../../utils/reviewService';
 import { isVerified, effectivePlan } from '../../utils/planLimits';
 import { payOnline } from '../../utils/onlinePayment';
+import { onlinePayOffered } from '../../utils/domainPayments';
 import { useBusinessConfig } from '../../contexts/BusinessContext';
 import { buildUpiLink, hasUpi } from '../../utils/upiLink';
 
@@ -218,13 +219,22 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
   const primary  = config.theme?.primary || '#0d9488';
   const verified = isVerified(effectivePlan(config));
 
-  // Online payment (Razorpay) is offered only when the store has connected it.
+  // Online payment (Razorpay) is offered only when the store has connected it --
+  // and, on the shop's own domain, only once Razorpay has approved that domain
+  // (a live payment there is refused until then; see domainPayments.js).
   // When available it's the first, most-prominent option.
-  const onlineAvailable = Boolean(config.payments?.razorpay);
+  const onlineAvailable = onlinePayOffered(config.payments);
   const paymentOptions  = [
     ...(onlineAvailable ? [{ value: 'online', label: '💳 Pay Online now — UPI / Card', pickLabel: '💳 Pay Online' }] : []),
     ...PAYMENT_OPTIONS.map((o) => ({ ...o, pickLabel: '💵 Cash on Delivery' })),
   ];
+  // A remembered "Pay Online" on a page that does not offer it (no Razorpay, or
+  // a domain Razorpay has not approved yet) is cleared, so the buyer picks again
+  // instead of being sent to a payment that cannot go through.
+  useEffect(() => {
+    if (formData.paymentMethod === 'online' && !onlineAvailable) onChange({ ...formData, paymentMethod: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.paymentMethod, onlineAvailable]);
   const [rating, setRating] = useState(null);
   useEffect(() => {
     if (!config?.slug) return;

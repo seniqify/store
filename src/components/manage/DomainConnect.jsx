@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, ShieldCheck } from 'lucide-react';
 import { manageDomain, domainMessage, otherName, txtPanelName } from '../../utils/domainsApi';
+import { needsRazorpayApproval, razorpayTestMode, withRazorpayHost } from '../../utils/domainPayments';
 
 /**
  * Settings → Your own domain. Walks the owner through connecting a domain they
@@ -63,7 +64,64 @@ const fmtDate = (iso) => {
   catch { return ''; }
 };
 
-export default function DomainConnect({ slug, pin, themeColor = '#0d9488', domainState }) {
+/**
+ * Once the domain is live: what the shop's own Razorpay and Meta pixel need for
+ * it. Razorpay refuses LIVE payments on a website it has not approved for that
+ * account, so "Pay Online" shows on the domain only after the owner says
+ * Razorpay has approved it (saved with Settings, like any other setting).
+ */
+function OnYourDomain({ host, payments, onPayments, hasPixel, themeColor }) {
+  const razorpayLive = Boolean(payments?.razorpay) && !razorpayTestMode(payments);
+  if (!razorpayLive && !hasPixel) return null;
+  const waiting = razorpayLive && needsRazorpayApproval(payments, host);
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-2.5" data-testid="domain-integrations">
+      {razorpayLive && (waiting ? (
+        <>
+          <p className="text-sm font-bold text-gray-900 break-all">Online payments on {host}</p>
+          <p className="text-xs text-gray-600">
+            Razorpay only takes payments on websites added to your Razorpay account. Until then, customers on {host} can
+            pay by Cash on Delivery, and online payment keeps working on your PocketLink link.
+          </p>
+          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
+            <p>
+              <b>1.</b> In your Razorpay Dashboard, open Account &amp; Settings → Business website detail → Add additional
+              website/app, and add <span className="font-mono break-all">https://{host}</span>{' '}
+              <a href="https://dashboard.razorpay.com/" target="_blank" rel="noopener noreferrer"
+                 className="font-semibold underline text-brand-dark whitespace-nowrap">open Razorpay →</a>
+            </p>
+            <p><b>2.</b> Razorpay checks it, usually in 24–48 hours.</p>
+            <p><b>3.</b> When Razorpay approves it, tap the button below and save your settings.</p>
+          </div>
+          <button type="button" onClick={() => onPayments?.(withRazorpayHost(payments, host, true))}
+            className="w-full py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-bold hover:border-gray-300 active:scale-[0.98] transition"
+            style={{ color: themeColor }}>
+            Razorpay has approved {host}
+          </button>
+        </>
+      ) : (
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs text-gray-700 flex items-start gap-1.5">
+            <Check size={13} strokeWidth={3} className="flex-shrink-0 mt-px text-green-600" />
+            <span>Online payments are on for <b className="break-all">{host}</b>.</span>
+          </p>
+          <button type="button" onClick={() => onPayments?.(withRazorpayHost(payments, host, false))}
+            className="flex-shrink-0 text-xs font-semibold text-gray-400 hover:text-gray-700">
+            Turn off
+          </button>
+        </div>
+      ))}
+      {hasPixel && (
+        <p className="text-[11px] text-gray-500 leading-snug">
+          Your Meta pixel tracks {host} too. If you use an allow list under Traffic permissions in Meta Events Manager,
+          add {host} there.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function DomainConnect({ slug, pin, themeColor = '#0d9488', domainState, payments = null, onPayments, hasPixel = false }) {
   const { res, step, reload } = domainState || {};
   const domain = res?.domain || null;
   const host   = domain?.primary_host || '';
@@ -259,55 +317,60 @@ export default function DomainConnect({ slug, pin, themeColor = '#0d9488', domai
         </div>
 
       ) : step === 'connected' ? (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center flex-shrink-0">
-              <Check size={14} strokeWidth={3} />
-            </span>
-            <p className="text-sm font-bold text-green-800 break-all">{host} is live</p>
-          </div>
-          {other && <p className="text-xs text-green-700/80">{other} opens it too.</p>}
-          {res?.serving === false ? (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
-              Connected — we’ll switch it on for customers soon. Until then, keep sharing your PocketLink link.
-            </p>
-          ) : (
-            <p className="text-xs text-gray-500">
-              Customers can open your shop at <b>https://{host}</b>. Your PocketLink link keeps working too.
-            </p>
-          )}
-          {errLine}
-          {confirm ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
-              <p className="text-xs text-gray-700">
-                {confirm === 'disconnect'
-                  ? <>Disconnect <b>{host}</b>? Customers using it will see “not connected”. Your PocketLink link keeps working.</>
-                  : <>Make <b>{other}</b> the main address? <b>{host}</b> will open it too.</>}
+        <div className="space-y-2.5">
+          <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center flex-shrink-0">
+                <Check size={14} strokeWidth={3} />
+              </span>
+              <p className="text-sm font-bold text-green-800 break-all">{host} is live</p>
+            </div>
+            {other && <p className="text-xs text-green-700/80">{other} opens it too.</p>}
+            {res?.serving === false ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+                Connected — we’ll switch it on for customers soon. Until then, keep sharing your PocketLink link.
               </p>
-              {codeBox || (
-                <div className="flex items-center gap-3">
-                  <button type="button" disabled={busy}
-                    onClick={() => (confirm === 'disconnect' ? sendCode('disconnect') : sendCode('set_primary', other))}
-                    className="px-3 py-2 rounded-xl text-white text-xs font-bold active:scale-[0.98] transition disabled:opacity-50"
-                    style={{ background: themeColor }}>
-                    {busy ? 'Sending…' : 'Send code to confirm'}
+            ) : (
+              <p className="text-xs text-gray-500">
+                Customers can open your shop at <b>https://{host}</b>. Your PocketLink link keeps working too.
+              </p>
+            )}
+            {errLine}
+            {confirm ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+                <p className="text-xs text-gray-700">
+                  {confirm === 'disconnect'
+                    ? <>Disconnect <b>{host}</b>? Customers using it will see “not connected”. Your PocketLink link keeps working.</>
+                    : <>Make <b>{other}</b> the main address? <b>{host}</b> will open it too.</>}
+                </p>
+                {codeBox || (
+                  <div className="flex items-center gap-3">
+                    <button type="button" disabled={busy}
+                      onClick={() => (confirm === 'disconnect' ? sendCode('disconnect') : sendCode('set_primary', other))}
+                      className="px-3 py-2 rounded-xl text-white text-xs font-bold active:scale-[0.98] transition disabled:opacity-50"
+                      style={{ background: themeColor }}>
+                      {busy ? 'Sending…' : 'Send code to confirm'}
+                    </button>
+                    <button type="button" onClick={() => { setConfirm(null); setOtp(null); setErr(''); }} className={linkBtn}>Keep it</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-4">
+                {other && (
+                  <button type="button" onClick={() => setConfirm('set_primary')} disabled={busy} className={linkBtn}>
+                    Use {other} as main address
                   </button>
-                  <button type="button" onClick={() => { setConfirm(null); setOtp(null); setErr(''); }} className={linkBtn}>Keep it</button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-4">
-              {other && (
-                <button type="button" onClick={() => setConfirm('set_primary')} disabled={busy} className={linkBtn}>
-                  Use {other} as main address
+                )}
+                <button type="button" onClick={() => setConfirm('disconnect')} disabled={busy}
+                  className="text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50">
+                  Disconnect
                 </button>
-              )}
-              <button type="button" onClick={() => setConfirm('disconnect')} disabled={busy}
-                className="text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50">
-                Disconnect
-              </button>
-            </div>
+              </div>
+            )}
+          </div>
+          {res?.serving !== false && (
+            <OnYourDomain host={host} payments={payments} onPayments={onPayments} hasPixel={hasPixel} themeColor={themeColor} />
           )}
         </div>
 

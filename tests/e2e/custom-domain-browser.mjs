@@ -185,6 +185,57 @@ try {
   await go('https://brandshop.test/c/lamps');
   check('cold load /c/lamps: that category', await waitFor(text('Brass Lamp')) && (await ev('location.pathname')) === '/c/lamps');
 
+  // ── PR-F: "Pay Online" on the shop's own domain ─────────────────────────────
+  // Razorpay refuses LIVE payments on a website it has not approved for that
+  // account, so the domain offers it only once the owner has confirmed it.
+  const setPayments = (payments) => db.query(
+    `update public.stores set config = jsonb_set(config, '{payments}', $1::jsonb) where slug = 'brandshop'`, [JSON.stringify(payments)]);
+  // Open checkout with one item in the cart; the payment choices it shows, and which is picked.
+  async function checkoutChoices(url, profile = null) {
+    await go(url);
+    await ev(`localStorage.clear(); ${profile ? `localStorage.setItem('pl_customer_v1', ${JSON.stringify(JSON.stringify(profile))});` : ''} true`);
+    await go(url);
+    await waitFor(text('Clay Mug'));
+    // The product card's button ("Add" or "Add to Cart", by template).
+    await ev(`[...document.querySelectorAll('button')].find(b => /^add( to cart)?$/i.test(b.innerText.trim()))?.click()`);
+    await waitFor(`!!document.querySelector('button[aria-label^="Open cart —"]')`);
+    await ev(`document.querySelector('button[aria-label^="Open cart"]').click()`);
+    await waitFor(text('Checkout →'));
+    await clickText('Checkout →');
+    await waitFor(text('Payment Method'));
+    await sleep(300);
+    return ev(`(() => { const bs = [...document.querySelectorAll('button[aria-pressed]')];
+      return { options: bs.map(b => b.innerText.trim()), picked: bs.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.innerText.trim()),
+               cta: (document.querySelector('div.sticky.bottom-0 button') || {}).innerText || '' }; })()`);
+  }
+  const LIVE = { razorpay: true, mode: 'live', keyIdMasked: 'rzp_live_…ab12' };
+  await setPayments(LIVE);
+  let pay = await checkoutChoices('https://brandshop.test/');
+  check('PR-F: live Razorpay, domain not approved: no "Pay Online" on the domain, COD still there',
+    !pay?.options.some((o) => /pay online/i.test(o)) && pay?.options.some((o) => /cash on delivery/i.test(o)), JSON.stringify(pay));
+  pay = await checkoutChoices(`${PL}/brandshop`);
+  check('PR-F: the same shop on its PocketLink link still offers "Pay Online"',
+    pay?.options.some((o) => /pay online/i.test(o)), JSON.stringify(pay));
+  pay = await checkoutChoices('https://brandshop.test/', { paymentMethod: 'online' });
+  // Kept, "online" would pass the form's check and send the buyer to Razorpay. Cleared,
+  // tapping the order button with nothing filled in asks for a payment method.
+  await ev(`document.querySelector('div.sticky.bottom-0 button')?.click()`);
+  const askedForMethod = await waitFor(text('Please select a payment method'), 4000);
+  check('PR-F: a remembered "Pay Online" is cleared on a domain that does not offer it',
+    pay && pay.picked.length === 0 && askedForMethod && !/pay/i.test(pay.cta) && !pay.options.some((o) => /pay online/i.test(o)),
+    JSON.stringify({ ...pay, askedForMethod }));
+  await setPayments({ ...LIVE, razorpayDomains: ['brandshop.test'] });
+  pay = await checkoutChoices('https://brandshop.test/');
+  check('PR-F: once the owner confirms Razorpay approved the domain, "Pay Online" is offered there',
+    pay?.options.some((o) => /pay online/i.test(o)), JSON.stringify(pay));
+  await setPayments({ razorpay: true, mode: 'test' });
+  pay = await checkoutChoices('https://brandshop.test/');
+  check('PR-F: Razorpay test mode is offered on the domain without approval (pilot unchanged)',
+    pay?.options.some((o) => /pay online/i.test(o)), JSON.stringify(pay));
+  await db.query(`update public.stores set config = config - 'payments' where slug = 'brandshop'`);
+  await go('https://brandshop.test/');
+  await ev('localStorage.clear(); true');
+
   // ── Isolation on cold loads ─────────────────────────────────────────────────
   for (const path of ['/otherstore', '/otherstore/p/o1', '/brandshop', '/index.html', '/api/render?path=/otherstore']) {
     await go(`https://brandshop.test${path}`);
