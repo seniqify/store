@@ -2,11 +2,14 @@ import { supabase } from '../lib/supabase';
 import { hashPin }  from './pinHash';
 import { planTermEnded } from './planLimits';
 
-/** Fetch a store config from DB by slug. Returns null if not found. */
+/** Fetch a store config from DB by slug. Returns null if not found.
+ *  Reads `public_config`: the stored config minus the owner's sign-up phone,
+ *  which only the server uses. It is the only config the browser may read
+ *  (every public read here and in api/ asks for `config:public_config`). */
 export async function fetchStore(slug) {
   const { data, error } = await supabase
     .from('stores')
-    .select('config')
+    .select('config:public_config')
     .eq('slug', slug)
     .single();
 
@@ -23,7 +26,7 @@ export async function createStore(config, pin, ownerPhone = null) {
     const { data: existing } = await supabase
       .from('stores')
       .select('slug')
-      .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+      .filter('public_config->>whatsappNumber', 'ilike', `%${last10}`)
       .limit(1);
     if (existing?.length) {
       throw new Error(
@@ -142,7 +145,7 @@ export async function findStoreByPhone(phone) {
   const { data } = await supabase
     .from('stores')
     .select('slug')
-    .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+    .filter('public_config->>whatsappNumber', 'ilike', `%${last10}`)
     .limit(1);
   return data?.[0]?.slug ?? null;
 }
@@ -171,12 +174,12 @@ export async function listStores() {
   const { data, error } = await supabase
     .from('stores')
     .select(`slug, created_at,
-      businessName:config->>businessName, tagline:config->>tagline,
-      category:config->>category, businessType:config->>businessType,
-      city:config->>city, state:config->>state, area:config->>area,
-      address:config->>address, logo:config->>logo, logoEmoji:config->>logoEmoji,
-      coverImage:config->>coverImage, whatsappNumber:config->>whatsappNumber,
-      theme:config->theme, hours:config->hours`)
+      businessName:public_config->>businessName, tagline:public_config->>tagline,
+      category:public_config->>category, businessType:public_config->>businessType,
+      city:public_config->>city, state:public_config->>state, area:public_config->>area,
+      address:public_config->>address, logo:public_config->>logo, logoEmoji:public_config->>logoEmoji,
+      coverImage:public_config->>coverImage, whatsappNumber:public_config->>whatsappNumber,
+      theme:public_config->theme, hours:public_config->hours`)
     .limit(500);
 
   if (error || !data) return [];

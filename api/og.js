@@ -54,7 +54,7 @@ async function draw(slug) {
   if (slug) {
     try {
       const r = await fetch(
-        `${SB}/rest/v1/stores?slug=eq.${slug}&select=config&limit=1`,
+        `${SB}/rest/v1/stores?slug=eq.${slug}&select=config:public_config&limit=1`,
         { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } },
       );
       if (r.ok) { const rows = await r.json(); cfg = rows[0]?.config || null; }

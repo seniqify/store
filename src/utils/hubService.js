@@ -77,10 +77,10 @@ export async function fetchStoresLite() {
   return readAllRowsOrEmpty((withCount) => supabase
     .from('stores')
     .select(`slug, created_at, updated_at,
-             name:config->>businessName, plan:config->>plan,
-             exp:config->>planExpiresAt, sub:config->>razorpaySubscriptionId,
-             wa:config->>whatsappNumber, city:config->>city,
-             bt:config->>businessType, mgr:config->>managedBy`,
+             name:public_config->>businessName, plan:public_config->>plan,
+             exp:public_config->>planExpiresAt, sub:public_config->>razorpaySubscriptionId,
+             wa:public_config->>whatsappNumber, city:public_config->>city,
+             bt:public_config->>businessType, mgr:public_config->>managedBy`,
     withCount ? { count: 'exact' } : undefined), { order: [['created_at', true], ['slug', true]], key: 'slug' });
 }
 

@@ -45,7 +45,7 @@ function toDataUri(bytes, type = 'image/png') {
 
 async function loadStore(slug) {
   try {
-    const r = await withTimeout(fetch(`${SB}/rest/v1/stores?slug=eq.${slug}&select=config&limit=1`, {
+    const r = await withTimeout(fetch(`${SB}/rest/v1/stores?slug=eq.${slug}&select=config:public_config&limit=1`, {
       headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
     }), 3500);
     if (r.ok) { const rows = await r.json(); return rows[0]?.config || null; }
