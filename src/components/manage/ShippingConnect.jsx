@@ -1,12 +1,17 @@
 import { useState } from 'react';
-import { Truck, Check, ShieldCheck } from 'lucide-react';
+import { Truck, ShieldCheck } from 'lucide-react';
 import { getPlanLimits, effectivePlan } from '../../utils/planLimits';
 import { connectDelhivery, connectShadowfax, disconnectCourier, setActiveCourier } from '../../utils/shippingConnect';
 import { clearCachedStore } from '../../utils/businessStorage';
 
+// `signup`: the courier's own page to register (or log in) and get the API
+// token. Connect opens it in a new tab and the form here, so the seller can
+// sign up there and paste the token when they come back.
 const COURIERS = {
-  delhivery: { name: 'Delhivery', blurb: 'Live rates at checkout, then one-tap booking + printed labels per order.' },
-  shadowfax: { name: 'Shadowfax', blurb: 'Book a seller-pickup order; a rider collects it and delivers. The rider carries the label.' },
+  delhivery: { name: 'Delhivery', blurb: 'Live rates at checkout, then one-tap booking + printed labels per order.',
+               signup: 'https://one.delhivery.com/v2/register' },
+  shadowfax: { name: 'Shadowfax', blurb: 'Book a seller-pickup order; a rider collects it and delivers. The rider carries the label.',
+               signup: 'https://shadowfax360.in/login' },
 };
 const ORDER = ['delhivery', 'shadowfax'];
 
@@ -135,6 +140,15 @@ export default function ShippingConnect({ config, pin, themeColor = '#0d9488', o
                     <div className="flex items-start gap-2 text-xs text-gray-500">
                       <span>{COURIERS[courier].blurb}</span>
                     </div>
+                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
+                      <p>
+                        <b>1.</b> Register or log in on {COURIERS[courier].name} (it opened in a new tab){' '}
+                        <a href={COURIERS[courier].signup} target="_blank" rel="noopener noreferrer"
+                           className="font-semibold underline text-brand-dark whitespace-nowrap">open {COURIERS[courier].name} →</a>
+                      </p>
+                      <p><b>2.</b> Copy your API token from your {COURIERS[courier].name} dashboard.</p>
+                      <p><b>3.</b> Paste it below with your pickup details, then tap Connect.</p>
+                    </div>
                     <div>
                       <label className={label}>{COURIERS[courier].name} API Token</label>
                       <input type="password" value={f.tok} onChange={(e) => setField('tok', e.target.value)}
@@ -184,17 +198,20 @@ export default function ShippingConnect({ config, pin, themeColor = '#0d9488', o
                     </div>
                     <p className="text-[11px] text-gray-400 leading-snug flex items-start gap-1.5">
                       <ShieldCheck size={13} className="flex-shrink-0 mt-px" />
-                      <span>Find your token in your {COURIERS[courier].name} dashboard / dev portal. It’s stored securely and never shown in the browser.</span>
+                      <span>Your {COURIERS[courier].name} token is stored securely and never shown in the browser.</span>
                     </p>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-xs text-gray-500">{COURIERS[courier].blurb}</span>
-                    <button type="button" onClick={() => { resetForm(); setOpen(courier); setErr(''); }}
+                    {/* A link, so the courier's own sign-up page opens in a new tab
+                        (never blocked as a pop-up); the form opens here too. */}
+                    <a href={COURIERS[courier].signup} target="_blank" rel="noopener noreferrer"
+                      onClick={() => { resetForm(); setOpen(courier); setErr(''); }}
                       className="flex-shrink-0 ml-2 text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:border-gray-300 active:scale-95"
                       style={{ color: themeColor }}>
                       Connect
-                    </button>
+                    </a>
                   </div>
                 )}
               </div>
