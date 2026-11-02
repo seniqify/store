@@ -380,7 +380,7 @@ export default function Checkout() {
             <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-emerald-700">🎁 {applied.label}</p>
-                <p className="text-[11px] text-emerald-600 mt-0.5">No payment now · reverts to Free after {applied.days} days</p>
+                <p className="text-[11px] text-emerald-600 mt-0.5">No payment now · after {applied.days} days your page keeps running on basic features until you subscribe</p>
               </div>
               <button type="button" onClick={() => { setApplied(null); setCoupon(''); }}
                 className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 flex-shrink-0">Remove</button>

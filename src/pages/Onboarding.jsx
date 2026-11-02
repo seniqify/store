@@ -10,6 +10,7 @@ import { saveBusiness, cacheStore } from '../utils/businessStorage';
 import { sendWelcome }              from '../utils/otpService';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists, clearPendingSignup, updateStore, getPendingSignup } from '../utils/storeService';
+import { planTermEnded } from '../utils/planLimits';
 import { uploadConfigImages, uploadSingleImage, isBase64Image } from '../utils/imageStorage';
 import { defaultIcon, DEFAULT_CATEGORY } from '../utils/businessCategories';
 import { useI18n } from '../i18n/I18nContext';
@@ -280,7 +281,7 @@ export default function Onboarding() {
     setData(d => ({ ...d, whatsappNumber: d.whatsappNumber || phone.replace(/\D/g, '').slice(-10) }));
     const ssPlan = sessionStorage.getItem('pocketlink_plan');
     const ssExp  = sessionStorage.getItem('pocketlink_plan_expires');
-    if (ssPlan && ssPlan !== 'free' && ssExp) {
+    if (ssPlan && ssPlan !== 'free' && ssExp && !planTermEnded(ssExp)) {
       setPlan(ssPlan);
       setPlanExpiresAt(ssExp);
     } else {
@@ -319,8 +320,9 @@ export default function Onboarding() {
       // Every launch now requires a paid plan (Free was retired — no more
       // dead, never-touched stores from a zero-commitment signup). Paid plans
       // pay upfront at /checkout, which writes plan + expiry into sessionStorage
-      // before routing here; arriving without an expiry sends them back to pay.
-      if (!planExpiresAt) {
+      // before routing here; arriving without an expiry, or with one that has
+      // already passed, sends them back to pick a plan.
+      if (!planExpiresAt || planTermEnded(planExpiresAt)) {
         navigate('/plans', { replace: true });
         return;
       }
