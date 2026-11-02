@@ -626,7 +626,8 @@ test('cancelled shipments are not added to the active summary identity', () => {
 
 test('the cancelled summary comes from the uncapped facts, not the capped list', () => {
   const board = code('../src/components/manage/DeliveryBoard.jsx');
-  assert.match(board, /const summary = buildDeliveryMetrics\(factsResult\?\.ok \? factsResult\.data : \[\]\)/);
+  // Memoised on the facts alone, so the search box does not rebuild it per keystroke.
+  assert.match(board, /const summary = useMemo\(\(\) => buildDeliveryMetrics\(factsResult\?\.ok \? factsResult\.data : \[\]\), \[factsResult\]\)/);
   assert.equal(/buildDeliveryMetrics\(pool|buildDeliveryMetrics\(orders/.test(board), false,
     'no total, cancelled included, is computed from the capped rows');
 });

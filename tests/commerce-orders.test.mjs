@@ -345,7 +345,7 @@ test('the component no longer keys dates on the browser calendar', () => {
 
 test('search semantics are unchanged: it ignores the chips and scans everything', () => {
   const tab = code('../src/components/manage/OrdersTab.jsx');
-  assert.match(tab, /const filtered = searching\s*\n?\s*\? \(orders \|\| \[\]\)\.filter\(matchQuery\)/,
+  assert.match(tab, /const filtered = useMemo\(\(\) => \{[\s\S]*?return searching\s*\n?\s*\? \(orders \|\| \[\]\)\.filter\(matchQuery\)/,
     'a search still bypasses status, date and unpaid');
   assert.match(tab, /qDigits\.length >= 3/, 'phone matching unchanged');
 });

@@ -33,8 +33,13 @@ test('search matches the AWB, and an empty search shows everything', () => {
 
 test('the board filters its list with the search but keeps the tiles on the whole board', () => {
   assert.match(BOARD, /placeholder="Search name, number or AWB…"/);
-  assert.match(BOARD, /const shown = \(b\) => \(groups\[b\] \|\| \[\]\)\.filter\(\(o\) => matchesShipmentSearch\(o, query\)\)/);
-  assert.match(BOARD, /\{shown\(b\)\.map\(\(o\) =>/);
+  // The list filters on the deferred search text, worked out once per change.
+  assert.match(BOARD, /const searchText = useDeferredValue\(query\)/);
+  assert.match(BOARD, /m\[b\] = \(groups\[b\] \|\| \[\]\)\.filter\(\(o\) => matchesShipmentSearch\(o, searchText\)\)/);
+  assert.match(BOARD, /const shown = \(b\) => matched\[b\] \|\| \[\]/);
+  // Drawn a page at a time; the page is cut from the searched list.
+  assert.match(BOARD, /page\[b\] = \(effFilter === 'all' \|\| effFilter === b\) \? shown\(b\)\.slice\(0, Math\.max\(0, left\)\) : \[\]/);
+  assert.match(BOARD, /\{page\[b\]\.map\(\(o\) =>/);
   assert.match(BOARD, /count\('attention'\)/, 'tiles still count the unsearched board');
   assert.match(BOARD, /No shipment matches/);
 });

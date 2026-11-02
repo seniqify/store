@@ -209,6 +209,18 @@ export function paymentState(o) {
 
 // ── date handling ────────────────────────────────────────────────────────────
 
+// Making an Intl.DateTimeFormat costs far more than using one, and these
+// helpers run once per order: counting a 1,000-order list by day spent ~45 ms
+// building formatters, on every keystroke of the Orders search. Each formatter
+// is built once per zone and kept.
+const formatters = new Map();
+function zoneFormatter(kind, timeZone, make) {
+  const key = `${kind}|${timeZone}`;
+  let f = formatters.get(key);
+  if (!f) { f = make(); formatters.set(key, f); }
+  return f;
+}
+
 /**
  * The calendar day an instant falls on, in a named zone.
  * Returns 'YYYY-MM-DD' — the merchant's day, not the server's.
@@ -218,9 +230,9 @@ export function dayKeyInZone(msVal, timeZone = 'Asia/Kolkata') {
   const d = new Date(msVal);
   if (Number.isNaN(d.getTime())) return null;
   // en-CA renders as YYYY-MM-DD.
-  return new Intl.DateTimeFormat('en-CA', {
+  return zoneFormatter('day', timeZone, () => new Intl.DateTimeFormat('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(d);
+  })).format(d);
 }
 
 /**
@@ -232,9 +244,9 @@ export function hourInZone(msVal, timeZone = 'Asia/Kolkata') {
   if (msVal === null || msVal === undefined) return null;
   const d = new Date(msVal);
   if (Number.isNaN(d.getTime())) return null;
-  const txt = new Intl.DateTimeFormat('en-GB', {
+  const txt = zoneFormatter('hour', timeZone, () => new Intl.DateTimeFormat('en-GB', {
     timeZone, hour: '2-digit', hour12: false,
-  }).format(d);
+  })).format(d);
   const h = Number(txt);
   if (!Number.isInteger(h) || h < 0 || h > 24) return null;
   return h === 24 ? 0 : h;   // some ICU builds render midnight as 24
@@ -247,7 +259,7 @@ export function weekdayInZone(msVal, timeZone = 'Asia/Kolkata') {
   if (msVal === null || msVal === undefined) return null;
   const d = new Date(msVal);
   if (Number.isNaN(d.getTime())) return null;
-  const txt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(d);
+  const txt = zoneFormatter('weekday', timeZone, () => new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' })).format(d);
   const i = WEEKDAYS.indexOf(txt);
   return i === -1 ? null : i;
 }
