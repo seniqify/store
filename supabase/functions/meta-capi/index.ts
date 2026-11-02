@@ -23,6 +23,25 @@ async function sha256hex(s: string): Promise<string> {
 
 const PURCHASE_STATUSES = ['confirmed', 'dispatched', 'delivered'];
 
+// Where the sale happened, for Meta's event_source_url: the shop's own domain
+// once it is connected (store_primary_host answers only for a connected main
+// address), else its PocketLink page. Read when the event is sent, not stored
+// per order, so an order placed on the PocketLink link of a shop that has since
+// connected a domain is reported on the domain; Meta matches the browser and
+// server events by event_id, never by this URL. Any lookup problem falls back
+// to the PocketLink page, as before.
+const HOSTNAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+async function eventSourceUrl(supabase: ReturnType<typeof createClient>, slug: string): Promise<string> {
+  const pocketlink = `https://www.pocketlink.store/${slug}`;
+  try {
+    const { data, error } = await supabase.rpc('store_primary_host', { p_slug: slug });
+    const host = typeof data === 'string' ? data.trim().toLowerCase() : '';
+    if (!error && host.length <= 253 && HOSTNAME.test(host)) return `https://${host}/`;
+  } catch { /* fall back to the PocketLink page */ }
+  return pocketlink;
+}
+
 // Send the Purchase for one order id. Returns a short result string.
 async function processOrder(supabase: ReturnType<typeof createClient>, orderId: string): Promise<string> {
   // 1) Load the order.
@@ -70,6 +89,7 @@ async function processOrder(supabase: ReturnType<typeof createClient>, orderId: 
     Math.floor(Date.now() / 1000),
     order.created_at ? Math.floor(new Date(order.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
   );
+  const sourceUrl = await eventSourceUrl(supabase, String(order.store_slug));
 
   const body: Record<string, unknown> = {
     data: [{
@@ -77,7 +97,7 @@ async function processOrder(supabase: ReturnType<typeof createClient>, orderId: 
       event_time: eventTime,
       event_id: orderId,
       action_source: 'website',
-      event_source_url: `https://www.pocketlink.store/${order.store_slug}`,
+      event_source_url: sourceUrl,
       user_data,
       custom_data: {
         currency: 'INR',

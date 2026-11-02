@@ -2343,7 +2343,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
           {/* Own domain — shown only when the server allows this store */}
-          <DomainConnect slug={config.slug} pin={pin} themeColor={themeColor} domainState={domainState} />
+          <DomainConnect slug={config.slug} pin={pin} themeColor={themeColor} domainState={domainState}
+                         payments={config.payments} onPayments={(payments) => update({ payments })}
+                         hasPixel={Boolean(config.metaPixelId || config.meta?.pixelId)} />
 
           {/* Store icon (logoEmoji) */}
           <div>
