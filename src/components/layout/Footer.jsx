@@ -285,8 +285,8 @@ export default function Footer() {
             className="inline-flex items-center gap-2 text-[11px] text-gray-600
                        hover:text-gray-400 transition-colors duration-150"
           >
-            <img src="/pocketlink-logo.svg" alt="PocketLink"
-                 className="h-3.5 w-auto opacity-40" />
+            <img src="/pocketlink-logo-white.svg" alt="PocketLink"
+                 className="h-5 w-auto opacity-40" />
             <span>Powered by PocketLink</span>
           </a>
         </div>

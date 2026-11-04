@@ -704,7 +704,7 @@ export default function Landing() {
         <nav className="relative z-50 border-b border-white/10 backdrop-blur-md sticky top-0">
           <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <Link to="/" className="flex items-center">
-              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 sm:h-9 w-auto brightness-0 invert" />
+              <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-11 sm:h-12 w-auto" />
             </Link>
 
             <div className="hidden md:flex items-center gap-7 text-sm font-semibold text-white/60">
@@ -1444,7 +1444,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 py-14">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2 sm:col-span-1">
-              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto mb-4 brightness-0 invert" />
+              <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-9 w-auto mb-4" />
               <p className="text-xs text-white/45 leading-relaxed max-w-[210px] mb-4">
                 Helping small businesses go digital — simple business pages, orders on WhatsApp. 🌍
               </p>

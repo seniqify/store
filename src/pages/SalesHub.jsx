@@ -104,7 +104,7 @@ function HubLogin({ onDone }) {
          style={{ background: 'linear-gradient(160deg, #061310 0%, #0a2a20 52%, #05110d 100%)' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-9 w-auto mx-auto brightness-0 invert" />
+          <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-12 w-auto mx-auto" />
           <p className="text-white/55 text-sm mt-2 font-semibold">Sales Hub · team sign-in</p>
         </div>
         <form onSubmit={submit}
@@ -644,7 +644,7 @@ export default function SalesHub() {
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center gap-3">
-          <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 w-auto" />
+          <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-9 w-auto" />
           <span className="text-sm font-extrabold text-gray-900">Sales Hub</span>
           <div className="flex-1" />
           {me && (

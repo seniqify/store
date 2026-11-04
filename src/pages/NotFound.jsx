@@ -25,7 +25,7 @@ export default function NotFound({ slug }) {
 
       {/* Logo */}
       <Link to="/" className="mb-10">
-        <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
+        <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-11 w-auto" />
       </Link>
 
       <div className="text-center max-w-md w-full animate-pl-fade-up">

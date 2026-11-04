@@ -123,7 +123,7 @@ export default function Start() {
       {/* ── Nav ── */}
       <nav className="relative z-10 border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/"><img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" /></Link>
+          <Link to="/"><img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-11 w-auto" /></Link>
           <Link to="/" className="text-xs font-semibold text-white/50 hover:text-white transition-colors">← Back to home</Link>
         </div>
       </nav>

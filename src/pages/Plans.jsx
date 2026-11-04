@@ -146,7 +146,7 @@ export default function Plans() {
       {/* Nav */}
       <nav className="sticky top-0 z-20 border-b border-white/10 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/"><img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" /></Link>
+          <Link to="/"><img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-11 w-auto" /></Link>
           {phone && (
             <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium
                              bg-white/5 border border-white/15 text-emerald-300 px-3 py-1.5 rounded-full">

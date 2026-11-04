@@ -57,7 +57,8 @@ export function pocketlinkTarget(pathname, search, slug) {
 // show no store. (/assets/* -- the hashed JS and CSS -- is excluded from the
 // middleware entirely.) Nothing else is exempt: every other path is routed.
 export const PASS_THROUGH_FILES = new Set([
-  '/favicon.svg', '/icons.svg', '/pocketlink-logo.svg', '/pocketlink-wordmark.png',
+  '/favicon.svg', '/apple-touch-icon.png', '/icons.svg', '/pocketlink-logo.svg', '/pocketlink-logo-white.svg',
+  '/pocketlink-wordmark.png',
   '/pocketlink-wordmark.svg', '/og-image.jpg', '/version.json',
 ]);
 
