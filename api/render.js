@@ -21,8 +21,8 @@ export { PL_ORIGIN, normalizeHost };
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
   'sell', 'marketplace', 'explore', 'hub',
-  'demo', 'sitemap.xml', 'robots.txt', 'llms.txt', 'favicon.svg', 'og-image.jpg',
-  'icons.svg', 'pocketlink-logo.svg', 'assets', 'api', 'manage',
+  'demo', 'sitemap.xml', 'robots.txt', 'llms.txt', 'favicon.svg', 'apple-touch-icon.png', 'og-image.jpg',
+  'icons.svg', 'pocketlink-logo.svg', 'pocketlink-logo-white.svg', 'assets', 'api', 'manage',
 ]);
 
 // ── Which hosts this renderer serves ─────────────────────────────────────────

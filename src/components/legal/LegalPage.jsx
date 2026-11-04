@@ -34,7 +34,7 @@ export default function LegalPage({ kicker, title, lastUpdated, intro, summary, 
       <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-6 w-auto" />
+            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto" />
           </Link>
           <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-emerald-700 transition-colors">
             <ArrowLeft size={13} /> Back to home

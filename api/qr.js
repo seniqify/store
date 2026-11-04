@@ -139,7 +139,7 @@ async function draw(slug) {
       },
         h('div', { style: { display: 'flex', color: '#9ca3af', fontSize: '19px', fontWeight: 700, marginRight: '12px' } }, 'Powered by'),
         logoUri
-          ? h('img', { src: logoUri, width: 168, height: 34, style: { width: '168px', height: '34px' } })
+          ? h('img', { src: logoUri, width: 133, height: 34, style: { width: '133px', height: '34px' } })
           : h('div', { style: { display: 'flex', color: brandDark, fontSize: '24px', fontWeight: 700 } }, 'PocketLink'),
       ),
     );
