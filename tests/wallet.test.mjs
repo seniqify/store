@@ -274,8 +274,9 @@ test('prices and labels: Rs 1.50 shows as ₹1.50, messages are whole, nothing n
   assert.equal(messagesLeft(14999), 99);
   assert.equal(messagesLeft(-150), 0);
   assert.equal(messagesLeft('x'), 0);
-  assert.deepEqual(ledgerLabel({ kind: 'topup', amount_paise: 15000 }), { sign: '+', text: '100 messages added', tone: 'credit' });
-  assert.deepEqual(ledgerLabel({ kind: 'refund', amount_paise: 150 }), { sign: '+', text: '1 message refunded (not sent)', tone: 'credit' });
+  // The ledger now reads in Coins (1 Coin = 50 paise; tests/whatsapp-coins.test.mjs).
+  assert.deepEqual(ledgerLabel({ kind: 'topup', amount_paise: 15000 }), { sign: '+', coins: 300, text: 'Added', tone: 'credit' });
+  assert.deepEqual(ledgerLabel({ kind: 'refund', amount_paise: 150 }), { sign: '+', coins: 3, text: 'Given back · message not sent', tone: 'credit' });
   assert.equal(ledgerLabel({ kind: 'debit', amount_paise: -150, note: 'Cart reminder · Asha' }).text, 'Cart reminder · Asha');
 });
 

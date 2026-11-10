@@ -11,14 +11,38 @@
 /** Rs 1.50 per message (founder pricing, 2026-10-04). */
 export const MESSAGE_PRICE_PAISE = 150;
 
-/** The packs a shop can buy. Same as PACKS in supabase/functions/wallet-topup. */
+/** PocketLink Coins: how the wallet is shown. 1 Coin = 50 paise, so a shipping
+ *  update is 1 Coin and a Rs 1.50 message is 3 -- never a fraction. */
+export const COIN_PAISE = 50;
+
+/** The packs a shop can buy. Same as PACKS (and BONUS_PAISE) in
+ *  supabase/functions/wallet-topup. `messages` is the pack's id there. */
 export const WALLET_PACKS = Object.freeze([
-  Object.freeze({ messages: 100,  amountPaise: 15000 }),
-  Object.freeze({ messages: 500,  amountPaise: 75000 }),
-  Object.freeze({ messages: 1000, amountPaise: 150000 }),
+  Object.freeze({ messages: 100,  amountPaise: 15000,  bonusPaise: 0 }),
+  Object.freeze({ messages: 500,  amountPaise: 75000,  bonusPaise: 3750 }),
+  Object.freeze({ messages: 1000, amountPaise: 150000, bonusPaise: 15000 }),
 ]);
 
 const int = (v) => { const n = Math.trunc(Number(v)); return Number.isFinite(n) ? n : 0; };
+
+/** Whole Coins in a paise amount (rounded down; never negative). */
+export function coinsOf(paise) {
+  const p = int(paise);
+  return p > 0 ? Math.floor(p / COIN_PAISE) : 0;
+}
+
+/** 1 → "1 Coin", 1575 → "1,575 Coins". */
+export function formatCoins(n) {
+  const c = Math.max(0, int(n));
+  return `${c.toLocaleString('en-IN')} ${c === 1 ? 'Coin' : 'Coins'}`;
+}
+
+/** A pack as the shop sees it: { coins, bonus, total, price }. */
+export function packCoins(p) {
+  const coins = coinsOf(p?.amountPaise);
+  const bonus = coinsOf(p?.bonusPaise);
+  return { coins, bonus, total: coins + bonus, price: formatPaise(p?.amountPaise) };
+}
 
 /** Whole messages a balance pays for. Never negative. */
 export function messagesLeft(balancePaise, pricePaise = MESSAGE_PRICE_PAISE) {
@@ -35,16 +59,15 @@ export function formatPaise(paise) {
   return `₹${(p / 100).toLocaleString('en-IN', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
-/** One ledger row as the shop reads it. */
-export function ledgerLabel(row, pricePaise = MESSAGE_PRICE_PAISE) {
+/** One ledger row as the shop reads it, in Coins: { sign, coins, text, tone }. */
+export function ledgerLabel(row) {
   const amount = int(row?.amount_paise);
-  const n = Math.round(Math.abs(amount) / (int(pricePaise) || MESSAGE_PRICE_PAISE));
-  const msgs = `${n.toLocaleString('en-IN')} ${n === 1 ? 'message' : 'messages'}`;
+  const coins = coinsOf(Math.abs(amount));
   switch (row?.kind) {
-    case 'topup':  return { sign: '+', text: `${msgs} added`, tone: 'credit' };
-    case 'refund': return { sign: '+', text: `${msgs} refunded (not sent)`, tone: 'credit' };
-    case 'debit':  return { sign: '−', text: row?.note || `${msgs} sent`, tone: 'debit' };
-    case 'adjust': return { sign: amount >= 0 ? '+' : '−', text: row?.note || 'Adjustment by PocketLink', tone: amount >= 0 ? 'credit' : 'debit' };
-    default:       return { sign: '', text: row?.note || '', tone: 'debit' };
+    case 'topup':  return { sign: '+', coins, text: `Added${/₹\d/.test(row?.note || '') ? ` · ${row.note}` : ''}`, tone: 'credit' };
+    case 'refund': return { sign: '+', coins, text: 'Given back · message not sent', tone: 'credit' };
+    case 'debit':  return { sign: '−', coins, text: row?.note || 'Message sent', tone: 'debit' };
+    case 'adjust': return { sign: amount >= 0 ? '+' : '−', coins, text: row?.note || 'Adjustment by PocketLink', tone: amount >= 0 ? 'credit' : 'debit' };
+    default:       return { sign: '', coins, text: row?.note || '', tone: 'debit' };
   }
 }

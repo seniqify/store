@@ -418,7 +418,31 @@ serve(async (req: Request) => {
             if (!token) console.error('order-notify: no confirm_token for order', order.id);
           }
 
-          if (token && sendPaidTrack) {
+          // 500 free order messages a month per shop, then 1 Coin each
+          // (whatsapp-coins-forward.sql). A refusal -- no Coins left, already
+          // sent for this order, an old order -- skips ONLY this buyer message;
+          // the order and the seller's alert never depend on it. If the claim
+          // itself cannot run, the message goes as it always has (fail open).
+          let claimId = '';
+          let skipBuyer = false;
+          if (token && (sendPaidTrack || confirmSend)) {
+            const { data: claim, error: claimErr } = await supabase.rpc('order_message_claim', {
+              p_order_id: order.id, p_kind: sendPaidTrack ? 'paid' : 'confirm',
+            });
+            if (claimErr) console.error('order-notify: claim unavailable, sending anyway:', claimErr.message);
+            else if (claim?.ok) claimId = String(claim.id || '');
+            else { skipBuyer = true; console.error('order-notify: buyer message skipped', order.id, claim?.reason); }
+          }
+          const finishClaim = async (sent: boolean, error: string) => {
+            if (!claimId) return;
+            const { error: finErr } = await supabase.rpc('order_message_finish', { p_id: claimId, p_sent: sent, p_error: error || null });
+            if (finErr) console.error('order-notify: could not record the buyer message', claimId, finErr.message);
+          };
+
+          if (skipBuyer) {
+            // Nothing to send: see the claim above. The order is marked
+            // confirm_msg = 'skipped' so the shop can confirm it by hand.
+          } else if (token && sendPaidTrack) {
             // "order paid track": {{1}} buyer, {{2}} store, {{3}} amount paid,
             // {{4}} items, {{5}} = the "Track order" button's URL suffix →
             // https://www.pocketlink.store/{{5}} = /order/<token>, the read-only
@@ -431,7 +455,9 @@ serve(async (req: Request) => {
               '5': `order/${token}`,
             };
             const r = await fetch(paidTrackUrl, { method: 'POST', headers, body: JSON.stringify({ receiver: cust, values }) });
-            if (!r.ok) console.error(`order-notify paid-track ${r.status}: ${await r.text()}`);
+            const errText = r.ok ? '' : await r.text();
+            if (!r.ok) console.error(`order-notify paid-track ${r.status}: ${errText}`);
+            await finishClaim(r.ok, errText);
           } else if (token) {
             // "order confirm": {{1}} buyer, {{2}} store, {{3}} items, {{4}} total,
             // {{5}} = the button's URL suffix → https://www.pocketlink.store/{{5}}.
@@ -450,7 +476,9 @@ serve(async (req: Request) => {
             // confirms). Suffix only, like {{5}}.
             if (confirmTrackUrl) values['6'] = `order/${token}`;
             const r = await fetch(confirmSend, { method: 'POST', headers, body: JSON.stringify({ receiver: cust, values }) });
-            if (!r.ok) console.error(`order-notify confirm ${r.status}: ${await r.text()}`);
+            const errText = r.ok ? '' : await r.text();
+            if (!r.ok) console.error(`order-notify confirm ${r.status}: ${errText}`);
+            await finishClaim(r.ok, errText);
           } else if (customerUrl && cust) {
             const r = await fetch(customerUrl, { method: 'POST', headers, body: JSON.stringify({
               receiver: cust,

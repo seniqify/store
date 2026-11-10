@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Wallet, RefreshCw, Loader2 } from 'lucide-react';
+import { Wallet, RefreshCw, Loader2, Coins } from 'lucide-react';
 import { fetchWallet, confirmTopups, buyPack } from '../../utils/wallet';
-import { WALLET_PACKS, MESSAGE_PRICE_PAISE, messagesLeft, formatPaise, ledgerLabel } from '../../utils/walletPacks';
+import { WALLET_PACKS, coinsOf, formatCoins, packCoins, ledgerLabel } from '../../utils/walletPacks';
 
 /**
  * WalletCard — the shop's prepaid WhatsApp-message balance with PocketLink.
@@ -35,7 +35,7 @@ async function readWallet(slug, pin) {
   return { wallet: w, settled: false };
 }
 
-const SETTLED = { tone: 'ok', text: 'Your payment came through — the messages are in your wallet.' };
+const SETTLED = { tone: 'ok', text: 'Your payment came through — the Coins are in your wallet.' };
 
 /**
  * `compact`: a one-line strip (messages left + Top up) that opens into the full
@@ -71,8 +71,8 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
       const r = await buyPack({ slug, pin, messages, storeName, phone: waPhone, themeColor });
       if (r.paid) {
         setNotice(r.credited
-          ? { tone: 'ok', text: `${messages.toLocaleString('en-IN')} messages added.` }
-          : { tone: 'wait', text: 'Payment received — your messages will show in a minute. Tap refresh.' });
+          ? { tone: 'ok', text: `${formatCoins(packCoins(WALLET_PACKS.find((p) => p.messages === messages)).total)} added.` }
+          : { tone: 'wait', text: 'Payment received — your Coins will show in a minute. Tap refresh.' });
         setWallet(await fetchWallet(slug, pin));
       }
     } catch (e) {
@@ -91,8 +91,8 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
       <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3">
         <Wallet size={18} className="text-amber-500 flex-shrink-0" />
         <div className="min-w-0 flex-grow">
-          <p className="text-sm font-bold text-gray-900">Message wallet unavailable</p>
-          <p className="text-xs text-gray-500 mt-0.5">Your balance is safe — this screen couldn&rsquo;t reach it.</p>
+          <p className="text-sm font-bold text-gray-900">Coins couldn&rsquo;t load</p>
+          <p className="text-xs text-gray-500 mt-0.5">Your Coins are safe — this screen couldn&rsquo;t reach them.</p>
         </div>
         <button type="button" onClick={load}
           className="flex-shrink-0 text-xs font-bold px-3 py-2 rounded-xl text-white active:scale-[0.98] transition-transform"
@@ -103,26 +103,26 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
     );
   }
 
-  const price = Number(wallet.data.price_paise) || MESSAGE_PRICE_PAISE;
   const balance = Number(wallet.data.balance_paise) || 0;
-  const left = messagesLeft(balance, price);
+  const coins = coinsOf(balance);
   const recent = Array.isArray(wallet.data.recent) ? wallet.data.recent.slice(0, 5) : [];
+  const rate = (
+    <span className="inline-block text-[10.5px] font-extrabold text-white bg-teal-700 rounded-full px-2 py-0.5">1 Coin = ₹0.50</span>
+  );
 
   if (compact && !open) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
         <div className="flex items-center gap-2.5">
-          <Wallet size={18} className="text-gray-500 flex-shrink-0" />
+          <Coins size={18} className="text-amber-500 flex-shrink-0" />
           <div className="min-w-0 flex-grow">
-            <p className="text-[13px] font-extrabold text-gray-900 tabular-nums">
-              {left.toLocaleString('en-IN')} {left === 1 ? 'message' : 'messages'} left
-            </p>
-            <p className="text-[11.5px] text-gray-500">Wallet {formatPaise(balance)} · {formatPaise(price)} per message</p>
+            <p className="text-[13px] font-extrabold text-gray-900 tabular-nums">{formatCoins(coins)}</p>
+            <p className="text-[11.5px] text-gray-500">1 Coin = ₹0.50 · reminder or offer = 3 Coins</p>
           </div>
           <button type="button" onClick={() => setOpen(true)}
             className="h-9 px-3.5 rounded-xl border border-gray-200 bg-white text-[12.5px] font-bold text-gray-900
                        hover:bg-gray-50 active:scale-[0.98] transition-all flex-shrink-0">
-            Top up
+            Add Coins
           </button>
         </div>
         {notice && (
@@ -135,17 +135,17 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1.5">
-            <Wallet size={13} /> WhatsApp messages
-          </p>
-          <p className="mt-1 text-2xl font-extrabold text-gray-900 tabular-nums leading-tight">
-            {left.toLocaleString('en-IN')}
-            <span className="ml-1.5 text-sm font-semibold text-gray-500">{left === 1 ? 'message' : 'messages'} left</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Balance {formatPaise(balance)} · {formatPaise(price)} per message
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="w-12 h-12 rounded-xl bg-amber-100 grid place-items-center flex-shrink-0">
+            <Coins size={24} className="text-amber-600" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-2xl font-extrabold text-gray-900 tabular-nums leading-tight">
+              {coins.toLocaleString('en-IN')}
+              <span className="ml-1.5 text-sm font-semibold text-gray-500">{coins === 1 ? 'Coin' : 'Coins'}</span>
+            </p>
+            <div className="mt-1">{rate}</div>
+          </div>
         </div>
         <div className="flex items-center flex-shrink-0">
           <button type="button" onClick={load} aria-label="Refresh"
@@ -158,36 +158,41 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
           )}
         </div>
       </div>
+      <p className="text-xs text-gray-500 mt-2">Shipping update = 1 Coin · Cart reminder or offer = 3 Coins</p>
 
       {notice && (
         <p className={`mt-3 text-xs font-semibold px-3 py-2 rounded-xl border ${TONE[notice.tone] || TONE.wait}`}>{notice.text}</p>
       )}
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {WALLET_PACKS.map((p) => (
-          <button key={p.messages} type="button" disabled={buying > 0} onClick={() => buy(p.messages)}
-            className="rounded-xl border border-gray-200 bg-white px-2 py-2.5 text-center shadow-sm
-                       hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60">
-            <span className="block text-sm font-extrabold text-gray-900 tabular-nums">
-              {buying === p.messages
-                ? <Loader2 size={14} className="inline animate-spin" />
-                : p.messages.toLocaleString('en-IN')}
-            </span>
-            <span className="block text-[11px] text-gray-500">messages · {formatPaise(p.amountPaise)}</span>
-          </button>
-        ))}
+      <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-gray-400">Add Coins</p>
+      <div className="mt-1.5 grid grid-cols-3 gap-2">
+        {WALLET_PACKS.map((p) => {
+          const c = packCoins(p);
+          return (
+            <button key={p.messages} type="button" disabled={buying > 0} onClick={() => buy(p.messages)}
+              className="rounded-xl border border-gray-200 bg-white px-2 py-2.5 text-center shadow-sm
+                         hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60">
+              <span className="block text-sm font-extrabold text-gray-900 tabular-nums">
+                {buying === p.messages ? <Loader2 size={14} className="inline animate-spin" /> : c.total.toLocaleString('en-IN')}
+              </span>
+              <span className="block text-[11px] text-gray-500">Coins · {c.price}</span>
+              {c.bonus > 0 && <span className="block text-[10.5px] font-bold text-amber-700">incl. {c.bonus.toLocaleString('en-IN')} bonus</span>}
+            </button>
+          );
+        })}
       </div>
       <p className="text-[11px] text-gray-400 mt-2">
-        Paid to PocketLink. A message that can&rsquo;t be sent is refunded to this wallet.
+        Paid to PocketLink. Coins never expire, and a message that can&rsquo;t be sent gives its Coins back.
       </p>
 
       {recent.length > 0 && (
         <div className="mt-3 pt-2 border-t border-dashed border-gray-200 space-y-1">
           {recent.map((r, i) => {
-            const l = ledgerLabel(r, price);
+            const l = ledgerLabel(r);
             return (
-              <div key={`${r.created_at}-${i}`} className="flex items-center justify-between gap-2 text-xs">
-                <span className={`truncate ${l.tone === 'credit' ? 'text-emerald-700' : 'text-gray-600'}`}>{l.sign} {l.text}</span>
+              <div key={`${r.created_at}-${i}`} className="flex items-center gap-2 text-xs">
+                <span className={`w-12 flex-shrink-0 font-extrabold tabular-nums ${l.tone === 'credit' ? 'text-emerald-700' : 'text-gray-900'}`}>{l.sign}{l.coins.toLocaleString('en-IN')}</span>
+                <span className="truncate flex-1 text-gray-600">{l.text}</span>
                 <span className="text-gray-400 flex-shrink-0">{shortDate(r.created_at)}</span>
               </div>
             );

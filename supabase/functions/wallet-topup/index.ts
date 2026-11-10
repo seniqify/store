@@ -33,6 +33,10 @@ const PACKS: Record<number, number> = {
   1000: 150000,
 };
 
+// Bonus Coins on the bigger packs, in paise (1 Coin = 50 paise): 1,500 + 75
+// and 3,000 + 300. Credited with the payment by wallet_credit_topup.
+const BONUS_PAISE: Record<number, number> = { 100: 0, 500: 3750, 1000: 15000 };
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
@@ -84,6 +88,7 @@ serve(async (req: Request) => {
 
       const { error: insErr } = await supabase.from('wallet_topups').insert({
         store_slug: slug, razorpay_order_id: order.id, amount_paise: amount, messages,
+        bonus_paise: BONUS_PAISE[messages] ?? 0,
       });
       if (insErr) {
         console.error('wallet-topup: could not record the top-up', insErr.message);
