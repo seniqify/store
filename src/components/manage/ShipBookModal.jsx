@@ -4,6 +4,7 @@ import { X, Truck, ArrowLeft, Package, Bike, AlertTriangle } from 'lucide-react'
 import { bookShipment, getShippingRate } from '../../utils/shippingConnect';
 import { courierInfo } from '../../utils/deliveryStatus';
 import { autoPickCourier, courierOptions } from '../../utils/courierChoice';
+import { walletLow as readWalletLow, markWalletLow, isWalletRefusal, onWalletLowChange } from '../../utils/courierAlerts';
 
 /**
  * Two-step "Book courier" modal.
@@ -48,6 +49,8 @@ export default function ShipBookModal({
   const [rates, setRates] = useState({});     // courier → { loading } | shipping-rate's answer | { error }
   const [chosen, setChosen] = useState(null); // the shop's own pick: a courier key or 'rider'
   const [riderPhone, setRiderPhone] = useState(riders[0]?.phone || '');
+  const [lowWallet, setLowWallet] = useState(() => readWalletLow(slug));
+  useEffect(() => onWalletLowChange(() => setLowWallet(readWalletLow(slug))), [slug]);
 
   // Each connected courier: does it deliver to this pincode, and what will it
   // charge the merchant (their cost — the customer pays the store's flat fee)?
@@ -67,7 +70,7 @@ export default function ShipBookModal({
   }, [step, f.pin, f.weight, f.payment, slug, connectedKey]);
 
   // What each courier can do for this order, and which one to start on.
-  const options = courierOptions(connected, rates, f.payment, defaultCourier);
+  const options = courierOptions(connected, rates, f.payment, defaultCourier, lowWallet);
   const usable = options.filter((x) => x.usable);
   const autoPick = autoPickCourier(options);
   const anyLoading = options.some((x) => x.loading);
@@ -103,6 +106,7 @@ export default function ShipBookModal({
       }, pickOpt.key);
       onBooked?.({ ...r, courier: r.courier || pickOpt.key });
     } catch (e) {
+      if (isWalletRefusal(e.message)) markWalletLow(slug, pickOpt.key, e.message);
       setErr(e.message || 'Could not book. Please try again.');
       setBusy(false);
     }
@@ -110,6 +114,7 @@ export default function ShipBookModal({
 
   const priceText = (x) => (x.amount != null ? `${x.estimate ? '≈ ' : ''}₹${x.amount}` : '');
   const statusText = (x) => {
+    if (x.noWallet) return `${x.name} wallet is low · recharge first`;
     if (x.loading) return 'Checking…';
     if (x.off) return `Doesn't deliver to ${f.pin}`;
     if (x.noCod) return 'No cash on delivery here';

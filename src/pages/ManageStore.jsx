@@ -8,7 +8,7 @@
  *  3. After verified → tabs: Products | Categories | Settings
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft, showBrandBadge } from '../utils/planLimits';
@@ -18,7 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
-  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet,
+  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -53,6 +53,10 @@ import MetaConnect                                        from '../components/ma
 import ShippingConnect                                     from '../components/manage/ShippingConnect';
 import DomainConnect                                       from '../components/manage/DomainConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
+import CodMoney                                             from '../components/manage/CodMoney';
+import ShipUpdates                                          from '../components/manage/ShipUpdates';
+import { rtoSettings }                                      from '../utils/rtoRisk';
+import { walletLow, clearWalletLow, onWalletLowChange }    from '../utils/courierAlerts';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 import NewOrderToast                                       from '../components/manage/NewOrderToast';
 import { useNewOrders }                                    from '../hooks/useNewOrders';
@@ -1804,33 +1808,93 @@ function HoursEditor({ value, onChange, themeColor }) {
 }
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
-// ── Delivery tab shell — an operational Shipments board (the daily job: track
-// every courier's parcels, act on what's stuck) + the fulfilment Settings below,
-// toggled by a segmented control. Board is the default. ──────────────────────
+// The store as the order cards need it (Orders tab and Delivery → Ship).
+function orderStoreOf(config, slug) {
+  return {
+    slug, businessName: config.businessName, logo: config.logo,
+    logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
+    whatsappNumber: config.whatsappNumber, theme: config.theme,
+    shipping: config.shipping, products: config.products, cart: config.cart,
+    payments: config.payments,
+  };
+}
+
+// A courier refused a booking for an empty wallet (courierAlerts.js): say so on
+// Ship and Track until the shop says it recharged. Book courier skips it meanwhile.
+function CourierWalletBanner({ slug }) {
+  const [low, setLow] = useState(() => walletLow(slug));
+  useEffect(() => onWalletLowChange(() => setLow(walletLow(slug))), [slug]);
+  const couriers = Object.keys(low);
+  if (!couriers.length) return null;
+  return couriers.map((c) => {
+    const name = c === 'shadowfax' ? 'Shadowfax' : 'Delhivery';
+    const panel = c === 'shadowfax' ? 'https://shadowfax360.in/login' : 'https://one.delhivery.com/';
+    return (
+      <div key={c} className="rounded-2xl border border-amber-300 bg-amber-50 p-3.5 mb-4 space-y-2.5" role="alert">
+        <div className="flex gap-2 items-start">
+          <AlertTriangle size={17} className="text-amber-700 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[13.5px] font-extrabold text-amber-900">{name} wallet is low</p>
+            <p className="text-[12px] text-amber-900 leading-snug mt-0.5">
+              Your last {name} booking failed{low[c]?.message ? `: “${low[c].message.slice(0, 90)}”` : ''}. Book courier uses your other courier until you recharge.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <a href={panel} target="_blank" rel="noopener noreferrer"
+             className="flex-1 h-11 rounded-xl bg-amber-700 text-white text-[13px] font-bold inline-flex items-center justify-center">
+            Recharge {name} ↗
+          </a>
+          <button type="button" onClick={() => clearWalletLow(slug, c)}
+                  className="flex-1 h-11 rounded-xl border border-amber-300 bg-white text-amber-900 text-[13px] font-bold">
+            I’ve recharged
+          </button>
+        </div>
+      </div>
+    );
+  });
+}
+
+// ── Delivery tab: Ship (what to send) · Track (every parcel) · COD money (what
+// couriers owe) · WhatsApp (automatic buyer updates) · Settings (couriers,
+// charges, delivery boys, RTO protection). Ship is the default. ──────────────
+const DELIVERY_VIEWS = [
+  ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD money'], ['wa', 'WhatsApp'], ['settings', 'Settings'],
+];
 function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError }) {
-  const [view, setView] = useState('board');
-  const seg = (k, label) => (
-    <button type="button" onClick={() => setView(k)}
-      className={['flex-1 text-sm font-bold py-2 rounded-lg transition active:scale-[0.98]',
-        view === k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'].join(' ')}>
-      {label}
-    </button>
-  );
+  const [view, setView] = useState('ship');
+  const rtoRaw = config.delivery?.rto;
+  const rto = useMemo(() => rtoSettings({ delivery: { rto: rtoRaw } }), [rtoRaw]);
+  const orderStore = useMemo(() => orderStoreOf(config, slug), [config, slug]);
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4 max-w-xs">
-        {seg('board', '🛵 Shipments')}
-        {seg('settings', '⚙ Settings')}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Delivery">
+        {DELIVERY_VIEWS.map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
+            className={['flex-1 flex-shrink-0 whitespace-nowrap px-3 text-sm font-bold h-10 rounded-lg transition active:scale-[0.98]',
+              view === k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'].join(' ')}>
+            {label}
+          </button>
+        ))}
       </div>
-      {view === 'board'
-        ? <DeliveryBoard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />
-        : <ManageDelivery config={config} onChange={onChange} onSave={onSave} saveStatus={saveStatus} saveError={saveError} />}
+      {(view === 'ship' || view === 'track') && <CourierWalletBanner slug={slug} />}
+      {view === 'ship' && (
+        <OrdersTab slug={slug} pin={pin} themeColor={themeColor} storeName={config.businessName} mode="ship"
+                   riders={config.delivery?.riders || []} payInfo={{ upi: config.upi || '', bank: config.bank || null }}
+                   store={orderStore} rto={rto} />
+      )}
+      {view === 'track' && <DeliveryBoard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />}
+      {view === 'money' && <CodMoney slug={slug} pin={pin} themeColor={themeColor} />}
+      {view === 'wa' && <ShipUpdates slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />}
+      {view === 'settings' && (
+        <ManageDelivery config={config} pin={pin} onChange={onChange} onSave={onSave} saveStatus={saveStatus} saveError={saveError} />
+      )}
     </div>
   );
 }
 
 // ── Delivery tab — fulfilment, charges, areas, and the dispatch rider ─────────
-function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
+function ManageDelivery({ config, pin, onChange, onSave, saveStatus, saveError }) {
   const themeColor = config.theme?.primary || '#0d9488';
   const [dirty, setDirty] = useState(false);
 
@@ -1844,9 +1908,33 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
   }
   const lCls = () => 'block text-xs font-semibold text-gray-700 mb-1.5';
   const dlv  = config.delivery || {};
+  const rto  = rtoSettings(config);
+  const setRto = (patch) => update({ delivery: { ...dlv, rto: { ...rto, ...patch } } });
+  const rtoSwitch = (key, title, desc) => {
+    const on = Boolean(rto[key]) && (key === 'on' || rto.on);
+    const off = key !== 'on' && !rto.on;
+    return (
+      <div key={key} className="flex items-start gap-3 py-2.5 border-t border-gray-50 first:border-t-0">
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-bold ${off ? 'text-gray-400' : 'text-gray-800'}`}>{title}</p>
+          <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{desc}</p>
+        </div>
+        <button type="button" role="switch" aria-checked={on} aria-label={title} disabled={off}
+          onClick={() => setRto({ [key]: !rto[key] })}
+          className={['relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full p-0 transition-colors mt-0.5 disabled:opacity-50', on ? '' : 'bg-gray-200'].join(' ')}
+          style={on ? { backgroundColor: themeColor } : undefined}>
+          <span aria-hidden="true"
+            className={['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform', on ? 'translate-x-6' : 'translate-x-1'].join(' ')} />
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-5">
+
+      {/* Couriers — moved here from Settings: connect, default, disconnect */}
+      <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
       {/* How orders reach customers */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
@@ -2005,6 +2093,33 @@ function ManageDelivery({ config, onChange, onSave, saveStatus, saveError }) {
           </button>
         )}
       </div>
+
+      {/* RTO protection — risky cash-on-delivery orders are flagged on Ship */}
+      {(dlv.mode || 'delivery') !== 'pickup' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
+          <div>
+            <h3 className="text-sm font-extrabold text-gray-900">🛡 RTO protection</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Flags cash-on-delivery orders likely to be refused at the door, before you ship them.</p>
+          </div>
+          <div>
+            {rtoSwitch('on', 'Check cash-on-delivery orders', 'A red “High return risk” card on the order, with the reasons')}
+            {rtoSwitch('firstBig', 'First-time customer, big order', 'First order from this number and above ₹1,000')}
+            {rtoSwitch('address', 'Incomplete address', 'No house or flat number in the address')}
+            {rtoSwitch('refused', 'Refused before', 'This number refused or returned an order at your shop')}
+            {rtoSwitch('hold', 'Ask before booking', 'Book courier asks once more for a risky order the customer has not confirmed')}
+          </div>
+          <div className={rto.on ? '' : 'opacity-50'}>
+            <label className={lCls()}>Discount to pay online instead (₹)</label>
+            <input type="number" inputMode="numeric" min={0} max={500} placeholder="20" disabled={!rto.on}
+                   value={rto.discount ?? ''}
+                   onChange={e => setRto({ discount: Math.min(500, Math.max(0, Math.round(Number(e.target.value) || 0))) })}
+                   className={iCls(false)} />
+            <p className="mt-1 text-[11px] text-gray-400">
+              A risky order gets an <b>Offer ₹{rto.discount || 0} off to pay online</b> button: it lowers the total and sends a payment link. Needs online payments connected. 0 hides the button.
+            </p>
+          </div>
+        </div>
+      )}
 
       <SaveBar status={saveStatus} error={saveError} onSave={handleSave} dirty={dirty} themeColor={themeColor} />
     </div>
@@ -2339,8 +2454,10 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
           {/* Online payments — connect the store's own Razorpay */}
           <PaymentsConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
 
-          {/* Shipping — connect the store's own Delhivery */}
-          <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
+          {/* Couriers moved to Delivery → Settings (2026-11 Delivery redesign) */}
+          <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2.5">
+            🚚 <b>Couriers</b> (Delhivery, Shadowfax) are now in <b>Delivery → Settings</b>.
+          </p>
 
           {/* Own domain — shown only when the server allows this store */}
           <DomainConnect slug={config.slug} pin={pin} themeColor={themeColor} domainState={domainState}
@@ -3222,11 +3339,7 @@ export default function ManageStore() {
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                        mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []}
                        payInfo={{ upi: config.upi || '', bank: config.bank || null }}
-                       store={{ slug: businessSlug, businessName: config.businessName, logo: config.logo,
-                                logoEmoji: config.logoEmoji, address: config.address, gst: config.gst,
-                                whatsappNumber: config.whatsappNumber, theme: config.theme,
-                                shipping: config.shipping, products: config.products, cart: config.cart,
-                                payments: config.payments }} />
+                       store={orderStoreOf(config, businessSlug)} rto={rtoSettings(config)} />
           </div>
         ) : tab === 'payments' ? (
           <div className="animate-pl-fade-up">

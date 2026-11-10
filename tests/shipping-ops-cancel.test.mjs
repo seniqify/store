@@ -611,8 +611,9 @@ test('the courier message shown to the merchant is bounded and plain', () => {
 test('source: the direct orders.awb = null writes are gone', () => {
   assert.equal(/update\(\{\s*awb:\s*null/.test(OPS), false);
   // the only remaining writes in shipping-ops are the two tracking status saves
+  // and the reattempt mark (Delivery tools: the buyer's missed-delivery answer was sent)
   const updates = [...OPS_CODE.matchAll(/\.update\(([^)]*)\)/g)].map((m) => m[1].trim());
-  assert.deepEqual(updates, ['{ shipment_status: st }', '{ shipment_status: st }']);
+  assert.deepEqual(updates, ['{ shipment_status: st }', '{ shipment_status: st }', '{ delivery_choice_sent_at: new Date(']);
 });
 
 test('source: cancel_current_shipment is the only RPC a cancellation calls', () => {

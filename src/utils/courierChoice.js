@@ -7,10 +7,13 @@ import { courierInfo } from './deliveryStatus.js';
  * A courier is usable when it delivers to the pincode and, for COD, takes cash.
  * A rate lookup that failed leaves the courier usable: the booking itself checks.
  */
-export function courierOptions(connected, rates, payment, defaultCourier) {
+export function courierOptions(connected, rates, payment, defaultCourier, walletLow = {}) {
   return connected.map((c) => {
     const r = rates[c] || { loading: true };
-    const off = !r.loading && r.serviceable === false;
+    // An empty courier wallet refuses every booking: never pick it until the
+    // shop says it recharged (courierAlerts.js).
+    const noWallet = Boolean(walletLow?.[c]);
+    const off = !noWallet && !r.loading && r.serviceable === false;
     const noCod = payment === 'COD' && r.cod === false && !off;
     const info = courierInfo(c);
     return {
@@ -19,7 +22,8 @@ export function courierOptions(connected, rates, payment, defaultCourier) {
       chip: info.chip,
       isDefault: c === defaultCourier,
       loading: Boolean(r.loading),
-      usable: !r.loading && !off && !noCod,
+      usable: !noWallet && !r.loading && !off && !noCod,
+      noWallet,
       off,
       noCod,
       amount: r.amount != null && Number.isFinite(Number(r.amount)) ? Number(r.amount) : null,
