@@ -5,7 +5,7 @@ import { fetchOfferSummary } from '../../utils/cartReminderService';
 import {
   OFFER_FIELDS, OFFER_LANGS, OFFER_BUTTONS, offerLanguage, placeholdersIn, fieldError, requestError, fillOffer,
 } from '../../utils/offerText';
-import { formatPaise } from '../../utils/walletPacks';
+import { formatCoins, coinsOf } from '../../utils/walletPacks';
 import { formatINR } from '../../utils/currency';
 
 /**
@@ -212,7 +212,7 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
               <div className="rounded-xl border border-gray-200 px-3 py-2.5 space-y-2">
                 <p className="text-xs text-gray-700">
                   <b>{check.eligible}</b> of {phones.length} {who} can receive it
-                  {check.eligible > 0 && <> · <b>{formatPaise(check.cost_paise)}</b> from your wallet ({formatPaise(check.balance_paise)} left)</>}.
+                  {check.eligible > 0 && <> · <b>{formatCoins(coinsOf(check.cost_paise))}</b> (3 Coins each; you have {formatCoins(coinsOf(check.balance_paise))})</>}.
                 </p>
                 {(check.opted_out > 0 || check.recent > 0) && (
                   <p className="text-[11.5px] text-gray-500">
@@ -221,7 +221,7 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
                   </p>
                 )}
                 {check.eligible > 0 && Number(check.balance_paise) < Number(check.cost_paise) && (
-                  <p className="text-[11.5px] text-amber-700">Your wallet covers {Math.floor(Number(check.balance_paise) / Number(check.price_paise))} — top it up to reach everyone.</p>
+                  <p className="text-[11.5px] text-amber-700">Your Coins cover {Math.floor(Number(check.balance_paise) / Number(check.price_paise))}. Add Coins to reach everyone.</p>
                 )}
                 {busy === 'sending' && progress && (
                   <p className="text-[11.5px] text-gray-500">Sending… {progress.done} of {progress.total}</p>
@@ -250,7 +250,7 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
         {sent > 0 && (
           <p className="text-[11.5px] text-gray-500">
             Last 30 days: <b>{sent}</b> sent · <b>{Number(results.clicked_30d) || 0}</b> opened · <b>{Number(results.ordered_30d) || 0}</b> ordered
-            {Number(results.ordered_value_30d) > 0 && <> · spent {formatPaise(results.spent_paise_30d)} → <b className="text-emerald-700">{formatINR(Number(results.ordered_value_30d))}</b></>}
+            {Number(results.ordered_value_30d) > 0 && <> · used {formatCoins(coinsOf(results.spent_paise_30d))} → <b className="text-emerald-700">{formatINR(Number(results.ordered_value_30d))}</b></>}
           </p>
         )}
 

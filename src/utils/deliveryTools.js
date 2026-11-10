@@ -17,6 +17,8 @@ export const getShipUpdates = (slug, pin) => shopRpc('get_ship_updates', slug, p
 export const setShipUpdates = (slug, pin, enabled, events) =>
   shopRpc('set_ship_updates', slug, pin, { p_enabled: enabled, p_events: events });
 export const getCodRemittance = (slug, pin) => shopRpc('get_cod_remittance', slug, pin);
+/** This month's order messages: { free_limit, free_used, paid, skipped, balance_paise } (whatsapp-coins-forward.sql). */
+export const getOrderMessageUsage = (slug, pin) => shopRpc('get_order_message_usage', slug, pin);
 export const markCodRemitted = (slug, pin, orderIds, received = true) =>
   shopRpc('mark_cod_remitted', slug, pin, { p_order_ids: orderIds, p_received: received });
 

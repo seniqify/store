@@ -3,7 +3,7 @@ import { MessageCircle, Send, Loader2, X, Check } from 'lucide-react';
 import {
   fetchCartReminderSummary, setCartReminders, fetchReminderPreview, sendRemindersNow,
 } from '../../utils/cartReminderService';
-import { formatPaise } from '../../utils/walletPacks';
+import { formatCoins, coinsOf } from '../../utils/walletPacks';
 import { formatINR } from '../../utils/currency';
 
 /**
@@ -58,8 +58,8 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
             <p className="text-xs text-gray-600">customers get it</p>
           </div>
           <div className="rounded-2xl bg-gray-50 p-3">
-            <p className="text-2xl font-extrabold text-gray-900 tabular-nums">{formatPaise(cost)}</p>
-            <p className="text-xs text-gray-600">{short ? `wallet covers ${affordable}` : `from wallet · ${formatPaise(balance - cost)} left after`}</p>
+            <p className="text-2xl font-extrabold text-gray-900 tabular-nums">{formatCoins(coinsOf(cost))}</p>
+            <p className="text-xs text-gray-600">{short ? `your Coins cover ${affordable}` : `${formatCoins(coinsOf(balance - cost))} left after`}</p>
           </div>
         </div>
 
@@ -95,7 +95,7 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
           {sending ? <Loader2 size={17} className="animate-spin" /> : <Send size={16} />}
           {sending
             ? `Sending… ${progress?.sent || 0} sent`
-            : `Send to ${Math.min(Number(preview.eligible) || 0, affordable)} customers · ${formatPaise(Math.min(cost, affordable * (Number(preview.price_paise) || 150)))}`}
+            : `Send to ${Math.min(Number(preview.eligible) || 0, affordable)} customers · ${formatCoins(coinsOf(Math.min(cost, affordable * (Number(preview.price_paise) || 150))))}`}
         </button>
         <button type="button" onClick={onClose} disabled={sending}
           className="w-full text-[13px] font-bold text-gray-500 py-1.5 disabled:opacity-40">Cancel</button>
@@ -186,7 +186,7 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
           {!preview ? 'Checking who can get one…'
             : night ? 'Reminders can be sent 9 am – 9 pm.'
             : eligible === 0 ? 'Everyone here has been reminded this week, or has ordered.'
-            : <><b>{eligible}</b> not reminded yet · <b>{formatPaise(preview.cost_paise)}</b> from your wallet</>}
+            : <><b>{eligible}</b> not reminded yet · <b>{formatCoins(coinsOf(preview.cost_paise))}</b> (3 Coins each)</>}
         </p>
 
         {notice && (
@@ -223,7 +223,7 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
           </div>
         </div>
         <p className="-mt-1 text-[11px] text-gray-500">
-          Last 30 days{spent > 0 ? <> · spent <b>{formatPaise(spent)}</b> on reminders → <b className="text-emerald-700">{formatINR(won)}</b> in orders</> : ''}
+          Last 30 days{spent > 0 ? <> · used <b>{formatCoins(coinsOf(spent))}</b> on reminders → <b className="text-emerald-700">{formatINR(won)}</b> in orders</> : ''}
           {Number(s.via_link_30d) > 0 ? ` · ${s.via_link_30d} through the reminder link` : ''}
         </p>
 

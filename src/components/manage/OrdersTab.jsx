@@ -1089,6 +1089,12 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     }
   }
   const holdBooking = highRisk && rto.hold && !o.customer_confirmed_at;
+  // The automatic WhatsApp confirmation did not go out (no Coins left, or the
+  // send failed): the shop can send the same confirm link from its own number.
+  const confirmMissed = stage === 'to_ship' && !o.customer_confirmed_at && (o.confirm_msg === 'skipped' || o.confirm_msg === 'failed');
+  const confirmSelfHref = confirmMissed && phone && o.confirm_token
+    ? `https://wa.me/91${phone}?text=${encodeURIComponent(`Hi ${firstName}, thank you for your order from ${storeName || 'our shop'} (${totalStr}). Please tap to confirm it: ${typeof window !== 'undefined' ? window.location.origin : 'https://www.pocketlink.store'}/confirm/${o.confirm_token}`)}`
+    : null;
   const openBook = () => {
     if (holdBooking && !window.confirm(`This cash-on-delivery order is high risk and ${firstName} has not confirmed it yet. Book it anyway?`)) return;
     ship.setModal(true);
@@ -1265,6 +1271,19 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
           {holdBooking && <p className="text-[11.5px] text-rose-700">Hold is on: Book courier asks before shipping it.</p>}
         </div>
       ) : callFirst && alert('amber', 'Not confirmed on WhatsApp yet. Unconfirmed cash-on-delivery orders are often refused at the door — call before you ship.')}
+      {confirmSelfHref && (
+        <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2" role="note">
+          <p className="text-[12.5px] text-amber-900 leading-snug">
+            {o.confirm_msg === 'skipped'
+              ? 'No WhatsApp confirmation went out: this month’s free ones are used and your Coins ran out.'
+              : 'The WhatsApp confirmation did not go through.'} Send it from your own WhatsApp:
+          </p>
+          <a href={confirmSelfHref} target="_blank" rel="noopener noreferrer"
+             className="w-full h-11 rounded-lg bg-white border border-amber-300 text-[13px] font-bold text-amber-900 inline-flex items-center justify-center gap-1.5">
+            <MessageCircle size={14} /> Send confirmation yourself
+          </a>
+        </div>
+      )}
 
       {stage === 'not_paid' && alert('red', `${firstName === 'the customer' ? 'The customer' : firstName} chose Pay Online but left before paying, so this is not a sale yet. Send a payment link — it turns Paid by itself when they pay.`)}
 

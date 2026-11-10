@@ -18,7 +18,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
-  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle,
+  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -54,7 +54,7 @@ import ShippingConnect                                     from '../components/m
 import DomainConnect                                       from '../components/manage/DomainConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import CodMoney                                             from '../components/manage/CodMoney';
-import ShipUpdates                                          from '../components/manage/ShipUpdates';
+import WhatsAppTab                                          from '../components/manage/WhatsAppTab';
 import { rtoSettings }                                      from '../utils/rtoRisk';
 import { walletLow, clearWalletLow, onWalletLowChange }    from '../utils/courierAlerts';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
@@ -1856,10 +1856,10 @@ function CourierWalletBanner({ slug }) {
 }
 
 // ── Delivery tab: Ship (what to send) · Track (every parcel) · COD money (what
-// couriers owe) · WhatsApp (automatic buyer updates) · Settings (couriers,
-// charges, delivery boys, RTO protection). Ship is the default. ──────────────
+// couriers owe) · Settings (couriers, charges, delivery boys, RTO protection).
+// Ship is the default. WhatsApp shipping updates live in the WhatsApp tab. ───
 const DELIVERY_VIEWS = [
-  ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD'], ['wa', 'WhatsApp'], ['settings', 'Settings'],
+  ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD'], ['settings', 'Settings'],
 ];
 function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError }) {
   const [view, setView] = useState('ship');
@@ -1885,7 +1885,6 @@ function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSav
       )}
       {view === 'track' && <DeliveryBoard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />}
       {view === 'money' && <CodMoney slug={slug} pin={pin} themeColor={themeColor} />}
-      {view === 'wa' && <ShipUpdates slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />}
       {view === 'settings' && (
         <ManageDelivery config={config} pin={pin} onChange={onChange} onSave={onSave} saveStatus={saveStatus} saveError={saveError} />
       )}
@@ -2901,7 +2900,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 // Groups only render the tabs that exist for this store (service/restaurant vary).
 const NAV_GROUPS = [
   { title: 'Run',        keys: ['home', 'orders', 'payments', 'products', 'delivery'] },
-  { title: 'Grow',       keys: ['customers', 'reviews', 'offers', 'ads', 'abandoned'] },
+  { title: 'Grow',       keys: ['whatsapp', 'customers', 'reviews', 'offers', 'ads', 'abandoned'] },
   { title: 'Understand', keys: ['analytics', 'insights', 'assistant'] },
   { title: 'Set up',     keys: ['settings'] },
 ];
@@ -3117,6 +3116,7 @@ export default function ManageStore() {
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
     ...(isService ? [] : [{ key: 'payments', label: 'Payments', icon: Wallet }]),
     ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned', icon: ShoppingCart }]),
+    ...(isService ? [] : [{ key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }]),
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
     { key: 'insights',   label: 'AI Insights', icon: Sparkles  },
@@ -3358,6 +3358,12 @@ export default function ManageStore() {
             <AbandonedTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                           allowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)}
                           waPhone={config.whatsappNumber} />
+          </div>
+        ) : tab === 'whatsapp' ? (
+          <div className="animate-pl-fade-up">
+            <WhatsAppTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
+                         waPhone={config.whatsappNumber} onGoTab={setTab}
+                         cartAllowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">

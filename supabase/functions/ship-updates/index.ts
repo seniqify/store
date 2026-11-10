@@ -60,6 +60,10 @@ serve(async (req: Request) => {
     return json({ error: 'unauthorized' }, 401);
   }
 
+  // Order messages (send-otp) whose answer never came back: refund their Coins.
+  const { error: omErr } = await supabase.rpc('order_messages_expire_stuck');
+  if (omErr) console.error('ship-updates: order_messages_expire_stuck failed', omErr.message);
+
   const templates: Record<string, string> = {};
   for (const [event, env] of Object.entries(TEMPLATE_ENV)) {
     const url = Deno.env.get(env) ?? '';
