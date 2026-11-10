@@ -36,7 +36,10 @@
  * that switches it over, not in this one.
  */
 export const PLAN_BY_ID = Object.freeze({
-  // Current plan -- INR 1,099/mo, INR 9,999/yr (created 2026-09-01).
+  // Current plan -- INR 1,499/mo, INR 14,999/yr (created 2026-11-10).
+  plan_TyU4ENXi9KxW9n: { plan: 'premium', period: 'monthly' },
+  plan_TyU4sh6IHQeujG: { plan: 'premium', period: 'yearly' },
+  // INR 1,099/mo, INR 9,999/yr (2026-09-01 to 2026-11-10).
   plan_TX4Yj0ktnJ9Ic3: { plan: 'premium', period: 'monthly' },
   plan_TX4a4orxglrlrC: { plan: 'premium', period: 'yearly' },
   // Retired but permanent: existing mandates keep renewing on these ids, so
