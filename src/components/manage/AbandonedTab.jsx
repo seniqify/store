@@ -6,6 +6,7 @@ import { fetchReminderStatuses, sendRemindersNow } from '../../utils/cartReminde
 import { statusMap, reminderFor, cartReminderState, reminderCounts } from '../../utils/reminderStatus';
 import { formatINR } from '../../utils/currency';
 import WalletCard from './WalletCard';
+import { PRICE } from '../../utils/planLimits';
 import RecoveryCard from './RecoveryCard';
 
 /**
@@ -154,7 +155,7 @@ export default function AbandonedTab({ slug, pin, themeColor = '#0d9488', storeN
              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white
                         transition-all hover:opacity-90 active:scale-[0.98] shadow-sm"
              style={{ backgroundColor: themeColor }}>
-            Activate your plan — ₹1,099/mo →
+            Activate your plan — ₹{PRICE.monthly.toLocaleString('en-IN')}/mo →
           </a>
         </div>
       </div>

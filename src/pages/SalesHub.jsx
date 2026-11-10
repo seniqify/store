@@ -8,6 +8,7 @@ import {
   listLeads, addLead, updateLead, fetchStoresLite, fetchRecentOrders,
   fetchViewsSince, todayIST, istDaysAgo,
 } from '../utils/hubService';
+import { PRICE } from '../utils/planLimits';
 
 /**
  * Sales Hub — internal CRM for the PocketLink team (founder + sales execs).
@@ -279,7 +280,7 @@ function LeadForm({ me, team, initial, onSaved, onCancel }) {
               <select value={form.plan} onChange={(e) => set('plan', e.target.value)} className={inputCls}>
                 <option value="">Select…</option>
                 <option value="free">Free</option>
-                <option value="premium">PocketLink ₹1,099</option>
+                <option value="premium">PocketLink ₹{PRICE.monthly.toLocaleString('en-IN')}</option>
               </select>
             </div>
             <div>
@@ -919,7 +920,7 @@ export default function SalesHub() {
                 ) : (
                   <div className="space-y-2.5">
                     {list.map((s) => {
-                      const waRenew = `Hi! Your PocketLink ${PLAN_NAME[s.plan] || s.plan} plan for ${s.name || s.slug} ${new Date(s.exp) < new Date() ? 'has expired' : `expires on ${new Date(s.exp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}. Renew at ₹1,099/mo (or ₹9,999/year) and keep everything running: https://www.pocketlink.store/plans 😊`;
+                      const waRenew = `Hi! Your PocketLink ${PLAN_NAME[s.plan] || s.plan} plan for ${s.name || s.slug} ${new Date(s.exp) < new Date() ? 'has expired' : `expires on ${new Date(s.exp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}. Renew at ₹${PRICE.monthly.toLocaleString('en-IN')}/mo (or ₹${PRICE.yearly.toLocaleString('en-IN')}/year) and keep everything running: https://www.pocketlink.store/plans 😊`;
                       return (
                         <div key={s.slug} className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
                           <div className="flex items-start justify-between gap-2">

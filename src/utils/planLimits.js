@@ -1,5 +1,5 @@
 // ── ONE PLAN (2026-09) ────────────────────────────────────────────────────────
-// PocketLink is a SINGLE subscription — ₹1,099/mo or ₹9,999/yr — that includes
+// PocketLink is a SINGLE subscription — ₹1,499/mo or ₹14,999/yr — that includes
 // every feature. There are no tiers, no upsells and no feature gates to explain:
 // if a store is paid, it gets everything. That keeps the pitch to one sentence.
 //
@@ -45,7 +45,8 @@ const EVERYTHING = {
 // pricing page, checkout and landing can never drift apart. NOTE: the amount
 // actually DEBITED comes from the Razorpay plan_id in
 // supabase/functions/create-razorpay-subscription — these must match it.
-export const PRICE = { monthly: 1099, yearly: 9999, currency: '₹' };
+// 2026-11: ₹1,499/mo · ₹14,999/yr, GST-inclusive (was ₹1,099 / ₹9,999).
+export const PRICE = { monthly: 1499, yearly: 14999, currency: '₹' };
 
 export const PLANS = {
   // Lapsed / grandfathered free stores.

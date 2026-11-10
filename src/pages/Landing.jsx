@@ -10,6 +10,8 @@ import {
 import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
 import { getStoreStatus } from '../utils/storeHours';
+import { PRICE } from '../utils/planLimits';
+import { CARD_FEATURES, PRICING_FAQS, FREE_ORDER_MESSAGES } from '../utils/pricingCopy';
 
 /**
  * Landing — platform homepage at /
@@ -24,8 +26,8 @@ const WA = '#25D366';        // WhatsApp green — primary CTA
 const VALUE_PROPS = [
   { Icon: Megaphone,    title: 'Ads without an agency',  desc: 'Tell us your goal — we build the Facebook & Instagram campaign, write it, target it and measure it. Nothing spends until you approve.' },
   { Icon: TrendingUp,   title: 'Real profit, not vanity', desc: 'We subtract product cost, packaging, actual courier charges and ad spend — then show which products quietly lose you money.' },
-  { Icon: Truck,        title: 'Shipping built in',       desc: 'Delhivery and Shadowfax connected. Book a courier in one tap, track it live, handle NDR and COD collection.' },
-  { Icon: ShoppingCart, title: 'Recover lost carts',      desc: 'See who nearly ordered and nudge them on WhatsApp in one tap. Plus stock tracking, coupons and an offers engine.' },
+  { Icon: Truck,        title: 'Shipping built in',       desc: 'Delhivery and Shadowfax connected. Pick the courier for each order, track it live, flag risky COD orders and see what couriers still owe you.' },
+  { Icon: ShoppingCart, title: 'WhatsApp on autopilot',   desc: `Order confirmations (${FREE_ORDER_MESSAGES} free every month), shipping updates and cart reminders go out for you. Extras are paid in Coins, 1 Coin = ₹0.50.` },
   { Icon: Wallet,       title: '0% commission',           desc: 'Keep every rupee. Payments land in your own account — we never take a cut, unlike marketplaces and food apps.' },
   { Icon: Zap,          title: 'Live in minutes',         desc: 'No designers, no developers, no waiting. Publish today and share the link instantly.' },
 ];
@@ -58,16 +60,11 @@ const STATS = [
 const PRICING_PLANS = [
   {
     name: 'PocketLink', icon: '👑', tagline: 'Everything included — one simple plan', accent: '#34d399',
-    price: 1099, originalPrice: null, priceNote: 'incl. GST · billed monthly · or ₹9,999/year · cancel anytime',
+    price: PRICE.monthly.toLocaleString('en-IN'), originalPrice: null,
+    priceNote: `incl. GST · billed monthly · or ₹${PRICE.yearly.toLocaleString('en-IN')}/year · cancel anytime`,
     popular: true, to: '/plans', cta: 'Get started',
-    features: [
-      'Unlimited products & categories',
-      'Online payments, UPI, COD + pan-India shipping',
-      'Facebook & Instagram ads — built & measured',
-      'Real profit tracking + AI business insights',
-      'Verified badge, variants, coupons & offers',
-    ],
-    caveat: 'One plan. No tiers, no upsells — every feature included.',
+    features: CARD_FEATURES,
+    caveat: null,   // the card's caveat line renders struck through, as a 'not included'
   },
 ];
 
@@ -1353,13 +1350,14 @@ export default function Landing() {
           </Reveal>
           <div className="space-y-3">
             {[
-              { q: 'How much does PocketLink cost?', a: 'One plan, everything included — ₹1,099/month, or ₹9,999/year (about 2½ months free). No tiers, no setup fee, 0% commission, cancel anytime.' },
+              PRICING_FAQS[0],
               { q: 'Do my customers need to download anything?', a: 'No app needed. Your page opens in any browser. Customers place orders via WhatsApp — which they already have on their phone.' },
-              { q: 'How do I receive orders?', a: 'When a customer taps “Send Order”, a structured WhatsApp message lands in your inbox with their name, address, items and total. You reply to confirm and arrange delivery.' },
-              { q: 'Can I accept online payments?', a: 'PocketLink currently handles COD and in-person payment collection. Customers mention their preferred payment method in the order message. Integrated online payment links are on our roadmap.' },
+              { q: 'How do I receive orders?', a: `Every order lands in your dashboard with a new-order alert, and on WhatsApp. Cash-on-delivery buyers get a “Confirm my order” message automatically (${FREE_ORDER_MESSAGES} free every month), so fake orders show up before you ship.` },
+              { q: 'Can I accept online payments?', a: 'Yes. Connect your own Razorpay and customers pay by UPI, card or net banking; the money goes straight to your account. UPI to your number and cash on delivery work too.' },
+              { q: 'Do you deliver across India?', a: 'Yes. Delhivery and Shadowfax are built in: pick the courier for each order, print the label, and your customer tracks it live on a page with your shop’s name. Your own delivery boy works too.' },
+              PRICING_FAQS[2],
               { q: 'Will my page show a “Powered by PocketLink” badge?', a: 'No — every plan removes the PocketLink badge, so your page is 100% your own brand.' },
               { q: 'How do paid plans get activated?', a: 'Instantly. Pay securely by UPI, card or net banking and your plan goes live the moment payment succeeds — no waiting, no manual confirmation.' },
-              { q: 'Can I upgrade later?', a: 'Yes. Upgrade anytime from your dashboard. All your products, settings and page link remain exactly the same.' },
               { q: 'How do I delete my page?', a: 'Go to Settings in your dashboard to permanently delete your page and all associated data at any time.' },
             ].map(({ q, a }, idx) => (
               <Reveal key={q} delay={Math.min(idx, 4) * 0.05}>
@@ -1411,7 +1409,7 @@ export default function Landing() {
               </h2>
               <p className="text-emerald-50 text-sm sm:text-base mb-8 leading-relaxed">
                 Meet them there. Launch a beautiful business page in two minutes —<br className="hidden sm:block" />
-                ₹1,099/mo — everything included, no commission, no setup fee. Cancel anytime.
+                {' '}₹{PRICE.monthly.toLocaleString('en-IN')}/mo — everything included, no commission, no setup fee. Cancel anytime.
               </p>
               <Link
                 to="/start"
