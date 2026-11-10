@@ -7,7 +7,7 @@ const CORS = {
 
 // Razorpay Plan IDs. plan -> period -> plan_id.
 //
-// 2026-09 pricing: PocketLink is now ONE plan — ₹1,099/mo · ₹9,999/yr — that
+// 2026-11 pricing: PocketLink is ONE plan — ₹1,499/mo · ₹14,999/yr — that
 // includes every feature (see src/utils/planLimits.js). The internal key stays
 // 'premium' because that key is already recorded on stores and carried through
 // the subscription notes + webhook, so collapsing the tiers needed no migration.
@@ -17,19 +17,20 @@ const CORS = {
 // grandfathered customers are untouched by this map.
 //
 // Retired but permanent (existing mandates keep renewing on them):
+//   premium 1099 : plan_TX4Yj0ktnJ9Ic3 / plan_TX4a4orxglrlrC   (2026-09-01 to 2026-11-10)
 //   starter  149 : plan_T534Tj7pKAPhOP / plan_T534TvGMXAl18M
 //   pro      249 : plan_Szqmme5MgX3kcg / plan_SzqmmuDV66K4lm
 //   business 199 : plan_T8tUVJDyKVHUqA / plan_T8tUVTmHtEauYl
 //   premium  599 : plan_T8tUVd3OJkD8m8 / plan_T8tUVnFLUkTGYl
 //   prem+   1000 : plan_SzqmnPq8JoWcSc / plan_SzqmnZ9M5keufj
 const PLAN_IDS: Record<string, Record<string, string>> = {
-  // THE plan — ₹1,099/mo · ₹9,999/yr (created 2026-09-01, GST-inclusive).
+  // THE plan — ₹1,499/mo · ₹14,999/yr (created by the founder 2026-11-10, GST-inclusive).
   // The amount debited is the plan_id's amount, NEVER the price shown in the UI:
   // if you change the displayed price, create new plans and swap these ids, and
   // always deploy this function BEFORE the front-end.
   premium: {
-    monthly: 'plan_TX4Yj0ktnJ9Ic3',
-    yearly:  'plan_TX4a4orxglrlrC',
+    monthly: 'plan_TyU4ENXi9KxW9n',
+    yearly:  'plan_TyU4sh6IHQeujG',
   },
 
   // Legacy keys kept so any in-flight/grandfathered checkout still resolves.

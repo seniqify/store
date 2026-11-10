@@ -42,7 +42,7 @@ const PERIOD_LABEL = {
 const CHARGES = {
   pro:          { monthly: 249,  yearly: 2490 },   // legacy, grandfathered
   business:     { monthly: 199,  yearly: 1999 },   // Growth — grandfathered renewals only
-  premium:      { monthly: PRICE.monthly, yearly: PRICE.yearly },  // THE plan — ₹1,099 / ₹9,999
+  premium:      { monthly: PRICE.monthly, yearly: PRICE.yearly },  // THE plan — PRICE in planLimits.js
   premium_plus: { monthly: 1000, yearly: 10000 },  // retired tier — grandfathered links only
 };
 

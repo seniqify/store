@@ -14,7 +14,10 @@ const GRACE_MS = 3 * 86400 * 1000; // 3-day cushion so a slightly-late charge ne
 //
 // Keep in sync with create-razorpay-subscription/index.ts.
 const PLAN_BY_ID: Record<string, { plan: string; period: string }> = {
-  // Current plan — ₹1,099/mo · ₹9,999/yr
+  // Current plan — ₹1,499/mo · ₹14,999/yr (2026-11-10)
+  plan_TyU4ENXi9KxW9n: { plan: 'premium', period: 'monthly' },
+  plan_TyU4sh6IHQeujG: { plan: 'premium', period: 'yearly'  },
+  // ₹1,099/mo · ₹9,999/yr (2026-09-01 to 2026-11-10)
   plan_TX4Yj0ktnJ9Ic3: { plan: 'premium', period: 'monthly' },
   plan_TX4a4orxglrlrC: { plan: 'premium', period: 'yearly'  },
   // Retired but permanent — existing mandates keep renewing on these.
