@@ -418,6 +418,7 @@ serve(async (req) => {
         });
       }
       if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
+      if (action === 'reattempt') return json({ error: 'Shadowfax doesn’t take a reattempt request through PocketLink. Call the customer, then ask Shadowfax support to try again.' });
       return json({ error: 'Unknown action' });
     }
 
@@ -460,6 +461,25 @@ serve(async (req) => {
         ndrReason: ndr,
         trackUrl: `https://www.delhivery.com/track/package/${awb}`,
       });
+    }
+
+    // Missed delivery: ask Delhivery to try again (NDR "RE-ATTEMPT"). Delhivery
+    // queues it and answers with a request id; it applies on its next run.
+    if (action === 'reattempt') {
+      if (order?.shipment_outcome) return json({ error: 'This shipment is already finished.' });
+      const r = await fetch(`${BASE}/api/p/update`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [{ waybill: String(awb).trim(), act: 'RE-ATTEMPT' }] }),
+      });
+      const d = await r.json().catch(() => ({}));
+      const said = String(d?.error || d?.message || d?.remarks || '').slice(0, 200);
+      if (!r.ok || d?.success === false || d?.status === false || (!d?.request_id && said)) {
+        return json({ error: `Delhivery did not take the reattempt request${said ? `: "${said}"` : ''}. Call the customer, then ask Delhivery support.` });
+      }
+      await supabase.from('orders').update({ delivery_choice_sent_at: new Date().toISOString() })
+        .eq('id', orderId).eq('store_slug', slug).not('delivery_choice', 'is', null);
+      return json({ reattempt: true, requestId: d?.request_id || null });
     }
 
     return json({ error: 'Unknown action' });

@@ -13,6 +13,7 @@ import { fetchStore } from '../utils/storeService';
 import { fetchProductSales, proofFor } from '../utils/salesService';
 import { saveRestoreIntent } from '../utils/cartRestore';
 import { pickShopOffer, suggestProducts, reorderLines } from '../utils/trackingExtras';
+import { getDeliveryChoice, setDeliveryChoice, DELIVERY_CHOICE_LABEL } from '../utils/deliveryTools';
 
 /**
  * OrderTracking — the buyer's page for one order, served at two routes:
@@ -124,6 +125,84 @@ function MoreFromShop({ storeName, products, proof, brand, onAdd, onSeeAll }) {
   );
 }
 
+/** Missed delivery: the buyer tells the shop what to do (set_delivery_choice). */
+function DeliveryChoice({ token, brand, storeName, dc, onSaved }) {
+  const [mode, setMode] = useState(dc.choice ? 'done' : 'ask');   // ask | address | done
+  const [addr, setAddr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg]   = useState('');
+
+  async function choose(choice) {
+    if (choice === 'cancel' && !window.confirm('Cancel this order?')) return;
+    setBusy(true); setMsg('');
+    const r = await setDeliveryChoice(token, choice, choice === 'address' ? addr : null);
+    setBusy(false);
+    if (r?.ok) { onSaved({ ...dc, choice, sent: false }); setMode('done'); return; }
+    setMsg(r?.reason === 'need_address' ? 'Please type the full new address (house no., street, area).'
+      : r?.reason === 'not_now' ? 'The courier has moved on with this parcel, so this can’t be changed here. Message the shop.'
+      : 'Could not save. Please try again.');
+  }
+
+  if (mode === 'done' && dc.choice) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status">
+        <p className="text-[14px] font-extrabold text-emerald-900">Got it: {DELIVERY_CHOICE_LABEL[dc.choice] || dc.choice}</p>
+        <p className="text-[12px] text-emerald-800 mt-1 leading-snug">
+          We’ve told {storeName || 'the shop'}. {dc.choice === 'reattempt' ? 'The delivery partner will try again on the next delivery run.' : 'The shop will take it from here.'}
+        </p>
+        {dc.can_choose && (
+          <button type="button" onClick={() => setMode('ask')} className="mt-2 h-10 text-[12.5px] font-bold text-emerald-900 underline underline-offset-2">
+            Change my answer
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-white p-4 space-y-2.5">
+      <div>
+        <p className="text-[15px] font-extrabold text-gray-900">We missed you</p>
+        <p className="text-[12.5px] text-gray-600 mt-0.5 leading-snug">The delivery partner couldn’t deliver your order. What should we do?</p>
+      </div>
+      {mode === 'address' ? (
+        <>
+          <label className="block text-[12px] font-semibold text-gray-700">
+            New address
+            <textarea value={addr} onChange={(e) => setAddr(e.target.value)} rows={3} maxLength={300}
+              placeholder="House / flat no., street, area, landmark"
+              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-[14px] text-gray-900 focus:outline-none focus:ring-2" />
+          </label>
+          <p className="text-[11px] text-gray-500">Same city and PIN code. For a different city, message the shop.</p>
+          <button type="button" disabled={busy} onClick={() => choose('address')}
+            className="w-full h-12 rounded-xl text-white text-[14px] font-extrabold disabled:opacity-60" style={{ background: brand }}>
+            {busy ? 'Saving…' : 'Save and deliver again'}
+          </button>
+          <button type="button" onClick={() => setMode('ask')} className="w-full h-10 text-[12.5px] font-bold text-gray-500">Back</button>
+        </>
+      ) : (
+        <>
+          <button type="button" disabled={busy} onClick={() => choose('reattempt')}
+            className="w-full h-12 rounded-xl text-white text-[14px] font-extrabold disabled:opacity-60" style={{ background: brand }}>
+            Deliver tomorrow
+          </button>
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={() => setMode('address')}
+              className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-[13px] font-bold text-gray-800 disabled:opacity-60">
+              Change address
+            </button>
+            <button type="button" disabled={busy} onClick={() => choose('cancel')}
+              className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-[13px] font-bold text-gray-800 disabled:opacity-60">
+              Cancel order
+            </button>
+          </div>
+        </>
+      )}
+      {msg && <p className="text-[12px] text-rose-700">{msg}</p>}
+    </div>
+  );
+}
+
 /** One row of the progress list. */
 function Step({ step, last }) {
   const done  = step.state === 'done';
@@ -173,6 +252,15 @@ export default function OrderTracking() {
   // Below the tracking: the shop's offer and more of its products. Loaded after
   // the order shows and never in its way -- any failure simply shows nothing.
   const [extras, setExtras] = useState(null);   // { offer, products, sales, reorder }
+  // Missed delivery: can the buyer answer, and what did they say (get_delivery_choice).
+  const [dc, setDc] = useState(null);
+  const orderAwb = data?.order?.awb;
+  useEffect(() => {
+    if (!token || !orderAwb) return undefined;
+    let alive = true;
+    getDeliveryChoice(token).then((d) => { if (alive) setDc(d); });
+    return () => { alive = false; };
+  }, [token, orderAwb]);
   const shopSlug = data?.store?.slug || '';
   const orderItems = data?.order?.items;
   useEffect(() => {
@@ -371,6 +459,11 @@ export default function OrderTracking() {
             </p>
           )}
         </div>
+
+        {/* Missed delivery: deliver tomorrow / change address / cancel */}
+        {dc && (dc.can_choose || dc.choice) && !delivered && !cancelled && (
+          <DeliveryChoice token={token} brand={brand} storeName={store.name} dc={dc} onSaved={setDc} />
+        )}
 
         {/* Buyer hasn't confirmed yet — the whole point of the flow. */}
         {!o.confirmedAt && !cancelled && !delivered && (

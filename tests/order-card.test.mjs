@@ -160,6 +160,8 @@ test('OrdersTab: orders use the new card, leads keep theirs; nothing advances an
   // Tabs.
   assert.match(tab, /stageTab\(orderStage\(o\)\) === filter/);
   // The list always opens on All, and All is the first tab (founder, 2026-10-05).
-  assert.match(tab, /const \[filter, +setFilter\] += useState\('all'\);/);
+  // Orders opens on All; Delivery → Ship is the same list fixed on To ship.
+  assert.match(tab, /const \[filter, +setFilter\] += useState\(shipOnly \? 'to_ship' : 'all'\);/);
+  assert.match(tab, /const shipOnly = mode === 'ship';/);
   assert.match(tab, /\{\[\{ key: 'all', label: 'All' \},\s*\.\.\.STAGE_TABS\.filter/);
 });

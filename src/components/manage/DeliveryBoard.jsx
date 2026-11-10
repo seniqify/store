@@ -11,6 +11,7 @@ import { LIST_PAGE_SIZE } from '../../utils/listPage';
 import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
+import { DELIVERY_CHOICE_LABEL } from '../../utils/deliveryTools';
 
 const BUCKET_ICON = {
   attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check, cancelled: Ban,
@@ -445,7 +446,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <PackageOpen size={30} className="mx-auto text-gray-300" />
           <p className="text-sm font-bold text-gray-800 mt-3">No shipments yet</p>
-          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from any order (Orders tab → Book) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from Ship (or any order card) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
         </div>
       ) : shownTotal === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
@@ -577,6 +578,17 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
 
   const [data, setData] = useState(null);   // track result
   const [err, setErr]   = useState('');
+  // The buyer's answer to a missed delivery (order page), and sending it on.
+  const [re, setRe] = useState({ busy: false, sent: Boolean(o.delivery_choice_sent_at), msg: '' });
+  async function sendReattempt() {
+    setRe({ busy: true, sent: false, msg: '' });
+    try {
+      await shipmentOp(slug, pin, o.id, 'reattempt');
+      setRe({ busy: false, sent: true, msg: `Sent. ${c.name} will try again on its next delivery run.` });
+    } catch (e) {
+      setRe({ busy: false, sent: false, msg: e.message || 'Could not send it.' });
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -629,6 +641,32 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
                   ? 'The courier flagged the address. Confirm the full address and pincode with the customer, then reschedule the delivery.'
                   : ndr}
               </p>
+            </div>
+          )}
+
+          {/* The customer's own answer, from their order page */}
+          {o.delivery_choice && bucket === 'attention' && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 mb-4 space-y-2">
+              <p className="text-[13px] text-gray-900">
+                {firstName} replied: <b>“{DELIVERY_CHOICE_LABEL[o.delivery_choice] || o.delivery_choice}”</b>
+              </p>
+              {o.delivery_choice_address && (
+                <p className="text-[12px] text-gray-700"><span className="font-semibold">New address:</span> {o.delivery_choice_address}</p>
+              )}
+              {o.delivery_choice === 'reattempt' && c.key === 'delhivery' && (
+                <button type="button" onClick={sendReattempt} disabled={re.busy || re.sent}
+                  className={`${btn} w-full text-white disabled:opacity-60`} style={{ backgroundColor: re.sent ? '#059669' : '#dc2626' }}>
+                  {re.busy ? 'Sending…' : re.sent ? 'Sent to Delhivery ✓' : 'Ask Delhivery to deliver again'}
+                </button>
+              )}
+              {(o.delivery_choice !== 'reattempt' || c.key !== 'delhivery') && (
+                <p className="text-[11.5px] text-gray-500">
+                  {o.delivery_choice === 'cancel'
+                    ? `Call ${firstName} once more, then cancel or let ${c.name} return it.`
+                    : `Tell ${c.name} support or the rider; ${c.name} doesn’t take this through PocketLink.`}
+                </p>
+              )}
+              {re.msg && <p className={`text-[11.5px] ${re.sent ? 'text-emerald-700' : 'text-red-600'}`}>{re.msg}</p>}
             </div>
           )}
 

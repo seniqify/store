@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue, memo } from 'react';
 import {
   RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star,
-  Bike, Link2, RotateCcw, AlertTriangle, CheckCircle2,
+  Bike, Link2, RotateCcw, AlertTriangle, CheckCircle2, ShieldAlert,
 } from 'lucide-react';
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
@@ -15,6 +15,8 @@ import {
 } from '../../utils/ordersView';
 import { LIST_PAGE_SIZE } from '../../utils/listPage';
 import { createPaymentLink, paymentLinkMessage } from '../../utils/paymentLinks';
+import { customerHistory, rtoRisk, RTO_DEFAULTS } from '../../utils/rtoRisk';
+import { prepayDiscount } from '../../utils/deliveryTools';
 import { createReviewInvite } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
 import {
@@ -93,15 +95,17 @@ const NO_RIDERS = [];
 const NO_PAY_INFO = {};
 const NO_STORE = {};
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS }) {
   const leads   = mode === 'leads';
+  // Delivery → Ship: the same cards, only the orders still to send.
+  const shipOnly = mode === 'ship';
   const STATUS  = leads ? STATUS_LEADS : STATUS_ORDERS;
   const FILTERS = leads ? FILTERS_LEADS : FILTERS_ORDERS;
   const noun    = leads ? 'lead' : 'order';
 
   const [orders,     setOrders]     = useState(null);   // null = loading
   // The list always opens on All (founder, 2026-10-05); the stage tabs narrow it.
-  const [filter,     setFilter]     = useState('all');
+  const [filter,     setFilter]     = useState(shipOnly ? 'to_ship' : 'all');
   const [query,      setQuery]      = useState('');     // find one customer / order fast
   // The box shows every letter at once; the list follows a beat behind, so
   // filtering hundreds of cards never holds up the typing.
@@ -198,6 +202,13 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     dateCounts: dayCounts(orders || []),
   }), [orders, leads]);
 
+  // RTO protection reads each customer's history at this shop.
+  // One reading per list (not per render), so the memoised cards stay put while typing.
+  const risks = useMemo(() => {
+    const history = customerHistory(orders || []);
+    return new Map((orders || []).map((o) => [o.id, rtoRisk(o, history, rto)]));
+  }, [orders, rto]);
+
   // Date filtering - collapse the endless list to a single day. Keys are the
   // MERCHANT's civil date (Asia/Kolkata), so "Today" means their today wherever
   // they happen to be looking from.
@@ -273,7 +284,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             {leads
               ? <MessageCircle size={18} style={{ color: themeColor }} />
               : <ShoppingBag size={18} style={{ color: themeColor }} />}
-            {leads ? 'Leads' : 'Orders'}
+            {leads ? 'Leads' : shipOnly ? 'To ship' : 'Orders'}
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {orders.length === 0 ? `No ${noun}s yet`
@@ -332,7 +343,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
 
           {/* Chips are hidden while searching — a search overrides them, so leaving
               them looking active would misrepresent what the list is showing. */}
-          {!searching && (<>
+          {!searching && !shipOnly && (<>
           {/* Date filter — Today / Yesterday / pick any day, so the list isn't endless */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
             {[
@@ -431,7 +442,8 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
               ? <LeadCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads riders={riders} payInfo={payInfo} store={store} />
               : <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin} now={loadedAt}
-                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} riders={riders} payInfo={payInfo} store={store} />
+                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} riders={riders} payInfo={payInfo} store={store}
+                           risk={risks.get(o.id)} rto={rto} onChanged={refresh} />
             ))}
             {/* The searching case already has its own message above the list. */}
             {filtered.length === 0 && !searching && (
@@ -991,7 +1003,7 @@ const NEXT_HINT = {
 // The order card: one next step (founder-approved mockup, 2026-10-05). Where the
 // order stands is read from what happened (src/utils/orderCard.js); the shop is
 // shown a button only when there is something for it to do.
-const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, riders = [], payInfo = {}, store = {}, now }) {
+const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, storeName, onStatus, onPaid, riders = [], payInfo = {}, store = {}, now, risk, rto = RTO_DEFAULTS, onChanged }) {
   const phone = (o.customer_phone || '').replace(/\D/g, '');
   const firstName = String(o.customer_name || '').trim().split(/\s+/)[0] || 'the customer';
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1027,6 +1039,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     o.customer_confirmed_at && 'Buyer confirmed on WhatsApp',
     o.paid && (o.paid_via === 'razorpay' || o.paid_via === 'payment_link') && 'Paid online',
     o.paid && o.paid_via === 'cod_delivery' && ship.awb && `Cash collected by ${courierInfo(o.courier).name}`,
+    risk?.level === 'low' && stage === 'to_ship' && `Known customer · ${risk.earlier} earlier order${risk.earlier === 1 ? '' : 's'}`,
   ].filter(Boolean);
 
   async function sendPayLink() {
@@ -1048,6 +1061,39 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     }
   }
 
+  // RTO protection: a risky cash-on-delivery order, before it ships.
+  const highRisk = risk?.level === 'high' && stage === 'to_ship';
+  const discount = Math.round(Number(rto.discount) || 0);
+  const canOfferPrepay = highRisk && canPayLink && discount > 0 && !o.prepay_discount && Number(o.total) - discount >= 1;
+  async function offerPrepay() {
+    const newTotal = Number(o.total) - discount;
+    if (!window.confirm(`Take ₹${discount} off and send ${firstName} a payment link for ₹${newTotal.toLocaleString('en-IN')}?\n\nThe ₹${discount} stays off even if they still pay cash.`)) return;
+    setLinkMsg(''); setLinkBusy(true);
+    // Open the tab inside the tap: browsers block window.open after an await.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
+    try {
+      const d = await prepayDiscount(slug, pin, o.id, discount);
+      if (!d?.ok) throw new Error(d?.reason === 'not_allowed' ? 'Only an unpaid cash-on-delivery order that is not shipped can get this offer.' : 'Could not apply the discount.');
+      const r = await createPaymentLink(slug, pin, o.id);
+      if (r.paid) { if (win) win.close(); setLinkMsg('This order is already paid — tap Refresh.'); return; }
+      const text = `₹${discount} off if you pay online now! 🎁\n\n${paymentLinkMessage({ customerName: o.customer_name, storeName, total: d.total, url: r.url })}`;
+      const wa = `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
+      if (win) win.location.href = wa; else window.location.href = wa;
+      onChanged?.();
+    } catch (e) {
+      if (win) win.close();
+      setLinkMsg(e.message || 'Could not create the payment link.');
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+  const holdBooking = highRisk && rto.hold && !o.customer_confirmed_at;
+  const openBook = () => {
+    if (holdBooking && !window.confirm(`This cash-on-delivery order is high risk and ${firstName} has not confirmed it yet. Book it anyway?`)) return;
+    ship.setModal(true);
+  };
+
   const primaryCls = 'w-full h-12 inline-flex items-center justify-center gap-2 rounded-xl text-[15px] font-bold text-white active:scale-[0.98] disabled:opacity-50';
   const altCls = 'w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white text-[13.5px] font-semibold text-gray-700 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50';
   // One action button. `main` = the card's single filled button.
@@ -1057,7 +1103,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     const icon = main ? 17 : 15;
     switch (kind) {
       case 'book':
-        return <button type="button" onClick={() => ship.setModal(true)} className={cls} style={style}><Truck size={icon} /> Book courier</button>;
+        return <button type="button" onClick={openBook} className={cls} style={style}><Truck size={icon} /> Book courier</button>;
       case 'rider':
         return (
           <a href={riderWa(dispatchRiders.length === 1 ? dispatchRiders[0].phone : null)} target="_blank" rel="noopener noreferrer"
@@ -1201,7 +1247,25 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
       </div>
 
       {/* What is going on, when the shop needs to know */}
-      {callFirst && alert('amber', 'Not confirmed on WhatsApp yet. Unconfirmed cash-on-delivery orders are often refused at the door — call before you ship.')}
+      {highRisk ? (
+        <div className="mx-4 mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-1.5" role="note">
+          <p className="inline-flex items-center gap-1.5 text-[13px] font-bold text-rose-800"><ShieldAlert size={15} /> High return risk</p>
+          {risk.reasons.map((r) => <p key={r} className="text-[12px] text-rose-800 leading-snug">• {r}</p>)}
+          <p className="text-[12px] text-rose-800 leading-snug">
+            • {o.customer_confirmed_at ? 'Confirmed on WhatsApp ✓' : 'Not confirmed on WhatsApp yet: call before you ship'}
+          </p>
+          {/* Calling is already the card's own button (Call first / Call). */}
+          {canOfferPrepay && (
+            <button type="button" disabled={linkBusy} onClick={offerPrepay}
+              className="w-full min-h-11 mt-1 px-2 rounded-lg border border-rose-300 bg-white text-[13px] font-bold text-rose-800 disabled:opacity-50">
+              {linkBusy ? 'Creating link…' : `Offer ₹${discount} off to pay online`}
+            </button>
+          )}
+          {o.prepay_discount > 0 && <p className="text-[11.5px] text-rose-700">₹{Number(o.prepay_discount).toLocaleString('en-IN')} off offered to pay online.</p>}
+          {holdBooking && <p className="text-[11.5px] text-rose-700">Hold is on: Book courier asks before shipping it.</p>}
+        </div>
+      ) : callFirst && alert('amber', 'Not confirmed on WhatsApp yet. Unconfirmed cash-on-delivery orders are often refused at the door — call before you ship.')}
+
       {stage === 'not_paid' && alert('red', `${firstName === 'the customer' ? 'The customer' : firstName} chose Pay Online but left before paying, so this is not a sale yet. Send a payment link — it turns Paid by itself when they pay.`)}
 
       {stage === 'courier' && (
