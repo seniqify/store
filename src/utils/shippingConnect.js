@@ -48,22 +48,24 @@ export async function setActiveCourier(slug, pin, provider) {
   return data;
 }
 
-/** Storefront: get a live Delhivery rate + serviceability for a destination pincode. */
-export async function getShippingRate(slug, destPincode, weightG, paymentMode) {
+/** Live rate + serviceability for a destination pincode. `courier` (delhivery | shadowfax)
+ *  asks about that courier; without it the store's default courier answers (checkout). */
+export async function getShippingRate(slug, destPincode, weightG, paymentMode, courier) {
   const { data, error } = await supabase.functions.invoke('shipping-rate', {
-    body: { slug, destPincode, weightG, paymentMode },
+    body: { slug, destPincode, weightG, paymentMode, courier },
   });
   if (error) return { error: 'rate lookup failed' };
   return data || {};
 }
 
-/** Owner-only: create a Delhivery shipment for an order (PIN-checked). `details`
- *  are the merchant's edited fields from the booking modal (name/address/payment/
- *  weight/dimensions); the order's own data is the fallback. → { awb, trackUrl } */
-export async function bookShipment(slug, pin, orderId, details = {}) {
+/** Owner-only: create a shipment for an order (PIN-checked) with `courier`
+ *  (delhivery | shadowfax; omitted = the store's default). `details` are the
+ *  merchant's edited fields from the booking modal (name/address/payment/
+ *  weight/dimensions); the order's own data is the fallback. → { awb, courier, trackUrl } */
+export async function bookShipment(slug, pin, orderId, details = {}, courier) {
   const hashedPin = await hashPin(pin);
   const { data, error } = await supabase.functions.invoke('shipping-book', {
-    body: { slug, hashedPin, orderId, details },
+    body: { slug, hashedPin, orderId, details, courier },
   });
   if (error) throw new Error('Could not reach the server. Try again.');
   if (data?.error) throw new Error(data.error);

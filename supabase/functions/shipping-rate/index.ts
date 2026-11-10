@@ -13,13 +13,22 @@ function json(body: unknown) {
 // create a shipment or a pickup, so they're safe on any live account.)
 const BASE = 'https://track.delhivery.com';
 
+/** The courier to check: the one Book courier asks about when it names a known
+ *  courier, else the store's default from Settings. PURE. */
+function pickCourier(shipCfg: Record<string, unknown>, requested: unknown): 'shadowfax' | 'delhivery' {
+  const want = String(requested || '').toLowerCase();
+  if (want === 'shadowfax' || want === 'delhivery') return want;
+  const def = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
+  return def === 'shadowfax' ? 'shadowfax' : 'delhivery';
+}
+
 // Checkout helper: is the customer's pincode serviceable, and what does Delhivery
 // charge to ship there? Uses the STORE's own Delhivery token (server-side only).
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { slug, destPincode, weightG, paymentMode } = await req.json();
+    const { slug, destPincode, weightG, paymentMode, courier } = await req.json();
     const dest = String(destPincode || '').replace(/\D/g, '');
     if (!slug || dest.length !== 6) return json({ error: 'Missing store or a valid 6-digit pincode' });
 
@@ -28,8 +37,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
     const { data: store } = await supabase.from('stores').select('config').eq('slug', slug).maybeSingle();
-    const shipCfg = store?.config?.shipping || {};
-    const activeCourier = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
+    const activeCourier = pickCourier(store?.config?.shipping || {}, courier);
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
       .select('provider, mode, api_token, pickup_pincode, default_weight_g, status')

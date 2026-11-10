@@ -83,6 +83,16 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
  *  a send of ours that is still in flight. */
 const CREATE_TIMEOUT_MS = 60_000;
 
+/** The courier for a request: the one the merchant picked in Book courier when it
+ *  names a known courier, else the store's default from Settings. PURE. Whether it
+ *  is connected is checked against its account row. */
+function pickCourier(shipCfg: Record<string, unknown>, requested: unknown): 'shadowfax' | 'delhivery' {
+  const want = String(requested || '').toLowerCase();
+  if (want === 'shadowfax' || want === 'delhivery') return want;
+  const def = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
+  return def === 'shadowfax' ? 'shadowfax' : 'delhivery';
+}
+
 /** The buyer-facing tracking link, by the courier that actually carries it. */
 function trackUrlFor(courier: unknown, awb: unknown): string | null {
   if (!awb) return null;
@@ -495,7 +505,7 @@ function bookingUnknown(
         + `Check your courier panel${reference ? ` for reference ${reference}` : ''} before booking this order again.`
       : `${who} did not confirm this booking${said ? ` ("${said}")` : ''}, so we cannot tell yet whether a shipment was created. `
         + 'Fix the problem if there is one (for example, add balance to your courier wallet), wait 2 minutes, '
-        + `then press Book Shipment again. It re-sends the same booking${reference ? ` (reference ${reference})` : ''}, `
+        + `then book it with ${who} again. It re-sends the same booking${reference ? ` (reference ${reference})` : ''}, `
         + `so ${who} cannot create a second shipment.`),
     bookingUnknown: true,
     needsReconciliation: !!duplicate,
@@ -512,7 +522,7 @@ function resumeRefused(courierName: string, resume: Record<string, any>): Record
       return {
         error: `This order's booking was sent to ${courierName} less than 2 minutes ago and is not confirmed yet. `
           + `Wait ${s >= 60 ? `${Math.ceil(s / 60)} minute${Math.ceil(s / 60) === 1 ? '' : 's'}` : `${s} seconds`}, `
-          + 'then press Book Shipment again.',
+          + `then book it with ${courierName} again.`,
         bookingInProgress: true,
         canRetry: true,
       };
@@ -520,8 +530,8 @@ function resumeRefused(courierName: string, resume: Record<string, any>): Record
     case 'other_courier': {
       const other = String(resume.courier || '') === 'delhivery' ? 'Delhivery' : 'Shadowfax';
       return {
-        error: `An earlier ${other} booking for this order was never confirmed. Make ${other} your active courier `
-          + 'again and press Book Shipment to finish it safely -- booking with another courier now could ship it twice.',
+        error: `An earlier ${other} booking for this order was never confirmed. Pick ${other} in Book courier `
+          + 'and press Book to finish it safely -- booking with another courier now could ship it twice.',
         needsReconciliation: true,
       };
     }
@@ -727,8 +737,8 @@ async function bookShipment(
     return {
       booked: false,
       reply: {
-        error: `${name} could not book this shipment: ${created.reason}. Fix it, wait 2 minutes, then press `
-          + `Book Shipment again -- it re-sends the same booking (reference ${reference}), so ${name} cannot `
+        error: `${name} could not book this shipment: ${created.reason}. Fix it, wait 2 minutes, then book it `
+          + `with ${name} again -- it re-sends the same booking (reference ${reference}), so ${name} cannot `
           + 'create a second shipment.',
         canRetry: true,
         reference,
@@ -799,7 +809,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { slug, hashedPin, orderId, details = {} } = await req.json();
+    const { slug, hashedPin, orderId, details = {}, courier } = await req.json();
     if (!slug || !hashedPin || !orderId) return json({ error: 'Missing store, PIN, or order' });
 
     // The courier charge the merchant saw in the booking modal (their real cost for
@@ -822,15 +832,16 @@ serve(async (req) => {
     const { data: store } = await supabase.from('stores').select('config').eq('slug', slug).maybeSingle();
     if (!store) return json({ error: 'Store not found' });
 
-    // The store's active default courier (owner-selected in Settings).
-    const shipCfg = store.config?.shipping || {};
-    const activeCourier = String(shipCfg.courier || (shipCfg.shadowfax && !shipCfg.delhivery ? 'shadowfax' : 'delhivery')).toLowerCase();
+    // The courier the merchant picked in Book courier, else the store's default.
+    const activeCourier = pickCourier(store.config?.shipping || {}, courier);
 
     const { data: acct } = await supabase
       .from('store_shipping_accounts')
       .select('provider, mode, api_token, pickup_name, pickup_pincode, pickup_phone, pickup_address, pickup_city, pickup_state, default_weight_g, status')
       .eq('store_slug', slug).eq('provider', activeCourier).maybeSingle();
-    if (!acct || acct.status !== 'connected' || !acct.api_token) return json({ error: 'Courier not connected' });
+    if (!acct || acct.status !== 'connected' || !acct.api_token) {
+      return json({ error: `${activeCourier === 'shadowfax' ? 'Shadowfax' : 'Delhivery'} is not connected. Connect it in Settings → Shipping, or pick another courier.` });
+    }
 
     const { data: order } = await supabase
       .from('orders')
@@ -932,7 +943,7 @@ serve(async (req) => {
 
       // Creating a marketplace order IS the seller-pickup request — Shadowfax assigns
       // a rider automatically, so there's no separate pickup call (unlike Delhivery).
-      return json({ ...booked.reply, trackUrl: null, pickup: { scheduled: true, covered: true } });
+      return json({ ...booked.reply, courier: 'shadowfax', trackUrl: null, pickup: { scheduled: true, covered: true } });
     }
 
     const items = Array.isArray(order.items) ? order.items : [];
@@ -1038,7 +1049,7 @@ serve(async (req) => {
       pickup = { scheduled: false, reason: 'pickup request failed' };
     }
 
-    return json({ ...booked.reply, trackUrl: `https://www.delhivery.com/track/package/${awb}`, pickup });
+    return json({ ...booked.reply, courier: 'delhivery', trackUrl: `https://www.delhivery.com/track/package/${awb}`, pickup });
   } catch (err) {
     return json({ error: (err as Error).message });
   }

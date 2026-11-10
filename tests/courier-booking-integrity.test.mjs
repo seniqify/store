@@ -174,7 +174,7 @@ test('an unanswered courier is reported as unknown, not as a failure to retry', 
   assert.equal(/try again/i.test(r.error), false, 'never a blind retry: a new reference could create a second parcel');
   const dup = bookingUnknown('Shadowfax', 'REF123', 'already exists', true);
   assert.match(dup.error, /Check your courier panel for reference REF123/, 'a duplicate reference needs a human');
-  assert.equal(/press Book Shipment again/.test(dup.error), false);
+  assert.equal(/book it with \w+ again/.test(dup.error), false, 'a duplicate reference is never "just book again"');
 });
 
 test('the create call is wrapped so a throw cannot be mistaken for a refusal', () => {

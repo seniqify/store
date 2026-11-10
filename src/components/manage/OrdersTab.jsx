@@ -463,6 +463,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   );
 }
 
+// The couriers this store has connected (Settings → Shipping), offered in Book courier.
+const connectedCouriers = (store) => ['shadowfax', 'delhivery'].filter((c) => store?.shipping?.[c]);
+
 // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
 // Settings). Without a saved number it opens WhatsApp's chat picker instead.
 function riderLink(o, storeName, phone, riderPhone) {
@@ -843,7 +846,9 @@ const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeN
         )}
 
         {!leads && (store.shipping?.delhivery || store.shipping?.shadowfax) && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
-          <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier} />
+          <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier}
+            couriers={connectedCouriers(store)} riders={dispatchRiders} riderHref={riderWa}
+            onRider={() => onStatus(o.id, 'dispatched')} />
         )}
       </div>
 
@@ -939,7 +944,8 @@ const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeN
 // the loaded row until the list catches up; otherwise the row is the truth, so a
 // status the courier pushed in the background shows on the next refresh.
 function useShipment(o, slug, pin, courier) {
-  const isSfx = String(courier || '').toLowerCase() === 'shadowfax';
+  const [bookedWith, setBookedWith] = useState(null);   // the courier picked in Book courier
+  const isSfx = String(bookedWith || courier || '').toLowerCase() === 'shadowfax';
   const cName = isSfx ? 'Shadowfax' : 'Delhivery';
   const [over, setOver]     = useState(null);    // { awb, status } set by this card
   const [busy, setBusy]     = useState('');
@@ -958,8 +964,8 @@ function useShipment(o, slug, pin, courier) {
   const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
   const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setOver({ awb, status: r.status || status }); });
   const cancel = () => { if (!window.confirm(`Cancel this ${cName} shipment?`)) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) setOver({ awb: null, status: 'Cancelled' }); else setErr(`${cName} could not cancel it.`); }); };
-  const booked = (r) => { setOver({ awb: r.awb, status: r.status || 'Manifested' }); setPickup(r.pickup || null); setModal(false); };
-  return { isSfx, cName, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked };
+  const booked = (r) => { setBookedWith(r.courier || null); setOver({ awb: r.awb, status: r.status || 'Manifested' }); setPickup(r.pickup || null); setModal(false); };
+  return { isSfx, cName, bookedWith, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked };
 }
 
 const STAGE_PILL = {
@@ -993,7 +999,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
   const [linkMsg, setLinkMsg]   = useState('');
 
   const ship = useShipment(o, slug, pin, o.courier || store.shipping?.courier);
-  const live = { ...o, awb: ship.awb, shipment_status: ship.status };
+  const live = { ...o, awb: ship.awb, shipment_status: ship.status, courier: ship.bookedWith || o.courier };
   const stage = orderStage(live);
   const pickupOrder = /pickup/i.test(o.destination || '');
   const courierConnected = Boolean(store.shipping?.delhivery || store.shipping?.shadowfax) && Boolean(o.destination) && !pickupOrder;
@@ -1051,7 +1057,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     const icon = main ? 17 : 15;
     switch (kind) {
       case 'book':
-        return <button type="button" onClick={() => ship.setModal(true)} className={cls} style={style}><Truck size={icon} /> Book {ship.cName}</button>;
+        return <button type="button" onClick={() => ship.setModal(true)} className={cls} style={style}><Truck size={icon} /> Book courier</button>;
       case 'rider':
         return (
           <a href={riderWa(dispatchRiders.length === 1 ? dispatchRiders[0].phone : null)} target="_blank" rel="noopener noreferrer"
@@ -1111,6 +1117,8 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
       {ship.modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier}
+          couriers={connectedCouriers(store)} riders={dispatchRiders} riderHref={riderWa}
+          onRider={() => { ship.setModal(false); onStatus(o.id, 'dispatched'); }}
           onClose={() => ship.setModal(false)} onBooked={ship.booked} />
       )}
 
@@ -1336,13 +1344,15 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
 });
 
 // Courier shipping controls for one order (the lead card's old layout).
-function ShipBlock({ o, slug, pin, themeColor, courier }) {
+function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderHref, onRider }) {
   const { isSfx, cName, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked } = useShipment(o, slug, pin, courier);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
       {modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={courier}
+          couriers={couriers} riders={riders} riderHref={riderHref}
+          onRider={() => { setModal(false); onRider?.(); }}
           onClose={() => setModal(false)}
           onBooked={booked} />
       )}
@@ -1350,7 +1360,7 @@ function ShipBlock({ o, slug, pin, themeColor, courier }) {
         <button onClick={() => setModal(true)}
           className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95"
           style={{ backgroundColor: themeColor }}>
-          <Truck size={13} /> Book {cName}
+          <Truck size={13} /> Book courier
         </button>
       ) : (
         <div className="space-y-1.5">

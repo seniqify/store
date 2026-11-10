@@ -278,7 +278,7 @@ test('open_without_awb sent under 2 minutes ago => nothing is sent; the merchant
   assert.equal(courier.seen.create.length, 0);
   assert.equal(reply.bookingInProgress, true);
   assert.equal(reply.canRetry, true);
-  assert.match(reply.error, /less than 2 minutes ago[\s\S]*Wait 2 minutes, then press Book Shipment again/);
+  assert.match(reply.error, /less than 2 minutes ago[\s\S]*Wait 2 minutes, then book it with Shadowfax again/);
   assert.equal(db.state.attempts[0].claimed_at, db.state.now - 30000, 'a refused resume changes nothing');
 });
 
@@ -432,7 +432,7 @@ test('RESUME: an attempt with another courier is not re-sent -- switching courie
   const { out, reply } = await book({ db, courier: dlv, c: ctx({ provider: 'delhivery' }) });
   assert.equal(out.booked, false);
   assert.equal(dlv.seen.create.length, 0);
-  assert.match(reply.error, /earlier Shadowfax booking[\s\S]*Make Shadowfax your active courier again/);
+  assert.match(reply.error, /earlier Shadowfax booking[\s\S]*Pick Shadowfax in Book courier/);
 });
 
 test('RESUME: simultaneous presses on a stale order => exactly ONE resend', async () => {
@@ -924,8 +924,8 @@ test('a confirmed Delhivery waybill calls finalize with the package status', asy
 test('the success reply carries the right tracking link per courier (handler wiring)', () => {
   assert.equal(F.trackUrlFor('shadowfax', 'SF1'), null);
   assert.equal(F.trackUrlFor('delhivery', 'DL1'), 'https://www.delhivery.com/track/package/DL1');
-  assert.match(BOOK_CODE, /return json\(\{ \.\.\.booked\.reply, trackUrl: null, pickup: \{ scheduled: true, covered: true \} \}\);/);
-  assert.match(BOOK_CODE, /return json\(\{ \.\.\.booked\.reply, trackUrl: `https:\/\/www\.delhivery\.com\/track\/package\/\$\{awb\}`, pickup \}\);/);
+  assert.match(BOOK_CODE, /return json\(\{ \.\.\.booked\.reply, courier: 'shadowfax', trackUrl: null, pickup: \{ scheduled: true, covered: true \} \}\);/);
+  assert.match(BOOK_CODE, /return json\(\{ \.\.\.booked\.reply, courier: 'delhivery', trackUrl: `https:\/\/www\.delhivery\.com\/track\/package\/\$\{awb\}`, pickup \}\);/);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
