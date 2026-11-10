@@ -1859,7 +1859,7 @@ function CourierWalletBanner({ slug }) {
 // couriers owe) · WhatsApp (automatic buyer updates) · Settings (couriers,
 // charges, delivery boys, RTO protection). Ship is the default. ──────────────
 const DELIVERY_VIEWS = [
-  ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD money'], ['wa', 'WhatsApp'], ['settings', 'Settings'],
+  ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD'], ['wa', 'WhatsApp'], ['settings', 'Settings'],
 ];
 function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError }) {
   const [view, setView] = useState('ship');
@@ -1871,7 +1871,7 @@ function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSav
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Delivery">
         {DELIVERY_VIEWS.map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
-            className={['flex-1 flex-shrink-0 whitespace-nowrap px-3 text-sm font-bold h-10 rounded-lg transition active:scale-[0.98]',
+            className={['flex-1 flex-shrink-0 whitespace-nowrap px-2 text-[13px] font-bold h-10 rounded-lg transition active:scale-[0.98]',
               view === k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'].join(' ')}>
             {label}
           </button>

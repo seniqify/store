@@ -1039,6 +1039,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
     o.customer_confirmed_at && 'Buyer confirmed on WhatsApp',
     o.paid && (o.paid_via === 'razorpay' || o.paid_via === 'payment_link') && 'Paid online',
     o.paid && o.paid_via === 'cod_delivery' && ship.awb && `Cash collected by ${courierInfo(o.courier).name}`,
+    risk?.level === 'low' && stage === 'to_ship' && `Known customer · ${risk.earlier} earlier order${risk.earlier === 1 ? '' : 's'}`,
   ].filter(Boolean);
 
   async function sendPayLink() {
@@ -1253,26 +1254,18 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
           <p className="text-[12px] text-rose-800 leading-snug">
             • {o.customer_confirmed_at ? 'Confirmed on WhatsApp ✓' : 'Not confirmed on WhatsApp yet: call before you ship'}
           </p>
-          {(canOfferPrepay || phone) && (
-            <div className="flex gap-2 pt-1">
-              {canOfferPrepay && (
-                <button type="button" disabled={linkBusy} onClick={offerPrepay}
-                  className="flex-1 min-h-11 px-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-bold text-rose-800 disabled:opacity-50">
-                  {linkBusy ? 'Creating link…' : `Offer ₹${discount} off to pay online`}
-                </button>
-              )}
-              {phone && (
-                <a href={`tel:+91${phone}`} className="flex-1 min-h-11 px-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-bold text-rose-800 inline-flex items-center justify-center gap-1.5">
-                  <Phone size={13} /> Call {firstName}
-                </a>
-              )}
-            </div>
+          {/* Calling is already the card's own button (Call first / Call). */}
+          {canOfferPrepay && (
+            <button type="button" disabled={linkBusy} onClick={offerPrepay}
+              className="w-full min-h-11 mt-1 px-2 rounded-lg border border-rose-300 bg-white text-[13px] font-bold text-rose-800 disabled:opacity-50">
+              {linkBusy ? 'Creating link…' : `Offer ₹${discount} off to pay online`}
+            </button>
           )}
           {o.prepay_discount > 0 && <p className="text-[11.5px] text-rose-700">₹{Number(o.prepay_discount).toLocaleString('en-IN')} off offered to pay online.</p>}
           {holdBooking && <p className="text-[11.5px] text-rose-700">Hold is on: Book courier asks before shipping it.</p>}
         </div>
       ) : callFirst && alert('amber', 'Not confirmed on WhatsApp yet. Unconfirmed cash-on-delivery orders are often refused at the door — call before you ship.')}
-      {risk?.level === 'low' && stage === 'to_ship' && calm('green', `Known customer: ${risk.reasons[0]}.`)}
+
       {stage === 'not_paid' && alert('red', `${firstName === 'the customer' ? 'The customer' : firstName} chose Pay Online but left before paying, so this is not a sale yet. Send a payment link — it turns Paid by itself when they pay.`)}
 
       {stage === 'courier' && (

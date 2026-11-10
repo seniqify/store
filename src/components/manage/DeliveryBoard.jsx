@@ -446,7 +446,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <PackageOpen size={30} className="mx-auto text-gray-300" />
           <p className="text-sm font-bold text-gray-800 mt-3">No shipments yet</p>
-          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from any order (Orders tab → Book) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from Ship (or any order card) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
         </div>
       ) : shownTotal === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">

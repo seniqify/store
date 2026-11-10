@@ -334,7 +334,7 @@ test('a courier with an empty wallet is never picked in Book courier', () => {
 
 test('the Delivery tab is five views and the courier connection lives in its Settings', () => {
   const MS = read('src/pages/ManageStore.jsx');
-  assert.match(MS, /\['ship', 'Ship'\], \['track', 'Track'\], \['money', 'COD money'\], \['wa', 'WhatsApp'\], \['settings', 'Settings'\]/);
+  assert.match(MS, /\['ship', 'Ship'\], \['track', 'Track'\], \['money', 'COD'\], \['wa', 'WhatsApp'\], \['settings', 'Settings'\]/);
   assert.match(MS, /<ShippingConnect config=\{config\} pin=\{pin\} themeColor=\{themeColor\} onConfig=\{onChange\} \/>/);
   assert.equal((MS.match(/<ShippingConnect /g) || []).length, 1, 'only one place to connect couriers');
   assert.match(MS, /mode="ship"/);
