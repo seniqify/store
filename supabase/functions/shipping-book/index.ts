@@ -82,6 +82,8 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
  *  2 quiet minutes resume_shipment_attempt requires, so a resend never races
  *  a send of ours that is still in flight. */
 const CREATE_TIMEOUT_MS = 60_000;
+/** Delhivery gets at most this long to answer a lookup by reference. */
+const LOOKUP_TIMEOUT_MS = 15_000;
 
 /** The courier for a request: the one the merchant picked in Book courier when it
  *  names a known courier, else the store's default from Settings. PURE. Whether it
@@ -529,6 +531,16 @@ function resumeRefused(courierName: string, resume: Record<string, any>): Record
     }
     case 'other_courier': {
       const other = String(resume.courier || '') === 'delhivery' ? 'Delhivery' : 'Shadowfax';
+      if (Number(resume.retry_in) > 0) {
+        const m = Math.max(1, Math.ceil(Number(resume.retry_in) / 60));
+        return {
+          error: `This order was sent to ${other} a few minutes ago and ${other} has not confirmed it. `
+            + `Wait ${m} minute${m === 1 ? '' : 's'} and press Book again: PocketLink will check with ${other} first, `
+            + `and if ${other} has no parcel for it, book it with ${courierName}.`,
+          bookingInProgress: true,
+          canRetry: true,
+        };
+      }
       return {
         error: `An earlier ${other} booking for this order was never confirmed. Pick ${other} in Book courier `
           + 'and press Book to finish it safely -- booking with another courier now could ship it twice.',
@@ -540,6 +552,128 @@ function resumeRefused(courierName: string, resume: Record<string, any>): Record
     default:
       return { error: 'Could not start this booking, so nothing was sent to the courier. Please try again in a moment.' };
   }
+}
+
+// ── an unconfirmed Delhivery booking, checked WITH Delhivery ──────────────
+//
+// An open Delhivery attempt blocks every other courier (resume answers
+// other_courier), and no Delhivery refusal is proven to mean "nothing was
+// made" -- so a refused Delhivery booking (wallet low, PIN not served) used
+// to lock its order for good (founder, 2026-11-11). Now, before another
+// courier is turned away, Delhivery is ASKED about the attempt's own
+// reference. Both answers were checked against production on 2026-11-11:
+// a booked reference comes back as ShipmentData[].Shipment with that
+// ReferenceNo and its AWB; a reference that made nothing comes back as
+// exactly {"Error": "No such waybill or Order Id found"}.
+
+/**
+ * Delhivery's answer to "is there a parcel under this reference?". PURE.
+ *
+ *   FOUND    HTTP 2xx, a JSON object, exactly one Shipment whose ReferenceNo
+ *            is OUR reference and which carries an AWB -- and is not cancelled.
+ *   NONE     HTTP 2xx, a JSON object whose ONLY key is Error, saying exactly
+ *            "No such waybill or Order Id found".
+ *   UNKNOWN  everything else: another status, another shape, a shipment under
+ *            another reference, a cancelled one, more than one.
+ */
+function classifyDelhiveryLookup(
+  status: number, bodyText: string, reference: string,
+): { kind: 'found'; awb: string; status: string } | { kind: 'none' } | { kind: 'unknown' } {
+  if (!(status >= 200 && status < 300) || !reference) return { kind: 'unknown' };
+  const b = jsonObject(bodyText);
+  if (!b) return { kind: 'unknown' };
+  const keys = Object.keys(b);
+  if (keys.length === 1 && keys[0] === 'Error' && typeof b.Error === 'string'
+      && /^\s*no such waybill or order id found\s*$/i.test(b.Error)) {
+    return { kind: 'none' };
+  }
+  const list = Array.isArray(b.ShipmentData) ? b.ShipmentData : [];
+  const ours = list.map((x: any) => x?.Shipment).filter((s: any) => s && typeof s === 'object'
+    && String(s.ReferenceNo ?? '').trim().toUpperCase() === reference.toUpperCase()
+    && String(s.AWB ?? '').trim() !== '');
+  if (ours.length !== 1) return { kind: 'unknown' };
+  const st = String(ours[0].Status?.Status ?? '').trim();
+  // A cancelled parcel is never attached: a person decides what happens next.
+  if (st.toLowerCase().startsWith('cancel')) return { kind: 'unknown' };
+  return { kind: 'found', awb: String(ours[0].AWB).trim(), status: st || 'Manifested' };
+}
+
+/** Ask Delhivery about one reference. Never throws: no answer is UNKNOWN. */
+async function lookupDelhivery(
+  fetchFn: (url: string, init?: RequestInit) => Promise<Response>, token: string, reference: string,
+): Promise<{ kind: 'found'; awb: string; status: string } | { kind: 'none' } | { kind: 'unknown' }> {
+  try {
+    const res = await fetchFn(`${BASE}/api/v1/packages/json/?ref_ids=${encodeURIComponent(reference)}`, {
+      method: 'GET',
+      headers: { Authorization: `Token ${token}` },
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+    });
+    return classifyDelhiveryLookup(Number(res?.status) || 0, await res.text(), reference);
+  } catch {
+    return { kind: 'unknown' };
+  }
+}
+
+/**
+ * The order's open attempt is with Delhivery, and THIS request is for another
+ * courier. Delhivery is asked about that attempt's reference:
+ *   found -> the parcel is attached to the order (finalize); nothing new is made.
+ *   none  -> release_unsent_attempt closes the attempt -- only if it is 10 quiet
+ *            minutes old and was not re-sent while we asked -- so the order can
+ *            be claimed again.
+ *   anything else -> blocked, exactly as before. retry_in when it is too soon.
+ */
+async function settleOpenDelhivery(
+  deps: { supabase: any; fetch: (url: string, init?: RequestInit) => Promise<Response> },
+  c: { slug: string; orderId: string }, attemptId: unknown,
+): Promise<{ kind: 'released' } | { kind: 'attached'; reply: Record<string, unknown> } | { kind: 'blocked'; retryIn?: number }> {
+  const row = await askRpc(deps.supabase, 'read_open_attempt', {
+    p_store_slug: c.slug, p_order_id: c.orderId, p_attempt_id: attemptId,
+  });
+  let token = '';
+  try {
+    const t = await deps.supabase.from('store_shipping_accounts')
+      .select('api_token').eq('store_slug', c.slug).eq('provider', 'delhivery').maybeSingle();
+    token = t?.error ? '' : String(t?.data?.api_token || '');
+  } catch {
+    return { kind: 'blocked' };
+  }
+  if (!row || row.outcome !== 'open' || row.courier !== 'delhivery' || !row.claimed_at || !token) {
+    return { kind: 'blocked' };
+  }
+  const reference = delhiveryReference(c.orderId, row.attempt_no);
+  if (!reference) return { kind: 'blocked' };
+
+  const seen = await lookupDelhivery(deps.fetch, token, reference);
+  if (seen.kind === 'found') {
+    const args = {
+      p_attempt_id: row.attempt_id, p_store_slug: c.slug, p_courier: 'delhivery',
+      p_awb: seen.awb, p_shipping_cost: null, p_final_status: seen.status,
+    };
+    let fin = await askRpc(deps.supabase, 'finalize_shipment_attempt', args);
+    if (!fin) fin = await askRpc(deps.supabase, 'finalize_shipment_attempt', args);   // exactly one retry
+    if (fin && (fin.outcome === 'finalized' || fin.outcome === 'already_finalized')) {
+      return {
+        kind: 'attached',
+        reply: {
+          awb: seen.awb, alreadyBooked: true, courier: 'delhivery', trackUrl: trackUrlFor('delhivery', seen.awb),
+          note: `Delhivery already had this order (AWB ${seen.awb}), so that shipment was attached. Nothing new was booked.`,
+        },
+      };
+    }
+    return { kind: 'blocked' };
+  }
+  if (seen.kind !== 'none') return { kind: 'blocked' };
+
+  // claimed_at goes back EXACTLY as read: a re-send since then moved it, and
+  // the release refuses.
+  const rel = await askRpc(deps.supabase, 'release_unsent_attempt', {
+    p_store_slug: c.slug, p_order_id: c.orderId, p_attempt_id: row.attempt_id, p_claimed_at: row.claimed_at,
+    p_final_status: `Delhivery has no parcel under reference ${reference}; released for another courier`,
+  });
+  if (rel?.outcome === 'released') return { kind: 'released' };
+  if (rel?.outcome === 'too_soon') return { kind: 'blocked', retryIn: Number(rel.retry_in) || 600 };
+  return { kind: 'blocked' };
 }
 
 /** The claim was refused, so the courier was never contacted. */
@@ -653,6 +787,8 @@ async function bookShipment(
     token: string; mode: string; shipCost: number | null;
     /** The create request, given the deterministic reference. */
     request: (reference: string) => { url: string; init: RequestInit };
+    /** Set on the one retry after an open Delhivery attempt was released. */
+    afterRelease?: boolean;
   },
 ): Promise<{ booked: boolean; reply: Record<string, unknown>; awb?: string }> {
   const name = c.provider === 'shadowfax' ? 'Shadowfax' : 'Delhivery';
@@ -676,6 +812,14 @@ async function bookShipment(
       p_store_slug: c.slug, p_order_id: c.orderId, p_courier: c.provider,
     });
     if (!resume) return { booked: false, reply: resumeRefused(name, { outcome: 'unheard' }) };
+    // Another courier's unconfirmed Delhivery booking: ask Delhivery before
+    // refusing. Released -> claim again, ONCE; attached -> it is booked.
+    if (resume.outcome === 'other_courier' && resume.courier === 'delhivery' && !c.afterRelease) {
+      const settled = await settleOpenDelhivery(deps, c, resume.attempt_id);
+      if (settled.kind === 'released') return bookShipment(deps, { ...c, afterRelease: true });
+      if (settled.kind === 'attached') return { booked: false, reply: settled.reply };
+      if (settled.retryIn) return { booked: false, reply: resumeRefused(name, { ...resume, retry_in: settled.retryIn }) };
+    }
     if (resume.outcome !== 'resumed') {
       return {
         booked: false,

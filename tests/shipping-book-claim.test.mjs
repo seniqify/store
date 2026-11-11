@@ -67,11 +67,14 @@ const FLOW = [
   'shadowfaxReference', 'jsonObject', 'createReason', 'mentionsDuplicate', 'shadowfaxCancelConfirmed',
   'shadowfaxReplyAwb', 'hasShadowfaxErrors', 'isShadowfaxRefusal', 'createLog',
   'delhiveryCancelConfirmed', 'cancelAtCourier', 'bookingUnknown', 'resumeRefused', 'claimRefused',
-  'finalizeUnheard', 'finalizeRefused', 'settleDuplicate', 'bookShipment',
+  'finalizeUnheard', 'finalizeRefused', 'settleDuplicate',
+  'classifyDelhiveryLookup', 'lookupDelhivery', 'settleOpenDelhivery', 'bookShipment',
 ];
 const CREATE_TIMEOUT_MS = Number(((BOOK.match(/\nconst CREATE_TIMEOUT_MS = ([\d_]+);/) || [])[1] || '').replace(/_/g, ''));
 assert.equal(CREATE_TIMEOUT_MS, 60000, 'the courier gets at most 60 s -- well inside the 2 quiet minutes a resume needs');
-const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], { BASE, CREATE_TIMEOUT_MS });
+const LOOKUP_TIMEOUT_MS = Number(((BOOK.match(/\nconst LOOKUP_TIMEOUT_MS = ([\d_]+);/) || [])[1] || '').replace(/_/g, ''));
+assert.equal(LOOKUP_TIMEOUT_MS, 15000, 'a lookup gets at most 15 s');
+const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], { BASE, CREATE_TIMEOUT_MS, LOOKUP_TIMEOUT_MS });
 
 // ── a stateful fake database that honours the RPC contracts ─────────────────
 
@@ -81,9 +84,9 @@ const F = load([...FLOW, 'classifyShadowfaxCreate', 'classifyDelhiveryCreate'], 
  * which is what the real claim's row lock guarantees. `script` queues exact
  * answers ({data,error} or an Error to throw) that are used first.
  */
-function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
+function ledgerDb({ orderAwb = null, orderCourier = null, script = {}, dlvToken = 'dlv-SECRET-7' } = {}) {
   // `now` is the database clock (ms); later() moves it on.
-  const state = { orderAwb, orderCourier, attempts: [], nextId: 100, now: Date.parse('2026-10-05T06:00:00Z') };
+  const state = { orderAwb, orderCourier, dlvToken, attempts: [], nextId: 100, now: Date.parse('2026-10-05T06:00:00Z') };
   const log = { rpc: [], writes: [] };
   const handlers = {
     claim_shipment_attempt(a) {
@@ -137,6 +140,26 @@ function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
       att.end_reason = 'failed'; att.final_status = a.p_final_status;
       return { outcome: 'failed', attempt_id: att.id };
     },
+    // The contract of supabase/shipment-release-forward.sql (tested on Postgres
+    // itself in tests/shipment-release.test.mjs).
+    read_open_attempt(a) {
+      const att = state.attempts.find((x) => x.id === a.p_attempt_id && x.end_reason === null && !x.awb);
+      return att
+        ? { outcome: 'open', attempt_id: att.id, attempt_no: att.attempt_no, courier: att.courier, claimed_at: att.claimed_at }
+        : { outcome: 'not_open' };
+    },
+    release_unsent_attempt(a) {
+      const att = state.attempts.find((x) => x.id === a.p_attempt_id);
+      if (!att) return { outcome: 'attempt_not_found' };
+      if (att.end_reason) return { outcome: 'attempt_terminal', end_reason: att.end_reason };
+      if (att.awb) return { outcome: 'attempt_has_awb', awb: att.awb };
+      if (att.claimed_at == null || a.p_claimed_at !== att.claimed_at) return { outcome: 'sent_again' };
+      if (att.claimed_at > state.now - 600000) {
+        return { outcome: 'too_soon', retry_in: Math.max(1, Math.ceil((att.claimed_at + 600000 - state.now) / 1000)) };
+      }
+      att.end_reason = 'failed'; att.final_status = a.p_final_status;
+      return { outcome: 'released', attempt_id: att.id };
+    },
     supersede_shipment_attempt(a) {
       const att = state.attempts.find((x) => x.id === a.p_attempt_id);
       if (!att) return { outcome: 'attempt_not_found' };
@@ -157,7 +180,9 @@ function ledgerDb({ orderAwb = null, orderCourier = null, script = {} } = {}) {
       insert: (v) => { log.writes.push({ table, op: 'insert', v }); return chain; },
       upsert: (v) => { log.writes.push({ table, op: 'upsert', v }); return chain; },
       delete: () => { log.writes.push({ table, op: 'delete' }); return chain; },
-      maybeSingle: async () => ({ data: { awb: state.orderAwb, courier: state.orderCourier }, error: null }),
+      maybeSingle: async () => (table === 'store_shipping_accounts'
+        ? { data: state.dlvToken ? { api_token: state.dlvToken } : null, error: null }
+        : { data: { awb: state.orderAwb, courier: state.orderCourier }, error: null }),
     };
     return chain;
   };
@@ -1320,4 +1345,228 @@ test('scope: B2B does not start rebooking or touch shipping-ops', () => {
   assert.equal(BOOK.includes('cancel_current_shipment'), false, 'cancellation stays in shipping-ops');
   assert.ok(OPS.includes("rpc('cancel_current_shipment'"), 'shipping-ops is as PR2 left it');
   void B2A1;
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AN UNCONFIRMED DELHIVERY BOOKING -- checked WITH Delhivery before another
+// courier is turned away (founder, 2026-11-11: an order refused by Delhivery
+// for low wallet / an unserved PIN could never be booked with Shadowfax)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The two answers, exactly as production gave them on 2026-11-11.
+const DLV_NONE = { status: 200, body: '{\n    "Error": "No such waybill or Order Id found"\n}' };
+const dlvFound = (reference, awb = 'DL9000111', status = 'Manifested') => ({
+  status: 200,
+  body: { ShipmentData: [{ Shipment: { AWB: awb, ReferenceNo: reference, OrderType: 'COD', Status: { Status: status } } }] },
+});
+// A Delhivery create that refused without a waybill: UNKNOWN, so the claim stays open.
+const DLV_REFUSED = { status: 200, body: { success: false, packages: [{ remarks: ['Insufficient balance in wallet'] }] } };
+
+/** Delhivery lookups and courier creates, kept apart. */
+function lookupCourier({ lookup = DLV_NONE, create = SFX_CREATED, onLookup } = {}) {
+  const seen = { lookup: [], create: [], cancel: [] };
+  const reply = (r) => {
+    if (r instanceof Error) throw r;
+    const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text };
+  };
+  const fetch = async (url, init) => {
+    if (url.includes('/api/v1/packages/json/')) {
+      seen.lookup.push({ url, init });
+      if (onLookup) onLookup();
+      return reply(typeof lookup === 'function' ? lookup(url) : lookup);
+    }
+    if (/\/cancel\/|\/api\/p\/edit/.test(url)) { seen.cancel.push({ url, init }); return reply(SFX_CANCELLED); }
+    seen.create.push({ url, init });
+    return reply(create);
+  };
+  return { seen, fetch };
+}
+
+/** An order whose Delhivery booking was refused `ago` ms before now. */
+async function stuckOnDelhivery(ago = 11 * 60000) {
+  const db = ledgerDb();
+  const first = await book({ db, courier: fakeCourier({ create: DLV_REFUSED }), c: ctx({ provider: 'delhivery' }) });
+  assert.equal(first.reply.bookingUnknown, true, 'precondition: Delhivery refusals stay unconfirmed');
+  assert.equal(db.state.attempts[0].end_reason, null);
+  later(db, ago);
+  return db;
+}
+
+test('STUCK: Delhivery says it has no parcel => the attempt is released and Shadowfax books it', async () => {
+  const db = await stuckOnDelhivery();
+  const courier = lookupCourier();
+  const { out, reply } = await book({ db, courier });
+  assert.equal(out.booked, true, reply.error);
+  assert.equal(courier.seen.lookup.length, 1, 'Delhivery asked once');
+  const ref = F.delhiveryReference(ORDER, 1);
+  assert.ok(courier.seen.lookup[0].url.endsWith(`/api/v1/packages/json/?ref_ids=${ref}`), 'by the attempt\'s own reference');
+  assert.equal(courier.seen.lookup[0].init.headers.Authorization, 'Token dlv-SECRET-7', 'with the store\'s DELHIVERY token');
+  assert.equal(courier.seen.create.length, 1, 'then exactly one Shadowfax create');
+  assert.equal(db.state.attempts.length, 2);
+  assert.equal(db.state.attempts[0].end_reason, 'failed');
+  assert.match(db.state.attempts[0].final_status, new RegExp(`no parcel under reference ${ref}`));
+  assert.equal(db.state.attempts[1].courier, 'shadowfax');
+  assert.equal(db.state.orderAwb, 'SFAWB0001');
+  const rel = calls(db, 'release_unsent_attempt')[0].args;
+  assert.equal(rel.p_claimed_at, db.state.attempts[0].claimed_at, 'claimed_at goes back exactly as read');
+});
+
+test('STUCK: Delhivery HAS the parcel => it is attached to the order, and nothing new is made', async () => {
+  const db = await stuckOnDelhivery();
+  const courier = lookupCourier({ lookup: (url) => dlvFound(url.split('ref_ids=')[1], 'DL9000111', 'Manifested') });
+  const { out, reply } = await book({ db, courier });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.create.length, 0, 'no Shadowfax parcel');
+  assert.equal(calls(db, 'release_unsent_attempt').length, 0);
+  assert.equal(reply.alreadyBooked, true);
+  assert.equal(reply.awb, 'DL9000111');
+  assert.equal(reply.courier, 'delhivery');
+  assert.match(reply.trackUrl, /DL9000111$/);
+  assert.equal(db.state.orderAwb, 'DL9000111');
+  assert.equal(db.state.attempts.length, 1);
+  assert.equal(db.state.attempts[0].awb, 'DL9000111');
+});
+
+const BLOCKED_ANSWERS = [
+  ['a parcel under ANOTHER reference', () => dlvFound('ZZZZ0000')],
+  ['a cancelled parcel', (url) => dlvFound(url.split('ref_ids=')[1], 'DL1', 'Cancelled')],
+  ['two parcels', (url) => {
+    const r = url.split('ref_ids=')[1];
+    return { status: 200, body: { ShipmentData: [dlvFound(r).body.ShipmentData[0], dlvFound(r, 'DL2').body.ShipmentData[0]] } };
+  }],
+  ['the not-found text beside other keys', () => ({ status: 200, body: { Error: 'No such waybill or Order Id found', ShipmentData: [] } })],
+  ['another error', () => ({ status: 200, body: { Error: 'Login or API Key Required' } })],
+  ['an HTTP 500 saying not found', () => ({ ...DLV_NONE, status: 500 })],
+  ['an HTML page', () => ({ status: 200, body: '<html>No such waybill or Order Id found</html>' })],
+  ['no answer', () => new Error('timed out')],
+];
+
+for (const [what, lookup] of BLOCKED_ANSWERS) {
+  test(`STUCK: ${what} => still blocked: nothing released, nothing booked`, async () => {
+    const db = await stuckOnDelhivery();
+    const courier = lookupCourier({ lookup });
+    const { out, reply } = await book({ db, courier });
+    assert.equal(out.booked, false);
+    assert.equal(courier.seen.lookup.length, 1);
+    assert.equal(courier.seen.create.length, 0);
+    assert.equal(calls(db, 'release_unsent_attempt').length, 0);
+    assert.equal(calls(db, 'finalize_shipment_attempt').length, 0);
+    assert.equal(db.state.attempts[0].end_reason, null);
+    assert.match(reply.error, /earlier Delhivery booking[\s\S]*Pick Delhivery in Book courier/);
+  });
+}
+
+test('STUCK: under 10 quiet minutes => not released; the merchant is told how long to wait', async () => {
+  const db = await stuckOnDelhivery(4 * 60000);
+  const courier = lookupCourier();
+  const { out, reply } = await book({ db, courier });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.create.length, 0);
+  assert.equal(db.state.attempts[0].end_reason, null);
+  assert.equal(reply.canRetry, true);
+  assert.match(reply.error, /Wait 6 minutes and press Book again: PocketLink will check with Delhivery first/);
+  later(db, 6 * 60000);
+  const again = await book({ db, courier: lookupCourier() });
+  assert.equal(again.out.booked, true, 'and after the wait it books');
+});
+
+test('STUCK: a Delhivery re-send while we asked => the release refuses; nothing is booked twice', async () => {
+  const db = await stuckOnDelhivery();
+  // The merchant pressed Delhivery in another tab: resume moved claimed_at.
+  const courier = lookupCourier({ onLookup: () => { db.state.attempts[0].claimed_at = db.state.now; } });
+  const { out, reply } = await book({ db, courier });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.create.length, 0);
+  assert.equal(db.state.attempts[0].end_reason, null);
+  assert.ok(reply.error);
+});
+
+test('STUCK: no Delhivery token => Delhivery is not asked, and the order stays blocked', async () => {
+  const db = await stuckOnDelhivery();
+  db.state.dlvToken = null;
+  const courier = lookupCourier();
+  const { out } = await book({ db, courier });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.lookup.length + courier.seen.create.length, 0);
+});
+
+test('STUCK: an unheard read or release => blocked; the check runs at most once per press', async () => {
+  for (const fn of ['read_open_attempt', 'release_unsent_attempt']) {
+    const db = await stuckOnDelhivery();
+    db.rpc = ((orig) => async (name, args) => (name === fn ? (db.log.rpc.push({ fn: name, args }), null) : orig(name, args)))(db.rpc);
+    const courier = lookupCourier();
+    const { out } = await book({ db, courier });
+    assert.equal(out.booked, false, fn);
+    assert.equal(courier.seen.create.length, 0, fn);
+    assert.equal(db.state.attempts[0].end_reason, null, fn);
+  }
+  // Released, but the re-claim finds ANOTHER open attempt: no second lookup.
+  const db = await stuckOnDelhivery();
+  const courier = lookupCourier({ onLookup: () => {} });
+  const realRelease = db.rpc;
+  db.rpc = async (name, args) => {
+    const r = await realRelease(name, args);
+    if (name === 'release_unsent_attempt' && r.data?.outcome === 'released') {
+      db.state.attempts.push({ id: 999, attempt_no: 2, courier: 'delhivery', awb: null, end_reason: null, final_status: null, claimed_at: db.state.now - 3600000 });
+    }
+    return r;
+  };
+  const { out } = await book({ db, courier });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.lookup.length, 1, 'never a loop');
+  assert.equal(courier.seen.create.length, 0);
+});
+
+test('STUCK: a Shadowfax booking that is open is NOT looked up -- unchanged', async () => {
+  const db = ledgerDb();
+  await book({ db, courier: fakeCourier({ create: new Error('timed out') }) });
+  later(db, 3600000);
+  const courier = lookupCourier({ create: DLV_CREATED });
+  const { out, reply } = await book({ db, courier, c: ctx({ provider: 'delhivery' }) });
+  assert.equal(out.booked, false);
+  assert.equal(courier.seen.lookup.length + courier.seen.create.length, 0);
+  assert.match(reply.error, /earlier Shadowfax booking/);
+});
+
+test('STUCK: no reply carries either courier token', async () => {
+  for (const lookup of [DLV_NONE, (url) => dlvFound(url.split('ref_ids=')[1]), new Error('x')]) {
+    const db = await stuckOnDelhivery();
+    const { reply } = await book({ db, courier: lookupCourier({ lookup }) });
+    const s = JSON.stringify(reply);
+    assert.equal(s.includes('dlv-SECRET-7') || s.includes('tok-SECRET-9'), false, s);
+  }
+});
+
+test('Delhivery lookup classifier: found / none ONLY on the exact production shapes', () => {
+  const ref = 'AB12CD34';
+  const C = (s, b) => F.classifyDelhiveryLookup(s, typeof b === 'string' ? b : JSON.stringify(b), ref).kind;
+  assert.equal(C(200, DLV_NONE.body), 'none');
+  assert.equal(C(200, { Error: 'no such waybill or order id found ' }), 'none');
+  assert.equal(C(200, dlvFound(ref).body), 'found');
+  assert.equal(C(200, dlvFound(ref.toLowerCase()).body), 'found');
+  assert.deepEqual(F.classifyDelhiveryLookup(200, JSON.stringify(dlvFound(ref, ' DL7 ', 'In Transit').body), ref),
+    { kind: 'found', awb: 'DL7', status: 'In Transit' });
+  for (const [s, b] of [
+    [404, DLV_NONE.body], [401, DLV_NONE.body], [0, ''], [200, ''], [200, 'null'], [200, '[]'],
+    [200, { Error: 'No such waybill' }], [200, { Error: 'Order Id not found for this client' }],
+    [200, { Error: 'No such waybill or Order Id found', Success: false }],
+    [200, { ShipmentData: [] }], [200, dlvFound('OTHER123').body], [200, dlvFound(ref, '').body],
+    [200, dlvFound(ref, 'DL1', 'Cancelled').body], [200, dlvFound(ref, 'DL1', 'cancellation requested').body],
+  ]) {
+    assert.equal(C(s, b), 'unknown', JSON.stringify([s, b]));
+  }
+  assert.equal(F.classifyDelhiveryLookup(200, DLV_NONE.body, '').kind, 'unknown', 'no reference, no answer');
+});
+
+test('source: the lookup is a GET with a timeout, and shipping-book still never reads the ledger table', () => {
+  const fn = BOOK_CODE.slice(BOOK_CODE.indexOf('async function lookupDelhivery('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /method: 'GET'/);
+  assert.match(body, /signal: AbortSignal\.timeout\(LOOKUP_TIMEOUT_MS\)/);
+  assert.equal(BOOK.includes('shipment_attempts'), false);
+  const settle = BOOK_CODE.slice(BOOK_CODE.indexOf('async function settleOpenDelhivery('));
+  assert.ok(settle.indexOf("'read_open_attempt'") > 0 && settle.indexOf("'release_unsent_attempt'") > settle.indexOf('lookupDelhivery('),
+    'read the attempt, ask Delhivery, and only then release');
 });
