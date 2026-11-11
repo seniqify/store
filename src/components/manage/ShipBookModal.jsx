@@ -228,7 +228,7 @@ export default function ShipBookModal({
               {defaultSkipped && (
                 <p className="flex items-start gap-1.5 text-[11.5px] leading-snug text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
                   <AlertTriangle size={13} className="flex-shrink-0 mt-px" />
-                  <span>{defaultOpt.name} (your default) {defaultOpt.noCod ? "can't take cash on delivery here" : `doesn't deliver to ${f.pin}`}, so {courierInfo(autoPick).name} is picked for this order.</span>
+                  <span>{defaultOpt.name} (your default) {defaultOpt.noWallet ? 'needs a wallet recharge first' : defaultOpt.noCod ? "can't take cash on delivery here" : `doesn't deliver to ${f.pin}`}, so {courierInfo(autoPick).name} is picked for this order.</span>
                 </p>
               )}
               {options.map((x) => {
