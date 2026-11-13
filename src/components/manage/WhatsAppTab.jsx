@@ -18,7 +18,7 @@ import { COIN_PAISE } from '../../utils/walletPacks';
 
 const label = 'px-1 text-[11px] font-extrabold uppercase tracking-wide text-gray-500';
 
-export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeName = '', waPhone = '', cartAllowed = true, onGoTab }) {
+export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeName = '', waPhone = '', cartAllowed = true, onGoTab, wide = false }) {
   const [usage, setUsage] = useState(null);    // get_order_message_usage
   const [cart, setCart]   = useState(null);    // { enabled } | { error }
   const [cartBusy, setCartBusy] = useState(false);
@@ -43,16 +43,57 @@ export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeNa
   const allFreeUsed = usage && !usage.error && used >= limit;
   const paused = allFreeUsed && Number(usage.balance_paise) < COIN_PAISE;
 
+  const winBack = (
+    <>
+        {/* Win customers back: 3 Coins each */}
+        <p className={label}>Win customers back · 3 Coins each</p>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+          {cartAllowed ? (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-bold text-gray-900">Automatic cart reminder</p>
+                <p className="text-[11.5px] text-gray-500">One WhatsApp about an hour after someone leaves their cart</p>
+              </div>
+              <Switch on={Boolean(cart?.enabled)} disabled={cartBusy || !cart || cart.error} color={themeColor}
+                      label="Automatic cart reminder" onClick={toggleCart} />
+            </div>
+          ) : (
+            <p className="text-[12px] text-gray-500">Cart reminders come with a paid plan.</p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => onGoTab?.('customers')}
+              className="h-11 rounded-xl text-white text-[13px] font-bold inline-flex items-center justify-center gap-1.5 active:scale-[0.98]"
+              style={{ backgroundColor: themeColor }}>
+              <Percent size={15} /> Send an offer
+            </button>
+            <button type="button" onClick={() => onGoTab?.('abandoned')}
+              className="h-11 rounded-xl border border-gray-200 bg-white text-[13px] font-bold text-gray-800 inline-flex items-center justify-center gap-1.5 hover:bg-gray-50 active:scale-[0.98]">
+              <ShoppingCart size={15} /> Remind carts
+            </button>
+          </div>
+          <p className="text-[11.5px] text-gray-500">Both show the cost in Coins before anything is sent.</p>
+        </div>
+    </>
+  );
+
+  // Computer: two columns (Coins + win-back on the left, the automatic messages on
+  // the right), as in the approved prototype. Phone: one column, as before.
+  const col = wide ? 'space-y-4 min-w-0' : 'space-y-4';
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <div>
+    <div className={wide ? 'grid grid-cols-2 gap-6 items-start' : 'max-w-3xl mx-auto space-y-4'}>
+      <div className={wide ? 'hidden' : ''}>
         <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
           <MessageCircle size={18} style={{ color: themeColor }} /> WhatsApp
         </h2>
         <p className="text-xs text-gray-500 mt-0.5">Every message PocketLink sends for your shop, and the Coins that pay for them</p>
       </div>
 
+      <div className={col}>
       <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} waPhone={waPhone} version={version} />
+      {wide && winBack}
+      </div>
+
+      <div className={col}>
 
       {/* When an order comes in: 500 free a month, then 1 Coin */}
       <p className={label}>When an order comes in · {limit} free a month</p>
@@ -101,38 +142,12 @@ export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeNa
       {/* Shipping updates: 1 Coin each */}
       <p className={label}>Shipping updates · 1 Coin each</p>
       <ShipUpdates slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />
-
-      {/* Win customers back: 3 Coins each */}
-      <p className={label}>Win customers back · 3 Coins each</p>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
-        {cartAllowed ? (
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-[13.5px] font-bold text-gray-900">Automatic cart reminder</p>
-              <p className="text-[11.5px] text-gray-500">One WhatsApp about an hour after someone leaves their cart</p>
-            </div>
-            <Switch on={Boolean(cart?.enabled)} disabled={cartBusy || !cart || cart.error} color={themeColor}
-                    label="Automatic cart reminder" onClick={toggleCart} />
-          </div>
-        ) : (
-          <p className="text-[12px] text-gray-500">Cart reminders come with a paid plan.</p>
-        )}
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => onGoTab?.('customers')}
-            className="h-11 rounded-xl text-white text-[13px] font-bold inline-flex items-center justify-center gap-1.5 active:scale-[0.98]"
-            style={{ backgroundColor: themeColor }}>
-            <Percent size={15} /> Send an offer
-          </button>
-          <button type="button" onClick={() => onGoTab?.('abandoned')}
-            className="h-11 rounded-xl border border-gray-200 bg-white text-[13px] font-bold text-gray-800 inline-flex items-center justify-center gap-1.5 hover:bg-gray-50 active:scale-[0.98]">
-            <ShoppingCart size={15} /> Remind carts
-          </button>
-        </div>
-        <p className="text-[11.5px] text-gray-500">Both show the cost in Coins before anything is sent.</p>
       </div>
 
+      {!wide && winBack}
+
       <button type="button" onClick={() => { setVersion((v) => v + 1); load(); }}
-        className="w-full h-10 text-[12px] font-bold text-gray-500 hover:text-gray-700">Refresh</button>
+        className={`w-full h-10 text-[12px] font-bold text-gray-500 hover:text-gray-700 ${wide ? 'col-span-2' : ''}`}>Refresh</button>
     </div>
   );
 }

@@ -133,32 +133,37 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
   }
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="w-12 h-12 rounded-xl bg-amber-100 grid place-items-center flex-shrink-0">
-            <Coins size={24} className="text-amber-600" />
-          </span>
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      {/* The balance, on the dark PocketLink panel with a glow of the shop colour */}
+      <div className="p-4 text-white"
+           style={{ background: `radial-gradient(circle at 100% 0%, ${themeColor}55, transparent 50%), linear-gradient(135deg, #0b1f19, #061310)` }}>
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-2xl font-extrabold text-gray-900 tabular-nums leading-tight">
-              {coins.toLocaleString('en-IN')}
-              <span className="ml-1.5 text-sm font-semibold text-gray-500">{coins === 1 ? 'Coin' : 'Coins'}</span>
+            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white/70">
+              <Coins size={14} className="text-amber-300" /> WhatsApp Coins
             </p>
-            <div className="mt-1">{rate}</div>
+            <p className="text-[36px] font-extrabold tabular-nums leading-none mt-2">
+              {coins.toLocaleString('en-IN')}
+              <span className="ml-2 text-sm font-semibold text-white/70">{coins === 1 ? 'Coin' : 'Coins'}</span>
+            </p>
+            <p className="text-[13px] text-white/75 mt-2">
+              = ₹{(balance / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })} · 1 Coin = ₹0.50
+            </p>
+          </div>
+          <div className="flex items-center flex-shrink-0">
+            <button type="button" onClick={load} aria-label="Refresh"
+              className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 active:scale-95 transition">
+              <RefreshCw size={15} />
+            </button>
+            {compact && (
+              <button type="button" onClick={() => setOpen(false)}
+                className="text-xs font-bold text-white/80 px-2 py-2 rounded-xl hover:bg-white/10">Done</button>
+            )}
           </div>
         </div>
-        <div className="flex items-center flex-shrink-0">
-          <button type="button" onClick={load} aria-label="Refresh"
-            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95 transition">
-            <RefreshCw size={15} />
-          </button>
-          {compact && (
-            <button type="button" onClick={() => setOpen(false)}
-              className="text-xs font-bold text-gray-500 px-2 py-2 rounded-xl hover:bg-gray-100">Done</button>
-          )}
-        </div>
+        <p className="text-xs text-white/70 mt-3">Shipping update = 1 Coin · Cart reminder or offer = 3 Coins</p>
       </div>
-      <p className="text-xs text-gray-500 mt-2">Shipping update = 1 Coin · Cart reminder or offer = 3 Coins</p>
+      <div className="p-4 pt-1">
 
       {notice && (
         <p className={`mt-3 text-xs font-semibold px-3 py-2 rounded-xl border ${TONE[notice.tone] || TONE.wait}`}>{notice.text}</p>
@@ -199,6 +204,7 @@ export default function WalletCard({ slug, pin, themeColor = '#0d9488', storeNam
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

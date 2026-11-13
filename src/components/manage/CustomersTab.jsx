@@ -17,7 +17,7 @@ import { recordOptOut } from '../../utils/offerService';
  * whole segment (OffersPanel, paid from the message wallet, never to customers
  * who asked to stop). No new data is collected; this organises what they own.
  */
-export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '', searchSeed = null }) {
+export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '', searchSeed = null, wide = false }) {
   const [orders,    setOrders]    = useState(null);   // null = loading
   const [seg,       setSeg]       = useState('all');
   const [query,     setQuery]     = useState('');
@@ -94,8 +94,19 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
 
   const repeat = customers.filter((c) => c.orderCount >= 2).length;
 
+  // WhatsApp offers to the shown customers, paid from the message wallet. On a
+  // computer they sit in a column beside the list (the approved prototype).
+  const offers = (
+    <>
+      <OffersPanel slug={slug} pin={pin} businessName={businessName} themeColor={themeColor}
+                   audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
+      <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} compact />
+    </>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className={wide ? 'grid grid-cols-[minmax(0,1fr)_360px] gap-6 items-start' : 'space-y-4'}>
+    <div className="space-y-4 min-w-0">
       <Header themeColor={themeColor} count={summary.total} onRefresh={load} onExport={handleExport} exporting={exporting} />
 
       {/* Stat cards */}
@@ -132,10 +143,7 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
         </p>
       )}
 
-      {/* WhatsApp offers to the active segment, paid from the message wallet */}
-      <OffersPanel slug={slug} pin={pin} businessName={businessName} themeColor={themeColor}
-                   audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
-      <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} compact />
+      {!wide && offers}
 
       {/* Customer list */}
       <div className="space-y-2">
@@ -149,6 +157,8 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
           <p className="text-center text-sm text-gray-400 py-8">No customers match.</p>
         )}
       </div>
+    </div>
+    {wide && <div className="space-y-4 sticky top-[88px] max-h-[calc(100vh-104px)] overflow-y-auto">{offers}</div>}
     </div>
   );
 }

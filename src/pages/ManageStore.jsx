@@ -2757,7 +2757,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 // Sections laid out for the full computer width (the rest keep a reading column).
-const WIDE_TABS = new Set(['home', 'orders', 'products', 'delivery']);
+const WIDE_TABS = new Set(['home', 'orders', 'products', 'delivery', 'whatsapp', 'customers']);
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';
@@ -3164,12 +3164,12 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <WhatsAppTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                          waPhone={config.whatsappNumber} onGoTab={goTab}
-                         cartAllowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)} />
+                         cartAllowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)} wide={isDesktop} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">
             <CustomersTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName}
-                          searchSeed={seedFor('customers')} />
+                          searchSeed={seedFor('customers')} wide={isDesktop} />
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
