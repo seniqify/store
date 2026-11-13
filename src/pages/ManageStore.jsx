@@ -2662,7 +2662,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 // Sections laid out for the full computer width (the rest keep a reading column).
-const WIDE_TABS = new Set(['home']);
+const WIDE_TABS = new Set(['home', 'orders']);
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';
@@ -3025,7 +3025,8 @@ export default function ManageStore() {
             </div>
           </div>
         )}
-        {tab === 'orders' && (
+        {/* On a computer Orders is a list + detail screen; Share page sits in the top bar. */}
+        {tab === 'orders' && !isDesktop && (
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
                      upgrade={!analyticsEnabled} phone={config.whatsappNumber} domain={liveDomain} />
         )}
@@ -3044,7 +3045,7 @@ export default function ManageStore() {
                        mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []}
                        payInfo={{ upi: config.upi || '', bank: config.bank || null }}
                        store={orderStoreOf(config, businessSlug)} rto={rtoSettings(config)}
-                       searchSeed={seedFor('orders')} />
+                       searchSeed={seedFor('orders')} wide={isDesktop} />
           </div>
         ) : tab === 'payments' ? (
           <div className="animate-pl-fade-up">

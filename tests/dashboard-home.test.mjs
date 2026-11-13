@@ -83,7 +83,27 @@ test('latest orders: first page only, a list not a figure, Accept is a plain sta
   assert.ok(!/fetchOrders\b/.test(HOME), 'Home itself still never reads the capped list');
 });
 
-test('Home gets the full computer width; other sections keep their column', () => {
-  assert.match(MANAGE, /const WIDE_TABS = new Set\(\['home'\]\);/);
+test('Home and Orders get the full computer width', () => {
+  assert.match(MANAGE, /const WIDE_TABS = new Set\(\['home', 'orders'\]\);/);
   assert.match(MANAGE, /onFind=\{findIn\}/);
+});
+
+test('Orders on a computer: the list on the left, the full order card on the right', () => {
+  const TAB = read('src/components/manage/OrdersTab.jsx');
+  assert.match(MANAGE, /searchSeed=\{seedFor\('orders'\)\} wide=\{isDesktop\}/);
+  assert.match(TAB, /grid grid-cols-\[minmax\(0,1fr\)_440px\]/);
+  // The right side is the same card the phone shows, so every action still works.
+  assert.match(TAB, /\{selected && cardFor\(selected\)\}/);
+  assert.match(TAB, /\{!wide && pageRows\.map\(cardFor\)\}/);
+  assert.match(TAB, /const OrderRow = memo\(function OrderRow/);
+});
+
+test('Accept all: a plain status change for new real sales only, never unpaid pay-online orders', () => {
+  const TAB = read('src/components/manage/OrdersTab.jsx');
+  assert.match(TAB, /o\.status === 'new' && orderStage\(o\) === 'to_ship'/);
+  // Through the screen's one status writer, the same one each card's Accept uses.
+  assert.match(TAB, /for \(const id of ids\) await saveStatus\(id, 'confirmed'\);/);
+  assert.match(TAB, /const saveStatus = useCallback\(async \(id, status\) => \{ await setOrderStatus\(slug, pin, id, status\); \}/);
+  const fn = TAB.slice(TAB.indexOf('const acceptAll'), TAB.indexOf('const markPaid'));
+  assert.ok(!/wa\.me|window\.open/.test(fn), 'nothing is sent by itself');
 });

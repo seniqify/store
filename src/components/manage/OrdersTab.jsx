@@ -95,7 +95,7 @@ const NO_RIDERS = [];
 const NO_PAY_INFO = {};
 const NO_STORE = {};
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null, wide = false }) {
   const leads   = mode === 'leads';
   // Delivery → Ship: the same cards, only the orders still to send.
   const shipOnly = mode === 'ship';
@@ -116,6 +116,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);
+  // Computer (wide): the order open on the right of the list.
+  const [selectedId, setSelectedId] = useState(null);
+  const [acceptingAll, setAcceptingAll] = useState(false);
   // Cards drawn, for one view of the list: a new search or chip starts again at
   // the first page; a refresh keeps what the seller already opened.
   const [more,       setMore]       = useState({ view: '', n: LIST_PAGE_SIZE });
@@ -176,15 +179,33 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
 
   // Stable across renders, so the memoised cards below are not redrawn on
   // every keystroke of the search just because these were remade.
+  // The one place this screen writes a status: the merchant's own action (a card
+  // button, or "Accept all" below, which is the same action for many orders).
+  const saveStatus = useCallback(async (id, status) => { await setOrderStatus(slug, pin, id, status); }, [slug, pin]);
+
   const changeStatus = useCallback(async (id, status) => {
     setBusy(true);
     setOrders((os) => os.map((o) => (o.id === id ? { ...o, status } : o)));
-    await setOrderStatus(slug, pin, id, status);
+    await saveStatus(id, status);
     setBusy(false);
     // The database fills in what follows from a status (orders_payment_automation:
     // delivered COD -> paid, delivered_at), so read the row back.
     if (!leads) refresh();
-  }, [slug, pin, leads, refresh]);
+  }, [saveStatus, leads, refresh]);
+
+  // "Accept all": the same plain status change as each card's Accept (no
+  // message is sent by itself), for every new order that is a real sale.
+  // Pay-online orders the buyer never paid ("not paid") are left alone.
+  const acceptAll = useCallback(async (ids) => {
+    if (!ids.length) return;
+    setAcceptingAll(true);
+    setBusy(true);
+    setOrders((os) => os.map((o) => (ids.includes(o.id) ? { ...o, status: 'confirmed' } : o)));
+    for (const id of ids) await saveStatus(id, 'confirmed');
+    setBusy(false);
+    setAcceptingAll(false);
+    refresh();
+  }, [saveStatus, refresh]);
 
   const markPaid = useCallback(async (id, paid) => {
     setBusy(true);
@@ -263,6 +284,25 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   const pageRows  = filtered.slice(0, visible);
   const remaining = filtered.length - pageRows.length;
 
+  // New orders that are real sales, for "Accept all".
+  const acceptable = leads || shipOnly ? [] : (orders || []).filter((o) => o.status === 'new' && orderStage(o) === 'to_ship');
+  // The order open on the right (computer): the one picked, else the first shown.
+  const selected = wide ? (pageRows.find((o) => o.id === selectedId) || pageRows[0] || null) : null;
+  const cardFor = (o) => (leads
+    ? <LeadCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
+                storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads riders={riders} payInfo={payInfo} store={store} />
+    : <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin} now={loadedAt}
+                 storeName={storeName} onStatus={changeStatus} onPaid={markPaid} riders={riders} payInfo={payInfo} store={store}
+                 risk={risks.get(o.id)} rto={rto} onChanged={refresh} />);
+  // The list grouped by the shop's own day, newest first (rows are already in order).
+  const dayGroups = [];
+  for (const o of wide ? pageRows : []) {
+    const k = orderDayKey(o.created_at);
+    const g = dayGroups[dayGroups.length - 1];
+    if (g && g.key === k) g.rows.push(o); else dayGroups.push({ key: k, rows: [o] });
+  }
+  const dayLabel = (k) => (k === todayKey ? 'Today' : k === yestKey ? 'Yesterday' : k ? prettyDate(k) : 'Earlier');
+
   // ── Loading ──
   if (orders === null) {
     return (
@@ -306,6 +346,20 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
           <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* New orders waiting: accept them in one go */}
+      {acceptable.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+          <p className="flex-1 min-w-0 text-sm font-bold text-amber-900">
+            {acceptable.length} new {acceptable.length === 1 ? 'order' : 'orders'} waiting to be accepted
+          </p>
+          <button type="button" disabled={acceptingAll || busy} onClick={() => acceptAll(acceptable.map((o) => o.id))}
+            className="h-8 px-3 rounded-lg bg-amber-600 text-white text-[13px] font-bold hover:bg-amber-700 active:scale-[0.98] transition disabled:opacity-60 flex-shrink-0">
+            {acceptingAll ? 'Accepting…' : `Accept all ${acceptable.length}`}
+          </button>
+        </div>
+      )}
 
       {/* Empty state */}
       {orders.length === 0 ? (
@@ -439,15 +493,41 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
               : 'Orders move by themselves: the buyer confirms on WhatsApp, the courier updates delivery, and delivered cash-on-delivery turns Paid.'}
           </p>
 
-          {/* Order / lead cards */}
+          {/* Computer: the list on the left, the open order on the right */}
+          {wide && pageRows.length > 0 && (
+            <div className="grid grid-cols-[minmax(0,1fr)_440px] gap-5 items-start">
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                {dayGroups.map((g) => (
+                  <div key={g.key || 'earlier'}>
+                    <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex justify-between">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">{dayLabel(g.key)}</span>
+                      <span className="text-[12px] font-semibold text-gray-500">{g.rows.length} {g.rows.length === 1 ? noun : `${noun}s`}</span>
+                    </div>
+                    {g.rows.map((o) => (
+                      <OrderRow key={o.id} o={o} active={selected?.id === o.id} themeColor={themeColor}
+                                leads={leads} STATUS={STATUS} onPick={() => setSelectedId(o.id)} />
+                    ))}
+                  </div>
+                ))}
+                {remaining > 0 && (
+                  <div className="p-3 text-center border-t border-gray-100">
+                    <button type="button" onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
+                      className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800 hover:bg-gray-50 active:scale-[0.98] transition">
+                      Show {Math.min(LIST_PAGE_SIZE, remaining)} more
+                    </button>
+                    <p className="text-xs text-gray-400 mt-1.5">Showing {pageRows.length} of {filtered.length} {noun}s</p>
+                  </div>
+                )}
+              </div>
+              <div className="sticky top-[88px] max-h-[calc(100vh-104px)] overflow-y-auto rounded-2xl">
+                {selected && cardFor(selected)}
+              </div>
+            </div>
+          )}
+
+          {/* Phone (and narrow screens): one card after another */}
           <div className="space-y-3">
-            {pageRows.map((o) => (leads
-              ? <LeadCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin}
-                          storeName={storeName} onStatus={changeStatus} onPaid={markPaid} leads riders={riders} payInfo={payInfo} store={store} />
-              : <OrderCard key={o.id} o={o} busy={busy} themeColor={themeColor} slug={slug} pin={pin} now={loadedAt}
-                           storeName={storeName} onStatus={changeStatus} onPaid={markPaid} riders={riders} payInfo={payInfo} store={store}
-                           risk={risks.get(o.id)} rto={rto} onChanged={refresh} />
-            ))}
+            {!wide && pageRows.map(cardFor)}
             {/* The searching case already has its own message above the list. */}
             {filtered.length === 0 && !searching && (
               <p className="text-center text-sm text-gray-400 py-8">
@@ -460,7 +540,7 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
             )}
 
             {/* A page size, never a cap: every order is one tap away. */}
-            {remaining > 0 && (
+            {!wide && remaining > 0 && (
               <div className="flex flex-col items-center gap-2 pt-1">
                 <button type="button"
                   onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
@@ -477,6 +557,65 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
     </div>
   );
 }
+
+// ── Computer list row ───────────────────────────────────────────────────────
+// One line per order in the left-hand list; the full card opens on the right.
+const ROW_STAGE = {
+  new:        { label: 'New',        color: '#b45309', bg: '#fef3c7' },
+  to_ship:    { label: 'To ship',    color: '#047857', bg: '#d1fae5' },
+  not_paid:   { label: 'Not paid',   color: '#4b5563', bg: '#f3f4f6' },
+  on_the_way: { label: 'On the way', color: '#4338ca', bg: '#e0e7ff' },
+  delivered:  { label: 'Delivered',  color: '#1d4ed8', bg: '#dbeafe' },
+  returned:   { label: 'Returned',   color: '#b91c1c', bg: '#fee2e2' },
+  cancelled:  { label: 'Cancelled',  color: '#4b5563', bg: '#f3f4f6' },
+};
+const PAY_TONE = { paid: 'text-emerald-700', due: 'text-amber-700', bad: 'text-red-700', muted: 'text-gray-500' };
+
+const OrderRow = memo(function OrderRow({ o, active, themeColor, leads, STATUS, onPick }) {
+  let st;
+  if (leads) {
+    const s = STATUS[o.status] || STATUS.new;
+    st = { label: s.label, color: '#374151', bg: '#f3f4f6' };
+  } else {
+    const stage = orderStage(o);
+    const key = o.status === 'new' && stage === 'to_ship' ? 'new' : stage === 'not_paid' ? 'not_paid' : stageTab(stage);
+    st = ROW_STAGE[key] || ROW_STAGE.to_ship;
+  }
+  const pay = paymentChip(o);
+  const payShort = pay.tone === 'paid' ? 'Paid' : pay.text.startsWith('COD') ? 'COD' : pay.text;
+  const items = Array.isArray(o.items)
+    ? o.items.map((i) => (i?.name ? `${i.name}${Number(i.qty) > 1 ? ` ×${i.qty}` : ''}` : '')).filter(Boolean).join(', ')
+    : '';
+  const ref = String(o.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
+  const name = o.customer_name?.trim() || 'Customer';
+  const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <button type="button" onClick={onPick} aria-current={active ? 'true' : undefined}
+      className={`w-full text-left grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-b-0 transition ${active ? '' : 'hover:bg-gray-50'}`}
+      style={active ? { background: `${themeColor}12`, boxShadow: `inset 3px 0 0 ${themeColor}` } : undefined}>
+      <span className="w-9 h-9 rounded-full grid place-items-center text-[13px] font-extrabold flex-shrink-0"
+            style={{ background: `${themeColor}1a`, color: themeColor }}>{initials}</span>
+      <span className="min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
+          <span className={`font-extrabold truncate ${o.status === 'cancelled' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{name}</span>
+          <span className="text-[12px] text-gray-400 font-semibold flex-shrink-0">#{ref} · {timeAgo(o.created_at)}</span>
+        </span>
+        <span className="block text-[13px] text-gray-500 truncate">
+          {items || `${o.item_count || 0} items`}{o.destination ? ` · ${o.destination}` : ''}
+        </span>
+      </span>
+      <span className="flex flex-col items-end gap-1">
+        <span className="font-extrabold tabular-nums text-gray-900">{formatINR(Number(o.total) || 0)}</span>
+        <span className="flex items-center gap-1.5">
+          {!leads && <span className={`text-[11px] font-bold ${PAY_TONE[pay.tone] || 'text-gray-500'}`}>{payShort}</span>}
+          <span className="inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-bold whitespace-nowrap" style={{ background: st.bg, color: st.color }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />{st.label}
+          </span>
+        </span>
+      </span>
+    </button>
+  );
+});
 
 // The couriers this store has connected (Settings → Shipping), offered in Book courier.
 const connectedCouriers = (store) => ['shadowfax', 'delhivery'].filter((c) => store?.shipping?.[c]);

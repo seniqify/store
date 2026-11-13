@@ -68,7 +68,9 @@ test('both lists draw a page at a time behind Show more, never a silent cap', ()
   assert.equal(LIST_PAGE_SIZE, 50, 'the same page as the Abandoned tab');
   // Orders: the page is cut from the full filtered list, and the rest is a tap away.
   assert.match(TAB, /const pageRows  = filtered\.slice\(0, visible\)/);
-  assert.match(TAB, /\{pageRows\.map\(\(o\) => \(leads/);
+  // Phone: one card each; computer: one row each, the open order beside them.
+  assert.match(TAB, /\{!wide && pageRows\.map\(cardFor\)\}/);
+  assert.match(TAB, /for \(const o of wide \? pageRows : \[\]\)/);
   assert.match(TAB, /Show \{Math\.min\(LIST_PAGE_SIZE, remaining\)\} more/);
   assert.match(TAB, /Showing \{pageRows\.length\} of \{filtered\.length\} \{noun\}s/);
   // The search line still counts every match, not just the drawn page.
@@ -83,7 +85,7 @@ test('both lists draw a page at a time behind Show more, never a silent cap', ()
 });
 
 test('the fixed defaults keep memoised cards from redrawing when a prop is left out', () => {
-  assert.match(TAB, /riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null \}\)/);
+  assert.match(TAB, /riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null, wide = false \}\)/);
   // The RTO reading is worked out once per list, never per card render.
   assert.match(TAB, /const risks = useMemo\(/);
   assert.match(TAB, /risk=\{risks\.get\(o\.id\)\}/);
