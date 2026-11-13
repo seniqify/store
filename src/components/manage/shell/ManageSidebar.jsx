@@ -12,7 +12,7 @@ export default function ManageSidebar({ config, tabs, tab, onSelect, badges = {}
   return (
     <aside className="hidden lg:flex lg:flex-col fixed inset-y-0 left-0 w-64 z-30 text-white"
            style={{ backgroundColor: colors.sidebarBg, backgroundImage: colors.sidebarGlow }}>
-      <div className="px-5 pt-5 pb-3 flex items-center gap-3">
+      <div className="px-5 pt-4 pb-2.5 flex items-center gap-3">
         <ShopMark config={config} size={44} accent={colors.accent} />
         <div className="min-w-0">
           <p className="text-[15px] font-extrabold leading-tight line-clamp-2">{config.businessName}</p>
@@ -35,7 +35,7 @@ export default function ManageSidebar({ config, tabs, tab, onSelect, badges = {}
                     aria-current={active ? 'page' : undefined}
                     aria-label={count > 0 ? `${label}, ${count}` : label}
                     className={[
-                      'w-full flex items-center gap-3 h-[38px] px-3 rounded-[10px] text-[14px] transition-colors',
+                      'w-full flex items-center gap-3 h-9 px-3 rounded-[10px] text-[14px] transition-colors',
                       'focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70',
                       active ? 'bg-white/[0.12] text-white font-bold' : 'text-white/[0.86] font-semibold hover:bg-white/[0.07]',
                     ].join(' ')}>

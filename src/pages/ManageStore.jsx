@@ -2661,6 +2661,8 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 }
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
+// Sections laid out for the full computer width (the rest keep a reading column).
+const WIDE_TABS = new Set(['home']);
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';
@@ -2975,7 +2977,8 @@ export default function ManageStore() {
         colors={colors} planName={planTitle} planText={planText} onPlan={openPlan} onLock={lock} />
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
-      <main className="max-w-lg lg:max-w-3xl mx-auto px-4 pt-6 pb-24 lg:pb-6">
+      {/* Home is a wide two-column screen on a computer; the other sections keep their reading width. */}
+      <main className={`max-w-lg ${WIDE_TABS.has(current) ? 'lg:max-w-[1240px] lg:px-8' : 'lg:max-w-3xl'} mx-auto px-4 pt-6 pb-24 lg:pb-6`}>
         {tab === 'more' && (
           <MoreScreen config={config} tabs={TABS} badges={badges} colors={colors} address={address}
             planName={planTitle} planText={planText} onSelect={goTab} onPlan={openPlan} onLock={lock}
@@ -3029,7 +3032,7 @@ export default function ManageStore() {
         {tab === 'more' ? null : tab === 'home' ? (
           <div className="animate-pl-fade-up">
             <OverviewTab slug={businessSlug} pin={storePin} config={config} themeColor={themeColor}
-                         businessName={config.businessName} onGoTab={goTab} domain={liveDomain} />
+                         businessName={config.businessName} onGoTab={goTab} onFind={findIn} domain={liveDomain} />
           </div>
         ) : tab === 'assistant' ? (
           <div className="animate-pl-fade-up">
