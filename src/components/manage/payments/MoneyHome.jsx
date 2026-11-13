@@ -74,7 +74,8 @@ export default function MoneyHome({ acc, range, setRange, themeColor = '#0d9488'
   const paidTotal = paid.cod.amount + paid.online.amount + paid.other.amount;
 
   return (
-    <div className="space-y-4">
+    // Phone: one column. Computer: the cards in two columns, as in the approved prototype.
+    <div className="space-y-4 lg:space-y-0 lg:columns-2 lg:gap-6 [&>*]:break-inside-avoid lg:[&>*]:mb-6">
       {/* 1. Everything sold, in one bar */}
       <section className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 pt-4 pb-1">
         <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Your money · all time</p>

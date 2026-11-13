@@ -302,8 +302,8 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
 
   return (
     <div className="space-y-4">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Stat cards: two across on a phone, four on a computer */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Revenue" value={formatINR(revenue)} sub={<span className="text-[11px] text-gray-400">from {count} orders</span>} />
         <Stat label="Total orders" value={placed} sub={<>
           {notCounted && <span className="block text-[11px] text-gray-400">{notCounted}</span>}

@@ -2757,7 +2757,9 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 // Sections laid out for the full computer width (the rest keep a reading column).
-const WIDE_TABS = new Set(['home', 'orders', 'products', 'delivery', 'whatsapp', 'customers']);
+const WIDE_TABS = new Set(['home', 'orders', 'products', 'delivery', 'whatsapp', 'customers', 'payments',
+  'abandoned', 'reviews', 'offers', 'analytics', 'insights', 'ads']);
+// Assistant and Settings keep a reading column, as in the prototype.
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';

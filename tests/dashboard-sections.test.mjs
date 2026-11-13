@@ -38,3 +38,20 @@ test('Customers: the list on the left, Send an offer and Coins on the right', ()
   assert.match(tab, /\{!wide && offers\}/);
   assert.match(tab, /\{wide && <div className="space-y-4 sticky/);
 });
+
+test('Payments: full width, the money cards in two columns on a computer, Hisaab kept readable', () => {
+  const home = read('src/components/manage/payments/MoneyHome.jsx');
+  const tab = read('src/components/manage/PaymentsTab.jsx');
+  assert.match(MANAGE, /const WIDE_TABS = new Set\(\[[^\]]*'payments'/);
+  assert.match(home, /lg:columns-2 lg:gap-6 \[&>\*\]:break-inside-avoid/);
+  assert.match(tab, /<div className="max-w-3xl">\n\s*<HisaabTab /);
+});
+
+test('the remaining sections use the computer width; their card lists sit in grids', () => {
+  assert.match(MANAGE, /'abandoned', 'reviews', 'offers', 'analytics', 'insights', 'ads'\]\);/);
+  assert.ok(!/const WIDE_TABS = new Set\(\[[^\]]*'(assistant|settings)'/.test(MANAGE), 'assistant and settings keep a reading column');
+  assert.match(read('src/components/manage/ReviewsTab.jsx'), /lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start/);
+  assert.match(read('src/components/manage/AnalyticsTab.jsx'), /grid grid-cols-2 lg:grid-cols-4 gap-3/);
+  assert.equal((read('src/components/manage/OffersTab.jsx').match(/lg:grid lg:grid-cols-2 xl:grid-cols-3/g) || []).length, 2);
+  assert.match(read('src/components/manage/AiInsightsTab.jsx'), /lg:columns-2 lg:gap-6/);
+});

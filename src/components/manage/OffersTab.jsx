@@ -206,7 +206,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
                 text="Schedule a flash, weekend or happy-hours sale — it turns on and off by itself." />
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-3">
               {offers.map((o) => {
                 const live = isOfferLive(o);
                 return (
@@ -262,7 +262,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
                 text="Create codes like FIRST10 that customers enter at checkout for a discount." />
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-3">
               {coupons.map((c) => {
                 const live = isCouponLive(c);
                 return (

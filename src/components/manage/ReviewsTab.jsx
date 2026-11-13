@@ -210,7 +210,7 @@ export default function ReviewsTab({ slug, pin, themeColor = '#0d9488' }) {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
           {live.map((r) => (
             <ReviewCard key={r.id} r={r} slug={slug} pin={pin} themeColor={themeColor} onChange={onChange} />
           ))}
