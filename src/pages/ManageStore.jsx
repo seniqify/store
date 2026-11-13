@@ -16,7 +16,7 @@ import {
   ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
-  Percent, Sparkles, Users, Bot,
+  Percent, Sparkles, Users, Bot, Search,
   Truck, ShoppingCart, LayoutDashboard, LayoutGrid,
   Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
 } from 'lucide-react';
@@ -62,6 +62,8 @@ import NewOrderToast                                       from '../components/m
 import { useNewOrders }                                    from '../hooks/useNewOrders';
 import { useStoreDomain }                                  from '../hooks/useStoreDomain';
 import { publicStoreUrl }                                  from '../utils/storeUrls';
+import { fetchProductSales }                               from '../utils/salesService';
+import { pinColors }                                       from '../utils/pinGate';
 import { orderSoundOn, setOrderSoundOn, playOrderChime, buzz, alertNewOrder } from '../utils/notifySound';
 import ManageSidebar                                       from '../components/manage/shell/ManageSidebar';
 import MoreScreen                                          from '../components/manage/shell/MoreScreen';
@@ -396,6 +398,15 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
   // Text typed in the dashboard's own search box lands here (once per hand-off).
   const [seedSeen, setSeedSeen] = useState(null);
   if (searchSeed?.q && searchSeed !== seedSeen) { setSeedSeen(searchSeed); setQuery(searchSeed.q); setCatFilter('all'); }
+  // Units sold per product (get_product_sales: counts only, no customer data).
+  const [sales, setSales] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetchProductSales(config.slug).then((idx) => { if (alive) setSales(idx); });
+    return () => { alive = false; };
+  }, [config.slug]);
+  // The shop colour 20% darker: readable under white text (same as the PIN screen).
+  const btnColor = pinColors(themeColor).button;
 
   // Long catalogues need find-ability: filter by name and/or category.
   const q = query.trim().toLowerCase();
@@ -656,12 +667,17 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
   return (
     <div className="space-y-4">
 
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-base font-extrabold text-gray-900">Products</h3>
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{products.length}</span>
-        </div>
+      {/* Search + Add product */}
+      <div className="flex items-center gap-2">
+        {products.length > 0 ? (
+          <div className="relative flex-1 min-w-0">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input type="search" value={query} onChange={e => setQuery(e.target.value)}
+                   placeholder={`Search ${products.length} ${products.length === 1 ? 'product' : 'products'}`}
+                   aria-label="Search products"
+                   className={`${iCls(false)} !pl-9`} />
+          </div>
+        ) : <div className="flex-1" />}
         {atProdLimit ? (
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
@@ -676,28 +692,35 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
           </div>
         ) : (
           <button type="button" onClick={openAdd}
-                  className="flex items-center gap-1.5 text-sm font-bold px-3.5 py-2 rounded-xl
+                  className="flex items-center gap-1.5 text-sm font-bold h-11 px-4 rounded-xl flex-shrink-0
                              text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
-                  style={{ backgroundColor: themeColor }}>
-            <Plus size={15} strokeWidth={2.5} /> Add Product
+                  style={{ backgroundColor: btnColor }}>
+            <Plus size={16} strokeWidth={2.5} /> Add product
           </button>
         )}
       </div>
 
-      {/* Find a product fast — only shown once the list is long enough to need it */}
-      {products.length > 8 && (
-        <div className="flex gap-2">
-          <input type="text" value={query} onChange={e => setQuery(e.target.value)}
-                 placeholder={`Search ${products.length} products…`}
-                 className={iCls(false)} />
-          {userCats.length > 0 && (
-            <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-                    className={`${iCls(false)} !w-auto flex-shrink-0`}>
-              <option value="all">All categories</option>
-              {userCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-          )}
+      {/* Category tabs, with how many products each holds */}
+      {userCats.length > 0 && products.length > 0 && (
+        <div className="flex gap-1 p-1 rounded-xl bg-gray-100 w-max max-w-full overflow-x-auto scrollbar-hide" role="tablist" aria-label="Categories">
+          {[{ id: 'all', label: 'All', n: products.length },
+            ...userCats.map(c => ({ id: c.id, label: c.label, n: products.filter(p => p.category === c.id).length }))].map(t => {
+            const on = catFilter === t.id;
+            return (
+              <button key={t.id} type="button" role="tab" aria-selected={on} onClick={() => setCatFilter(t.id)}
+                      className={['h-8 px-3 rounded-lg text-[13px] font-bold whitespace-nowrap transition',
+                        on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'].join(' ')}>
+                {t.label}<span className={['ml-1.5 tabular-nums', on ? 'text-gray-500' : 'text-gray-400'].join(' ')}>{t.n}</span>
+              </button>
+            );
+          })}
         </div>
+      )}
+      {products.length > 0 && (
+        <button type="button" onClick={() => document.getElementById('manage-categories')?.scrollIntoView({ behavior: 'smooth' })}
+                className="-mt-2 text-[13px] font-bold" style={{ color: btnColor }}>
+          {userCats.length > 0 ? 'Edit categories' : 'Add categories'} ↓
+        </button>
       )}
 
       {/* Empty state */}
@@ -717,81 +740,93 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
         </p>
       )}
 
-      <div className="space-y-2">
+      {/* The product grid: photo first, like the page buyers see */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
         {visible.map(p => {
           const cat = userCats.find(c => c.id === p.category);
           const isEditing = editingId === p.id;
           const fullIdx = products.findIndex(x => x.id === p.id);
+          // Stock: the manual in/out switch, plus the count when this product tracks one.
+          const tracked = Number.isFinite(Number(p.stock)) && p.stock !== '' && p.stock != null;
+          const left = tracked ? Number(p.stock) : null;
+          const out = p.inStock === false || (tracked && left <= 0);
+          const low = !out && tracked && left <= LOW_STOCK;
+          const sold = sales?.get(p.name)?.sold || 0;
+          const off = Number(p.mrp) > Number(p.price) && Number(p.price) > 0
+            ? Math.round((1 - Number(p.price) / Number(p.mrp)) * 100) : 0;
           return (
             <div key={p.id}
-                 className={['flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors border',
-                   isEditing ? '' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}
-                 style={isEditing ? { backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}55` } : undefined}>
-              {/* Reorder — controls what customers see first (unfiltered list only) */}
+                 className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col min-w-0"
+                 style={isEditing ? { borderColor: themeColor, boxShadow: `0 0 0 3px ${themeColor}2e` } : undefined}>
+              <div className="relative">
+              <button type="button" onClick={() => openEdit(p)} aria-label={`Edit ${p.name}`}
+                      className="relative block w-full aspect-square bg-gray-100">
+                {p.image ? (
+                  <img src={p.image} alt="" loading="lazy" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-gray-400 text-[12px] font-bold">
+                    <ImagePlus size={24} />Add a photo
+                  </span>
+                )}
+                {out && (
+                  <span className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                    <span className="px-3 py-1 rounded-full bg-white text-red-700 text-[12px] font-extrabold">Sold out</span>
+                  </span>
+                )}
+                {off > 0 && (
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-white text-[11px] font-extrabold"
+                        style={{ backgroundColor: btnColor }}>{off}% off</span>
+                )}
+              </button>
+              {/* Order on the page: what buyers see first (only on the full, unfiltered list) */}
               {canReorder && products.length > 1 && (
-                <div className="flex flex-col flex-shrink-0 -my-1">
-                  <button type="button" onClick={() => moveProduct(p.id, 'up')}
-                          disabled={fullIdx === 0} aria-label="Move up"
-                          className="p-0.5 rounded text-gray-300 enabled:hover:text-gray-700 enabled:hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    <ChevronUp size={15} />
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button type="button" onClick={() => moveProduct(p.id, 'up')} disabled={fullIdx === 0}
+                          aria-label={`Show ${p.name} earlier`} title="Show earlier on the page"
+                          className="w-7 h-7 rounded-lg bg-white/90 shadow-sm grid place-items-center text-gray-700 enabled:hover:bg-white disabled:opacity-40">
+                    <ChevronUp size={15} className="-rotate-90" />
                   </button>
-                  <button type="button" onClick={() => moveProduct(p.id, 'down')}
-                          disabled={fullIdx === products.length - 1} aria-label="Move down"
-                          className="p-0.5 rounded text-gray-300 enabled:hover:text-gray-700 enabled:hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    <ChevronDown size={15} />
+                  <button type="button" onClick={() => moveProduct(p.id, 'down')} disabled={fullIdx === products.length - 1}
+                          aria-label={`Show ${p.name} later`} title="Show later on the page"
+                          className="w-7 h-7 rounded-lg bg-white/90 shadow-sm grid place-items-center text-gray-700 enabled:hover:bg-white disabled:opacity-40">
+                    <ChevronUp size={15} className="rotate-90" />
                   </button>
                 </div>
               )}
-              {p.image ? (
-                <img src={p.image} alt={p.name}
-                     className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
-              ) : (
-                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-300">
-                  <ImagePlus size={16} />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
-                <p className="text-xs text-gray-400 truncate">
-                  <span className="font-semibold text-gray-500">₹{p.price}</span>
-                  {cat ? ` · ${cat.emoji} ${cat.label}` : ''}{p.unit ? ` · ${p.unit}` : ''}
-                </p>
               </div>
-              {/* Stock count chip — only when this product tracks stock (numeric).
-                  Distinct from the manual in-stock toggle beside it. */}
-              {Number.isFinite(Number(p.stock)) && p.stock !== '' && p.stock != null && (
-                <span title={`${p.stock} in stock`}
-                      className={[
-                        'text-[10px] font-bold px-1.5 py-1 rounded-lg flex-shrink-0 whitespace-nowrap tabular-nums',
-                        Number(p.stock) <= 0 ? 'bg-red-50 text-red-500'
-                          : Number(p.stock) <= LOW_STOCK ? 'bg-amber-50 text-amber-600'
-                          : 'bg-gray-100 text-gray-500',
-                      ].join(' ')}>
-                  {Number(p.stock) <= 0 ? 'Sold out' : `${p.stock} left`}
-                </span>
-              )}
-              {/* In-stock toggle — compact dot on mobile, full label on wider screens */}
-              <button type="button" onClick={() => toggleStock(p.id)}
-                      title={p.inStock === false ? 'Mark as in stock' : 'Mark as out of stock'}
-                      aria-label={p.inStock === false ? 'Out of stock — tap to mark in stock' : 'In stock — tap to mark out of stock'}
-                      className={[
-                        'flex items-center gap-1 text-[10px] font-bold px-1.5 sm:px-2 py-1 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap',
-                        p.inStock === false
-                          ? 'bg-red-50 text-red-500 hover:bg-red-100'
-                          : 'bg-green-50 text-green-600 hover:bg-green-100',
-                      ].join(' ')}>
-                <span className={['w-2 h-2 rounded-full flex-shrink-0', p.inStock === false ? 'bg-red-500' : 'bg-green-500'].join(' ')} />
-                <span className="hidden sm:inline">{p.inStock === false ? 'Out of stock' : 'In stock'}</span>
-              </button>
-              <button type="button" onClick={() => openEdit(p)}
-                      className="p-1 rounded-lg transition-colors flex-shrink-0 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
-                      style={isEditing ? { color: themeColor, backgroundColor: `${themeColor}1a` } : undefined}>
-                <Pencil size={13} />
-              </button>
-              <button type="button" onClick={() => removeProduct(p.id)}
-                      className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
-                <X size={14} />
-              </button>
+              <div className="p-3 flex flex-col gap-1 flex-1">
+                <p className="text-[14px] font-bold text-gray-900 leading-snug line-clamp-2">{p.name}</p>
+                <p className="text-[12px] text-gray-500 truncate">
+                  {[p.unit, cat ? `${cat.emoji || ''} ${cat.label}`.trim() : ''].filter(Boolean).join(' · ') || ' '}
+                </p>
+                <p className="mt-0.5">
+                  <span className="font-extrabold tabular-nums text-gray-900">₹{p.price}</span>
+                  {off > 0 && <span className="ml-1.5 text-[12px] text-gray-400 line-through tabular-nums">₹{p.mrp}</span>}
+                </p>
+                <p className={['text-[12px] font-bold', out ? 'text-red-700' : low ? 'text-amber-700' : 'text-gray-500'].join(' ')}>
+                  {out ? 'Out of stock' : tracked ? (low ? `Only ${left} left` : `${left} in stock`) : 'In stock'}
+                  {sold > 0 && <span className="font-semibold text-gray-500"> · {sold} sold</span>}
+                </p>
+                <div className="flex items-center gap-1.5 mt-auto pt-2">
+                  <button type="button" role="switch" aria-checked={p.inStock !== false} onClick={() => toggleStock(p.id)}
+                          aria-label={p.inStock === false ? `${p.name} is out of stock. Mark in stock` : `${p.name} is in stock. Mark out of stock`}
+                          className="flex items-center gap-2 text-[12px] font-bold text-gray-600 mr-auto min-w-0">
+                    <span className={['relative w-10 h-6 rounded-full transition-colors flex-shrink-0', p.inStock === false ? 'bg-gray-300' : ''].join(' ')}
+                          style={p.inStock === false ? undefined : { backgroundColor: btnColor }}>
+                      <span className={['absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all', p.inStock === false ? 'left-0.5' : 'left-[18px]'].join(' ')} />
+                    </span>
+                    <span className="hidden sm:inline truncate">{p.inStock === false ? 'Out of stock' : 'In stock'}</span>
+                  </button>
+                  <button type="button" onClick={() => openEdit(p)} aria-label={`Edit ${p.name}`}
+                          className="w-8 h-8 rounded-lg border border-gray-200 grid place-items-center text-gray-600 hover:bg-gray-50">
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" onClick={() => removeProduct(p.id)} aria-label={`Delete ${p.name}`}
+                          className="w-8 h-8 rounded-lg border border-gray-200 grid place-items-center text-gray-400 hover:text-red-600 hover:bg-red-50">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
           );
         })}
@@ -1256,11 +1291,16 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
         document.body,
       )}
 
-      <SaveBar
-        status={saveStatus} error={saveError}
-        onSave={handleSave} dirty={dirty}
-        themeColor={themeColor}
-      />
+      {/* Kept in view at the bottom: a long photo grid would hide it otherwise. */}
+      {(dirty || saveStatus === 'saved') && (
+        <div className="sticky bottom-24 lg:bottom-4 z-10 bg-white rounded-2xl border border-gray-200 shadow-lg px-4 py-3 [&>div]:mt-0 [&>div]:pt-0 [&>div]:border-t-0">
+          <SaveBar
+            status={saveStatus} error={saveError}
+            onSave={handleSave} dirty={dirty}
+            themeColor={themeColor}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -2662,7 +2702,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 // Sections laid out for the full computer width (the rest keep a reading column).
-const WIDE_TABS = new Set(['home', 'orders']);
+const WIDE_TABS = new Set(['home', 'orders', 'products']);
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';
@@ -2916,8 +2956,8 @@ export default function ManageStore() {
   // The dashboard search hands its text to the section's own search box.
   const findIn = (key, q) => {
     const products = config.products || [];
-    // The products box only exists on long lists; a short list needs no filter.
-    const seedable = key !== 'products' || products.length > 8;
+    // The products box exists whenever there are products to search.
+    const seedable = key !== 'products' || products.length > 0;
     setSearchSeed((s) => ({ tab: seedable ? key : '', q: seedable ? q : '', n: s.n + 1 }));
     setTab(key);
     setPhoneSearch(false);
@@ -3093,13 +3133,18 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <AdsTab config={config} pin={storePin} themeColor={themeColor} onConfig={handleChange} />
           </div>
-        ) : (
-        <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
-          {tab === 'products' && (
-            <div className="space-y-6">
-              {/* Categories live with products — they only exist to organise
-                  them. The short section goes FIRST so it never hides below a
-                  100-product list. */}
+        ) : tab === 'products' ? (
+          // Products: the photo grid at full width; categories below it.
+          <div className="space-y-6 animate-pl-fade-up">
+            <ManageProducts
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+              searchSeed={seedFor('products')}
+            />
+            <div id="manage-categories" className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 scroll-mt-24">
               <ManageCategories
                 config={config}
                 onChange={handleChange}
@@ -3108,21 +3153,10 @@ export default function ManageStore() {
                 saveError={saveError}
                 domain={liveDomain}
               />
-              <div className="flex items-center gap-2 pt-1">
-                <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Products</span>
-                <div className="h-px flex-1 bg-gray-200" />
-              </div>
-              <ManageProducts
-                config={config}
-                onChange={handleChange}
-                onSave={handleSave}
-                saveStatus={saveStatus}
-                saveError={saveError}
-                searchSeed={seedFor('products')}
-              />
             </div>
-          )}
+          </div>
+        ) : (
+        <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
           {tab === 'offers' && (
             <OffersTab
               config={config}

@@ -108,8 +108,9 @@ test('search hands its text to the section’s own search box, once', () => {
   assert.match(MANAGE, /searchSeed=\{seedFor\('orders'\)\}/);
   assert.match(MANAGE, /searchSeed=\{seedFor\('customers'\)\}/);
   assert.match(MANAGE, /searchSeed=\{seedFor\('products'\)\}/);
-  // Short product lists have no search box, so nothing hidden can filter them.
-  assert.match(MANAGE, /const seedable = key !== 'products' \|\| products\.length > 8;/);
+  // The products search box shows whenever there are products, so nothing hidden can filter them.
+  assert.match(MANAGE, /const seedable = key !== 'products' \|\| products\.length > 0;/);
+  assert.match(MANAGE, /\{products\.length > 0 \? \(\n\s*<div className="relative flex-1 min-w-0">/);
   assert.match(SEARCH, /onFind\('orders', s\.find\)/);
 });
 

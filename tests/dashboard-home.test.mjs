@@ -84,7 +84,7 @@ test('latest orders: first page only, a list not a figure, Accept is a plain sta
 });
 
 test('Home and Orders get the full computer width', () => {
-  assert.match(MANAGE, /const WIDE_TABS = new Set\(\['home', 'orders'\]\);/);
+  assert.match(MANAGE, /const WIDE_TABS = new Set\(\['home', 'orders'/);
   assert.match(MANAGE, /onFind=\{findIn\}/);
 });
 
