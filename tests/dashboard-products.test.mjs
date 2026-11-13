@@ -12,7 +12,7 @@ const PRODUCTS = MANAGE.slice(MANAGE.indexOf('function ManageProducts('), MANAGE
 
 test('a photo grid at full width, categories below with a link to them', () => {
   assert.match(PRODUCTS, /grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4/);
-  assert.match(MANAGE, /const WIDE_TABS = new Set\(\['home', 'orders', 'products'\]\);/);
+  assert.match(MANAGE, /const WIDE_TABS = new Set\(\[[^\]]*'products'/);
   assert.match(MANAGE, /\) : tab === 'products' \? \(/);
   assert.match(MANAGE, /<div id="manage-categories"/);
   assert.match(PRODUCTS, /getElementById\('manage-categories'\)/);
@@ -40,4 +40,16 @@ test('stock reads the same two sources as before, and sold counts are real sales
 test('Save changes stays in view at the bottom while editing a long grid', () => {
   assert.match(PRODUCTS, /\{\(dirty \|\| saveStatus === 'saved'\) && \(\n\s*<div className="sticky bottom-24 lg:bottom-4/);
   assert.match(PRODUCTS, /<SaveBar/);
+});
+
+test('Delivery on a computer: the work on the left, couriers and customer updates on the right', () => {
+  assert.match(MANAGE, /const WIDE_TABS = new Set\(\[[^\]]*'delivery'/);
+  assert.match(MANAGE, /\) : tab === 'delivery' \? \(/);
+  assert.match(MANAGE, /wide=\{isDesktop\}\n\s*\/>\n\s*<\/div>\n\s*\) : tab === 'products'/);
+  // The couriers card is a summary; connecting stays in Settings, the one place.
+  assert.match(MANAGE, /function CouriersSummary\(/);
+  assert.match(MANAGE, /onSettings=\{\(\) => setView\('settings'\)\}/);
+  assert.match(MANAGE, /<ShipUpdates slug=\{slug\}/);
+  // Ship keeps full order cards (each with Book courier): the column is too narrow for list + detail.
+  assert.match(MANAGE, /mode="ship"[\s\S]{0,260}store=\{orderStore\} rto=\{rto\} \/>/);
 });

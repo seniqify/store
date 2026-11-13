@@ -54,6 +54,7 @@ import DomainConnect                                       from '../components/m
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import CodMoney                                             from '../components/manage/CodMoney';
 import WhatsAppTab                                          from '../components/manage/WhatsAppTab';
+import ShipUpdates                                          from '../components/manage/ShipUpdates';
 import PinGate                                              from '../components/manage/PinGate';
 import { rtoSettings }                                      from '../utils/rtoRisk';
 import { walletLow, clearWalletLow, onWalletLowChange }    from '../utils/courierAlerts';
@@ -1666,13 +1667,13 @@ function CourierWalletBanner({ slug }) {
 const DELIVERY_VIEWS = [
   ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD'], ['settings', 'Settings'],
 ];
-function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError }) {
+function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError, wide = false }) {
   const [view, setView] = useState('ship');
   const rtoRaw = config.delivery?.rto;
   const rto = useMemo(() => rtoSettings({ delivery: { rto: rtoRaw } }), [rtoRaw]);
   const orderStore = useMemo(() => orderStoreOf(config, slug), [config, slug]);
-  return (
-    <div className="max-w-3xl mx-auto">
+  const main = (
+    <>
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Delivery">
         {DELIVERY_VIEWS.map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
@@ -1693,6 +1694,60 @@ function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSav
       {view === 'settings' && (
         <ManageDelivery config={config} pin={pin} onChange={onChange} onSave={onSave} saveStatus={saveStatus} saveError={saveError} />
       )}
+    </>
+  );
+  // Phone: one column, as before.
+  if (!wide) return <div className="max-w-3xl mx-auto">{main}</div>;
+  // Computer: the work on the left; your couriers and the customer updates on the right.
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+      <div className="min-w-0">{main}</div>
+      <div className="space-y-4 sticky top-[88px] max-h-[calc(100vh-104px)] overflow-y-auto">
+        <CouriersSummary shipping={config.shipping} riders={config.delivery?.riders} themeColor={themeColor}
+                         onSettings={() => setView('settings')} />
+        <ShipUpdates slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />
+      </div>
+    </div>
+  );
+}
+
+// Computer Delivery, right column: which couriers are connected and which one
+// books by default. A summary only: connecting and switching stay in Settings,
+// the one place couriers are set up.
+const COURIER_NAMES = { shadowfax: 'Shadowfax', delhivery: 'Delhivery' };
+function CouriersSummary({ shipping = {}, riders = [], themeColor, onSettings }) {
+  const ship = shipping || {};
+  const active = ship.courier || (ship.delhivery ? 'delhivery' : ship.shadowfax ? 'shadowfax' : null);
+  const rows = ['shadowfax', 'delhivery'].map((k) => ({ k, name: COURIER_NAMES[k], on: Boolean(ship[k]), isDefault: active === k }));
+  const riderCount = Array.isArray(riders) ? riders.filter((r) => r && (r.phone || r.name)).length : 0;
+  const btn = pinColors(themeColor).button;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <p className="text-[15px] font-extrabold text-gray-900">Your couriers</p>
+      <p className="text-[12px] text-gray-500 mb-3">The default is picked first when you book</p>
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.k} className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
+               style={r.isDefault ? { borderColor: themeColor, background: `${themeColor}12` } : { borderColor: '#e5e7eb' }}>
+            <span className="w-9 h-9 rounded-lg bg-white border border-gray-200 grid place-items-center text-gray-700 flex-shrink-0"><Truck size={17} /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14px] font-bold text-gray-900">{r.name}</span>
+              <span className="block text-[12px] text-gray-500">{r.on ? 'Connected' : 'Not connected'}</span>
+            </span>
+            {r.isDefault && <span className="text-[11px] font-extrabold px-2 py-1 rounded-md" style={{ color: btn, background: `${themeColor}1f` }}>Default</span>}
+          </div>
+        ))}
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-2.5">
+          <span className="w-9 h-9 rounded-lg bg-white border border-gray-200 grid place-items-center text-gray-700 flex-shrink-0"><Users size={17} /></span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[14px] font-bold text-gray-900">My delivery boy</span>
+            <span className="block text-[12px] text-gray-500">{riderCount ? `${riderCount} saved` : 'None saved yet'}</span>
+          </span>
+        </div>
+      </div>
+      <button type="button" onClick={onSettings} className="mt-3 text-[13px] font-bold" style={{ color: btn }}>
+        Connect or change in Settings →
+      </button>
     </div>
   );
 }
@@ -2702,7 +2757,7 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
 // Sections laid out for the full computer width (the rest keep a reading column).
-const WIDE_TABS = new Set(['home', 'orders', 'products']);
+const WIDE_TABS = new Set(['home', 'orders', 'products', 'delivery']);
 // True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
 function useIsDesktop() {
   const query = '(min-width: 1024px)';
@@ -3133,6 +3188,21 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <AdsTab config={config} pin={storePin} themeColor={themeColor} onConfig={handleChange} />
           </div>
+        ) : tab === 'delivery' ? (
+          <div className="animate-pl-fade-up">
+            <DeliveryTab
+              slug={businessSlug}
+              pin={storePin}
+              themeColor={themeColor}
+              storeName={config.businessName || businessSlug}
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+              wide={isDesktop}
+            />
+          </div>
         ) : tab === 'products' ? (
           // Products: the photo grid at full width; categories below it.
           <div className="space-y-6 animate-pl-fade-up">
@@ -3159,19 +3229,6 @@ export default function ManageStore() {
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
           {tab === 'offers' && (
             <OffersTab
-              config={config}
-              onChange={handleChange}
-              onSave={handleSave}
-              saveStatus={saveStatus}
-              saveError={saveError}
-            />
-          )}
-          {tab === 'delivery' && (
-            <DeliveryTab
-              slug={businessSlug}
-              pin={storePin}
-              themeColor={themeColor}
-              storeName={config.businessName || businessSlug}
               config={config}
               onChange={handleChange}
               onSave={handleSave}
