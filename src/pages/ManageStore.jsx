@@ -13,9 +13,9 @@ import { createPortal } from 'react-dom';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysLeft, showBrandBadge } from '../utils/planLimits';
 import {
-  Lock, ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
+  ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  AlertCircle, ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
+  ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
   Menu, LogOut, Percent, Sparkles, Users, Bot,
   Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
   Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
@@ -24,8 +24,7 @@ import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
 import { normaliseHours, defaultHours, getStoreStatus, DAY_ORDER, DAY_FULL } from '../utils/storeHours';
 import { loadBusiness }                               from '../utils/BusinessLoader';
-import { updateStore, verifyPin, resetPin, deleteStore } from '../utils/storeService';
-import { sendOtp }                                       from '../utils/otpService';
+import { updateStore, verifyPin, deleteStore }        from '../utils/storeService';
 import { categoryLinkId }                                from '../../api/_categoryLink.js';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS, customTheme } from '../utils/buildConfig';
@@ -55,6 +54,7 @@ import DomainConnect                                       from '../components/m
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import CodMoney                                             from '../components/manage/CodMoney';
 import WhatsAppTab                                          from '../components/manage/WhatsAppTab';
+import PinGate                                              from '../components/manage/PinGate';
 import { rtoSettings }                                      from '../utils/rtoRisk';
 import { walletLow, clearWalletLow, onWalletLowChange }    from '../utils/courierAlerts';
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
@@ -366,251 +366,7 @@ function SaveBar({ status, error, onSave, dirty, themeColor }) {
   );
 }
 
-// ── PIN Gate ─────────────────────────────────────────────────────────────────
-function PinGate({ slug, onVerified }) {
-  const [mode,     setMode]     = useState('login');   // 'login' | 'recover'
-  const [pin,      setPin]      = useState('');
-  const [error,    setError]    = useState('');
-  const [checking, setChecking] = useState(false);
-
-  // Recovery state
-  const [phone,    setPhone]    = useState('');
-  const [otpSent,  setOtpSent]  = useState(false);
-  const [code,     setCode]     = useState('');
-  const [sending,  setSending]  = useState(false);
-  const [newPin,   setNewPin]   = useState('');
-  const [confPin,  setConfPin]  = useState('');
-  const [success,  setSuccess]  = useState(false);
-
-  // ── Login ──────────────────────────────────────────────────────────────────
-  async function handleLogin(e) {
-    e.preventDefault();
-    if (pin.length !== 4) { setError('Enter your 4-digit PIN'); return; }
-    setChecking(true); setError('');
-    const ok = await verifyPin(slug, pin);
-    if (ok) {
-      onVerified(pin);
-    } else {
-      setError('Incorrect PIN. Please try again.');
-      setChecking(false);
-    }
-  }
-
-  // ── Recovery: step 1 — send an OTP to the store's WhatsApp number ────────────
-  async function handleSendOtp(e) {
-    e.preventDefault();
-    if (phone.replace(/\D/g,'').length !== 10) { setError('Enter a valid 10-digit WhatsApp number'); return; }
-    setSending(true); setError('');
-    try {
-      await sendOtp(`91${phone.replace(/\D/g,'').slice(0,10)}`);
-      setOtpSent(true);
-    } catch (err) {
-      setError(err.message || 'Could not send the code. Please try again.');
-    } finally {
-      setSending(false);
-    }
-  }
-
-  // ── Recovery: step 2 — verify the OTP + set the new PIN (checked server-side) ─
-  async function handleRecover(e) {
-    e.preventDefault();
-    if (code.replace(/\D/g,'').length !== 6) { setError('Enter the 6-digit code from WhatsApp'); return; }
-    if (newPin.length !== 4)  { setError('New PIN must be exactly 4 digits'); return; }
-    if (newPin !== confPin)   { setError('PINs do not match'); return; }
-    setChecking(true); setError('');
-    try {
-      await resetPin(slug, newPin, `91${phone.replace(/\D/g,'').slice(0,10)}`, code.replace(/\D/g,''));
-      setSuccess(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  function switchMode(m) {
-    setMode(m); setError('');
-    setPin(''); setPhone(''); setOtpSent(false); setCode(''); setNewPin(''); setConfPin(''); setSuccess(false);
-  }
-
-  return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-white">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/70 via-white to-white" />
-      <div className="absolute -z-10 top-[-8rem] right-[-6rem] w-[24rem] h-[24rem] rounded-full bg-emerald-300/25 blur-3xl animate-pl-blob" />
-      <div className="absolute -z-10 bottom-[-8rem] left-[-8rem] w-[22rem] h-[22rem] rounded-full bg-teal-300/20 blur-3xl animate-pl-blob" style={{ animationDelay: '5s' }} />
-
-      <div className="relative bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 p-8 w-full max-w-sm animate-pl-fade-up">
-
-        {/* Icon */}
-        <div className="w-14 h-14 bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-1 ring-amber-100">
-          <Lock size={24} className="text-amber-600" />
-        </div>
-
-        {/* ── LOGIN MODE ───────────────────────────────────────────────────── */}
-        {mode === 'login' && (
-          <>
-            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Page Management</h1>
-            <p className="text-sm text-gray-500 text-center mb-6">Enter your 4-digit PIN to continue</p>
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <input
-                type="number" inputMode="numeric" placeholder="• • • •"
-                value={pin}
-                onChange={(e) => { setPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center
-                           text-2xl font-bold tracking-widest text-gray-900 bg-white
-                           focus:outline-none focus:ring-2 focus:ring-gray-300"
-                autoFocus
-              />
-              {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-              <button type="submit" disabled={checking}
-                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                                 hover:bg-gray-700 transition-colors disabled:opacity-60">
-                {checking ? 'Checking…' : 'Unlock →'}
-              </button>
-            </form>
-
-            <button type="button" onClick={() => switchMode('recover')}
-                    className="w-full mt-4 text-sm text-amber-600 hover:text-amber-800
-                               font-medium transition-colors text-center">
-              Forgot PIN? Reset it →
-            </button>
-          </>
-        )}
-
-        {/* ── RECOVERY MODE ────────────────────────────────────────────────── */}
-        {mode === 'recover' && !success && (
-          <>
-            <h1 className="text-xl font-extrabold text-gray-900 text-center mb-1">Reset Your PIN</h1>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              {otpSent
-                ? 'Enter the 6-digit code we sent on WhatsApp, then set a new PIN.'
-                : 'We’ll send a one-time code to the WhatsApp number linked to this page.'}
-            </p>
-
-            {/* Step 1 — number → send OTP */}
-            {!otpSent && (
-              <form onSubmit={handleSendOtp} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                    WhatsApp Number (linked to store)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium pointer-events-none">+91</span>
-                    <input
-                      type="tel" inputMode="numeric" placeholder="98765 43210" maxLength={10}
-                      value={phone}
-                      onChange={(e) => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setError(''); }}
-                      className="w-full pl-12 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm
-                                 bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                {error && (
-                  <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">{error}</p>
-                )}
-
-                <button type="submit" disabled={sending}
-                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                                   hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
-                  {sending ? 'Sending code…' : 'Send code on WhatsApp →'}
-                </button>
-              </form>
-            )}
-
-            {/* Step 2 — OTP + new PIN */}
-            {otpSent && (
-              <form onSubmit={handleRecover} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">6-digit code</label>
-                  <input
-                    type="number" inputMode="numeric" placeholder="• • • • • •"
-                    value={code}
-                    onChange={(e) => { setCode(e.target.value.replace(/\D/g,'').slice(0,6)); setError(''); }}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
-                               text-xl font-bold tracking-[0.3em] text-gray-900 bg-white
-                               focus:outline-none focus:ring-2 focus:ring-gray-300"
-                    autoFocus
-                  />
-                  <button type="button" onClick={handleSendOtp} disabled={sending}
-                          className="mt-1.5 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">
-                    {sending ? 'Resending…' : 'Resend code'}
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">New PIN</label>
-                  <input
-                    type="number" inputMode="numeric" placeholder="• • • •"
-                    value={newPin}
-                    onChange={(e) => { setNewPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
-                               text-xl font-bold tracking-widest text-gray-900 bg-white
-                               focus:outline-none focus:ring-2 focus:ring-gray-300"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Confirm New PIN</label>
-                  <input
-                    type="number" inputMode="numeric" placeholder="• • • •"
-                    value={confPin}
-                    onChange={(e) => { setConfPin(e.target.value.replace(/\D/g,'').slice(0,4)); setError(''); }}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-center
-                               text-xl font-bold tracking-widest text-gray-900 bg-white
-                               focus:outline-none focus:ring-2 focus:ring-gray-300"
-                  />
-                </div>
-
-                {error && (
-                  <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">{error}</p>
-                )}
-
-                <button type="submit" disabled={checking}
-                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                                   hover:bg-gray-700 transition-colors disabled:opacity-60 mt-1">
-                  {checking ? 'Verifying…' : 'Reset PIN →'}
-                </button>
-              </form>
-            )}
-
-            <button type="button" onClick={() => switchMode('login')}
-                    className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors text-center">
-              ← Back to login
-            </button>
-          </>
-        )}
-
-        {/* ── SUCCESS ──────────────────────────────────────────────────────── */}
-        {mode === 'recover' && success && (
-          <div className="text-center space-y-4">
-            <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
-              <CheckCircle2 size={28} className="text-green-500" />
-            </div>
-            <h2 className="text-lg font-extrabold text-gray-900">PIN Reset!</h2>
-            <p className="text-sm text-gray-500">Your new PIN has been saved. Use it to log in.</p>
-            <button type="button" onClick={() => switchMode('login')}
-                    className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm
-                               hover:bg-gray-700 transition-colors">
-              Login with new PIN →
-            </button>
-          </div>
-        )}
-
-        {/* Back to store link */}
-        {!(mode === 'recover' && success) && (
-          <Link to={`/${slug}`}
-                className="flex items-center justify-center gap-1.5 mt-5
-                           text-sm text-gray-400 hover:text-gray-600 transition-colors">
-            <ArrowLeft size={14} /> Back to page
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
+// ── PIN Gate: src/components/manage/PinGate.jsx ───────────────────────────────
 
 // ── Products Tab ─────────────────────────────────────────────────────────────
 function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
@@ -3079,7 +2835,7 @@ export default function ManageStore() {
 
   // ── PIN Gate ───────────────────────────────────────────────────────────────
   if (!pinVerified) {
-    return <PinGate slug={businessSlug} onVerified={(pin) => { setStorePin(pin); setPinVerified(true); }} />;
+    return <PinGate slug={businessSlug} config={config} onVerified={(pin) => { setStorePin(pin); setPinVerified(true); }} />;
   }
 
   // ── Management Dashboard ──────────────────────────────────────────────────
