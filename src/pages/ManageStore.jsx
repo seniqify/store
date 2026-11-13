@@ -99,7 +99,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', inStock:true, unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', inStock:true, weight:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
 const LOW_STOCK   = 5;   // ≤ this many units left → "low stock" (still in stock)
 
 // Clean the form's extra option-types into the stored shape:
@@ -463,7 +463,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
       ...p,
       category: match ? match.id : p.category,
       ...(res.variant
-        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '', cost: '', image: '' })) }
+        ? { variantLabel: res.variant.label, variantOptions: res.variant.options.map((n) => ({ name: n, price: '', mrp: '', cost: '', weight: '', image: '' })) }
         : {}),
       attributes,
     }));
@@ -494,6 +494,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
       cost:        product.cost        ?? '',
       stock:       product.stock       ?? '',
       inStock:     product.inStock !== false,
+      weight:      product.weight      ?? '',
       unit:        unitIsStandard ? product.unit : 'Other…',
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
@@ -502,7 +503,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
       gstRate:     product.gstRate != null ? product.gstRate : '',
       taxMode:     product.taxInclusive === true ? 'inclusive' : product.taxInclusive === false ? 'exclusive' : '',
       variantLabel:   product.variants?.label || '',
-      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', cost: o.cost ?? '', image: o.image || '' })) : [],
+      variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', cost: o.cost ?? '', weight: o.weight ?? '', image: o.image || '' })) : [],
       variantExtras:  Array.isArray(product.variantExtras) ? product.variantExtras.map(g => ({ label: g.label || '', options: (g.options || []).map(o => ({ name: o.name || '', addPrice: o.addPrice ?? '' })) })) : [],
       attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
     });
@@ -563,6 +564,8 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
         mrp:   (o.mrp === '' || o.mrp == null) ? null : Number(o.mrp),
         // Per-variant cost price (private) — powers correct profit per option.
         cost:  (o.cost === '' || o.cost == null) ? undefined : Number(o.cost),
+        // Packed weight of this size, in grams: courier booking adds these up.
+        weight: (o.weight === '' || o.weight == null || !(Number(o.weight) > 0)) ? undefined : Math.round(Number(o.weight)),
         image: (o.image && String(o.image).trim()) ? o.image : null,
       }))
       .filter(o => o.name);
@@ -589,6 +592,9 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
     // Stock count. '' → undefined = untracked/unlimited (never sold out from count).
     // A number ≥ 0 turns on Stock Sense: auto "Sold out" at 0, auto-decrement on order.
     const stock = form.stock === '' || form.stock == null ? undefined : Math.max(0, Math.floor(Number(form.stock)) || 0);
+    // Packed weight in grams (pouch or box included). Courier booking adds up
+    // each item's weight, so the courier charge is right. '' → not set.
+    const weight = form.weight === '' || form.weight == null || !(Number(form.weight) > 0) ? undefined : Math.round(Number(form.weight));
 
     let newProducts;
     if (editingId !== null) {
@@ -600,6 +606,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
               cost,
               stock,
               inStock: form.inStock !== false,
+              weight,
               unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
@@ -617,6 +624,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
         cost,
         stock,
         inStock:     form.inStock !== false,
+        weight,
         unit:        finalUnit,
         gstRate,
         taxInclusive,
@@ -990,6 +998,22 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                     <span className={['absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all', form.inStock === false ? 'left-0.5' : 'left-[22px]'].join(' ')} />
                   </button>
                 </div>
+                {/* Packed weight: courier booking adds these up (couriers charge by weight) */}
+                {config.businessType !== 'service' && (
+                  <div>
+                    <label className={FIELD_LABEL} htmlFor="product-weight">Packed weight <span className="text-gray-400 font-normal">· for courier charges</span></label>
+                    <div className="relative max-w-[200px]">
+                      <input id="product-weight" type="number" inputMode="numeric" min="0" step="1" placeholder="e.g. 550"
+                             value={form.weight}
+                             onChange={e => setForm(p => ({ ...p, weight: e.target.value }))}
+                             className={`${iCls(false)} !pr-10`} />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">g</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500 leading-snug">
+                      Weigh it as packed (pouch or box included). When you book a courier, the order&rsquo;s weight is added up from this, so the charge is right.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1147,7 +1171,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                                   onClick={() => setForm(p => ({ ...p, variantOptions: p.variantOptions.filter((_, idx) => idx !== i) }))}
                                   className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"><X size={15} /></button>
                               </div>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <div className="relative">
                                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
                                   <input type="number" inputMode="numeric" min={0} placeholder="Price *"
@@ -1170,6 +1194,16 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                                     onChange={e => setOpt({ cost: e.target.value })}
                                     className="w-full pl-6 pr-2 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
                                 </div>
+                                {/* Packed weight of this size: courier booking adds these up */}
+                                <div className="relative">
+                                  <input type="number" inputMode="numeric" min={0} placeholder="Weight"
+                                    title="Packed weight of this option in grams, for courier charges"
+                                    aria-label="Packed weight in grams"
+                                    value={o.weight ?? ''}
+                                    onChange={e => setOpt({ weight: e.target.value })}
+                                    className="w-full pl-2.5 pr-6 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 focus:border-gray-400 transition" />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">g</span>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1180,7 +1214,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                   </div>
                   <div className="flex items-center justify-between pt-0.5">
                     <button type="button"
-                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '', cost: '', image: '' }] }))}
+                      onClick={() => setForm(p => ({ ...p, variantOptions: [...(p.variantOptions || []), { name: '', price: '', mrp: '', cost: '', weight: '', image: '' }] }))}
                       className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
                       style={{ color: themeColor }}>
                       <Plus size={13} /> Add option
@@ -1675,6 +1709,8 @@ function orderStoreOf(config, slug) {
     whatsappNumber: config.whatsappNumber, theme: config.theme,
     shipping: config.shipping, products: config.products, cart: config.cart,
     payments: config.payments,
+    // Grams for the outer box, added once to each parcel (Delivery → Settings).
+    boxWeightG: config.delivery?.boxWeightG,
   };
 }
 
@@ -1847,6 +1883,28 @@ function ManageDelivery({ config, pin, onChange, onSave, saveStatus, saveError }
 
       {/* Couriers — moved here from Settings: connect, default, disconnect */}
       <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
+
+      {/* Parcel weight: products' packed weights + this box, for courier charges */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-900">⚖️ Parcel weight</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Couriers charge by weight. When you book, the weight is added up from each product&rsquo;s packed weight
+            (Products → edit a product), plus your box below.
+          </p>
+        </div>
+        <div>
+          <label className={lCls()} htmlFor="box-weight">Box &amp; packing weight <span className="text-gray-400 font-normal">· added once per parcel</span></label>
+          <div className="relative max-w-[200px]">
+            <input id="box-weight" type="number" inputMode="numeric" min="0" step="1" placeholder="e.g. 50"
+                   value={dlv.boxWeightG ?? ''}
+                   onChange={e => update({ delivery: { ...dlv, boxWeightG: e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value)) || 0) } })}
+                   className={`${iCls(false)} !pr-10`} />
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">g</span>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">The empty outer box or cover you ship in. Leave blank if the product weights already include it.</p>
+        </div>
+      </div>
 
       {/* How orders reach customers */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">

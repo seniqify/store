@@ -1002,6 +1002,7 @@ const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeN
         {!leads && (store.shipping?.delhivery || store.shipping?.shadowfax) && o.destination && !/pickup/i.test(o.destination) && o.status !== 'cancelled' && (
           <ShipBlock o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier}
             couriers={connectedCouriers(store)} riders={dispatchRiders} riderHref={riderWa}
+            products={store.products} boxG={store.boxWeightG}
             onRider={() => onStatus(o.id, 'dispatched')} />
         )}
       </div>
@@ -1312,6 +1313,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
       {ship.modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={o.courier || store.shipping?.courier}
           couriers={connectedCouriers(store)} riders={dispatchRiders} riderHref={riderWa}
+          products={store.products} boxG={store.boxWeightG}
           onRider={() => { ship.setModal(false); onStatus(o.id, 'dispatched'); }}
           onClose={() => ship.setModal(false)} onBooked={ship.booked} />
       )}
@@ -1569,14 +1571,14 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
 });
 
 // Courier shipping controls for one order (the lead card's old layout).
-function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderHref, onRider }) {
+function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderHref, onRider, products, boxG }) {
   const { isSfx, cName, awb, status, busy, err, modal, setModal, pickup, label, track, cancel, booked } = useShipment(o, slug, pin, courier);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5">
       {modal && (
         <ShipBookModal o={o} slug={slug} pin={pin} themeColor={themeColor} courier={courier}
-          couriers={couriers} riders={riders} riderHref={riderHref}
+          couriers={couriers} riders={riders} riderHref={riderHref} products={products} boxG={boxG}
           onRider={() => { setModal(false); onRider?.(); }}
           onClose={() => setModal(false)}
           onBooked={booked} />

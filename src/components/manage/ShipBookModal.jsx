@@ -5,6 +5,7 @@ import { bookShipment, getShippingRate } from '../../utils/shippingConnect';
 import { courierInfo } from '../../utils/deliveryStatus';
 import { autoPickCourier, courierOptions } from '../../utils/courierChoice';
 import { walletLow as readWalletLow, markWalletLow, isWalletRefusal, onWalletLowChange } from '../../utils/courierAlerts';
+import { orderWeight, weightBreakdown } from '../../utils/orderWeight';
 
 /**
  * Two-step "Book courier" modal.
@@ -19,7 +20,11 @@ import { walletLow as readWalletLow, markWalletLow, isWalletRefusal, onWalletLow
 export default function ShipBookModal({
   o, slug, pin, themeColor = '#0d9488', onClose, onBooked,
   courier, couriers, riders = [], riderHref, onRider,
+  products = [], boxG = 0,
 }) {
+  // The parcel's weight from the weights saved on its products (Products →
+  // Packed weight) plus the shop's box weight. Couriers charge by weight.
+  const [fromProducts] = useState(() => orderWeight(o.items, products, { boxG }));
   // The store's default courier, and every courier it has connected (default first).
   const defaultCourier = courierInfo(courier).key;
   const connected = (couriers && couriers.length ? couriers : [defaultCourier])
@@ -41,7 +46,7 @@ export default function ShipBookModal({
     pin:     guessPin(),
     payment: o.payment_method === 'cod' ? 'COD' : 'Prepaid',
     codAmount: Math.round(Number(o.total) || 0),
-    weight:  500,
+    weight:  fromProducts.grams,
     length: '', breadth: '', height: '',
   });
   const [busy, setBusy] = useState(false);
@@ -210,7 +215,14 @@ export default function ShipBookModal({
               <label className={label}>Weight (grams)</label>
               <input className={input} inputMode="numeric" value={f.weight}
                      onChange={(e) => set('weight', e.target.value.replace(/\D/g, ''))} placeholder="e.g. 500" />
-              <p className="text-[10px] text-gray-400 mt-1">1 kg = 1000 g. Enter the packed weight.</p>
+              {fromProducts.parts.length > 0 ? (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  From your products: {weightBreakdown(fromProducts)} = <b className="text-gray-700">{fromProducts.grams.toLocaleString('en-IN')} g</b>
+                  {fromProducts.partial && <span className="block text-amber-700">No weight saved for {fromProducts.missing.join(', ')}. Add it here, or in Products.</span>}
+                </p>
+              ) : (
+                <p className="text-[11px] text-gray-500 mt-1">1 kg = 1000 g. Add each product&rsquo;s packed weight in Products and this fills in by itself.</p>
+              )}
             </div>
             <div>
               <label className={label}>Dimensions in cm <span className="text-gray-400 font-normal">· optional</span></label>
