@@ -95,7 +95,7 @@ const NO_RIDERS = [];
 const NO_PAY_INFO = {};
 const NO_STORE = {};
 
-export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS }) {
+export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName = '', mode = 'orders', riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null }) {
   const leads   = mode === 'leads';
   // Delivery → Ship: the same cards, only the orders still to send.
   const shipOnly = mode === 'ship';
@@ -110,6 +110,9 @@ export default function OrdersTab({ slug, pin, themeColor = '#0d9488', storeName
   // The box shows every letter at once; the list follows a beat behind, so
   // filtering hundreds of cards never holds up the typing.
   const searchText = useDeferredValue(query);
+  // Text typed in the dashboard's own search box lands here (once per hand-off).
+  const [seedSeen, setSeedSeen] = useState(null);
+  if (searchSeed?.q && searchSeed !== seedSeen) { setSeedSeen(searchSeed); setQuery(searchSeed.q); }
   const [dateFilter, setDateFilter] = useState('all');  // all | today | yesterday | 'YYYY-MM-DD'
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [busy,       setBusy]       = useState(false);

@@ -83,7 +83,7 @@ test('both lists draw a page at a time behind Show more, never a silent cap', ()
 });
 
 test('the fixed defaults keep memoised cards from redrawing when a prop is left out', () => {
-  assert.match(TAB, /riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS \}\)/);
+  assert.match(TAB, /riders = NO_RIDERS, payInfo = NO_PAY_INFO, store = NO_STORE, rto = RTO_DEFAULTS, searchSeed = null \}\)/);
   // The RTO reading is worked out once per list, never per card render.
   assert.match(TAB, /const risks = useMemo\(/);
   assert.match(TAB, /risk=\{risks\.get\(o\.id\)\}/);
