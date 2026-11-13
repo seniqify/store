@@ -16,8 +16,8 @@ import {
   ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
   ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
-  Menu, LogOut, Percent, Sparkles, Users, Bot,
-  Truck, ShoppingCart, LayoutDashboard, MoreHorizontal,
+  Percent, Sparkles, Users, Bot,
+  Truck, ShoppingCart, LayoutDashboard, LayoutGrid,
   Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
@@ -63,6 +63,12 @@ import { useNewOrders }                                    from '../hooks/useNew
 import { useStoreDomain }                                  from '../hooks/useStoreDomain';
 import { publicStoreUrl }                                  from '../utils/storeUrls';
 import { orderSoundOn, setOrderSoundOn, playOrderChime, buzz, alertNewOrder } from '../utils/notifySound';
+import ManageSidebar                                       from '../components/manage/shell/ManageSidebar';
+import MoreScreen                                          from '../components/manage/shell/MoreScreen';
+import GlobalSearch                                        from '../components/manage/shell/GlobalSearch';
+import AlertsBell                                          from '../components/manage/shell/AlertsBell';
+import { DesktopTopBar, PhoneTopBar }                      from '../components/manage/shell/TopBars';
+import { shellColors, planLine, sectionSubtitle }          from '../utils/dashboardShell';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_EMOJIS = ICON_EMOJIS;
@@ -369,7 +375,7 @@ function SaveBar({ status, error, onSave, dirty, themeColor }) {
 // ── PIN Gate: src/components/manage/PinGate.jsx ───────────────────────────────
 
 // ── Products Tab ─────────────────────────────────────────────────────────────
-function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
+function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searchSeed = null }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const userCats    = (config.categories || []).filter(c => c.id !== 'all');
   const products    = config.products || [];
@@ -387,6 +393,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError }) {
   const [aiNote,        setAiNote]        = useState('');
   const [query,         setQuery]         = useState('');
   const [catFilter,     setCatFilter]     = useState('all');
+  // Text typed in the dashboard's own search box lands here (once per hand-off).
+  const [seedSeen, setSeedSeen] = useState(null);
+  if (searchSeed?.q && searchSeed !== seedSeen) { setSeedSeen(searchSeed); setQuery(searchSeed.q); setCatFilter('all'); }
 
   // Long catalogues need find-ability: filter by name and/or category.
   const q = query.trim().toLowerCase();
@@ -2652,52 +2661,20 @@ function ManageSettings({ config, onChange, onSave, saveStatus, saveError, onDel
 }
 
 // ── Main ManageStore Page ─────────────────────────────────────────────────────
-// Grouped navigation shared by the mobile drawer AND the desktop sidebar.
-// Groups only render the tabs that exist for this store (service/restaurant vary).
-const NAV_GROUPS = [
-  { title: 'Run',        keys: ['home', 'orders', 'payments', 'products', 'delivery'] },
-  { title: 'Grow',       keys: ['whatsapp', 'customers', 'reviews', 'offers', 'ads', 'abandoned'] },
-  { title: 'Understand', keys: ['analytics', 'insights', 'assistant'] },
-  { title: 'Set up',     keys: ['settings'] },
-];
-
-function GroupedNav({ tabs, tab, onSelect, badges = {} }) {
-  const byKey = Object.fromEntries(tabs.map((t) => [t.key, t]));
-  return (
-    <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-      {NAV_GROUPS.map((g) => {
-        const items = g.keys.map((k) => byKey[k]).filter(Boolean);
-        if (!items.length) return null;
-        return (
-          <div key={g.title}>
-            <p className="px-4 mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">{g.title}</p>
-            <div className="space-y-1">
-              {items.map(({ key, label, icon: Icon }) => {
-                const active = tab === key;
-                const badge  = badges[key] || 0;
-                return (
-                  <button key={key} type="button" onClick={() => onSelect(key)}
-                    className={[
-                      'w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-[14.5px] font-semibold transition-colors',
-                      active ? 'bg-white/20 text-white' : 'text-white/85 hover:bg-white/10',
-                    ].join(' ')}>
-                    <Icon size={18} className="flex-shrink-0" />
-                    {label}
-                    {badge > 0 && (
-                      <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white
-                                       text-[11px] font-extrabold tabular-nums grid place-items-center">
-                        {badge > 99 ? '99+' : badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </nav>
-  );
+// Sections laid out for the full computer width (the rest keep a reading column).
+const WIDE_TABS = new Set(['home', 'orders']);
+// True on a computer-sized screen (the side menu shows from Tailwind's lg, 1024px).
+function useIsDesktop() {
+  const query = '(min-width: 1024px)';
+  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(query);
+    if (!m) return undefined;
+    const on = () => setMatch(m.matches);
+    m.addEventListener?.('change', on);
+    return () => m.removeEventListener?.('change', on);
+  }, []);
+  return Boolean(match);
 }
 
 export default function ManageStore() {
@@ -2708,8 +2685,13 @@ export default function ManageStore() {
   const [pinVerified, setPinVerified] = useState(false);
   const [storePin,    setStorePin]    = useState('');
   const [config,      setConfig]      = useState(null);
-  const [tab,         setTab]         = useState('home');
-  const [menuOpen,    setMenuOpen]    = useState(false);   // left slide-out nav drawer
+  const [tab,         setTab]         = useState('home');   // 'more' = the phone's all-sections screen
+  const [phoneSearch, setPhoneSearch] = useState(false);    // the phone's full-screen search
+  // Text handed from the dashboard search to a section's own search box.
+  const [searchSeed,  setSearchSeed]  = useState({ tab: '', q: '', n: 0 });
+  const [shared,      setShared]      = useState(false);    // "Link copied" after Share page
+  const [arrivals,    setArrivals]    = useState([]);       // orders that landed while open (the bell)
+  const isDesktop = useIsDesktop();
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
   const saveTimerRef = useRef(null);
@@ -2725,6 +2707,16 @@ export default function ManageStore() {
   const handleOrderArrive = useCallback((order, delta) => {
     alertNewOrder();                                 // chime + buzz (only if opted in)
     if (tabRef.current !== 'orders') setToast({ ...order, count: delta });
+    setArrivals((list) => [{ ...order, count: delta, at: Date.now(), id: `${Date.now()}-${list.length}` }, ...list].slice(0, 20));
+  }, []);
+
+  // "More" is the phone's screen; on a computer the side menu already shows it all.
+  if (isDesktop && tab === 'more') setTab('home');
+  // Moving between sections. A search hand-off only applies to the section it
+  // was made for, so leaving that section drops it.
+  const goTab = useCallback((key) => {
+    setTab(key);
+    setSearchSeed((s) => (s.tab && s.tab !== key ? { ...s, tab: '', q: '' } : s));
   }, []);
 
   const { newCount, markSeen } = useNewOrders({
@@ -2871,7 +2863,7 @@ export default function ManageStore() {
     { key: 'assistant',  label: 'Assistant',   icon: Bot },
     { key: 'orders',     label: isService ? 'Leads' : 'Orders', icon: ShoppingBag },
     ...(isService ? [] : [{ key: 'payments', label: 'Payments', icon: Wallet }]),
-    ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned', icon: ShoppingCart }]),
+    ...(isService ? [] : [{ key: 'abandoned', label: 'Abandoned carts', icon: ShoppingCart }]),
     ...(isService ? [] : [{ key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }]),
     { key: 'customers',  label: 'Customers',   icon: Users },
     { key: 'analytics',  label: 'Stats',       icon: BarChart3 },
@@ -2897,29 +2889,62 @@ export default function ManageStore() {
   ];
   const bottomKeys = bottomTabs.map((t) => t.key);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100/40 lg:pl-64">
+  // ── The frame: side menu, top bars, search, bell, "More" ───────────────────
+  const colors    = shellColors(themeColor);
+  const badges    = { orders: newCount };
+  const viewHref  = publicStoreUrl(businessSlug, {}, liveDomain, window.location.origin);
+  const address   = liveDomain || `pocketlink.store/${businessSlug}`;
+  const planTitle = rawPlan === 'free' || planLapsed ? 'Free plan' : `${planName} plan`;
+  const planText  = planLine({ plan: rawPlan, isPaying, onTrial, daysLeft, planExpiresAt: config.planExpiresAt, lapsed: planLapsed });
+  const ordersNoun = isService ? 'lead' : 'order';
+  const current   = tab === 'more' ? 'home' : tab;
+  const tabLabel  = TABS.find((t) => t.key === current)?.label || 'Manage';
 
-      {/* ── Top bar (hamburger + current section title) ─────────────────────── */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
-        <div className="max-w-lg lg:max-w-3xl mx-auto px-4 h-16 flex items-center gap-3">
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu"
-                  className="lg:hidden p-2 -ml-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
-            <Menu size={22} />
-          </button>
-          <p className="text-base font-extrabold text-gray-900 truncate flex-1">
-            {TABS.find(t => t.key === tab)?.label || 'Manage'}
-          </p>
-          <Link to={`/${businessSlug}`}
-                className="flex items-center gap-1.5 text-xs font-bold text-white
-                           transition-all flex-shrink-0 rounded-lg px-3 py-2
-                           hover:opacity-90 active:scale-95 shadow-sm"
-                style={{ backgroundColor: themeColor }}>
-            <ArrowLeft size={12} />
-            View page
-          </Link>
-        </div>
-      </header>
+  const goPlans = () => {
+    sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''));
+    window.location.href = '/plans';
+  };
+  const openPlan  = () => (rawPlan === 'free' || planLapsed ? goPlans() : goTab('settings'));
+  const lock      = () => { setPinVerified(false); setStorePin(''); goTab('home'); };
+  async function shareStore() {
+    if (navigator.share) {
+      try { await navigator.share({ title: config.businessName, text: `Order from ${config.businessName}`, url: viewHref }); } catch { /* dismissed */ }
+      return;
+    }
+    try { await navigator.clipboard?.writeText(viewHref); setShared(true); setTimeout(() => setShared(false), 2500); } catch { /* ignore */ }
+  }
+  // The dashboard search hands its text to the section's own search box.
+  const findIn = (key, q) => {
+    const products = config.products || [];
+    // The products box only exists on long lists; a short list needs no filter.
+    const seedable = key !== 'products' || products.length > 8;
+    setSearchSeed((s) => ({ tab: seedable ? key : '', q: seedable ? q : '', n: s.n + 1 }));
+    setTab(key);
+    setPhoneSearch(false);
+  };
+  const seedFor = (key) => (searchSeed.tab === key ? searchSeed : null);
+  const searchProps = {
+    tabs: TABS, products: config.products || [], onFind: findIn,
+    onSection: (k) => { goTab(k); setPhoneSearch(false); },
+  };
+  const bell = (variant) => (
+    <AlertsBell newCount={newCount} arrivals={arrivals} noun={ordersNoun} variant={variant}
+                onOpenOrders={() => goTab('orders')} />
+  );
+
+  return (
+    <div className="min-h-screen bg-[#f5f6f5] lg:pl-64">
+
+      {/* ── Top bars: computer (search, bell, share, view) and phone ────────── */}
+      <DesktopTopBar title={tabLabel} subtitle={sectionSubtitle(current, { isService })}
+        search={<GlobalSearch {...searchProps} />} bell={bell('bar')}
+        onShare={shareStore} shared={shared} viewHref={viewHref} colors={colors} />
+      {tab !== 'more' && (
+        <PhoneTopBar config={config} colors={colors} isHome={tab === 'home'} title={tabLabel}
+          showBack={!bottomKeys.includes(tab)} onBack={() => goTab('more')}
+          onSearch={() => setPhoneSearch(true)} bell={bell('phone')} />
+      )}
+      {phoneSearch && <GlobalSearch {...searchProps} variant="page" onClose={() => setPhoneSearch(false)} />}
 
       {/* ── Free-trial / renewal banner ─────────────────────────────────────── */}
       {onTrial && (
@@ -2947,95 +2972,18 @@ export default function ManageStore() {
         </div>
       )}
 
-      {/* ── Slide-out left nav drawer (mobile only — desktop has a fixed sidebar) ─ */}
-      <div
-        className={[
-          'lg:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
-          menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
-        ].join(' ')}
-        onClick={() => setMenuOpen(false)}
-      />
-      <aside
-        className={[
-          'lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[82%] flex flex-col text-white shadow-2xl',
-          'transition-transform duration-300 ease-out',
-          menuOpen ? 'translate-x-0' : '-translate-x-full',
-        ].join(' ')}
-        style={{ background: `linear-gradient(180deg, ${themeColor}, ${themeColor}e0)` }}
-      >
-        {/* Profile header */}
-        <div className="px-5 pt-7 pb-5">
-          <div className="flex items-center gap-3">
-            {config.logo ? (
-              <img src={config.logo} alt="" className="w-14 h-14 rounded-full object-cover ring-2 ring-white/50 flex-shrink-0" />
-            ) : (
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-white/15 ring-2 ring-white/40 flex-shrink-0">
-                {config.logoEmoji || '🏪'}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-extrabold leading-tight truncate">{config.businessName}</p>
-              <p className="text-xs text-white/70 truncate">{liveDomain || `pocketlink.store/${businessSlug}`}</p>
-            </div>
-            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
-                    className="p-1.5 rounded-lg text-white/80 hover:bg-white/15 transition-colors flex-shrink-0">
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="h-px bg-white/15 mx-5" />
-
-        {/* Nav items (grouped) */}
-        <GroupedNav tabs={TABS} tab={tab} badges={{ orders: newCount }} onSelect={(k) => { setTab(k); setMenuOpen(false); }} />
-
-        {/* Footer — lock the panel (re-asks for PIN) */}
-        <div className="px-3 pb-6 pt-2 border-t border-white/15 mx-2">
-          <button
-            type="button"
-            onClick={() => { setMenuOpen(false); setPinVerified(false); setStorePin(''); }}
-            className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold text-white/85 hover:bg-white/10 transition-colors">
-            <LogOut size={19} className="flex-shrink-0" />
-            Lock & Exit
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Desktop permanent sidebar (lg+) — replaces the drawer + skinny column ─ */}
-      <aside className="hidden lg:flex lg:flex-col fixed inset-y-0 left-0 w-64 z-30 text-white shadow-xl"
-             style={{ background: `linear-gradient(180deg, ${themeColor}, ${themeColor}e0)` }}>
-        <div className="px-5 pt-6 pb-4">
-          <div className="flex items-center gap-3">
-            {config.logo ? (
-              <img src={config.logo} alt="" className="w-11 h-11 rounded-full object-cover ring-2 ring-white/50 flex-shrink-0" />
-            ) : (
-              <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl bg-white/15 ring-2 ring-white/40 flex-shrink-0">
-                {config.logoEmoji || '🏪'}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-extrabold leading-tight truncate">{config.businessName}</p>
-              <p className="text-[11px] text-white/70 truncate">{liveDomain || `/${businessSlug}`}</p>
-            </div>
-          </div>
-          <Link to={`/${businessSlug}`}
-                className="mt-3 w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg bg-white/15 hover:bg-white/25 transition-colors">
-            <ArrowLeft size={12} /> View page
-          </Link>
-        </div>
-        <div className="h-px bg-white/15 mx-5" />
-        <GroupedNav tabs={TABS} tab={tab} badges={{ orders: newCount }} onSelect={setTab} />
-        <div className="px-3 pb-5 pt-2 border-t border-white/15 mx-2">
-          <button type="button" onClick={() => { setPinVerified(false); setStorePin(''); }}
-            className="w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-[14.5px] font-semibold text-white/85 hover:bg-white/10 transition-colors">
-            <LogOut size={18} className="flex-shrink-0" />
-            Lock &amp; Exit
-          </button>
-        </div>
-      </aside>
+      {/* ── Computer side menu (dark, shop-colour glow) ─────────────────────── */}
+      <ManageSidebar config={config} tabs={TABS} tab={current} onSelect={goTab} badges={badges}
+        colors={colors} planName={planTitle} planText={planText} onPlan={openPlan} onLock={lock} />
 
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
-      <main className="max-w-lg lg:max-w-3xl mx-auto px-4 pt-6 pb-24 lg:pb-6">
+      {/* Home is a wide two-column screen on a computer; the other sections keep their reading width. */}
+      <main className={`max-w-lg ${WIDE_TABS.has(current) ? 'lg:max-w-[1240px] lg:px-8' : 'lg:max-w-3xl'} mx-auto px-4 pt-6 pb-24 lg:pb-6`}>
+        {tab === 'more' && (
+          <MoreScreen config={config} tabs={TABS} badges={badges} colors={colors} address={address}
+            planName={planTitle} planText={planText} onSelect={goTab} onPlan={openPlan} onLock={lock}
+            onShare={shareStore} shared={shared} viewHref={viewHref} />
+        )}
         {/* Reach hook — only on the Orders tab (the default landing). Settings has
             its own "share your page" hero and Stats has its own views number, so
             showing it everywhere would stack duplicate share cards. */}
@@ -3077,25 +3025,27 @@ export default function ManageStore() {
             </div>
           </div>
         )}
-        {tab === 'orders' && (
+        {/* On a computer Orders is a list + detail screen; Share page sits in the top bar. */}
+        {tab === 'orders' && !isDesktop && (
           <ReachCard slug={businessSlug} themeColor={themeColor} businessName={config.businessName}
                      upgrade={!analyticsEnabled} phone={config.whatsappNumber} domain={liveDomain} />
         )}
-        {tab === 'home' ? (
+        {tab === 'more' ? null : tab === 'home' ? (
           <div className="animate-pl-fade-up">
             <OverviewTab slug={businessSlug} pin={storePin} config={config} themeColor={themeColor}
-                         businessName={config.businessName} onGoTab={setTab} domain={liveDomain} />
+                         businessName={config.businessName} onGoTab={goTab} onFind={findIn} domain={liveDomain} />
           </div>
         ) : tab === 'assistant' ? (
           <div className="animate-pl-fade-up">
-            <AssistantTab config={config} themeColor={themeColor} onGoTab={setTab} businessName={config.businessName} />
+            <AssistantTab config={config} themeColor={themeColor} onGoTab={goTab} businessName={config.businessName} />
           </div>
         ) : tab === 'orders' ? (
           <div className="animate-pl-fade-up">
             <OrdersTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                        mode={isService ? 'leads' : 'orders'} riders={config.delivery?.riders || []}
                        payInfo={{ upi: config.upi || '', bank: config.bank || null }}
-                       store={orderStoreOf(config, businessSlug)} rto={rtoSettings(config)} />
+                       store={orderStoreOf(config, businessSlug)} rto={rtoSettings(config)}
+                       searchSeed={seedFor('orders')} wide={isDesktop} />
           </div>
         ) : tab === 'payments' ? (
           <div className="animate-pl-fade-up">
@@ -3107,7 +3057,7 @@ export default function ManageStore() {
                          store={{ businessName: config.businessName, logo: config.logo, logoEmoji: config.logoEmoji,
                                   whatsappNumber: config.whatsappNumber, address: config.address, city: config.city,
                                   gst: config.gst, theme: config.theme }}
-                         onGoTab={setTab} />
+                         onGoTab={goTab} />
           </div>
         ) : tab === 'abandoned' ? (
           <div className="animate-pl-fade-up">
@@ -3118,16 +3068,17 @@ export default function ManageStore() {
         ) : tab === 'whatsapp' ? (
           <div className="animate-pl-fade-up">
             <WhatsAppTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
-                         waPhone={config.whatsappNumber} onGoTab={setTab}
+                         waPhone={config.whatsappNumber} onGoTab={goTab}
                          cartAllowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)} />
           </div>
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">
-            <CustomersTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName} />
+            <CustomersTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName}
+                          searchSeed={seedFor('customers')} />
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
-            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} advanced={analyticsAdvanced} products={config.products} packagingCost={config.cart?.packagingCost} deliveryCost={config.cart?.deliveryCost} onGoTab={setTab} />
+            <AnalyticsTab slug={businessSlug} pin={storePin} themeColor={themeColor} enabled={analyticsEnabled} advanced={analyticsAdvanced} products={config.products} packagingCost={config.cart?.packagingCost} deliveryCost={config.cart?.deliveryCost} onGoTab={goTab} />
           </div>
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
@@ -3168,6 +3119,7 @@ export default function ManageStore() {
                 onSave={handleSave}
                 saveStatus={saveStatus}
                 saveError={saveError}
+                searchSeed={seedFor('products')}
               />
             </div>
           )}
@@ -3220,7 +3172,7 @@ export default function ManageStore() {
             const active = tab === key;
             const badge  = key === 'orders' ? newCount : 0;
             return (
-              <button key={key} type="button" onClick={() => setTab(key)}
+              <button key={key} type="button" onClick={() => goTab(key)}
                 aria-label={badge > 0 ? `${label}, ${badge} new` : label} aria-current={active ? 'page' : undefined}
                 className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
                 style={{ color: active ? themeColor : '#9ca3af' }}>
@@ -3238,10 +3190,11 @@ export default function ManageStore() {
               </button>
             );
           })}
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label="More sections"
+          <button type="button" onClick={() => goTab('more')} aria-label="More sections"
+            aria-current={tab === 'more' ? 'page' : undefined}
             className="flex-1 flex flex-col items-center gap-0.5 py-2 active:scale-95 transition-transform"
             style={{ color: bottomKeys.includes(tab) ? '#9ca3af' : themeColor }}>
-            <MoreHorizontal size={20} strokeWidth={2} />
+            <LayoutGrid size={20} strokeWidth={bottomKeys.includes(tab) ? 2 : 2.4} />
             <span className="text-[10px] font-bold leading-none">More</span>
           </button>
         </div>
@@ -3252,7 +3205,7 @@ export default function ManageStore() {
       {toast && (
         <NewOrderToast
           order={toast} count={toast.count} themeColor={themeColor}
-          onView={() => setTab('orders')}
+          onView={() => goTab('orders')}
           onClose={() => setToast(null)}
         />
       )}

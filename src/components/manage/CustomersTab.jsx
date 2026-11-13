@@ -17,10 +17,13 @@ import { recordOptOut } from '../../utils/offerService';
  * whole segment (OffersPanel, paid from the message wallet, never to customers
  * who asked to stop). No new data is collected; this organises what they own.
  */
-export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '' }) {
+export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '', searchSeed = null }) {
   const [orders,    setOrders]    = useState(null);   // null = loading
   const [seg,       setSeg]       = useState('all');
   const [query,     setQuery]     = useState('');
+  // Text typed in the dashboard's own search box lands here (once per hand-off).
+  const [seedSeen, setSeedSeen] = useState(null);
+  if (searchSeed?.q && searchSeed !== seedSeen) { setSeedSeen(searchSeed); setQuery(searchSeed.q); setSeg('all'); }
   const [openPhone, setOpenPhone] = useState(null);
   const [exporting, setExporting] = useState(false);
 
