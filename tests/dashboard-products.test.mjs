@@ -53,3 +53,36 @@ test('Delivery on a computer: the work on the left, couriers and customer update
   // Ship keeps full order cards (each with Book courier): the column is too narrow for list + detail.
   assert.match(MANAGE, /mode="ship"[\s\S]{0,260}store=\{orderStore\} rto=\{rto\} \/>/);
 });
+
+test('editing a product opens a pop-up (a sheet from the bottom on a phone), as in the prototype', () => {
+  assert.match(PRODUCTS, /<div role="dialog" aria-modal="true" aria-label=\{editingId !== null \? 'Edit product' : 'Add product'\}/);
+  assert.match(PRODUCTS, /flex items-end lg:items-center justify-center/);
+  assert.ok(!/animate-pl-slide-in-right/.test(PRODUCTS), 'no side drawer any more');
+  // The quick fields: stock counter with +25, and the in-stock switch, saved with the product.
+  assert.match(PRODUCTS, /stock: \(Number\(p\.stock\) \|\| 0\) \+ 25/);
+  assert.match(PRODUCTS, /inStock: form\.inStock !== false,/);
+  assert.match(PRODUCTS, /inStock:     product\.inStock !== false,/);
+  // Stock lives in one place in the form (not also in the folded section).
+  assert.equal((PRODUCTS.match(/aria-label="Stock"/g) || []).length, 1);
+  // Delete asks once more; Cancel and Save are always there.
+  assert.match(PRODUCTS, /onClick=\{\(\) => setConfirmDelete\(true\)\}/);
+  assert.match(PRODUCTS, /onClick=\{\(\) => removeProduct\(editingId, true\)\}/);
+  assert.match(PRODUCTS, /\{editingId !== null \? 'Save' : 'Add product'\}/);
+  // Every advanced option is still in the editor.
+  for (const piece of ['autoFill', 'title="Cost, unit &amp; tax"', 'title="Description &amp; gallery"', 'title="Options &amp; variants"']) {
+    assert.ok(PRODUCTS.includes(piece), piece);
+  }
+});
+
+test('Save and Delete in the pop-up save the page straight away; card switches still use Save changes', () => {
+  assert.match(MANAGE, /function handleSave\(\) \{ return persist\(config\); \}/);
+  assert.match(MANAGE, /function saveWith\(partial\) \{\n\s*setConfig\(\(prev\) => \(\{ \.\.\.prev, \.\.\.partial \}\)\);\n\s*return persist\(\{ \.\.\.config, \.\.\.partial \}\);/);
+  // Images added in the pop-up are still uploaded before saving.
+  assert.match(MANAGE, /uploadConfigImages\(source\.products, businessSlug\)/);
+  assert.match(PRODUCTS, /if \(onSaveWith\) \{ onSaveWith\(\{ products: newProducts \}\); setDirty\(false\); \}/);
+  assert.match(PRODUCTS, /if \(now && onSaveWith\) \{ onSaveWith\(\{ products: next \}\); setDirty\(false\); \}/);
+  assert.match(MANAGE, /onSaveWith=\{saveWith\}/);
+  // The in-stock switch and reordering on the cards keep the Save changes bar.
+  const toggle = PRODUCTS.slice(PRODUCTS.indexOf('function toggleStock'), PRODUCTS.indexOf('function handleSave'));
+  assert.match(toggle, /setDirty\(true\)/);
+});

@@ -15,7 +15,7 @@ import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysL
 import {
   ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star,
+  ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star, Minus,
   Percent, Sparkles, Users, Bot, Search,
   Truck, ShoppingCart, LayoutDashboard, LayoutGrid,
   Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
@@ -99,7 +99,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', inStock:true, unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
 const LOW_STOCK   = 5;   // ≤ this many units left → "low stock" (still in stock)
 
 // Clean the form's extra option-types into the stored shape:
@@ -378,7 +378,7 @@ function SaveBar({ status, error, onSave, dirty, themeColor }) {
 // ── PIN Gate: src/components/manage/PinGate.jsx ───────────────────────────────
 
 // ── Products Tab ─────────────────────────────────────────────────────────────
-function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searchSeed = null }) {
+function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatus, saveError, searchSeed = null }) {
   const themeColor  = config.theme?.primary || '#0d9488';
   const userCats    = (config.categories || []).filter(c => c.id !== 'all');
   const products    = config.products || [];
@@ -387,6 +387,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
   const atProdLimit = !canAddProduct(plan, products.length);
 
   const [drawerOpen,    setDrawerOpen]    = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);   // Delete in the editor asks once more
   const [showVariants,  setShowVariants]  = useState(false);
   const [form,          setForm]          = useState(EMPTY_PROD);
   const [editingId,     setEditingId]     = useState(null);
@@ -436,7 +437,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
     variantExtras: buildVariantExtras(form.variantExtras),
   };
 
-  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setDrawerOpen(false); }
+  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setConfirmDelete(false); setDrawerOpen(false); }
 
   // ✨ AI Auto-fill — suggest category, a priced variant axis and attributes
   // from the product name (+ image). Owner fills prices/values; never blocks.
@@ -492,6 +493,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
       mrp:         product.mrp         || '',
       cost:        product.cost        ?? '',
       stock:       product.stock       ?? '',
+      inStock:     product.inStock !== false,
       unit:        unitIsStandard ? product.unit : 'Other…',
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
@@ -507,6 +509,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
     setEditingId(product.id);
     setErrors({});
     setAiNote('');
+    setConfirmDelete(false);
     setShowVariants(!!(product.variants?.label && product.variants?.options?.length > 0));
     setDrawerOpen(true);
   }
@@ -596,6 +599,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
               mrp:form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
               cost,
               stock,
+              inStock: form.inStock !== false,
               unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
@@ -612,6 +616,7 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
         mrp:         form.mrp && Number(form.mrp) > Number(form.price) ? Number(form.mrp) : undefined,
         cost,
         stock,
+        inStock:     form.inStock !== false,
         unit:        finalUnit,
         gstRate,
         taxInclusive,
@@ -622,14 +627,18 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
         badgeColor:  null,
       }];
     }
-    onChange({ products: newProducts });
-    setDirty(true);
+    // The pop-up's Save saves the page straight away (with anything else not
+    // yet saved); without a saver it falls back to the Save changes bar.
+    if (onSaveWith) { onSaveWith({ products: newProducts }); setDirty(false); }
+    else { onChange({ products: newProducts }); setDirty(true); }
     resetForm();
   }
 
-  function removeProduct(id) {
-    onChange({ products: products.filter(p => p.id !== id) });
-    setDirty(true);
+  // From a card: waits for Save changes. From the pop-up (now): saves straight away.
+  function removeProduct(id, now = false) {
+    const next = products.filter(p => p.id !== id);
+    if (now && onSaveWith) { onSaveWith({ products: next }); setDirty(false); }
+    else { onChange({ products: next }); setDirty(true); }
     if (editingId === id) resetForm();
   }
 
@@ -847,22 +856,25 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
         ].join(' ')}
         onClick={resetForm}
       />
-      {/* Drawer panel — slides in from the right (opposite the nav menu) */}
+      {/* The editor: a pop-up in the middle on a computer, a sheet from the
+          bottom on a phone (the approved prototype). Clicks outside it reach
+          the backdrop, which closes it. */}
       {drawerOpen && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-pl-slide-in-right">
-          {/* Branded header */}
-          <div className="flex-shrink-0 flex items-start justify-between px-5 py-4 text-white"
-               style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}cc)` }}>
+        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center lg:p-6 pointer-events-none">
+        <div role="dialog" aria-modal="true" aria-label={editingId !== null ? 'Edit product' : 'Add product'}
+             className="pointer-events-auto w-full lg:max-w-xl bg-white shadow-2xl flex flex-col rounded-t-3xl lg:rounded-2xl max-h-[92vh] lg:max-h-[88vh] animate-pl-fade-up">
+          <div className="lg:hidden w-10 h-1 rounded-full bg-gray-300 mx-auto mt-2.5 flex-shrink-0" />
+          <div className="flex-shrink-0 flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-gray-100">
             <div className="min-w-0">
-              <p className="text-lg font-extrabold leading-tight">
-                {editingId !== null ? 'Edit Product' : 'New Product'}
+              <p className="text-[18px] font-extrabold text-gray-900 leading-tight">
+                {editingId !== null ? 'Edit product' : 'Add product'}
               </p>
-              <p className="text-xs text-white/75 mt-0.5">
-                {editingId !== null ? 'Update the details below' : 'Add an item to your page'}
+              <p className="text-[13px] text-gray-500 mt-0.5">
+                {editingId !== null ? 'Changes show on your page after you save' : 'Add an item to your page'}
               </p>
             </div>
             <button type="button" onClick={resetForm} aria-label="Close"
-                    className="p-2 -mr-1 -mt-0.5 rounded-lg text-white/90 hover:bg-white/15 transition-colors flex-shrink-0">
+                    className="w-9 h-9 -mr-2 rounded-full grid place-items-center text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0">
               <X size={20} />
             </button>
           </div>
@@ -940,6 +952,44 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
                   </select>
                   {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
                 </div>
+                {/* Stock: a counter (the prototype). Blank = no limit. */}
+                {config.businessType !== 'service' && (
+                  <div>
+                    <label className={FIELD_LABEL}>Stock <span className="text-gray-400 font-normal">· optional</span></label>
+                    <div className="flex items-center gap-2">
+                      <button type="button" aria-label="One less" onClick={() => setForm(p => ({ ...p, stock: Math.max(0, (Number(p.stock) || 0) - 1) }))}
+                              className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50 flex-shrink-0"><Minus size={16} /></button>
+                      <input type="number" inputMode="numeric" min="0" step="1" placeholder="No limit" aria-label="Stock"
+                             value={form.stock}
+                             onChange={e => setForm(p => ({...p, stock:e.target.value}))}
+                             className={`${iCls(false)} !w-28 text-center font-extrabold`} />
+                      <button type="button" aria-label="One more" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + 1 }))}
+                              className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50 flex-shrink-0"><Plus size={16} /></button>
+                      <button type="button" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + 25 }))}
+                              className="h-11 px-3 rounded-xl text-sm font-bold flex-shrink-0" style={{ backgroundColor: `${themeColor}17`, color: btnColor }}>+25</button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500 leading-snug">
+                      {form.stock === '' || form.stock == null
+                        ? 'Leave blank for no limit. A number counts down with every order.'
+                        : Number(form.stock) <= 0 ? 'At 0 your page shows “Sold out”.'
+                        : Number(form.stock) <= LOW_STOCK ? `Buyers see “Only ${form.stock} left”.`
+                        : 'Goes down by itself with every order.'}
+                    </p>
+                  </div>
+                )}
+                {/* In stock: off shows "Sold out" without deleting (the same switch as on the card) */}
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-semibold text-gray-800">In stock</p>
+                    <p className="text-[12px] text-gray-500">Turn off to show “Sold out” without deleting it</p>
+                  </div>
+                  <button type="button" role="switch" aria-checked={form.inStock !== false} aria-label="In stock"
+                          onClick={() => setForm(p => ({ ...p, inStock: p.inStock === false }))}
+                          className={['relative w-11 h-6 rounded-full transition-colors flex-shrink-0', form.inStock === false ? 'bg-gray-300' : ''].join(' ')}
+                          style={form.inStock === false ? undefined : { backgroundColor: btnColor }}>
+                    <span className={['absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all', form.inStock === false ? 'left-0.5' : 'left-[22px]'].join(' ')} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -950,9 +1000,9 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
               <div className="h-px flex-1 bg-gray-200/70" />
             </div>
 
-            <Accordion icon={Tag} iconBg="#fffbeb" iconColor="#b45309" title="Cost, stock &amp; tax"
-              subtitle="Your buying cost, inventory, GST &amp; unit"
-              openWhen={form.cost !== '' || form.stock !== '' || form.gstRate !== ''}>
+            <Accordion icon={Tag} iconBg="#fffbeb" iconColor="#b45309" title="Cost, unit &amp; tax"
+              subtitle="Your buying cost, how it is sold, GST"
+              openWhen={form.cost !== '' || form.gstRate !== ''}>
               <div>
                 <label className={FIELD_LABEL}>Cost price <span className="text-gray-400 font-normal">· optional, private</span></label>
                 <div className="relative">
@@ -964,16 +1014,6 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
                 </div>
                 <p className="mt-1 text-[11px] text-gray-400 leading-snug">💡 Add this to see your real <b className="text-gray-500">profit</b> in Stats. Never shown to customers.</p>
               </div>
-              {config.businessType !== 'service' && (
-                <div>
-                  <label className={FIELD_LABEL}>Stock <span className="text-gray-400 font-normal">· optional</span></label>
-                  <input type="number" inputMode="numeric" min="0" step="1" placeholder="Leave blank = unlimited"
-                         value={form.stock}
-                         onChange={e => setForm(p => ({...p, stock:e.target.value}))}
-                         className={iCls(false)} />
-                  <p className="mt-1 text-[11px] text-gray-400 leading-snug">📦 Units in hand. Counts down as orders come in, and shows <b className="text-gray-500">Sold out</b> at 0 so you never oversell.</p>
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={FIELD_LABEL}>{config.businessType === 'service' ? 'Rate type' : 'Sold by'}</label>
@@ -1274,18 +1314,31 @@ function ManageProducts({ config, onChange, onSave, saveStatus, saveError, searc
             </div>
           </div>
 
-          {/* Footer actions */}
-          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 bg-white flex gap-3">
+          {/* Footer actions: Delete (asks once more), Cancel, Save */}
+          <div className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 bg-white flex items-center gap-2"
+               style={{ paddingBottom: 'max(14px, env(safe-area-inset-bottom))' }}>
+            {editingId !== null && (confirmDelete ? (
+              <button type="button" onClick={() => removeProduct(editingId, true)}
+                      className="h-11 px-4 rounded-xl border border-red-200 text-red-700 text-sm font-bold hover:bg-red-50 transition-colors">
+                Yes, delete it
+              </button>
+            ) : (
+              <button type="button" onClick={() => setConfirmDelete(true)}
+                      className="h-11 px-3 rounded-xl text-red-700 text-sm font-bold hover:bg-red-50 inline-flex items-center gap-1.5 transition-colors">
+                <Trash2 size={16} /> Delete
+              </button>
+            ))}
             <button type="button" onClick={resetForm}
-                    className="px-5 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                    className="ml-auto h-11 px-5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
               Cancel
             </button>
             <button type="button" onClick={submitProduct}
-                    className="flex-1 py-3 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 active:scale-[0.99] transition-all"
-                    style={{ backgroundColor: themeColor }}>
-              {editingId !== null ? 'Save Changes' : 'Add Product'}
+                    className="h-11 px-6 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 active:scale-[0.99] transition-all"
+                    style={{ backgroundColor: btnColor }}>
+              {editingId !== null ? 'Save' : 'Add product'}
             </button>
           </div>
+        </div>
         </div>
       )}
         </>,
@@ -2871,17 +2924,25 @@ export default function ManageStore() {
   }
 
   // Save to Supabase (uploads any new base64 images first)
-  async function handleSave() {
+  // Save the page as it is now.
+  function handleSave() { return persist(config); }
+  // Save with a change made this moment, without waiting for the state update
+  // (the product pop-up's Save and Delete save straight away, as in the prototype).
+  function saveWith(partial) {
+    setConfig((prev) => ({ ...prev, ...partial }));
+    return persist({ ...config, ...partial });
+  }
+  async function persist(source) {
     setSaveStatus('saving');
     setSaveError('');
     try {
       // Upload any base64 images added during this session (products + logo + cover)
       const [uploadedProducts, uploadedLogo, uploadedCover] = await Promise.all([
-        uploadConfigImages(config.products, businessSlug),
-        uploadSingleImage(config.logo, businessSlug, 'logo'),
-        uploadSingleImage(config.coverImage, businessSlug, 'cover'),
+        uploadConfigImages(source.products, businessSlug),
+        uploadSingleImage(source.logo, businessSlug, 'logo'),
+        uploadSingleImage(source.coverImage, businessSlug, 'cover'),
       ]);
-      const finalConfig = { ...config, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
+      const finalConfig = { ...source, products: uploadedProducts, logo: uploadedLogo, coverImage: uploadedCover };
 
       await updateStore(businessSlug, finalConfig, storePin);
       setConfig(finalConfig);      // update state with Storage URLs
@@ -3212,6 +3273,7 @@ export default function ManageStore() {
               config={config}
               onChange={handleChange}
               onSave={handleSave}
+              onSaveWith={saveWith}
               saveStatus={saveStatus}
               saveError={saveError}
               searchSeed={seedFor('products')}
