@@ -15,10 +15,10 @@ import { canAddProduct, canAddCategory, getPlanLimits, effectivePlan, trialDaysL
 import {
   ArrowLeft, Package, Tag, Settings2, ShoppingBag, BarChart3,
   Plus, X, Pencil, ImagePlus, Link2, CheckCircle2,
-  ChevronDown, ChevronUp, Copy, Check, Trash2, QrCode, Star, Minus,
+  ChevronUp, ChevronLeft, ChevronRight, Copy, Check, Trash2, QrCode, Star, Minus,
   Percent, Sparkles, Users, Bot, Search,
   Truck, ShoppingCart, LayoutDashboard, LayoutGrid,
-  Bell, Volume2, VolumeX, Layers, Megaphone, Wallet, AlertTriangle, MessageCircle,
+  Bell, Volume2, VolumeX, Megaphone, Wallet, AlertTriangle, MessageCircle,
 } from 'lucide-react';
 import { openStorePoster } from '../utils/storePoster';
 import { isValidUpiVpa } from '../utils/upiLink';
@@ -37,6 +37,8 @@ import IconPicker                                     from '../components/IconPi
 import OrdersTab                                       from '../components/manage/OrdersTab';
 import AbandonedTab                                    from '../components/manage/AbandonedTab';
 import ProductCard                                     from '../components/product/ProductCard';
+import FoodMark                                        from '../components/product/FoodMark';
+import { FOOD_TYPES }                                  from '../utils/foodType';
 import AnalyticsTab                                    from '../components/manage/AnalyticsTab';
 import ReachCard                                       from '../components/manage/ReachCard';
 import ReviewsTab                                       from '../components/manage/ReviewsTab';
@@ -99,7 +101,7 @@ const THEME_OPTIONS  = [
   { hex: '#9333ea', label: 'Purple' },
   { hex: '#e11d48', label: 'Rose'   },
 ];
-const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', inStock:true, weight:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
+const EMPTY_PROD  = { name:'', category:'', price:'', mrp:'', cost:'', stock:'', inStock:true, weight:'', badge:'', foodType:'', unit:'per piece', unitCustom:'', description:'', image:'', images:[], gstRate:'', taxMode:'', variantLabel:'', variantOptions:[], variantExtras:[], attributes:[] };
 const LOW_STOCK   = 5;   // ≤ this many units left → "low stock" (still in stock)
 
 // Clean the form's extra option-types into the stored shape:
@@ -144,34 +146,6 @@ function FormSection({ title, action, children }) {
   );
 }
 
-// Collapsible section for the advanced (optional) parts of the product form, so
-// a first-time seller sees only the essentials. `openWhen` opens it on mount
-// (e.g. editing a product that already uses this) and re-opens if it turns true
-// later (e.g. AI auto-fill adds variants).
-function Accordion({ icon: Icon, iconBg, iconColor, title, badge, subtitle, openWhen = false, children }) {
-  const [open, setOpen] = useState(!!openWhen);
-  useEffect(() => { if (openWhen) setOpen(true); }, [openWhen]);
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left">
-        <span className="w-8 h-8 flex-shrink-0 rounded-lg grid place-items-center"
-              style={{ background: iconBg, color: iconColor }}>
-          {Icon && <Icon size={16} />}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block text-sm font-bold text-gray-900 leading-tight">
-            {title}
-            {badge && <span className="ml-1.5 align-middle text-[10px] font-bold text-gray-500 bg-gray-100 rounded-full px-1.5 py-0.5">{badge}</span>}
-          </span>
-          {subtitle && <span className="block text-[11.5px] text-gray-400 mt-0.5 leading-snug">{subtitle}</span>}
-        </span>
-        <ChevronDown size={18} className={['text-gray-300 flex-shrink-0 transition-transform', open ? 'rotate-180' : ''].join(' ')} />
-      </button>
-      {open && <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">{children}</div>}
-    </div>
-  );
-}
 
 // ── ImageUploader ─────────────────────────────────────────────────────────────
 // `compact` renders a small square tile (used per variant option, e.g. a photo
@@ -188,7 +162,7 @@ function Accordion({ icon: Icon, iconBg, iconColor, title, badge, subtitle, open
 // `lowResHint` replaces the default warning text.
 function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_DIM,
                          lowResWarnBelow = 0, lowResBy = 'width', lowResHint = '',
-                         multiple = 1, onAddMany }) {
+                         multiple = 1, onAddMany, large = false }) {
   const [dragOver, setDragOver] = useState(false);
   const [adding,   setAdding]   = useState(false);      // compressing a multi-photo pick
   const [urlMode,  setUrlMode]  = useState(false);
@@ -262,6 +236,29 @@ function ImageUploader({ value, onChange, compact = false, maxDim = PRODUCT_MAX_
         )}
         <input ref={fileRef} type="file" accept="image/*" className="hidden" multiple={multiple > 1}
                onChange={(e) => addFiles(e.target)} />
+      </div>
+    );
+  }
+
+  // `large`: the product editor's main photo, shown big like buyers see it, with
+  // Change / Remove on it and a small "Low quality" tag instead of a long warning.
+  if (hasImage && large) {
+    return (
+      <div className="relative w-full aspect-square rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+        <img src={value} alt="Main product photo" className="w-full h-full object-cover" onError={() => onChange('')} onLoad={checkRes} />
+        <span className="absolute left-2.5 top-2.5 px-2 py-0.5 rounded-md bg-gray-900/80 text-white text-[11px] font-bold">Main photo</span>
+        {lowRes > 0 && (
+          <span title={lowResHint || `Only ${lowRes}px, so customers see it blurry. Tap Change and upload the original from your phone.`}
+                className="absolute right-2.5 top-2.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[11px] font-bold">Low quality</span>
+        )}
+        <div className="absolute inset-x-2.5 bottom-2.5 flex gap-2">
+          <button type="button" onClick={() => fileRef.current?.click()}
+                  className="h-9 px-3.5 rounded-lg bg-gray-900/85 text-white text-[13px] font-bold hover:bg-gray-900">Change photo</button>
+          <button type="button" onClick={() => onChange('')}
+                  className="h-9 px-3 rounded-lg bg-white/90 text-red-700 text-[13px] font-bold hover:bg-white">Remove</button>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+               onChange={(e) => compressAndSet(e.target.files?.[0])} />
       </div>
     );
   }
@@ -388,8 +385,17 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
 
   const [drawerOpen,    setDrawerOpen]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);   // Delete in the editor asks once more
+  // The editor (approved mockup): what the form was when opened, so it knows
+  // when something changed; the phone's open row; a short share note.
+  const [baseline,  setBaseline]  = useState(null);
+  const [closeAsk,  setCloseAsk]  = useState(false);
+  const [sub,       setSub]       = useState(null);
+  const [shareNote, setShareNote] = useState('');
+  const isDesk = useIsDesktop();
   const [showVariants,  setShowVariants]  = useState(false);
   const [form,          setForm]          = useState(EMPTY_PROD);
+  // Something changed since the editor opened (drives the save bar).
+  const dirty_ = drawerOpen && baseline !== null && JSON.stringify(form) !== JSON.stringify(baseline);
   const [editingId,     setEditingId]     = useState(null);
   const [errors,        setErrors]        = useState({});
   const [dirty,         setDirty]         = useState(false);
@@ -418,6 +424,8 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
 
   // Live preview: the form mapped to the exact card customers see on the page.
   const previewProduct = {
+    badge: form.badge?.trim() || null,
+    foodType: form.foodType || null,
     name:  form.name.trim() || 'Product name',
     price: Number(form.price) || 0,
     mrp:   form.mrp !== '' && Number(form.mrp) > (Number(form.price) || 0) ? Number(form.mrp) : null,
@@ -437,7 +445,19 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
     variantExtras: buildVariantExtras(form.variantExtras),
   };
 
-  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setConfirmDelete(false); setDrawerOpen(false); }
+  function resetForm() { setForm(EMPTY_PROD); setEditingId(null); setErrors({}); setAiNote(''); setConfirmDelete(false); setBaseline(null); setCloseAsk(false); setSub(null); setDrawerOpen(false); }
+  // Leaving with changes asks first (Save or Discard), like the save bar in the mockup.
+  function tryClose() { if (dirty_) setCloseAsk(true); else resetForm(); }
+  function discard() {
+    if (closeAsk) { resetForm(); return; }
+    setForm(baseline || EMPTY_PROD); setErrors({});
+  }
+  // "Make a copy": the same details as a new product, ready to change and save.
+  function copyProduct() {
+    setEditingId(null);
+    setForm(p => ({ ...p, name: `${p.name} (copy)` }));
+    setConfirmDelete(false); setSub(null);
+  }
 
   // ✨ AI Auto-fill — suggest category, a priced variant axis and attributes
   // from the product name (+ image). Owner fills prices/values; never blocks.
@@ -478,6 +498,8 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
 
   function openAdd() {
     setForm(EMPTY_PROD);
+    setBaseline(EMPTY_PROD);
+    setSub(null); setCloseAsk(false);
     setEditingId(null);
     setErrors({});
     setShowVariants(false);
@@ -486,7 +508,7 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
 
   function openEdit(product) {
     const unitIsStandard = STANDARD_UNITS.includes(product.unit);
-    setForm({
+    const next = {
       name:        product.name        || '',
       category:    product.category    || '',
       price:       product.price       || '',
@@ -495,6 +517,8 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
       stock:       product.stock       ?? '',
       inStock:     product.inStock !== false,
       weight:      product.weight      ?? '',
+      badge:       product.badge       || '',
+      foodType:    product.foodType    || '',
       unit:        unitIsStandard ? product.unit : 'Other…',
       unitCustom:  unitIsStandard ? '' : (product.unit || ''),
       description: product.description || '',
@@ -506,7 +530,10 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
       variantOptions: product.variants?.options ? product.variants.options.map(o => ({ name: o.name, price: o.price ?? '', mrp: o.mrp ?? '', cost: o.cost ?? '', weight: o.weight ?? '', image: o.image || '' })) : [],
       variantExtras:  Array.isArray(product.variantExtras) ? product.variantExtras.map(g => ({ label: g.label || '', options: (g.options || []).map(o => ({ name: o.name || '', addPrice: o.addPrice ?? '' })) })) : [],
       attributes:     Array.isArray(product.attributes) ? product.attributes.map(a => ({ key: a.key, label: a.label, options: a.options || [], value: a.value ?? '' })) : [],
-    });
+    };
+    setForm(next);
+    setBaseline(next);
+    setSub(null); setCloseAsk(false);
     setEditingId(product.id);
     setErrors({});
     setAiNote('');
@@ -607,6 +634,8 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
               stock,
               inStock: form.inStock !== false,
               weight,
+              badge: form.badge?.trim() || null,
+              foodType: form.foodType || undefined,
               unit:finalUnit, description:form.description.trim(), image:finalImage || p.image, images:cleanImages, gstRate, taxInclusive, variants, variantExtras, attributes }
           : p
       );
@@ -625,13 +654,14 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
         stock,
         inStock:     form.inStock !== false,
         weight,
+        foodType:    form.foodType || undefined,
         unit:        finalUnit,
         gstRate,
         taxInclusive,
         variants,
         variantExtras,
         attributes,
-        badge:       null,
+        badge:       form.badge?.trim() || null,
         badgeColor:  null,
       }];
     }
@@ -850,267 +880,54 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
         })}
       </div>
 
-      {/* ── Product Form Drawer ─────────────────────────────────────────────
-          Portaled to <body>: the section card uses animate-pl-fade-up, whose
-          `both` fill-mode leaves a transform that would otherwise trap this
-          fixed-position drawer inside the card. ─────────────────────────────*/}
-      {typeof document !== 'undefined' && createPortal(
-        <>
-      {/* Backdrop */}
-      <div
-        className={[
-          'fixed inset-0 bg-black/50 z-40 transition-opacity duration-200',
-          drawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
-        ].join(' ')}
-        onClick={resetForm}
-      />
-      {/* The editor: a pop-up in the middle on a computer, a sheet from the
-          bottom on a phone (the approved prototype). Clicks outside it reach
-          the backdrop, which closes it. */}
-      {drawerOpen && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center lg:p-6 pointer-events-none">
-        <div role="dialog" aria-modal="true" aria-label={editingId !== null ? 'Edit product' : 'Add product'}
-             className="pointer-events-auto w-full lg:max-w-xl bg-white shadow-2xl flex flex-col rounded-t-3xl lg:rounded-2xl max-h-[92vh] lg:max-h-[88vh] animate-pl-fade-up">
-          <div className="lg:hidden w-10 h-1 rounded-full bg-gray-300 mx-auto mt-2.5 flex-shrink-0" />
-          <div className="flex-shrink-0 flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-gray-100">
-            <div className="min-w-0">
-              <p className="text-[18px] font-extrabold text-gray-900 leading-tight">
-                {editingId !== null ? 'Edit product' : 'Add product'}
-              </p>
-              <p className="text-[13px] text-gray-500 mt-0.5">
-                {editingId !== null ? 'Changes show on your page after you save' : 'Add an item to your page'}
-              </p>
+      {/* ── Product editor (the approved mockup, 2026-11-13) ───────────────────
+          Computer: a full page, the product in the middle column and status /
+          organising / preview on the side, with a save bar that appears when
+          something changed. Phone: photos, name, price, stock and status, then
+          short rows that each open their own page. Portaled to <body> so the
+          section's fade-up transform cannot trap it. ───────────────────────────*/}
+      {typeof document !== 'undefined' && drawerOpen && createPortal((() => {
+        const isNew = editingId === null;
+        const service = config.businessType === 'service';
+        const priceN = Number(form.price) || 0;
+        const mrpN = Number(form.mrp) || 0;
+        const costSet = form.cost !== '' && form.cost != null;
+        const off = mrpN > priceN && priceN > 0 ? Math.round((1 - priceN / mrpN) * 100) : 0;
+        const earn = priceN - (Number(form.cost) || 0);
+        const margin = priceN > 0 ? Math.round((earn / priceN) * 100) : 0;
+        const tracked = form.stock !== '' && form.stock != null;
+        const left = tracked ? Math.max(0, Number(form.stock) || 0) : null;
+        const soldInfo = sales?.get(baseline?.name || form.name);
+        const productLink = !isNew ? `${publicStoreUrl(config.slug, {}, null, window.location.origin)}/p/${editingId}` : '';
+        const statusPill = form.inStock === false || (tracked && left <= 0)
+          ? <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[12px] font-bold bg-red-50 text-red-700 flex-shrink-0">Sold out</span>
+          : <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[12px] font-bold bg-emerald-50 text-emerald-700 flex-shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />On your page</span>;
+        const card = 'bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4';
+        const title = 'text-[15px] font-extrabold text-gray-900';
+        const chip = (on) => ['h-9 px-3.5 rounded-full border text-[13px] font-bold inline-flex items-center gap-1.5 transition',
+          on ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'].join(' ');
+        const sw = (on, onClick, label) => (
+          <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onClick}
+                  className={['relative w-11 h-6 rounded-full transition-colors flex-shrink-0', on ? '' : 'bg-gray-300'].join(' ')}
+                  style={on ? { backgroundColor: btnColor } : undefined}>
+            <span className={['absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all', on ? 'left-[22px]' : 'left-0.5'].join(' ')} />
+          </button>
+        );
+        const copyLink = async () => {
+          try { await navigator.clipboard.writeText(productLink); setShareNote('Link copied'); }
+          catch { setShareNote(productLink); }
+          setTimeout(() => setShareNote(''), 2500);
+        };
+        const waShare = `https://wa.me/?text=${encodeURIComponent(`${form.name} · ₹${priceN}\n${productLink}`)}`;
+
+        // ── Pieces, each used on both layouts ──
+        const photos = (
+          <div className="space-y-3">
+            <div className={isDesk ? 'max-w-[300px]' : 'max-w-[240px]'}>
+              <ImageUploader large value={form.image} onChange={v => setForm(p => ({...p, image:v}))} lowResWarnBelow={500} lowResBy="long" />
             </div>
-            <button type="button" onClick={resetForm} aria-label="Close"
-                    className="w-9 h-9 -mr-2 rounded-full grid place-items-center text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0">
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Scrollable, sectioned form body */}
-          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-gray-50/40">
-
-            {/* ── The essentials: everything a seller needs to publish ── */}
-            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: `${themeColor}40` }}>
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100"
-                   style={{ background: `linear-gradient(180deg,#ffffff,${themeColor}0d)` }}>
-                <span className="w-5 h-5 rounded-md grid place-items-center text-white flex-shrink-0" style={{ backgroundColor: themeColor }}>
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <h4 className="text-[13px] font-extrabold text-gray-900 flex-1">The essentials</h4>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap"
-                      style={{ color: themeColor, borderColor: `${themeColor}55` }}>all you need to publish</span>
-              </div>
-              <div className="p-4 space-y-4">
-                {/* Photo — the first thing customers see */}
-                <div>
-                  <label className={FIELD_LABEL}>Product photo <span className="text-gray-400 font-normal">· the first thing customers see</span></label>
-                  <ImageUploader value={form.image} onChange={v => setForm(p => ({...p, image:v}))} lowResWarnBelow={500} lowResBy="long" />
-                </div>
-                {/* Name + AI auto-fill */}
-                <div>
-                  <label className={FIELD_LABEL}>Product Name <span className="text-red-500">*</span></label>
-                  <input type="text" autoFocus placeholder="e.g. 65W GaN Charger"
-                         value={form.name}
-                         onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
-                         className={iCls(errors.name)} />
-                  {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
-                  {/* ✨ AI Auto-fill — category + variant + attributes from the name */}
-                  <button type="button" onClick={autoFill} disabled={!form.name.trim() || aiLoading}
-                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40 active:scale-95 transition-transform"
-                    style={{ backgroundColor: themeColor }}>
-                    {aiLoading
-                      ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Thinking…</>
-                      : <><Star size={13} /> Auto-fill details</>}
-                  </button>
-                  {aiNote && <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{aiNote}</p>}
-                </div>
-                {/* Price + MRP */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={FIELD_LABEL}>Price <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                      <input type="number" inputMode="numeric" min="0" placeholder="349"
-                             value={form.price}
-                             onChange={e => { setForm(p => ({...p, price:e.target.value})); setErrors(p => ({...p, price:''})); }}
-                             className={[iCls(errors.price), 'pl-7'].join(' ')} />
-                    </div>
-                    {errors.price && <p className="mt-1 text-xs text-red-500">{errors.price}</p>}
-                  </div>
-                  <div>
-                    <label className={FIELD_LABEL}>MRP <span className="text-gray-400 font-normal">· optional</span></label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                      <input type="number" inputMode="numeric" min="0" placeholder="499"
-                             value={form.mrp}
-                             onChange={e => setForm(p => ({...p, mrp:e.target.value}))}
-                             className={[iCls(false), 'pl-7'].join(' ')} />
-                    </div>
-                  </div>
-                </div>
-                {/* Category */}
-                <div>
-                  <label className={FIELD_LABEL}>Category <span className="text-red-500">*</span></label>
-                  <select value={form.category}
-                          onChange={e => { setForm(p => ({...p, category:e.target.value})); setErrors(p => ({...p, category:''})); }}
-                          className={iCls(errors.category)}>
-                    <option value="">Select category…</option>
-                    {userCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-                  </select>
-                  {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
-                </div>
-                {/* Stock: a counter (the prototype). Blank = no limit. */}
-                {config.businessType !== 'service' && (
-                  <div>
-                    <label className={FIELD_LABEL}>Stock <span className="text-gray-400 font-normal">· optional</span></label>
-                    <div className="flex items-center gap-2">
-                      <button type="button" aria-label="One less" onClick={() => setForm(p => ({ ...p, stock: Math.max(0, (Number(p.stock) || 0) - 1) }))}
-                              className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50 flex-shrink-0"><Minus size={16} /></button>
-                      <input type="number" inputMode="numeric" min="0" step="1" placeholder="No limit" aria-label="Stock"
-                             value={form.stock}
-                             onChange={e => setForm(p => ({...p, stock:e.target.value}))}
-                             className={`${iCls(false)} !w-28 text-center font-extrabold`} />
-                      <button type="button" aria-label="One more" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + 1 }))}
-                              className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50 flex-shrink-0"><Plus size={16} /></button>
-                      <button type="button" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + 25 }))}
-                              className="h-11 px-3 rounded-xl text-sm font-bold flex-shrink-0" style={{ backgroundColor: `${themeColor}17`, color: btnColor }}>+25</button>
-                    </div>
-                    <p className="mt-1 text-[11px] text-gray-500 leading-snug">
-                      {form.stock === '' || form.stock == null
-                        ? 'Leave blank for no limit. A number counts down with every order.'
-                        : Number(form.stock) <= 0 ? 'At 0 your page shows “Sold out”.'
-                        : Number(form.stock) <= LOW_STOCK ? `Buyers see “Only ${form.stock} left”.`
-                        : 'Goes down by itself with every order.'}
-                    </p>
-                  </div>
-                )}
-                {/* In stock: off shows "Sold out" without deleting (the same switch as on the card) */}
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-gray-800">In stock</p>
-                    <p className="text-[12px] text-gray-500">Turn off to show “Sold out” without deleting it</p>
-                  </div>
-                  <button type="button" role="switch" aria-checked={form.inStock !== false} aria-label="In stock"
-                          onClick={() => setForm(p => ({ ...p, inStock: p.inStock === false }))}
-                          className={['relative w-11 h-6 rounded-full transition-colors flex-shrink-0', form.inStock === false ? 'bg-gray-300' : ''].join(' ')}
-                          style={form.inStock === false ? undefined : { backgroundColor: btnColor }}>
-                    <span className={['absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all', form.inStock === false ? 'left-0.5' : 'left-[22px]'].join(' ')} />
-                  </button>
-                </div>
-                {/* Packed weight: courier booking adds these up (couriers charge by weight) */}
-                {config.businessType !== 'service' && (
-                  <div>
-                    <label className={FIELD_LABEL} htmlFor="product-weight">Packed weight <span className="text-gray-400 font-normal">· for courier charges</span></label>
-                    <div className="relative max-w-[200px]">
-                      <input id="product-weight" type="number" inputMode="numeric" min="0" step="1" placeholder="e.g. 550"
-                             value={form.weight}
-                             onChange={e => setForm(p => ({ ...p, weight: e.target.value }))}
-                             className={`${iCls(false)} !pr-10`} />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">g</span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-gray-500 leading-snug">
-                      Weigh it as packed (pouch or box included). When you book a courier, the order&rsquo;s weight is added up from this, so the charge is right.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Everything advanced, folded away until needed ── */}
-            <div className="flex items-center gap-2.5 pt-1">
-              <div className="h-px flex-1 bg-gray-200/70" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Add more — all optional</span>
-              <div className="h-px flex-1 bg-gray-200/70" />
-            </div>
-
-            <Accordion icon={Tag} iconBg="#fffbeb" iconColor="#b45309" title="Cost, unit &amp; tax"
-              subtitle="Your buying cost, how it is sold, GST"
-              openWhen={form.cost !== '' || form.gstRate !== ''}>
-              <div>
-                <label className={FIELD_LABEL}>Cost price <span className="text-gray-400 font-normal">· optional, private</span></label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
-                  <input type="number" inputMode="numeric" min="0" placeholder="What it costs you, e.g. 220"
-                         value={form.cost}
-                         onChange={e => setForm(p => ({...p, cost:e.target.value}))}
-                         className={[iCls(false), 'pl-7'].join(' ')} />
-                </div>
-                <p className="mt-1 text-[11px] text-gray-400 leading-snug">💡 Add this to see your real <b className="text-gray-500">profit</b> in Stats. Never shown to customers.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={FIELD_LABEL}>{config.businessType === 'service' ? 'Rate type' : 'Sold by'}</label>
-                  <select value={form.unit}
-                          onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
-                          className={iCls(false)}>
-                    {(config.businessType === 'service' ? SERVICE_UNIT_OPTIONS : UNIT_OPTIONS).map(u => (
-                      <option key={u} value={u}>
-                        {config.businessType === 'service' && u === 'per piece' ? 'Starting price (no unit)' : u}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={FIELD_LABEL}>GST rate</label>
-                  <select value={form.gstRate}
-                          onChange={e => setForm(p => ({...p, gstRate:e.target.value}))}
-                          className={iCls(false)}>
-                    <option value="">Store default ({Math.round((config.cart?.taxRate ?? 0.05) * 100)}%)</option>
-                    <option value={0}>0% — No GST</option>
-                    <option value={0.05}>5%</option>
-                    <option value={0.12}>12%</option>
-                    <option value={0.18}>18%</option>
-                    <option value={0.28}>28%</option>
-                  </select>
-                </div>
-              </div>
-              {form.unit === 'Other…' && (
-                <input type="text" placeholder="e.g. per roll, per bundle"
-                       value={form.unitCustom}
-                       onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
-                       className={iCls(false)} />
-              )}
-              {form.gstRate !== '' && (
-                <div>
-                  <label className={FIELD_LABEL}>This item's GST is…</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { v: '',          t: 'Same as store' },
-                      { v: 'inclusive', t: 'Included' },
-                      { v: 'exclusive', t: 'Extra' },
-                    ].map(opt => {
-                      const active = form.taxMode === opt.v;
-                      return (
-                        <button key={opt.v || 'def'} type="button"
-                          onClick={() => setForm(p => ({ ...p, taxMode: opt.v }))}
-                          className={['rounded-xl border px-2 py-2 text-xs font-semibold transition-all active:scale-95',
-                            active ? 'text-white border-transparent shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'].join(' ')}
-                          style={active ? { backgroundColor: themeColor } : undefined}>
-                          {opt.t}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-1 text-[11px] text-gray-400 leading-relaxed">
-                    Whether this item's price already includes its GST or has it added at checkout. “Same as store” follows your Settings.
-                  </p>
-                </div>
-              )}
-            </Accordion>
-
-            <Accordion icon={ImagePlus} iconBg="#eff6ff" iconColor="#1d4ed8" title="Description &amp; gallery"
-              subtitle="A line customers read, plus extra photos"
-              openWhen={!!form.description || (form.images || []).length > 0}>
-              <div>
-                <label className={FIELD_LABEL}>Description <span className="text-gray-400 font-normal">· optional</span></label>
-                <input type="text" placeholder="Short description"
-                       value={form.description}
-                       onChange={e => setForm(p => ({...p, description:e.target.value}))}
-                       className={iCls(false)} />
-              </div>
-              <div>
-                <label className={FIELD_LABEL}>More photos <span className="text-gray-400 font-normal">· optional</span></label>
+            <div>
+              <p className="text-[12px] font-semibold text-gray-500 mb-1.5">More photos <span className="font-normal">· up to 5, shown as a gallery</span></p>
                 <div className="flex flex-wrap gap-2">
                   {(form.images || []).map((img, i) => (
                     <ImageUploader key={i} compact maxDim={PRODUCT_MAX_DIM} lowResWarnBelow={500} lowResBy="long" value={img}
@@ -1122,13 +939,187 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                       onAddMany={(urls) => setForm(p => ({ ...p, images: [...(p.images || []), ...urls].slice(0, 5) }))} />
                   )}
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Shown as a swipeable gallery on the product page — add the back-of-pack, close-ups, or the product in use. Select several photos at once, up to 5.</p>
+              {(form.images || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {form.images.map((img, i) => (
+                    <button key={i} type="button" onClick={() => setForm(p => {
+                        const imgs = [...p.images]; const next = imgs[i]; imgs[i] = p.image || ''; return { ...p, image: next, images: imgs.filter(Boolean) };
+                      })}
+                      className="h-7 px-2.5 rounded-lg border border-gray-200 text-[11.5px] font-bold text-gray-600 hover:bg-gray-50">
+                      Make photo {i + 2} the main
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+        const nameField = (
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="text-xs font-semibold text-gray-700" htmlFor="pe-name">Name <span className="text-red-500">*</span></label>
+              <button type="button" onClick={autoFill} disabled={!form.name.trim() || aiLoading}
+                className="inline-flex items-center gap-1 text-[12px] font-bold px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 disabled:opacity-40">
+                {aiLoading ? 'Thinking…' : <><Sparkles size={13} /> Fill details with AI</>}
+              </button>
+            </div>
+            <input id="pe-name" type="text" placeholder="e.g. Royal Misal Premix"
+                   value={form.name}
+                   onChange={e => { setForm(p => ({...p, name:e.target.value})); setErrors(p => ({...p, name:''})); }}
+                   className={iCls(errors.name)} />
+            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+            {aiNote && <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">{aiNote}</p>}
+          </div>
+        );
+        const descField = (
+          <div>
+            <label className={FIELD_LABEL} htmlFor="pe-desc">Description <span className="text-gray-400 font-normal">· optional</span></label>
+            <textarea id="pe-desc" rows={isDesk ? 3 : 6} placeholder="A line or two buyers read under the photo"
+                      value={form.description}
+                      onChange={e => setForm(p => ({...p, description:e.target.value}))}
+                      className={`${iCls(false)} !h-auto py-2.5 resize-y`} />
+          </div>
+        );
+        const money = (id, label, key, hint, err) => (
+          <div>
+            <label className={FIELD_LABEL} htmlFor={id}>{label} {hint}</label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₹</span>
+              <input id={id} type="number" inputMode="numeric" min="0"
+                     value={form[key]}
+                     onChange={e => { setForm(p => ({...p, [key]:e.target.value})); if (err !== undefined) setErrors(p => ({...p, [key]:''})); }}
+                     className={[iCls(err), 'pl-7'].join(' ')} />
+            </div>
+            {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
+          </div>
+        );
+        const priceFields = (
+          <div className="grid grid-cols-2 gap-3">
+            {money('pe-price', 'Selling price', 'price', <span className="text-red-500">*</span>, errors.price || '')}
+            {money('pe-mrp', 'MRP', 'mrp', <span className="text-gray-400 font-normal">· optional</span>)}
+          </div>
+        );
+        const priceFacts = (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              [off ? `${off}% off` : '—', off ? 'Buyers see the MRP crossed out' : 'Add an MRP to show a discount', ''],
+              [costSet ? `₹${earn.toLocaleString('en-IN')}` : '—', 'You earn on each sale', 'text-emerald-700'],
+              [costSet ? `${margin}%` : '—', 'Margin', ''],
+            ].map(([v, l, c]) => (
+              <div key={l} className="rounded-xl bg-gray-50 px-3 py-2.5 min-w-0">
+                <p className={`text-[16px] font-extrabold tabular-nums ${c || 'text-gray-900'}`}>{v}</p>
+                <p className="text-[11.5px] text-gray-500 leading-tight">{l}</p>
               </div>
-            </Accordion>
-
-            <Accordion icon={Layers} iconBg="#eef2ff" iconColor="#4338ca" title="Options &amp; variants"
-              subtitle="Size, weight or colour — let buyers pick one"
-              openWhen={showVariants || (form.variantExtras?.length > 0)}>
+            ))}
+          </div>
+        );
+        const costField = money('pe-cost', 'Your cost', 'cost', <span className="text-gray-400 font-normal">· private, never shown</span>);
+        const categoryChips = (
+          <div>
+            <p className="text-xs font-semibold text-gray-700 mb-1.5">Category <span className="text-red-500">*</span></p>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Category">
+              {userCats.map(c => (
+                <button key={c.id} type="button" aria-pressed={form.category === c.id}
+                        onClick={() => { setForm(p => ({...p, category:c.id})); setErrors(p => ({...p, category:''})); }}
+                        className={chip(form.category === c.id)}>
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+              {userCats.length === 0 && <p className="text-xs text-gray-500">Add a category first (below the product grid).</p>}
+            </div>
+            {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category}</p>}
+          </div>
+        );
+        const foodAndLabel = (
+          <>
+            {!service && (
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-1.5">Food type <span className="text-gray-400 font-normal">· for food, shows the mark buyers look for</span></p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Food type">
+                  {[['', 'Not food'], ...FOOD_TYPES].map(([k, l]) => (
+                    <button key={k || 'none'} type="button" aria-pressed={(form.foodType || '') === k}
+                            onClick={() => setForm(p => ({...p, foodType:k}))} className={chip((form.foodType || '') === k)}>
+                      {k && <FoodMark type={k} />}{l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-1.5">Label on the photo <span className="text-gray-400 font-normal">· optional</span></p>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Label on the photo">
+                {['', 'Bestseller', 'New', 'Limited stock'].map(b => (
+                  <button key={b || 'none'} type="button" aria-pressed={(form.badge || '') === b}
+                          onClick={() => setForm(p => ({...p, badge:b}))} className={chip((form.badge || '') === b)}>
+                    {b || 'None'}
+                  </button>
+                ))}
+              </div>
+              <input type="text" maxLength={20} placeholder="Or type your own, e.g. Diwali special" aria-label="Your own label"
+                     value={['', 'Bestseller', 'New', 'Limited stock'].includes(form.badge || '') ? '' : form.badge}
+                     onChange={e => setForm(p => ({...p, badge:e.target.value}))}
+                     className={`${iCls(false)} mt-2`} />
+            </div>
+          </>
+        );
+        const stockBlock = !service && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-bold text-gray-900">Track stock</p>
+                <p className="text-[12px] text-gray-500">{tracked ? 'Goes down with every order. At 0 your page shows Sold out.' : 'Off: never runs out on its own.'}</p>
+              </div>
+              {sw(tracked, () => setForm(p => ({ ...p, stock: tracked ? '' : 0 })), 'Track stock')}
+            </div>
+            {tracked && (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button type="button" aria-label="One less" onClick={() => setForm(p => ({ ...p, stock: Math.max(0, (Number(p.stock) || 0) - 1) }))}
+                          className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50"><Minus size={16} /></button>
+                  <input type="number" inputMode="numeric" min="0" step="1" aria-label="Stock"
+                         value={form.stock}
+                         onChange={e => setForm(p => ({...p, stock:e.target.value}))}
+                         className={`${iCls(false)} !w-24 text-center font-extrabold`} />
+                  <button type="button" aria-label="One more" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + 1 }))}
+                          className="w-11 h-11 rounded-xl border border-gray-200 grid place-items-center text-gray-700 hover:bg-gray-50"><Plus size={16} /></button>
+                  {[10, 25].map(k => (
+                    <button key={k} type="button" onClick={() => setForm(p => ({ ...p, stock: (Number(p.stock) || 0) + k }))}
+                            className="h-11 px-3 rounded-xl text-sm font-bold" style={{ backgroundColor: `${themeColor}17`, color: btnColor }}>+{k}</button>
+                  ))}
+                </div>
+                <p className="text-[12px] text-gray-500">
+                  {left === 0 ? 'At 0 buyers see “Sold out”.' : left <= LOW_STOCK ? `Buyers see “Only ${left} left”.` : `${left} in stock.`}
+                </p>
+              </>
+            )}
+          </div>
+        );
+        const availableRow = (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold text-gray-900">Available to order</p>
+              <p className="text-[12px] text-gray-500">Off shows “Sold out” without deleting it</p>
+            </div>
+            {sw(form.inStock !== false, () => setForm(p => ({ ...p, inStock: p.inStock === false })), 'Available to order')}
+          </div>
+        );
+        const weightField = !service && (
+          <div>
+            <label className={FIELD_LABEL} htmlFor="product-weight">Packed weight <span className="text-gray-400 font-normal">· for courier charges</span></label>
+            <div className="relative max-w-[200px]">
+              <input id="product-weight" type="number" inputMode="numeric" min="0" step="1" placeholder="e.g. 550"
+                     value={form.weight}
+                     onChange={e => setForm(p => ({ ...p, weight: e.target.value }))}
+                     className={`${iCls(false)} !pr-10`} />
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">g</span>
+            </div>
+            <p className="mt-1 text-[12px] text-gray-500 leading-snug">
+              Weigh it as packed (pouch or box included). Book courier adds up the order from this, so the charge is right. Sizes below can have their own weight.
+            </p>
+          </div>
+        );
+        const sizesBlock = (
+          <div className="space-y-4">
             <FormSection
               title="Variants"
               action={!showVariants && (
@@ -1300,12 +1291,73 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                 </div>
               )}
             </FormSection>
-            </Accordion>
-
-            {/* Attributes (AI-suggested or manual) — buyer-facing details */}
-            {form.attributes.length > 0 && (
-              <Accordion icon={Sparkles} iconBg="#f5f3ff" iconColor="#7c3aed" title="Product details"
-                subtitle="Buyer-facing specs the AI suggested" openWhen>
+          </div>
+        );
+        const taxBlock = (
+          <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={FIELD_LABEL}>{config.businessType === 'service' ? 'Rate type' : 'Sold by'}</label>
+                  <select value={form.unit}
+                          onChange={e => setForm(p => ({...p, unit:e.target.value, unitCustom:''}))}
+                          className={iCls(false)}>
+                    {(config.businessType === 'service' ? SERVICE_UNIT_OPTIONS : UNIT_OPTIONS).map(u => (
+                      <option key={u} value={u}>
+                        {config.businessType === 'service' && u === 'per piece' ? 'Starting price (no unit)' : u}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>GST rate</label>
+                  <select value={form.gstRate}
+                          onChange={e => setForm(p => ({...p, gstRate:e.target.value}))}
+                          className={iCls(false)}>
+                    <option value="">Store default ({Math.round((config.cart?.taxRate ?? 0.05) * 100)}%)</option>
+                    <option value={0}>0% — No GST</option>
+                    <option value={0.05}>5%</option>
+                    <option value={0.12}>12%</option>
+                    <option value={0.18}>18%</option>
+                    <option value={0.28}>28%</option>
+                  </select>
+                </div>
+              </div>
+              {form.unit === 'Other…' && (
+                <input type="text" placeholder="e.g. per roll, per bundle"
+                       value={form.unitCustom}
+                       onChange={e => setForm(p => ({...p, unitCustom:e.target.value}))}
+                       className={iCls(false)} />
+              )}
+              {form.gstRate !== '' && (
+                <div>
+                  <label className={FIELD_LABEL}>This item's GST is…</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { v: '',          t: 'Same as store' },
+                      { v: 'inclusive', t: 'Included' },
+                      { v: 'exclusive', t: 'Extra' },
+                    ].map(opt => {
+                      const active = form.taxMode === opt.v;
+                      return (
+                        <button key={opt.v || 'def'} type="button"
+                          onClick={() => setForm(p => ({ ...p, taxMode: opt.v }))}
+                          className={['rounded-xl border px-2 py-2 text-xs font-semibold transition-all active:scale-95',
+                            active ? 'text-white border-transparent shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'].join(' ')}
+                          style={active ? { backgroundColor: themeColor } : undefined}>
+                          {opt.t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-400 leading-relaxed">
+                    Whether this item's price already includes its GST or has it added at checkout. “Same as store” follows your Settings.
+                  </p>
+                </div>
+              )}
+          </div>
+        );
+        const detailsBlock = form.attributes.length > 0 && (
+          <div className="space-y-3">
                 {form.attributes.map((a, i) => {
                   const setVal = (v) => setForm(p => ({ ...p, attributes: p.attributes.map((x, idx) => idx === i ? { ...x, value: v } : x) }));
                   return (
@@ -1329,55 +1381,191 @@ function ManageProducts({ config, onChange, onSave, onSaveWith = null, saveStatu
                     </div>
                   );
                 })}
-              </Accordion>
+          </div>
+        );
+        const preview = (
+          <div style={{ '--color-brand': themeColor, '--color-brand-dark': themeColor }}>
+            <div className="max-w-[220px] pointer-events-none select-none">
+              <ProductCard product={previewProduct} />
+            </div>
+          </div>
+        );
+        const shareRow = !isNew && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={copyLink}
+                      className="h-10 rounded-xl border border-gray-200 text-[13px] font-bold text-gray-800 hover:bg-gray-50 inline-flex items-center justify-center gap-1.5">
+                <Copy size={14} /> {shareNote === 'Link copied' ? 'Copied' : 'Copy link'}
+              </button>
+              <a href={waShare} target="_blank" rel="noopener noreferrer"
+                 className="h-10 rounded-xl border border-gray-200 text-[13px] font-bold text-emerald-700 hover:bg-gray-50 inline-flex items-center justify-center gap-1.5">
+                Share on WhatsApp
+              </a>
+            </div>
+            {shareNote && shareNote !== 'Link copied' && <p className="text-[11px] text-gray-500 break-all select-all">{shareNote}</p>}
+          </div>
+        );
+        const deleteBlock = !isNew && (
+          <div className="space-y-1">
+            {confirmDelete ? (
+              <button type="button" onClick={() => removeProduct(editingId, true)}
+                      className="h-10 px-4 rounded-xl border border-red-200 text-red-700 text-sm font-bold hover:bg-red-50">Yes, delete it for good</button>
+            ) : (
+              <button type="button" onClick={() => setConfirmDelete(true)}
+                      className="inline-flex items-center gap-1.5 text-sm font-bold text-red-700 hover:underline"><Trash2 size={15} /> Delete product</button>
             )}
+            <p className="text-[12px] text-gray-500">Turning off “Available to order” keeps it for later. Deleting removes it.</p>
+          </div>
+        );
+        const backBtn = (
+          <button type="button" aria-label="Back to products" onClick={tryClose}
+                  className={['w-10 h-10 rounded-xl border grid place-items-center flex-shrink-0',
+                    dirty_ ? 'border-white/25 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 bg-white hover:bg-gray-50'].join(' ')}>
+            <ChevronLeft size={20} />
+          </button>
+        );
+        const saveLabel = isNew ? 'Add product' : 'Save';
 
-            {/* Live preview — the exact storefront card, driven by the form.
-                CSS brand vars are scoped here so it renders in the store's
-                theme colour even though Manage doesn't apply the theme. */}
-            <div className="pt-2 pb-1"
-                 style={{ '--color-brand': themeColor, '--color-brand-dark': themeColor }}>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-px flex-1 bg-gray-100" />
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">How customers see it</span>
-                <div className="h-px flex-1 bg-gray-100" />
+        // ── Phone: rows that open their own page ──
+        const ROWS = [
+          ['desc', 'Description & more photos', form.description ? form.description : `${(form.images || []).length} more photos`],
+          ['sizes', 'Sizes, flavours & extras', (form.variantOptions || []).length ? form.variantOptions.map(o => o.name || 'New').join(', ') : 'One price for everything'],
+          ['org', service ? 'Label on the photo' : 'Food type & label', [FOOD_TYPES.find(([k]) => k === form.foodType)?.[1], form.badge].filter(Boolean).join(' · ') || 'Not set'],
+          ['cost', 'Your cost & profit', costSet ? `You earn ₹${earn.toLocaleString('en-IN')} a sale` : 'Add it to see what you earn'],
+          ...(!service ? [['weight', 'Packed weight', form.weight ? `${form.weight} g` : 'Add it for the right courier charge']] : []),
+          ['tax', 'Unit & GST', [form.unit === 'Other…' ? form.unitCustom : form.unit, form.gstRate === '' ? 'Store GST' : `${Math.round(Number(form.gstRate) * 100)}% GST`].filter(Boolean).join(' · ')],
+          ...(form.attributes.length ? [['details', 'Product details', `${form.attributes.length} details`]] : []),
+        ];
+        const SUBS = {
+          desc: <div className={card}>{descField}{photos}</div>,
+          sizes: <div className={card}>{sizesBlock}</div>,
+          org: <div className={card}>{foodAndLabel}</div>,
+          cost: <div className={card}>{costField}{priceFacts}</div>,
+          weight: <div className={card}>{weightField}</div>,
+          tax: <div className={card}>{taxBlock}</div>,
+          details: <div className={card}>{detailsBlock}</div>,
+        };
+
+        if (!isDesk) {
+          return (
+            <div className="fixed inset-0 z-50 bg-[#f5f6f5] flex flex-col" role="dialog" aria-modal="true" aria-label={isNew ? 'Add product' : 'Edit product'}>
+              <div className="flex-shrink-0 bg-white border-b border-gray-100 px-3 h-[60px] flex items-center gap-2">
+                <button type="button" aria-label={sub ? 'Back' : 'Back to products'} onClick={() => (sub ? setSub(null) : tryClose())}
+                        className="w-10 h-10 rounded-full grid place-items-center text-gray-700"><ChevronLeft size={22} /></button>
+                <p className="flex-1 min-w-0 text-[17px] font-extrabold text-gray-900 truncate">
+                  {sub ? ROWS.find(r => r[0] === sub)?.[1] : isNew ? 'Add product' : 'Edit product'}
+                </p>
+                {!sub && !isNew && soldInfo?.sold > 0 && <span className="text-[12px] font-bold text-gray-500 flex-shrink-0">{soldInfo.sold} sold</span>}
               </div>
-              <div className="max-w-[230px] mx-auto pointer-events-none select-none">
-                <ProductCard product={previewProduct} />
+              {closeAsk && (
+                <div className="flex-shrink-0 bg-gray-900 text-white px-4 py-2.5 flex items-center gap-2">
+                  <p className="flex-1 text-[13px] font-semibold">Unsaved changes</p>
+                  <button type="button" onClick={discard} className="h-8 px-3 rounded-lg border border-white/30 text-[13px] font-bold">Discard</button>
+                  <button type="button" onClick={submitProduct} className="h-8 px-3 rounded-lg bg-white text-gray-900 text-[13px] font-bold">Save</button>
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-28">
+                {sub ? SUBS[sub] : (
+                  <>
+                    <div className={card}>{photos}</div>
+                    <div className={card}>{nameField}{priceFields}
+                      {off > 0 && <p className="text-[12px] text-gray-500 -mt-1">Buyers see <b style={{ color: btnColor }}>{off}% off</b>.</p>}
+                      {categoryChips}
+                    </div>
+                    {stockBlock && <div className={card}>{stockBlock}</div>}
+                    <div className={card}>{availableRow}</div>
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+                      {ROWS.map(([k, t, v]) => (
+                        <button key={k} type="button" onClick={() => setSub(k)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-gray-50">
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[14px] font-bold text-gray-900">{t}</span>
+                            <span className="block text-[12.5px] text-gray-500 truncate">{v}</span>
+                          </span>
+                          <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                    {!isNew && <div className={card}><p className={title}>How buyers see it</p>{preview}{shareRow}</div>}
+                    {!isNew && (
+                      <button type="button" onClick={copyProduct} className="w-full h-11 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-800">Make a copy</button>
+                    )}
+                    {deleteBlock && <div className="px-1">{deleteBlock}</div>}
+                  </>
+                )}
+              </div>
+              <div className="absolute inset-x-0 bottom-0 px-4 pt-3 bg-gradient-to-t from-[#f5f6f5] via-[#f5f6f5] to-transparent"
+                   style={{ paddingBottom: 'max(14px, env(safe-area-inset-bottom))' }}>
+                <button type="button" onClick={sub ? () => setSub(null) : submitProduct}
+                        className="w-full h-12 rounded-xl text-[15px] font-bold text-white shadow-sm active:scale-[0.99] transition"
+                        style={{ backgroundColor: btnColor }}>
+                  {sub ? 'Done' : saveLabel}
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Computer: a full page, content in the middle, the rest on the side ──
+        return (
+          <div className="fixed inset-0 z-50 bg-[#f5f6f5] flex flex-col" role="dialog" aria-modal="true" aria-label={isNew ? 'Add product' : 'Edit product'}>
+            <div className={['flex-shrink-0 border-b transition-colors', dirty_ ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200'].join(' ')}>
+              <div className="max-w-[1180px] mx-auto px-6 h-[68px] flex items-center gap-3">
+                {backBtn}
+                <div className="min-w-0">
+                  <p className="text-[17px] font-extrabold leading-tight truncate">
+                    {dirty_ ? (closeAsk ? 'Save your changes first?' : 'Unsaved changes') : (form.name || (isNew ? 'New product' : 'Edit product'))}
+                  </p>
+                  <p className={['text-[12.5px] truncate', dirty_ ? 'text-white/70' : 'text-gray-500'].join(' ')}>
+                    {dirty_ ? (form.name || 'New product') : !isNew && soldInfo?.sold > 0 ? `${soldInfo.sold} sold${soldInfo.soldWeek ? ` · ${soldInfo.soldWeek} this week` : ''}` : isNew ? 'Only name, price and category are needed' : 'Edit product'}
+                  </p>
+                </div>
+                {!dirty_ && !isNew && statusPill}
+                <div className="ml-auto flex items-center gap-2">
+                  {dirty_ ? (
+                    <>
+                      <button type="button" onClick={discard} className="h-10 px-4 rounded-xl border border-white/30 text-sm font-bold hover:bg-white/10">Discard</button>
+                      <button type="button" onClick={submitProduct} className="h-10 px-5 rounded-xl bg-white text-gray-900 text-sm font-bold hover:bg-gray-100">{saveLabel}</button>
+                    </>
+                  ) : !isNew && (
+                    <>
+                      <button type="button" onClick={copyProduct} className="h-10 px-4 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-800 hover:bg-gray-50">Make a copy</button>
+                      <a href={productLink} target="_blank" rel="noopener noreferrer"
+                         className="h-10 px-4 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-800 hover:bg-gray-50 inline-flex items-center">View on page</a>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-[1180px] mx-auto px-6 py-6 grid grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
+                <div className="space-y-5 min-w-0">
+                  <div className={card}><p className={title}>Photos <span className="text-[12px] font-semibold text-gray-500">· the first one is what buyers see</span></p>{photos}</div>
+                  <div className={card}>{nameField}{descField}</div>
+                  <div className={card}><p className={title}>Price</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {money('pe-price', 'Selling price', 'price', <span className="text-red-500">*</span>, errors.price || '')}
+                      {money('pe-mrp', 'MRP', 'mrp', <span className="text-gray-400 font-normal">· optional</span>)}
+                      {money('pe-cost', 'Your cost', 'cost', <span className="text-gray-400 font-normal">· private</span>)}
+                    </div>
+                    {priceFacts}
+                  </div>
+                  {stockBlock && <div className={card}><p className={title}>Stock</p>{stockBlock}</div>}
+                  <div className={card}><p className={title}>Sizes, flavours &amp; extras <span className="text-[12px] font-semibold text-gray-500">· optional</span></p>{sizesBlock}</div>
+                  {weightField && <div className={card}><p className={title}>Delivery</p>{weightField}</div>}
+                  {detailsBlock && <div className={card}><p className={title}>Product details</p>{detailsBlock}</div>}
+                </div>
+                <div className="space-y-5 min-w-0 sticky top-6">
+                  <div className={card}><p className={title}>Status</p>{availableRow}</div>
+                  <div className={card}><p className={title}>Organise</p>{categoryChips}{foodAndLabel}</div>
+                  <div className={card}><p className={title}>Unit &amp; GST</p>{taxBlock}</div>
+                  <div className={card}><p className={title}>How buyers see it</p>{preview}{shareRow}</div>
+                  {deleteBlock && <div className={card}>{deleteBlock}</div>}
+                </div>
               </div>
             </div>
           </div>
-
-          {/* Footer actions: Delete (asks once more), Cancel, Save */}
-          <div className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 bg-white flex items-center gap-2"
-               style={{ paddingBottom: 'max(14px, env(safe-area-inset-bottom))' }}>
-            {editingId !== null && (confirmDelete ? (
-              <button type="button" onClick={() => removeProduct(editingId, true)}
-                      className="h-11 px-4 rounded-xl border border-red-200 text-red-700 text-sm font-bold hover:bg-red-50 transition-colors">
-                Yes, delete it
-              </button>
-            ) : (
-              <button type="button" onClick={() => setConfirmDelete(true)}
-                      className="h-11 px-3 rounded-xl text-red-700 text-sm font-bold hover:bg-red-50 inline-flex items-center gap-1.5 transition-colors">
-                <Trash2 size={16} /> Delete
-              </button>
-            ))}
-            <button type="button" onClick={resetForm}
-                    className="ml-auto h-11 px-5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button type="button" onClick={submitProduct}
-                    className="h-11 px-6 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 active:scale-[0.99] transition-all"
-                    style={{ backgroundColor: btnColor }}>
-              {editingId !== null ? 'Save' : 'Add product'}
-            </button>
-          </div>
-        </div>
-        </div>
-      )}
-        </>,
-        document.body,
-      )}
+        );
+      })(), document.body)}
 
       {/* Kept in view at the bottom: a long photo grid would hide it otherwise. */}
       {(dirty || saveStatus === 'saved') && (

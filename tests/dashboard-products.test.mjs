@@ -54,24 +54,53 @@ test('Delivery on a computer: the work on the left, couriers and customer update
   assert.match(MANAGE, /mode="ship"[\s\S]{0,260}store=\{orderStore\} rto=\{rto\} \/>/);
 });
 
-test('editing a product opens a pop-up (a sheet from the bottom on a phone), as in the prototype', () => {
-  assert.match(PRODUCTS, /<div role="dialog" aria-modal="true" aria-label=\{editingId !== null \? 'Edit product' : 'Add product'\}/);
-  assert.match(PRODUCTS, /flex items-end lg:items-center justify-center/);
-  assert.ok(!/animate-pl-slide-in-right/.test(PRODUCTS), 'no side drawer any more');
-  // The quick fields: stock counter with +25, and the in-stock switch, saved with the product.
-  assert.match(PRODUCTS, /stock: \(Number\(p\.stock\) \|\| 0\) \+ 25/);
+test('the product editor is the approved mockup: a page on a computer, rows on a phone', () => {
+  // Computer: a full page with the product in the middle and the rest on the side.
+  assert.match(PRODUCTS, /if \(!isDesk\) \{/);
+  assert.match(PRODUCTS, /grid grid-cols-\[minmax\(0,1fr\)_340px\] gap-5 items-start/);
+  for (const t of ['>Status<', '>Organise<', '>Unit &amp; GST<', '>How buyers see it<', '>Delivery<']) assert.ok(PRODUCTS.includes(t), t);
+  // Phone: short rows, each opening its own page, and a sticky Save.
+  for (const k of ["['desc',", "['sizes',", "['org',", "['cost',", "['weight',", "['tax',"]) assert.ok(PRODUCTS.includes(k), k);
+  assert.match(PRODUCTS, /onClick=\{\(\) => setSub\(k\)\}/);
+  assert.match(PRODUCTS, /\{sub \? 'Done' : saveLabel\}/);
+  assert.ok(!/animate-pl-slide-in-right|items-end lg:items-center/.test(PRODUCTS), 'no drawer, no pop-up any more');
+});
+
+test('the save bar appears only when something changed; leaving asks first', () => {
+  assert.match(PRODUCTS, /const dirty_ = drawerOpen && baseline !== null && JSON\.stringify\(form\) !== JSON\.stringify\(baseline\);/);
+  assert.match(PRODUCTS, /function tryClose\(\) \{ if \(dirty_\) setCloseAsk\(true\); else resetForm\(\); \}/);
+  assert.match(PRODUCTS, /setForm\(next\);\n\s*setBaseline\(next\);/, 'opening a product remembers how it was');
+  assert.match(PRODUCTS, /\{dirty_ \? \(closeAsk \? 'Save your changes first\?' : 'Unsaved changes'\)/);
+  // Discard puts it back (or leaves, when asked on the way out).
+  assert.match(PRODUCTS, /if \(closeAsk\) \{ resetForm\(\); return; \}\n\s*setForm\(baseline \|\| EMPTY_PROD\);/);
+});
+
+test('every option is still in the editor, with stock, availability, weight, label and food type', () => {
+  // Stock: a switch, and a counter with +10 / +25 only when it is on.
+  assert.match(PRODUCTS, /setForm\(p => \(\{ \.\.\.p, stock: tracked \? '' : 0 \}\)\)/);
+  assert.match(PRODUCTS, /\[10, 25\]\.map\(k =>/);
+  assert.equal((PRODUCTS.match(/aria-label="Stock"/g) || []).length, 1, 'one stock box');
   assert.match(PRODUCTS, /inStock: form\.inStock !== false,/);
   assert.match(PRODUCTS, /inStock:     product\.inStock !== false,/);
-  // Stock lives in one place in the form (not also in the folded section).
-  assert.equal((PRODUCTS.match(/aria-label="Stock"/g) || []).length, 1);
-  // Delete asks once more; Cancel and Save are always there.
-  assert.match(PRODUCTS, /onClick=\{\(\) => setConfirmDelete\(true\)\}/);
-  assert.match(PRODUCTS, /onClick=\{\(\) => removeProduct\(editingId, true\)\}/);
-  assert.match(PRODUCTS, /\{editingId !== null \? 'Save' : 'Add product'\}/);
-  // Every advanced option is still in the editor.
-  for (const piece of ['autoFill', 'title="Cost, unit &amp; tax"', 'title="Description &amp; gallery"', 'title="Options &amp; variants"']) {
+  // Label on the photo (product.badge, already shown by the shop page) and food type.
+  assert.match(PRODUCTS, /badge: form\.badge\?\.trim\(\) \|\| null,/);
+  assert.match(PRODUCTS, /badge:       form\.badge\?\.trim\(\) \|\| null,/);
+  assert.equal((PRODUCTS.match(/foodType: +form\.foodType \|\| undefined,/g) || []).length, 2, 'saved on edit and on add');
+  // The rest, unchanged: AI fill, gallery, variants + more option types, unit / GST, details, preview.
+  for (const piece of ['autoFill', 'onAddMany=', 'title="Variants"', 'title="More option types"', "'Rate type' : 'Sold by'", 'form.attributes.map((a, i)', '<ProductCard product={previewProduct} />']) {
     assert.ok(PRODUCTS.includes(piece), piece);
   }
+  // Delete asks once more; Make a copy starts a new product from this one.
+  assert.match(PRODUCTS, /onClick=\{\(\) => setConfirmDelete\(true\)\}/);
+  assert.match(PRODUCTS, /onClick=\{\(\) => removeProduct\(editingId, true\)\}/);
+  assert.match(PRODUCTS, /function copyProduct\(\) \{\n\s*setEditingId\(null\);/);
+});
+
+test('the shop page shows the food mark next to the name and in the product page', () => {
+  const card = read('src/components/product/ProductCard.jsx');
+  const detail = read('src/components/product/ProductDetail.jsx');
+  assert.match(card, /\{product\.foodType && <FoodMark type=\{product\.foodType\} className="mr-1\.5" \/>\}/);
+  assert.match(detail, /<FoodMark type=\{product\.foodType\} \/>/);
 });
 
 test('Save and Delete in the pop-up save the page straight away; card switches still use Save changes', () => {

@@ -1,3 +1,4 @@
+import FoodMark from './FoodMark';
 import { useState } from 'react';
 import { Plus, Minus, Check, Flame, TrendingUp } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
@@ -157,6 +158,7 @@ export default function ProductCard({
         <p onClick={openDetail}
            className={['text-[13px] font-semibold text-gray-800 line-clamp-2 leading-snug', openDetail ? 'cursor-pointer hover:text-brand-dark transition-colors' : ''].join(' ')}
            style={{ minHeight: '2.5em' }}>
+          {product.foodType && <FoodMark type={product.foodType} className="mr-1.5" />}
           {product.name}
         </p>
 
