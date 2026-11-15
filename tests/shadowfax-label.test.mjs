@@ -37,12 +37,17 @@ test('the Shadowfax label opens in the PDF viewer to print, like Delhivery, inst
   assert.match(sfx, /buf\.length <= 3_000_000 && String\.fromCharCode\(buf\[0\], buf\[1\], buf\[2\], buf\[3\]\) === '%PDF'/, 'only a real PDF');
   assert.match(sfx, /return json\(\{ labelUrl: link, labelPdf: encodeBase64\(ab as ArrayBuffer\) \}\);/);
   assert.match(sfx, /return json\(\{ labelUrl: link \}\);/, 'falls back to the link');
-  assert.match(ORDERS, /if \(r\.labelPdf\) openPdfTab\(r\.labelPdf, /);
-  assert.match(ORDERS, /else if \(r\.labelUrl\) window\.open\(r\.labelUrl, '_blank', 'noopener'\);/, 'Delhivery unchanged');
+  // The tab opens at the tap, before anything is awaited (a late tab is blocked).
+  const label = ORDERS.slice(ORDERS.indexOf('const label  = () => {'), ORDERS.indexOf('const track  = '));
+  assert.ok(label.indexOf('const tab = openPendingTab();') < label.indexOf('await shipmentOp('), 'the tab before the wait');
+  assert.match(label, /if \(r\.labelPdf\) showPdfIn\(tab, r\.labelPdf, /);
+  assert.match(label, /else if \(r\.labelUrl\) showLinkIn\(tab, r\.labelUrl\);/, 'Delhivery fills the same tab');
+  assert.match(label, /closeTab\(tab\);\n\s+throw e;/, 'an error closes it and shows the message');
   const util = read('src/utils/openPdf.js');
   assert.match(util, /new Blob\(\[base64ToBytes\(b64\)\], \{ type: 'application\/pdf' \}\)/);
-  assert.match(util, /const tab = window\.open\(url, '_blank'\);/);
-  assert.match(util, /a\.download = filename;/, 'a blocked tab still gets the PDF');
+  assert.match(util, /const tab = window\.open\('', '_blank'\);/);
+  assert.match(util, /tab\.opener = null;/);
+  assert.match(util, /if \(tab && !tab\.closed\) tab\.location\.href = url;\n\s+else download\(url, filename\);/, 'no tab: the PDF still downloads');
 });
 
 test('base64ToBytes gives the exact bytes back', async () => {
