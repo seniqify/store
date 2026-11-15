@@ -22,7 +22,7 @@ import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
 import {
   STAGE_TABS, orderStage, stageTab, tabCounts, orderSteps, nextStep, needsCallFirst, courierProgress, paymentChip,
 } from '../../utils/orderCard';
-import { BUCKET_META, courierInfo } from '../../utils/deliveryStatus';
+import { BUCKET_META, courierInfo, classifyBucket } from '../../utils/deliveryStatus';
 
 // Two vocabularies over the same rows: product stores see Orders (delivery
 // lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
@@ -1444,7 +1444,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
             ? <p className="text-[11px] text-green-700">🚚 {ship.pickup.covered ? (ship.isSfx ? 'Pickup requested' : 'Added to today’s pickup') : `Pickup scheduled${ship.pickup.date ? ` · ${ship.pickup.date}` : ''}`} — {ship.cName} will collect</p>
             : <p className="text-[11px] text-amber-700">⚠️ Auto-pickup didn’t schedule — raise a pickup in {ship.cName} for this parcel.</p>)}
           <div className="flex items-center gap-2 pt-0.5">
-            {!ship.isSfx && (
+            {(!ship.isSfx || prog.bucket === 'pickup') && (
               <button type="button" disabled={!!ship.busy} onClick={ship.label}
                 className="flex-1 h-9 inline-flex items-center justify-center gap-1 text-[11.5px] font-semibold text-gray-700 border border-gray-200 bg-white rounded-lg disabled:opacity-50">
                 <Printer size={12} /> {ship.busy === 'label' ? '…' : 'Label'}
@@ -1459,7 +1459,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
               {ship.busy === 'cancel' ? '…' : 'Cancel shipment'}
             </button>
           </div>
-          {ship.isSfx && <span className="block text-[10.5px] text-gray-500 leading-tight">The pickup rider carries the label.</span>}
+          {ship.isSfx && prog.bucket === 'pickup' && <span className="block text-[10.5px] text-gray-500 leading-tight">Print the label before pickup, or the rider brings one.</span>}
           {ship.err && <p className="text-[11px] text-red-600">{ship.err}</p>}
         </div>
       )}
@@ -1606,6 +1606,13 @@ function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderH
           {isSfx ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
+                {/* Shadowfax gives a label only until pickup. */}
+                {classifyBucket({ shipment_status: status }) === 'pickup' && (
+                  <button disabled={!!busy} onClick={label}
+                    className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
+                    <Printer size={12} /> {busy === 'label' ? '…' : 'Label'}
+                  </button>
+                )}
                 <button disabled={!!busy} onClick={track}
                   className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-200 py-1.5 rounded-lg hover:bg-white disabled:opacity-50">
                   {busy === 'track' ? '…' : 'Track'}
@@ -1615,7 +1622,9 @@ function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderH
                   {busy === 'cancel' ? '…' : 'Cancel'}
                 </button>
               </div>
-              <span className="block text-[10px] text-gray-400 leading-tight">🏷️ The pickup rider carries the label.</span>
+              {classifyBucket({ shipment_status: status }) === 'pickup' && (
+                <span className="block text-[10px] text-gray-400 leading-tight">🏷️ Print the label before pickup, or the rider brings one.</span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5">
