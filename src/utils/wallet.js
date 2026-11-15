@@ -48,13 +48,14 @@ export async function confirmTopups(slug, pin, orderId) {
  *   { paid: false }                  — the sheet was closed
  * Throws when the payment cannot start or fails, with a message to show.
  */
-export async function buyPack({ slug, pin, messages, storeName = '', phone = '', themeColor = '#0d9488' }) {
+export async function buyPack({ slug, pin, messages, rupees, storeName = '', phone = '', themeColor = '#0d9488' }) {
   const loaded = await loadRazorpayScript();
   if (!loaded) throw new Error('Could not load the payment screen. Check your connection.');
 
   const hashed = await hashPin(pin);
   const { data: order } = await supabase.functions.invoke('wallet-topup', {
-    body: { action: 'create', slug, hashedPin: hashed, messages },
+    // A pack is named by its message count; a typed amount by its whole rupees.
+    body: rupees ? { action: 'create', slug, hashedPin: hashed, rupees } : { action: 'create', slug, hashedPin: hashed, messages },
   });
   if (order?.error || !order?.order_id) throw new Error(order?.error || 'Could not start the payment.');
 

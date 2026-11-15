@@ -37,6 +37,17 @@ const PACKS: Record<number, number> = {
 // and 3,000 + 300. Credited with the payment by wallet_credit_topup.
 const BONUS_PAISE: Record<number, number> = { 100: 0, 500: 3750, 1000: 15000 };
 
+// Or any amount the shop types: whole rupees, Rs 50 to Rs 50,000. Same steps as
+// the packs' bonuses (5% from Rs 750, 10% from Rs 1,500); keep in sync with
+// customTopup / bonusPaiseFor in src/utils/walletPacks.js (a test checks both).
+const CUSTOM_MIN_PAISE = 5000;
+const CUSTOM_MAX_PAISE = 5000000;
+function bonusFor(amountPaise: number) {
+  if (amountPaise >= 150000) return Math.round(amountPaise * 0.10);
+  if (amountPaise >= 75000) return Math.round(amountPaise * 0.05);
+  return 0;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
@@ -66,9 +77,25 @@ serve(async (req: Request) => {
 
     // ── create ───────────────────────────────────────────────────────────────
     if (action === 'create') {
-      const messages = Number(body.messages);
-      const amount = PACKS[messages];
-      if (!amount) return json({ error: 'Pick one of the message packs.' }, 400);
+      // A pack (named by its message count) or a typed amount (whole rupees).
+      // Either way the price is worked out HERE, never taken from the browser.
+      let messages: number;
+      let amount: number;
+      let bonus: number;
+      if (body.rupees != null) {
+        const rupees = Number(body.rupees);
+        amount = rupees * 100;
+        if (!Number.isInteger(rupees) || amount < CUSTOM_MIN_PAISE || amount > CUSTOM_MAX_PAISE) {
+          return json({ error: 'Enter an amount from ₹50 to ₹50,000.' }, 400);
+        }
+        messages = Math.max(1, Math.floor(amount / 150));   // recorded for reference; the credit is the amount paid
+        bonus = bonusFor(amount);
+      } else {
+        messages = Number(body.messages);
+        amount = PACKS[messages];
+        if (!amount) return json({ error: 'Pick one of the message packs.' }, 400);
+        bonus = BONUS_PAISE[messages] ?? 0;
+      }
 
       const res = await fetch('https://api.razorpay.com/v1/orders', {
         method:  'POST',
@@ -88,7 +115,7 @@ serve(async (req: Request) => {
 
       const { error: insErr } = await supabase.from('wallet_topups').insert({
         store_slug: slug, razorpay_order_id: order.id, amount_paise: amount, messages,
-        bonus_paise: BONUS_PAISE[messages] ?? 0,
+        bonus_paise: bonus,
       });
       if (insErr) {
         console.error('wallet-topup: could not record the top-up', insErr.message);

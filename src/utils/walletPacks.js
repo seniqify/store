@@ -25,6 +25,37 @@ export const WALLET_PACKS = Object.freeze([
 
 const int = (v) => { const n = Math.trunc(Number(v)); return Number.isFinite(n) ? n : 0; };
 
+/** Any amount a shop types instead of a pack: whole rupees, Rs 50 to Rs 50,000.
+ *  Same as CUSTOM_MIN_PAISE / CUSTOM_MAX_PAISE in supabase/functions/wallet-topup. */
+export const CUSTOM_MIN_RUPEES = 50;
+export const CUSTOM_MAX_RUPEES = 50000;
+
+/** Bonus on any top-up, packs and typed amounts alike: 5% from Rs 750, 10% from
+ *  Rs 1,500. The packs' bonuses are exactly this rule (a test checks it), and the
+ *  wallet-topup edge function applies the same steps. */
+export function bonusPaiseFor(amountPaise) {
+  const p = int(amountPaise);
+  if (p >= 150000) return Math.round(p * 0.10);
+  if (p >= 75000) return Math.round(p * 0.05);
+  return 0;
+}
+
+/** A typed amount as the shop sees it, or { ok: false, error } when it can't be bought.
+ *  { ok, rupees, amountPaise, coins, bonus, total } */
+export function customTopup(rupeesInput) {
+  const raw = String(rupeesInput ?? '').trim();
+  const rupees = Number(raw);
+  if (!raw || !Number.isFinite(rupees)) return { ok: false, error: '' };
+  if (!Number.isInteger(rupees)) return { ok: false, error: 'Enter whole rupees.' };
+  if (rupees < CUSTOM_MIN_RUPEES || rupees > CUSTOM_MAX_RUPEES) {
+    return { ok: false, error: `Enter an amount from ₹${CUSTOM_MIN_RUPEES} to ₹${CUSTOM_MAX_RUPEES.toLocaleString('en-IN')}.` };
+  }
+  const amountPaise = rupees * 100;
+  const coins = coinsOf(amountPaise);
+  const bonus = coinsOf(bonusPaiseFor(amountPaise));
+  return { ok: true, rupees, amountPaise, coins, bonus, total: coins + bonus };
+}
+
 /** Whole Coins in a paise amount (rounded down; never negative). */
 export function coinsOf(paise) {
   const p = int(paise);
