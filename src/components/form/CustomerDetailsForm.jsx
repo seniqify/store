@@ -426,7 +426,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
         customerPhone: sendData.mobile,
         customerName:  sendData.partyName,
         storeName:     config.businessName,
-        itemsSummary:  cart.map((i) => `${i.qty}× ${i.name}`).join(', '),
+        itemsSummary:  cart.map((i) => `${i.qty}× ${i.name}${i.free ? ' (free)' : ''}`).join(', '),
         orderTotal:    formatINR(finalTotal),
         slug:          config.slug,   // → "View order" button in the seller alert
         order:         orderRow,      // server-side safety net: re-save if the client insert was blocked
@@ -616,7 +616,7 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
             {cart.map((it) => {
               const img = it.image || (Array.isArray(it.images) ? it.images[0] : null);
               return (
-                <div key={it.id} className="flex items-center gap-3 px-3 py-2.5">
+                <div key={`${it.id}${it.free ? '#free' : ''}`} className="flex items-center gap-3 px-3 py-2.5">
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-white border border-gray-200
                                   flex-shrink-0 flex items-center justify-center">
                     {img
@@ -626,12 +626,12 @@ export default function CustomerDetailsForm({ formData, onChange, cart, onOrderP
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{it.name}</p>
                     <p className="text-[11px] text-gray-400">
-                      {it.qty} × {formatINR(it.price)}
+                      {it.free ? <b className="text-orange-700">🎁 {it.gift ? 'Free gift' : 'Free'} · {it.qty}</b> : <>{it.qty} × {formatINR(it.price)}</>}
                       {it.variant ? ` · ${it.variant}` : ''}{it.size ? ` · ${it.size}` : ''}
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-gray-700 tabular-nums flex-shrink-0">
-                    {formatINR((Number(it.price) || 0) * it.qty)}
+                    {it.free ? <b className="text-orange-700">FREE</b> : formatINR((Number(it.price) || 0) * it.qty)}
                   </span>
                 </div>
               );

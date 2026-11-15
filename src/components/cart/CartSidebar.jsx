@@ -1,6 +1,7 @@
 import { X, ShoppingBag, PackageOpen } from 'lucide-react';
 import CartItem from './CartItem';
 import CartSummary from './CartSummary';
+import { formatINR } from '../../utils/currency';
 import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
@@ -31,6 +32,8 @@ import { useScrollLock } from '../../hooks/useScrollLock';
  */
 export default function CartSidebar({
   cart,
+  deal = null,          // applyCartOffers(): free units, gifts, the "add 1 more" nudge
+  onAddFree,
   isOpen,
   onClose,
   onIncrease,
@@ -124,16 +127,45 @@ export default function CartSidebar({
               </button>
             </div>
           ) : (
-            cart.map((item) => (
+            <>
+            {cart.map((item) => (
               <CartItem
                 key={item.id}
                 item={item}
+                free={deal?.freeByLine?.[item.id] || 0}
                 onIncrease={onIncrease}
                 onDecrease={onDecrease}
                 onRemove={onRemove}
                 onSetQty={onSetQty}
               />
-            ))
+            ))}
+            {(deal?.gifts || []).map((g) => (
+              <div key={`gift-${g.id}`} className="py-4 border-b border-gray-100 last:border-0 flex items-center gap-3">
+                {g.image
+                  ? <img src={g.image} alt="" className="w-14 h-14 rounded-xl object-cover bg-gray-100 flex-shrink-0" />
+                  : <span className="w-14 h-14 rounded-xl bg-orange-50 grid place-items-center text-xl flex-shrink-0">🎁</span>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{g.name}</p>
+                  <p className="text-xs font-bold text-orange-700 mt-0.5">🎁 Free gift × {g.qty} · {g.offerName}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="block text-base font-extrabold text-orange-700">FREE</span>
+                  <s className="block text-xs text-gray-400 tabular-nums">{formatINR(g.mrp * g.qty)}</s>
+                </div>
+              </div>
+            ))}
+            {deal?.nudge && (
+              <div className="my-3 rounded-xl border border-dashed border-orange-300 bg-orange-50 px-3 py-2.5 flex items-center gap-2 text-[13px] font-semibold text-orange-900">
+                <span className="flex-1 min-w-0">🎁 {nudgeText(deal.nudge)}</span>
+                {deal.nudge.lineId != null && onAddFree && (
+                  <button type="button" onClick={() => onAddFree(deal.nudge.lineId, deal.nudge.add)}
+                    className="flex-shrink-0 h-8 px-3 rounded-lg bg-orange-600 text-white text-xs font-extrabold active:scale-95">
+                    {deal.nudge.kind === 'gift' ? 'Add' : deal.nudge.add === 1 ? 'Add free one' : `Add ${deal.nudge.add}`}
+                  </button>
+                )}
+              </div>
+            )}
+            </>
           )}
         </div>
 
@@ -141,7 +173,7 @@ export default function CartSidebar({
         {cart.length > 0 && (
           <div className="border-t border-gray-100 px-5 py-5 flex-shrink-0 bg-white">
             <CartSummary
-              cart={cart}
+              cart={deal ? deal.lines : cart}
               onCheckout={onCheckout}
             />
             <button
@@ -156,4 +188,11 @@ export default function CartSidebar({
       </aside>
     </>
   );
+}
+
+// The cart's "add one more" line for a Buy X Get Y sale.
+function nudgeText(n) {
+  if (n.kind === 'gift') return `Add ${n.add} more to get ${n.giftName} free`;
+  if (n.kind === 'mix') return `Add ${n.add} more from "${n.offerName}", the cheaper ${n.add === 1 ? 'one is' : 'ones are'} free`;
+  return `Add ${n.add} more ${n.name}, ${n.add === 1 ? 'it is' : 'they are'} free`;
 }

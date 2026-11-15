@@ -323,6 +323,119 @@ export function priceOrder(config, request, now = new Date(), offsetMinutes = 33
   };
 }
 
+// ── Buy X Get Y free (founder, 2026-11-15) ───────────────────────────────────
+
+/**
+ * Apply "Buy X Get Y free" sales to a cart. The caller passes only the sales
+ * that are running now (the schedule rule lives with the other sale rules).
+ *
+ * A sale: { id, name, discountType: 'bxgy', buy, get,
+ *           freeMode: 'same' | 'other',
+ *           appliesTo: 'products' | 'category', productIds: [...], categoryId,   (same)
+ *           triggerId, giftId }                                                  (other)
+ *
+ *   same, products  each covered line: every (buy + get) units, `get` are free
+ *   same, category  units pooled across the category; the cheapest are free
+ *   other           every `buy` of the trigger product adds `get` of the gift
+ *                   product at ₹0 (capped at its stock, skipped if sold out)
+ *
+ * A line is used by one sale at most (the first that covers it). Free units
+ * become their OWN line priced 0 with mrp = the price they would have cost, so
+ * calcCartTotals, "you save", GST, stock and per-product revenue all stay right
+ * without knowing about this rule.
+ *
+ * → { lines, freeByLine: { [lineId]: freeQty }, gifts, saving, nudge }
+ *   nudge: { kind: 'same'|'mix'|'gift', add, lineId?, name?, giftName?, offerName }
+ */
+export function buyXGetY(lines = [], sales = [], products = []) {
+  const list = Array.isArray(lines) ? lines : [];
+  const catalog = new Map((Array.isArray(products) ? products : []).filter((p) => p && p.id != null).map((p) => [String(p.id), p]));
+  const pid = (l) => String(l?.id ?? '').split('::')[0];
+  const qtyOf = (l) => Math.max(0, Math.trunc(Number(l?.qty)) || 0);
+  const priceOf = (l) => Number(l?.price) || 0;
+  const whole = (v, d) => { const n = Math.trunc(Number(v)); return Number.isFinite(n) && n >= 1 && n <= 9 ? n : d; };
+
+  const free = new Map();        // line index -> free units
+  const offerAt = new Map();     // line index -> the sale's name
+  const taken = new Set();
+  const gifts = [];
+  let saving = 0;
+  let nudge = null;
+
+  for (const o of Array.isArray(sales) ? sales : []) {
+    if (!o || o.discountType !== 'bxgy') continue;
+    const buy = whole(o.buy, 1);
+    const get = whole(o.get, 1);
+    const group = buy + get;
+    const name = String(o.name || `Buy ${buy} Get ${get}`);
+
+    if (o.freeMode === 'other') {
+      const trig = String(o.triggerId ?? '');
+      const gp = catalog.get(String(o.giftId ?? ''));
+      if (!trig || !gp || String(gp.id) === trig || gp.inStock === false) continue;
+      const bought = list.reduce((s, l) => (pid(l) === trig ? s + qtyOf(l) : s), 0);
+      let n = Math.floor(bought / buy) * get;
+      if (typeof gp.stock === 'number') n = Math.min(n, Math.max(0, Math.trunc(gp.stock)));
+      if (n > 0) {
+        const unit = Number(gp.price) || 0;
+        gifts.push({
+          id: String(gp.id), name: String(gp.name ?? ''), image: gp.image, category: gp.category,
+          price: 0, mrp: Math.max(Number(gp.mrp) || 0, unit), unitPrice: unit, qty: n, free: true, gift: true, offerName: name,
+          ...(gp.gstRate != null ? { gstRate: gp.gstRate } : {}),
+        });
+        saving += n * unit;
+      } else if (bought > 0 && !nudge) {
+        nudge = { kind: 'gift', add: buy - bought, lineId: list.find((l) => pid(l) === trig)?.id ?? null, giftName: String(gp.name ?? ''), offerName: name };
+      }
+      continue;
+    }
+
+    const ids = new Set((Array.isArray(o.productIds) ? o.productIds : []).map(String));
+    const covers = (l) => (o.appliesTo === 'category'
+      ? String(l?.category ?? catalog.get(pid(l))?.category ?? '') === String(o.categoryId ?? '') && o.categoryId != null
+      : ids.has(pid(l)));
+    const idx = [];
+    list.forEach((l, i) => { if (!taken.has(i) && priceOf(l) > 0 && qtyOf(l) > 0 && covers(l)) idx.push(i); });
+    if (!idx.length) continue;
+    idx.forEach((i) => { taken.add(i); offerAt.set(i, name); });
+
+    if (o.appliesTo === 'category') {
+      // Mix and match: of every (buy + get) units, the cheapest `get` are free.
+      const units = [];
+      for (const i of idx) for (let k = 0; k < qtyOf(list[i]); k++) units.push(i);
+      units.sort((a, b) => priceOf(list[b]) - priceOf(list[a]));
+      const groups = Math.floor(units.length / group);
+      for (const i of units.slice(units.length - groups * get)) free.set(i, (free.get(i) || 0) + 1);
+      const rem = units.length % group;
+      if (!nudge && rem >= buy) nudge = { kind: 'mix', add: group - rem, offerName: name };
+    } else {
+      for (const i of idx) {
+        const q = qtyOf(list[i]);
+        const f = Math.floor(q / group) * get;
+        if (f) free.set(i, f);
+        const rem = q % group;
+        if (!nudge && rem >= buy) nudge = { kind: 'same', add: group - rem, lineId: list[i].id, name: String(list[i].name ?? ''), offerName: name };
+      }
+    }
+  }
+
+  const out = [];
+  const freeByLine = {};
+  list.forEach((l, i) => {
+    const q = qtyOf(l);
+    const f = Math.min(free.get(i) || 0, q);
+    if (q - f > 0) out.push(f ? { ...l, qty: q - f } : l);
+    if (f) {
+      freeByLine[l.id] = f;
+      // Its "was" price is the MRP when there is one, like every other line's saving.
+      out.push({ ...l, qty: f, price: 0, mrp: Math.max(Number(l.mrp) || 0, priceOf(l)), unitPrice: priceOf(l), free: true, offerName: offerAt.get(i) });
+      saving += f * priceOf(l);
+    }
+  });
+  out.push(...gifts);
+  return { lines: out, freeByLine, gifts, saving, nudge };
+}
+
 // ── request fingerprint ──────────────────────────────────────────────────────
 
 const clean = (v) => String(v ?? '').normalize('NFC').trim().replace(/\s+/g, ' ');

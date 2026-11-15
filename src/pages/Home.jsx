@@ -21,7 +21,7 @@ import { isVerified, effectivePlan, hasFeature } from '../utils/planLimits';
 import { resolveSelection, buildCartItem } from '../utils/variants';
 import { fetchReviews, reviewStats } from '../utils/reviewService';
 import { fetchProductSales, proofFor } from '../utils/salesService';
-import { applyOffersToProducts, isOfferLive } from '../utils/offers';
+import { applyOffersToProducts, isOfferLive, applyCartOffers } from '../utils/offers';
 import { initMetaPixel, pixelTrack } from '../utils/metaPixel';
 import { resolveCategory, categoryLinkId } from '../../api/_categoryLink.js';
 import { storePath } from '../utils/storeUrls';
@@ -84,6 +84,12 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const offers       = config.offers || [];
   const liveOffers   = offers.filter((o) => isOfferLive(o));
   const saleProducts = applyOffersToProducts(products, offers);
+  // "Buy X Get Y free" sales: the cart's free units become their own ₹0 lines.
+  // pricedCart drives every total and the order; the cart itself stays what the
+  // customer added, so + and − behave as they always have.
+  const deal       = applyCartOffers(cart, offers, saleProducts);
+  const pricedCart = deal.lines;
+  const addFree    = (id, n) => { const line = cart.find((i) => i.id === id); if (line) setQty(id, line.qty + n); };
 
   // Arrived from a WhatsApp cart reminder (/cart/<token>): refill the cart with
   // what this customer left behind — rebuilt from today's catalogue and prices,
@@ -119,7 +125,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
   const promoSubtext = promoParts[1] ?? null;
 
   const waLink      = whatsappLink(whatsappNumber, businessName, config.waMessage);
-  const { total }   = calcCartTotals(cart, config.cart);
+  const { total }   = calcCartTotals(pricedCart, config.cart);
 
   // Slim trust ribbon — the store's own signals, as small pills.
   const trustPills = [
@@ -542,8 +548,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                 {itemCount > 0 && (
                   <>
                     <div className="overflow-y-auto max-h-60 px-4 py-3 space-y-3">
-                      {cart.map((item) => (
-                        <div key={item.id} className="flex items-start gap-2.5">
+                      {pricedCart.map((item) => (
+                        <div key={`${item.id}${item.free ? '#free' : ''}`} className="flex items-start gap-2.5">
                           <img
                             src={item.image}
                             alt={item.name}
@@ -557,11 +563,11 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
                               <p className="text-[11px] text-gray-400 truncate">{item.variant || item.size}</p>
                             )}
                             <p className="text-[11px] text-gray-500 mt-0.5 tabular-nums">
-                              {formatINR(item.price)} × {item.qty}
+                              {item.free ? <span className="font-bold text-orange-700">🎁 {item.gift ? 'Free gift' : 'Free'} × {item.qty}</span> : <>{formatINR(item.price)} × {item.qty}</>}
                             </p>
                           </div>
                           <p className="text-xs font-bold text-brand-dark tabular-nums flex-shrink-0 pt-0.5">
-                            {formatINR(item.price * item.qty)}
+                            {item.free ? <span className="text-orange-700">FREE</span> : formatINR(item.price * item.qty)}
                           </p>
                         </div>
                       ))}
@@ -569,7 +575,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
 
                     <div className="border-t border-gray-100 px-4 pb-4 pt-3">
                       <CartSummary
-                        cart={cart}
+                        cart={pricedCart}
                         compact
                         onCheckout={handleCheckout}
                         ctaLabel="Place Order"
@@ -647,6 +653,8 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
       {/* ── Cart Sidebar ─────────────────────────────────────────────────── */}
       <CartSidebar
         cart={cart}
+        deal={deal}
+        onAddFree={addFree}
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
         onIncrease={increaseQty}
@@ -662,7 +670,7 @@ export default function Home({ externalCartOpen, onExternalCartClose, onCartCoun
         onClose={() => setCheckoutOpen(false)}
         onBack={() => { setCheckoutOpen(false); setCartOpen(true); }}
       >
-        <CustomerDetailsForm formData={customerDetails} onChange={setCustomerDetails} cart={cart} onOrderPlaced={clearCart} />
+        <CustomerDetailsForm formData={customerDetails} onChange={setCustomerDetails} cart={pricedCart} onOrderPlaced={clearCart} />
       </CheckoutSheet>
 
       {/* ── Mobile bottom bar ───────────────────────────────────────────── */}

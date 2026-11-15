@@ -61,7 +61,9 @@ function build(customerDetails, items, finalTotal, opts) {
 
   items.forEach((item) => {
     const v = item.variant ? ` (${item.variant})` : '';
-    lines.push(`${item.name}${v} x${item.qty} ${formatINR(item.price * item.qty)}`);
+    lines.push(item.free
+      ? `${item.name}${v} x${item.qty} FREE 🎁`
+      : `${item.name}${v} x${item.qty} ${formatINR(item.price * item.qty)}`);
   });
   if (trailer) lines.push(trailer);
   lines.push('');

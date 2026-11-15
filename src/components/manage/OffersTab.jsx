@@ -16,6 +16,8 @@ const labelCls = 'block text-xs font-semibold text-gray-700 mb-1.5';
 const EMPTY_SALE = {
   name: '', discountType: 'percent', discountValue: '',
   appliesTo: 'all', categoryId: '',
+  // "Buy X Get Y free" (discountType 'bxgy'): free units are made in the cart.
+  buy: 1, get: 1, freeMode: 'same', productIds: [], triggerId: '', giftId: '',
   schedule: { type: 'always', start: '', end: '', from: '', to: '' },
   active: true,
 };
@@ -96,8 +98,24 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
   }
   function cancelSale() { setSaleForm(null); setSaleEditId(null); }
   function saveSale() {
-    if (!saleForm.name.trim() || !(Number(saleForm.discountValue) > 0)) return;
-    const clean = {
+    const bx = saleForm.discountType === 'bxgy';
+    if (!saleForm.name.trim() || (!bx && !(Number(saleForm.discountValue) > 0))) return;
+    const clean = bx ? {
+      id: saleEditId === 'new' ? newId() : saleEditId,
+      name: saleForm.name.trim(),
+      discountType: 'bxgy',
+      discountValue: 0,
+      buy: Number(saleForm.buy) || 1,
+      get: Number(saleForm.get) || 1,
+      freeMode: saleForm.freeMode === 'other' ? 'other' : 'same',
+      appliesTo: saleForm.freeMode === 'other' ? 'products' : (saleForm.appliesTo === 'category' ? 'category' : 'products'),
+      productIds: saleForm.freeMode === 'other' || saleForm.appliesTo === 'category' ? [] : (saleForm.productIds || []).map(String),
+      categoryId: saleForm.freeMode !== 'other' && saleForm.appliesTo === 'category' ? saleForm.categoryId : '',
+      triggerId: saleForm.freeMode === 'other' ? String(saleForm.triggerId) : '',
+      giftId: saleForm.freeMode === 'other' ? String(saleForm.giftId) : '',
+      schedule: saleForm.schedule,
+      active: saleForm.active !== false,
+    } : {
       id: saleEditId === 'new' ? newId() : saleEditId,
       name: saleForm.name.trim(),
       discountType: saleForm.discountType,
@@ -209,7 +227,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
               note={offers.length ? `${liveSales} running now` : ''} btn={btn} />
 
             {saleEditId !== null && saleForm && (
-              <SaleForm form={saleForm} setForm={setSaleForm} cats={cats} themeColor={themeColor}
+              <SaleForm form={saleForm} setForm={setSaleForm} cats={cats} themeColor={themeColor} products={config.products || []}
                 isNew={saleEditId === 'new'} onSave={saveSale} onCancel={cancelSale} />
             )}
 
@@ -223,7 +241,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 mt-3">
               {offers.map((o) => (
                 <SaleTile key={o.id} o={o} themeColor={themeColor} btn={btn}
-                  where={o.appliesTo === 'category' ? (cats.find((c) => c.id === o.categoryId)?.label || 'A category') : 'All products'}
+                  where={saleWhere(o, cats, config.products || [])}
                   onToggle={() => toggleSale(o.id)} onEdit={() => openEditSale(o)} onDelete={() => deleteSale(o.id)} />
               ))}
             </div>
@@ -449,10 +467,33 @@ function Segmented({ options, value, onChange, themeColor }) {
   );
 }
 
-function SaleForm({ form, setForm, cats, themeColor, isNew, onSave, onCancel }) {
+// Where a sale applies, in words, for its tile.
+function saleWhere(o, cats, products) {
+  const catName = (id) => cats.find((c) => c.id === id)?.label || 'A category';
+  const pName = (id) => products.find((p) => String(p.id) === String(id))?.name || 'a product';
+  if (o.discountType === 'bxgy') {
+    if (o.freeMode === 'other') return `Buy ${pName(o.triggerId)}, get ${pName(o.giftId)} free`;
+    if (o.appliesTo === 'category') return `${catName(o.categoryId)} · mix & match`;
+    const ids = o.productIds || [];
+    return ids.length ? ids.map(pName).join(', ') : 'No products picked';
+  }
+  return o.appliesTo === 'category' ? catName(o.categoryId) : 'All products';
+}
+
+function SaleForm({ form, setForm, cats, themeColor, isNew, onSave, onCancel, products = [] }) {
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const setSch = (patch) => setForm((f) => ({ ...f, schedule: { ...f.schedule, ...patch } }));
-  const canSave = form.name.trim() && Number(form.discountValue) > 0 && (form.appliesTo !== 'category' || form.categoryId);
+  const bx = form.discountType === 'bxgy';
+  const other = form.freeMode === 'other';
+  const canSave = bx
+    ? Boolean(form.name.trim()) && (other
+      ? Boolean(form.triggerId && form.giftId && String(form.triggerId) !== String(form.giftId))
+      : (form.appliesTo === 'category' ? Boolean(form.categoryId) : (form.productIds || []).length > 0))
+    : form.name.trim() && Number(form.discountValue) > 0 && (form.appliesTo !== 'category' || form.categoryId);
+  const pickProduct = (id) => set({ productIds: (form.productIds || []).map(String).includes(String(id))
+    ? (form.productIds || []).filter((x) => String(x) !== String(id))
+    : [...(form.productIds || []).map(String), String(id)] });
+  const named = products.filter((p) => p && p.name);
 
   return (
     <FormShell title={{ new: 'New sale', edit: 'Edit sale' }} isNew={isNew} onSave={onSave} onCancel={onCancel} themeColor={themeColor} canSave={canSave}>
@@ -462,20 +503,88 @@ function SaleForm({ form, setForm, cats, themeColor, isNew, onSave, onCancel }) 
           onChange={(e) => set({ name: e.target.value })} className={inputCls} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>Discount</label>
-          <Segmented themeColor={themeColor} value={form.discountType}
-            onChange={(v) => set({ discountType: v })}
-            options={[{ value: 'percent', label: '% off' }, { value: 'flat', label: '₹ off' }]} />
-        </div>
+      <div>
+        <label className={labelCls}>Kind of sale</label>
+        <Segmented themeColor={themeColor} value={form.discountType}
+          onChange={(v) => set(v === 'bxgy'
+            ? { discountType: v, appliesTo: form.appliesTo === 'category' ? 'category' : 'products' }
+            : { discountType: v, appliesTo: form.appliesTo === 'category' ? 'category' : 'all' })}
+          options={[{ value: 'percent', label: '% off' }, { value: 'flat', label: '₹ off' }, { value: 'bxgy', label: 'Buy & get free' }]} />
+      </div>
+
+      {!bx && (
         <div>
           <label className={labelCls}>{form.discountType === 'flat' ? 'Amount (₹)' : 'Percent (%)'}</label>
           <input type="number" inputMode="numeric" min="1" placeholder={form.discountType === 'flat' ? '100' : '20'}
             value={form.discountValue} onChange={(e) => set({ discountValue: e.target.value })} className={inputCls} />
         </div>
-      </div>
+      )}
 
+      {bx && (<>
+        <div>
+          <label className={labelCls}>The deal</label>
+          <div className="flex items-center gap-2 flex-wrap text-sm font-bold text-gray-800">
+            Buy <Stepper value={form.buy} onChange={(v) => set({ buy: v })} label="Buy" />
+            get <Stepper value={form.get} onChange={(v) => set({ get: v })} label="Get" /> free
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>What's free</label>
+          <Segmented themeColor={themeColor} value={other ? 'other' : 'same'}
+            onChange={(v) => set({ freeMode: v })}
+            options={[{ value: 'same', label: 'The same product' }, { value: 'other', label: 'A different product' }]} />
+        </div>
+        {other ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>When they buy</label>
+              <select value={form.triggerId} onChange={(e) => set({ triggerId: e.target.value })} className={inputCls}>
+                <option value="">Pick a product…</option>
+                {named.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>They get free</label>
+              <select value={form.giftId} onChange={(e) => set({ giftId: e.target.value })} className={inputCls}>
+                <option value="">Pick a product…</option>
+                {named.filter((p) => String(p.id) !== String(form.triggerId)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className={labelCls}>On which products</label>
+            <Segmented themeColor={themeColor} value={form.appliesTo === 'category' ? 'category' : 'products'}
+              onChange={(v) => set({ appliesTo: v })}
+              options={[{ value: 'products', label: 'Pick products' }, { value: 'category', label: 'A whole category' }]} />
+            {form.appliesTo === 'category' ? (
+              <>
+                <select value={form.categoryId} onChange={(e) => set({ categoryId: e.target.value })} className={`${inputCls} mt-2`}>
+                  <option value="">Select category…</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+                <p className="text-[11px] text-gray-400 mt-2">Customers can mix. Out of every {Number(form.buy || 1) + Number(form.get || 1)}, the cheapest {Number(form.get || 1) === 1 ? 'one is' : `${form.get} are`} free.</p>
+              </>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {named.map((p) => {
+                  const on = (form.productIds || []).map(String).includes(String(p.id));
+                  return (
+                    <button key={p.id} type="button" onClick={() => pickProduct(p.id)} aria-pressed={on}
+                      className={['inline-flex items-center gap-1.5 pl-1 pr-3 py-1 rounded-full border text-xs font-semibold transition',
+                        on ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'].join(' ')}>
+                      {p.image ? <img src={p.image} alt="" className="w-6 h-6 rounded-full object-cover" /> : <span className="w-6 h-6 rounded-full bg-gray-100" />}
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </>)}
+
+      {!bx && (
       <div>
         <label className={labelCls}>Applies to</label>
         <Segmented themeColor={themeColor} value={form.appliesTo}
@@ -488,6 +597,7 @@ function SaleForm({ form, setForm, cats, themeColor, isNew, onSave, onCancel }) 
           </select>
         )}
       </div>
+      )}
 
       <div>
         <label className={labelCls}>When</label>
@@ -532,6 +642,18 @@ function SaleForm({ form, setForm, cats, themeColor, isNew, onSave, onCancel }) 
         )}
       </div>
     </FormShell>
+  );
+}
+
+// A small − n + control (1 to 5) for "Buy n get n free".
+function Stepper({ value, onChange, label }) {
+  const n = Number(value) || 1;
+  return (
+    <span className="inline-flex items-center rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button type="button" onClick={() => onChange(Math.max(1, n - 1))} aria-label={`${label}: fewer`} className="w-9 h-9 text-lg font-bold text-gray-700 hover:bg-gray-50">−</button>
+      <span className="w-8 text-center tabular-nums">{n}</span>
+      <button type="button" onClick={() => onChange(Math.min(5, n + 1))} aria-label={`${label}: more`} className="w-9 h-9 text-lg font-bold text-gray-700 hover:bg-gray-50">+</button>
+    </span>
   );
 }
 

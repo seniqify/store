@@ -1,4 +1,4 @@
-import { isCouponLiveLocal, couponDiscountValue } from '../../shared/pricing.mjs';
+import { isCouponLiveLocal, couponDiscountValue, buyXGetY } from '../../shared/pricing.mjs';
 
 // Coupon expiry and discount maths come from the shared pricing engine.
 // isCouponLiveLocal keeps the storefront's historical browser-local rule;
@@ -11,6 +11,11 @@ import { isCouponLiveLocal, couponDiscountValue } from '../../shared/pricing.mjs
 //   { id, name, active, discountType:'percent'|'flat', discountValue,
 //     appliesTo:'all'|'category', categoryId,
 //     schedule:{ type:'always'|'range'|'weekend'|'happyHours', start, end, from, to } }
+//
+// A "Buy X Get Y free" sale (founder, 2026-11-15) is the same shape with
+//   discountType:'bxgy', buy, get, freeMode:'same'|'other',
+//   appliesTo:'products'|'category', productIds, categoryId, triggerId, giftId
+// It never changes a price: the cart makes units free (shared buyXGetY).
 //
 // A coupon shape:
 //   { id, code, discountType, discountValue, minOrder, expiresAt, active }
@@ -47,8 +52,16 @@ export function isOfferLive(offer, now = new Date()) {
   }
 }
 
+/** A "Buy X Get Y free" sale? Those never change prices; the cart applies them. */
+export const isBuyXGetY = (o) => o?.discountType === 'bxgy';
+
 // Does a sale apply to a given product?
 export function offerCoversProduct(offer, product) {
+  if (isBuyXGetY(offer)) {
+    if (offer.freeMode === 'other') return String(product?.id) === String(offer.triggerId);
+    if (offer.appliesTo === 'category') return product?.category === offer.categoryId;
+    return (offer.productIds || []).map(String).includes(String(product?.id));
+  }
   if (offer.appliesTo === 'category') return product?.category === offer.categoryId;
   return true; // 'all'
 }
@@ -65,7 +78,7 @@ export function applyDiscount(price, offer) {
 export function bestOfferForProduct(product, offers = [], now = new Date()) {
   let best = null;
   for (const o of offers) {
-    if (!isOfferLive(o, now) || !offerCoversProduct(o, product)) continue;
+    if (isBuyXGetY(o) || !isOfferLive(o, now) || !offerCoversProduct(o, product)) continue;
     const np = applyDiscount(product.price, o);
     if (np != null && np < product.price && (best == null || np < best.price)) {
       best = { price: np, offer: o };
@@ -77,6 +90,7 @@ export function bestOfferForProduct(product, offers = [], now = new Date()) {
 // ── Display helpers (kept here so Manage + storefront read identically) ──────
 export function describeDiscount(o) {
   if (!o) return '';
+  if (isBuyXGetY(o)) return o.freeMode === 'other' ? `Buy ${o.buy || 1}, get ${o.get || 1} free` : `Buy ${o.buy || 1} Get ${o.get || 1}`;
   return o.discountType === 'flat' ? `₹${o.discountValue} off` : `${o.discountValue}% off`;
 }
 
@@ -120,10 +134,15 @@ export function couponDiscountFor(coupon, subtotal, now = new Date()) {
 // strikethrough + "you save" machinery shows the sale), plus `_onSale`/`_saleName`.
 // Variant option prices get the same treatment. Untouched if no live offer covers it.
 export function applyOffersToProducts(products = [], offers = [], now = new Date()) {
-  const live = offers.filter((o) => isOfferLive(o, now));
-  if (!live.length) return products;
+  const liveAll = offers.filter((o) => isOfferLive(o, now));
+  // Buy X Get Y sales only label the products they cover (_bxgy); prices stay.
+  const deals = liveAll.filter(isBuyXGetY);
+  const live = liveAll.filter((o) => !isBuyXGetY(o));
+  if (!live.length && !deals.length) return products;
 
-  return products.map((p) => {
+  return products.map((base) => {
+    const deal = deals.find((o) => offerCoversProduct(o, base));
+    const p = deal ? { ...base, _bxgy: bxgyBadge(deal, products) } : base;
     let best = null;
     for (const o of live) {
       if (!offerCoversProduct(o, p)) continue;
@@ -148,6 +167,30 @@ export function applyOffersToProducts(products = [], offers = [], now = new Date
     }
     return np;
   });
+}
+
+// The badge and the line under the price for a product a Buy X Get Y sale covers.
+export function bxgyBadge(o, products = []) {
+  const buy = o.buy || 1;
+  const get = o.get || 1;
+  if (o.freeMode === 'other') {
+    const gift = products.find((x) => String(x.id) === String(o.giftId));
+    const giftName = gift?.name || 'a gift';
+    return { label: 'FREE GIFT', text: buy > 1 ? `Buy ${buy}, get ${get} ${giftName} free` : `+ ${get > 1 ? `${get} ` : ''}${giftName} free` };
+  }
+  return {
+    label: `BUY ${buy} GET ${get}`,
+    text: o.appliesTo === 'category' ? `Mix any ${buy + get}, pay for ${buy}` : `Add ${buy + get}, pay for ${buy}`,
+  };
+}
+
+/**
+ * The cart with the running Buy X Get Y sales applied (shared buyXGetY):
+ * { lines, freeByLine, gifts, saving, nudge }. `lines` (free units as their own
+ * ₹0 lines) is what totals, checkout and the saved order use.
+ */
+export function applyCartOffers(cart = [], offers = [], products = [], now = new Date()) {
+  return buyXGetY(cart, offers.filter((o) => isBuyXGetY(o) && isOfferLive(o, now)), products);
 }
 
 // When does a live sale end? Used for the storefront countdown. null = no countdown

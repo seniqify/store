@@ -585,7 +585,7 @@ const OrderRow = memo(function OrderRow({ o, active, themeColor, leads, STATUS, 
   const pay = paymentChip(o);
   const payShort = pay.tone === 'paid' ? 'Paid' : pay.text.startsWith('COD') ? 'COD' : pay.text;
   const items = Array.isArray(o.items)
-    ? o.items.map((i) => (i?.name ? `${i.name}${Number(i.qty) > 1 ? ` ×${i.qty}` : ''}` : '')).filter(Boolean).join(', ')
+    ? o.items.map((i) => (i?.name ? `${i.name}${Number(i.qty) > 1 ? ` ×${i.qty}` : ''}${i.free ? ' (free)' : ''}` : '')).filter(Boolean).join(', ')
     : '';
   const ref = String(o.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
   const name = o.customer_name?.trim() || 'Customer';
@@ -629,7 +629,7 @@ function riderLink(o, storeName, phone, riderPhone) {
     `👤 ${o.customer_name || 'Customer'}${phone ? ` · +91 ${phone}` : ''}`,
     `📍 ${o.destination || 'Address on order'}`,
     Array.isArray(o.items) && o.items.length
-      ? `🛍️ ${o.items.map((it) => `${it.qty}× ${it.name}`).join(', ')}`
+      ? `🛍️ ${o.items.map((it) => `${it.qty}× ${it.name}${it.free ? ' (free)' : ''}`).join(', ')}`
       : `🛍️ ${o.item_count} item${o.item_count === 1 ? '' : 's'}`,
     o.payment_method === 'cod'
       ? `💰 COLLECT ₹${Number(o.total).toLocaleString('en-IN')} (cash on delivery)`
@@ -938,8 +938,9 @@ const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeN
           <div key={i} className="flex items-center justify-between gap-3 text-xs py-0.5">
             <span className="truncate text-gray-600">
               {leads ? '💼 ' : ''}{it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''}{leads ? '' : ` × ${it.qty}`}
+              {it.free && <b className="ml-1 text-orange-700">{it.gift ? '· free gift' : '· free'}</b>}
             </span>
-            {!leads && <span className="tabular-nums flex-shrink-0 font-semibold text-gray-700">{formatINR((it.price || 0) * (it.qty || 0))}</span>}
+            {!leads && <span className="tabular-nums flex-shrink-0 font-semibold text-gray-700">{it.free ? <b className="text-orange-700">FREE</b> : formatINR((it.price || 0) * (it.qty || 0))}</span>}
           </div>
         ))}
         {leads && <p className="text-[11px] text-gray-400 mt-1">{o.item_count} service{o.item_count === 1 ? '' : 's'} requested</p>}
@@ -1396,8 +1397,9 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
           <div key={i} className="flex items-center justify-between gap-3 text-[13px] py-0.5">
             <span className="truncate text-gray-700">
               {it.name}{it.variant ? ` (${it.variant})` : it.size ? ` (${it.size})` : ''} <span className="text-gray-500">× {it.qty}</span>
+              {it.free && <b className="ml-1 text-orange-700">{it.gift ? '· free gift' : '· free'}</b>}
             </span>
-            <span className="tabular-nums flex-shrink-0 font-semibold text-gray-900">{formatINR((it.price || 0) * (it.qty || 0))}</span>
+            <span className="tabular-nums flex-shrink-0 font-semibold text-gray-900">{it.free ? <b className="text-orange-700">FREE</b> : formatINR((it.price || 0) * (it.qty || 0))}</span>
           </div>
         ))}
         {pnl.known && (
