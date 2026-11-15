@@ -122,3 +122,13 @@ test('menu and tiles: red count only on Orders, Lock & exit, plan, labelled butt
   assert.match(MORE, /Understand & set up/);
   assert.match(BELL, /aria-label=\{newCount > 0 \? `Alerts, \$\{newCount\} new \$\{nouns\}` : 'Alerts'\}/);
 });
+
+test('no green trial strip across the top: a running trial shows on the plan card, which leads to the plans', () => {
+  // Founder, 2026-11-15: "remove this green label from up".
+  assert.ok(!MANAGE.includes('Subscribe to keep it'), 'the strip is gone');
+  assert.ok(!/onTrial && \(\s*<div className="bg-emerald-600/.test(MANAGE));
+  assert.equal(planLine({ plan: 'premium', onTrial: true, daysLeft: 223 }), 'Free trial · 223 days left');
+  assert.match(MANAGE, /const openPlan  = \(\) => \(rawPlan === 'free' \|\| planLapsed \|\| onTrial \? goPlans\(\) : goTab\('settings'\)\);/);
+  // The warnings that need action stay.
+  for (const w of ['{trialEnded && (', '{renewalDue && (', '{subEnded && (']) assert.ok(MANAGE.includes(w), w);
+});

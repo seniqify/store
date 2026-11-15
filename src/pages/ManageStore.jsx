@@ -3308,7 +3308,8 @@ export default function ManageStore() {
     sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''));
     window.location.href = '/plans';
   };
-  const openPlan  = () => (rawPlan === 'free' || planLapsed ? goPlans() : goTab('settings'));
+  // A trial shop's plan card leads to the plans page (to subscribe before it ends).
+  const openPlan  = () => (rawPlan === 'free' || planLapsed || onTrial ? goPlans() : goTab('settings'));
   const lock      = () => { setPinVerified(false); setStorePin(''); goTab('home'); };
   async function shareStore() {
     if (navigator.share) {
@@ -3350,13 +3351,7 @@ export default function ManageStore() {
       )}
       {phoneSearch && <GlobalSearch {...searchProps} variant="page" onClose={() => setPhoneSearch(false)} />}
 
-      {/* ── Free-trial / renewal banner ─────────────────────────────────────── */}
-      {onTrial && (
-        <div className="bg-emerald-600 text-white text-center text-xs font-semibold px-4 py-2">
-          🎁 Free {planName} trial — {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left.{' '}
-          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', String(config.whatsappNumber || '').replace(/\D/g, ''))} className="underline underline-offset-2">Subscribe to keep it →</a>
-        </div>
-      )}
+      {/* ── Plan warnings (a running trial shows on the plan card, not here) ── */}
       {trialEnded && (
         <div className="bg-amber-500 text-white text-center text-xs font-semibold px-4 py-2">
           Your free {planName} trial ended — page is on Free now.{' '}
