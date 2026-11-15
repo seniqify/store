@@ -277,7 +277,7 @@ test('the Payments tab drives the four Money screens and every action', () => {
   assert.match(tab, /only after the buyer agrees on WhatsApp/);
   assert.match(tab, /window\.confirm\(`Mark \$\{list\.length\} orders delivered\?/);
   assert.match(tab, /window\.confirm\(msg\)/, 'cancelling always asks');
-  assert.match(code('src/pages/ManageStore.jsx'), /<PaymentsTab[\s\S]*?onGoTab=\{setTab\}/);
+  assert.match(code('src/pages/ManageStore.jsx'), /<PaymentsTab[\s\S]*?onGoTab=\{goTab\}/);
 });
 
 test('the home screen opens each list, and the lists use the same places', () => {

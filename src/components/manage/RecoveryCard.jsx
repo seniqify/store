@@ -104,7 +104,7 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
   );
 }
 
-export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeName = '', sample = null, version = 0, onSent }) {
+export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeName = '', sample = null, version = 0, onSent, onSummary }) {
   const [summary, setSummary] = useState(null);   // null = loading; else { ok, data }
   const [preview, setPreview] = useState(null);
   const [saving, setSaving]   = useState(false);
@@ -119,9 +119,10 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
       if (!alive) return;
       setSummary(s);
       setPreview(p);
+      onSummary?.(s?.ok ? s.data : null);   // the tab's tiles show the same numbers
     });
     return () => { alive = false; };
-  }, [slug, pin, version]);
+  }, [slug, pin, version, onSummary]);
 
   const toggle = useCallback(async () => {
     if (!summary?.ok) return;
@@ -129,12 +130,13 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
     try {
       const next = await setCartReminders(slug, pin, !summary.data.enabled);
       setSummary({ ok: true, data: { ...summary.data, enabled: next } });
+      onSummary?.({ ...summary.data, enabled: next });
     } catch (e) {
       setNotice({ ok: false, text: e?.message || 'Could not change the setting.' });
     } finally {
       setSaving(false);
     }
-  }, [slug, pin, summary]);
+  }, [slug, pin, summary, onSummary]);
 
   async function sendAll() {
     setSending(true);

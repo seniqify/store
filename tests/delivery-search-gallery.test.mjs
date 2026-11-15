@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { matchesShipmentSearch } from '../src/utils/deliveryStatus.js';
+import { matchesShipmentSearch, shipmentRef, prettyStatus } from '../src/utils/deliveryStatus.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const MANAGE = read('src/pages/ManageStore.jsx');
@@ -31,8 +31,42 @@ test('search matches the AWB, and an empty search shows everything', () => {
   assert.equal(matchesShipmentSearch({}, 'x'), false);
 });
 
+test('search finds the order number the buyer quotes, a product, or the address', () => {
+  const o = { ...order, id: 'a7f2c9e1-0000-4000-8000-000000000000', destination: 'Plot 4, Akkalkot Road, Solapur 413006',
+    items: [{ name: 'Kaju Katli', qty: 2 }, { name: 'Besan Ladoo', qty: 1 }] };
+  assert.equal(shipmentRef(o), 'A7F2C', 'the same short number Orders and Home show');
+  assert.equal(matchesShipmentSearch(o, '#a7f2c'), true);
+  assert.equal(matchesShipmentSearch(o, 'A7F2'), true);
+  assert.equal(matchesShipmentSearch(o, '#a7'), false, 'two letters are too short to mean an order number');
+  assert.equal(matchesShipmentSearch(o, 'kaju'), true);
+  assert.equal(matchesShipmentSearch(o, 'akkalkot'), true);
+  assert.equal(matchesShipmentSearch(o, 'pune'), false);
+  assert.equal(shipmentRef({}), '');
+});
+
+test('courier wording reads plainly, however the courier spells it', () => {
+  assert.equal(prettyStatus('RTO Initiated'), 'Return started');
+  assert.equal(prettyStatus('Out For Delivery'), 'Out for delivery');
+  assert.equal(prettyStatus('Not Contactable'), 'Not contactable');
+  assert.equal(prettyStatus('Picked Up'), 'Picked up');
+  assert.equal(prettyStatus('bag_in_transit'), 'In transit');
+  assert.equal(prettyStatus(''), 'Booked');
+  assert.equal(prettyStatus('Some New Code'), 'Some New Code', 'unknown words still show');
+});
+
+test('Track: the status tabs and courier chips are always in view, not hidden in dropdowns', () => {
+  assert.match(BOARD, /role="tablist" aria-label="Shipment status"/);
+  assert.ok(BOARD.includes("const statusTabs = ['all', ...BUCKETS, ...(count('cancelled') ? ['cancelled'] : [])];"));
+  assert.ok(BOARD.includes('onClick={() => setFilter(k)}'));
+  assert.ok(BOARD.includes('onClick={() => setCourier(k)}'));
+  assert.ok(!/statusMenu|courierMenu|aria-haspopup/.test(BOARD), 'no dropdowns left');
+  // Each row says which order it is; the totals sit below the list.
+  assert.ok(BOARD.includes('#{shipmentRef(o)}'));
+  assert.ok(BOARD.indexOf('role="tablist"') < BOARD.indexOf('Shipments so far'), 'tabs first, totals after');
+});
+
 test('the board filters its list with the search but keeps the tiles on the whole board', () => {
-  assert.match(BOARD, /placeholder="Search name, number or AWB…"/);
+  assert.match(BOARD, /placeholder="Search name, phone, order no. or AWB…"/);
   // The list filters on the deferred search text, worked out once per change.
   assert.match(BOARD, /const searchText = useDeferredValue\(query\)/);
   assert.match(BOARD, /m\[b\] = \(groups\[b\] \|\| \[\]\)\.filter\(\(o\) => matchesShipmentSearch\(o, searchText\)\)/);

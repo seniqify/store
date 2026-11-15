@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useDeferredValue, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Truck, Bike, Package, Check, X, Phone, MapPin,
-  ChevronRight, ChevronDown, ExternalLink, RefreshCw, MessageCircle, PackageOpen, ListFilter, Search, Ban,
+  ChevronRight, ExternalLink, RefreshCw, MessageCircle, PackageOpen, Search, Ban,
 } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
 import { shipmentOp, syncDeliveryStatuses } from '../../utils/shippingConnect';
 import { buildDeliveryMetrics, isPartialList } from '../../utils/deliveryMetrics';
 import { LIST_PAGE_SIZE } from '../../utils/listPage';
 import { formatINR } from '../../utils/currency';
-import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch } from '../../utils/deliveryStatus';
+import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch, shipmentRef } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { DELIVERY_CHOICE_LABEL } from '../../utils/deliveryTools';
 
@@ -69,29 +69,13 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const [syncStale, setSyncStale] = useState(false);
   const [filter, setFilter]   = useState('all');
   const [courier, setCourier]         = useState('all');
-  const [courierMenu, setCourierMenu] = useState(false);   // courier dropdown open
-  const [statusMenu, setStatusMenu]   = useState(false);   // status dropdown open
   const [active, setActive]           = useState(null);    // order open in the drawer
-  const [query, setQuery]             = useState('');      // search: name, number or AWB
+  const [query, setQuery]             = useState('');      // search: name, phone, order no., product or AWB
   // The box shows every letter at once; the list follows a beat behind.
   const searchText = useDeferredValue(query);
   // Cards drawn, for one view of the board: a new search or filter starts again
   // at the first page; a courier refresh keeps what the seller already opened.
   const [more, setMore]               = useState({ view: '', n: LIST_PAGE_SIZE });
-  const ddRef = useRef(null);
-  const sdRef = useRef(null);
-
-  // close either dropdown on an outside tap
-  useEffect(() => {
-    if (!courierMenu && !statusMenu) return undefined;
-    const h = (e) => {
-      if (courierMenu && ddRef.current && !ddRef.current.contains(e.target)) setCourierMenu(false);
-      if (statusMenu && sdRef.current && !sdRef.current.contains(e.target)) setStatusMenu(false);
-    };
-    document.addEventListener('mousedown', h);
-    document.addEventListener('touchstart', h);
-    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('touchstart', h); };
-  }, [courierMenu, statusMenu]);
 
   const grab = useCallback(async () => {
     // fetchOrders reads every order; `partial` means some older ones failed.
@@ -138,7 +122,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
     return () => { alive = false; };
   }, [slug, pin, grab, grabFacts]);
 
-  // Which couriers appear → drives the selector (hidden for single-courier stores).
+  // Which couriers appear → drives the courier chips (hidden for single-courier stores).
   const courierKeys = [...new Set((orders || []).map((o) => courierInfo(o.courier).key))];
   const showCourierSel = courierKeys.length > 1;
   const activeCourier = showCourierSel ? courier : 'all';
@@ -156,7 +140,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const total = pool.length;
   // if the active status filter emptied out under this courier, fall back to All
   const effFilter = (filter === 'all' || count(filter)) ? filter : 'all';
-  // Search narrows the list only; the tiles and counts above still cover the whole board.
+  // Search narrows the list only; the tab counts above still cover the whole board.
   const matched = useMemo(() => {
     const m = {};
     LIST_BUCKETS.forEach((b) => { m[b] = (groups[b] || []).filter((o) => matchesShipmentSearch(o, searchText)); });
@@ -183,70 +167,195 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   const summary = useMemo(() => buildDeliveryMetrics(factsResult?.ok ? factsResult.data : []), [factsResult]);
   const summaryOk = factsResult?.ok === true;
 
-  const stat = 'bg-white rounded-2xl border border-gray-100 shadow-sm px-3.5 py-3';
-  const TRIG = {
-    all:       'bg-white border-gray-200 text-gray-800',
-    shadowfax: 'bg-orange-50 border-orange-200 text-orange-700',
-    delhivery: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-    local:     'bg-emerald-50 border-emerald-200 text-emerald-700',
-  };
-  const courierCount = (k) => (orders || []).filter((o) => courierInfo(o.courier).key === k).length;
-  const CourierIcon = (k) => (k === 'delhivery' ? Truck : k === 'all' ? Package : Bike);
-  const courierName = (k) => (k === 'all' ? 'All couriers' : courierInfo(k).name);
-  const courierNum  = (k) => (k === 'all' ? (orders || []).length : courierCount(k));
+  const courierNum = (k) => (k === 'all' ? (orders || []).length : (orders || []).filter((o) => courierInfo(o.courier).key === k).length);
+  // The status tabs, always in view: every live stage (a 0 is an answer too),
+  // and a courier-cancelled tab only when there is one.
+  const statusTabs = ['all', ...BUCKETS, ...(count('cancelled') ? ['cancelled'] : [])];
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* summary */}
-      <div className="grid grid-cols-2 gap-2.5 mb-3">
-        <div className={`${stat} ${count('attention') ? 'border-red-100 bg-gradient-to-b from-white to-red-50/60' : ''}`}>
-          <p className={`text-2xl font-extrabold leading-none tabular-nums flex items-center gap-1.5 ${count('attention') ? 'text-red-700' : 'text-gray-900'}`}>
-            <span className="w-2 h-2 rounded-full" style={{ background: count('attention') ? '#dc2626' : '#d1d5db' }} />
-            {count('attention')}
-          </p>
-          <p className="text-[11px] font-semibold text-gray-500 mt-1.5">Need attention now</p>
-        </div>
-        <div className={stat}>
-          <p className="text-2xl font-extrabold leading-none tabular-nums flex items-center gap-1.5 text-indigo-700">
-            <span className="w-2 h-2 rounded-full bg-indigo-500" />{count('ofd')}
-          </p>
-          <p className="text-[11px] font-semibold text-gray-500 mt-1.5">Out for delivery</p>
-        </div>
-        <div className={stat}>
-          <p className="text-2xl font-extrabold leading-none tabular-nums flex items-center gap-1.5 text-amber-700">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />{count('transit') + count('pickup')}
-          </p>
-          <p className="text-[11px] font-semibold text-gray-500 mt-1.5">In transit / pickup</p>
-        </div>
-        <div className={stat}>
-          {summaryOk ? (<>
-            <p className="text-2xl font-extrabold leading-none tabular-nums text-gray-900">
-              {formatINR(Math.round(summary.codOnUndelivered.amount))}
-            </p>
-            {/* The population is in the label on purpose. Payments owns "Still to
-                collect", which covers every method and every unshipped order;
-                this is only COD riding on shipments still in flight. */}
-            <p className="text-[11px] font-semibold text-gray-500 mt-1.5 leading-snug">
-              COD on shipments not yet delivered
-            </p>
-            <p className="text-[10.5px] text-gray-400 mt-0.5">
-              {summary.codOnUndelivered.count} shipment{summary.codOnUndelivered.count === 1 ? '' : 's'}
-            </p>
-          </>) : (
-            <>
-              <p className="text-2xl font-extrabold leading-none text-gray-300">&mdash;</p>
-              <p className="text-[11px] font-semibold text-gray-500 mt-1.5 leading-snug">COD on shipments not yet delivered</p>
-            </>
-          )}
-        </div>
+      {/* ── Find a parcel: one search over everything, and refresh ────────── */}
+      <div className="flex items-center gap-2 mb-3">
+        {total > 0 && (
+          <div className="flex-1 min-w-0 flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 h-11 focus-within:border-gray-400 transition-colors">
+            <Search size={16} className="text-gray-400 flex-shrink-0" />
+            <input id="delivery-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                   placeholder="Search name, phone, order no. or AWB…" aria-label="Search shipments"
+                   className="flex-1 min-w-0 bg-transparent text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none" />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="p-1 text-gray-400 hover:text-gray-600">
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        )}
+        <button type="button" onClick={sync} disabled={syncing} aria-label="Refresh live status"
+          className="ml-auto flex-shrink-0 h-11 inline-flex items-center gap-1.5 px-3 rounded-xl border border-gray-200 bg-white text-[13px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          <span className="hidden sm:inline">{syncing ? 'Checking…' : 'Refresh'}</span>
+        </button>
       </div>
 
-      {/* ── Fulfilment summary: canonical, uncapped, current state ──────────
+      {/* A courier refresh that failed leaves the board showing what it already
+          had. Saying nothing would present stale statuses as fresh ones. */}
+      {syncStale && !syncing && (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 mb-3 flex items-center gap-2" role="status">
+          <AlertTriangle size={13} className="text-amber-500 flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-amber-800 flex-grow">
+            Courier status refresh failed. Showing the last loaded delivery data.
+          </span>
+          <button type="button" onClick={sync} disabled={syncing}
+                  className="text-[11px] font-bold text-amber-900 underline underline-offset-2 disabled:opacity-50">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {listPartial && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mb-2.5">
+          Some older orders didn&rsquo;t load, so the list below may be missing a few; the totals below read all of them.
+        </p>
+      )}
+
+      {/* ── Status tabs: where every parcel stands, at a glance ─────────────── */}
+      {total > 0 && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 mb-2.5 sm:flex-wrap" role="tablist" aria-label="Shipment status">
+          {statusTabs.map((k) => {
+            const on = effFilter === k;
+            const n = k === 'all' ? total : count(k);
+            // Parcels that need the owner (a failed attempt, a return) light up red.
+            const urgent = k === 'attention' && count('attention') > 0 && !on;
+            return (
+              <button key={k} type="button" role="tab" aria-selected={on} disabled={k !== 'all' && n === 0}
+                onClick={() => setFilter(k)}
+                className={['flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition disabled:opacity-50',
+                  on ? 'bg-gray-900 text-white border-gray-900'
+                    : urgent ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-300'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'].join(' ')}>
+                {k !== 'all' && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: BUCKET_META[k].stripe }} />}
+                {k === 'all' ? 'All' : BUCKET_META[k].label}
+                <span className={`tabular-nums ${on ? 'opacity-70' : urgent ? 'font-extrabold' : 'text-gray-400'}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* courier chips (only when more than one courier ships) + live status */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-4 px-0.5">
+        {/* The tab counts stay on the whole board; this says what the search found. */}
+        {searchText.trim() && total > 0 && (
+          <span className="text-[12px] font-bold text-gray-800 mr-1" role="status">
+            {shownTotal} found
+          </span>
+        )}
+        {showCourierSel && ['all', ...courierKeys].map((k) => {
+          const on = activeCourier === k;
+          return (
+            <button key={k} type="button" aria-pressed={on} onClick={() => setCourier(k)}
+              className={['inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-bold border transition',
+                on ? 'bg-white border-gray-400 text-gray-900' : 'bg-transparent border-gray-200 text-gray-500 hover:text-gray-800'].join(' ')}>
+              {k === 'all' ? 'All couriers' : courierInfo(k).name}
+              <span className="tabular-nums text-gray-400">{courierNum(k)}</span>
+            </button>
+          );
+        })}
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          {syncing ? (
+            <>
+              <RefreshCw size={11} className="animate-spin text-gray-400" />
+              <span className="text-[11px] font-semibold text-gray-400">Syncing live status from the courier…</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 ring-2 ring-green-100" />
+              <span className="text-[11px] font-semibold text-green-700">Live status · synced from the courier</span>
+            </>
+          )}
+        </span>
+      </div>
+
+      {/* body */}
+      {orders === null ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-100">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <div className="w-10 h-10 rounded-xl bg-gray-100 animate-pulse" />
+              <div className="flex-1 space-y-2"><div className="h-3 w-1/3 rounded bg-gray-100 animate-pulse" /><div className="h-3 w-1/2 rounded bg-gray-100 animate-pulse" /></div>
+            </div>
+          ))}
+        </div>
+      ) : total === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+          <PackageOpen size={30} className="mx-auto text-gray-300" />
+          <p className="text-sm font-bold text-gray-800 mt-3">No shipments yet</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from Ship (or any order card) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
+        </div>
+      ) : shownTotal === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+          <Search size={26} className="mx-auto text-gray-300" />
+          <p className="text-sm font-bold text-gray-800 mt-3">No shipment matches “{searchText.trim()}”</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {effFilter === 'all' ? 'Check the spelling, or search by phone number, order number or AWB.' : `Only “${BUCKET_META[effFilter].label}” is showing. Try All.`}
+          </p>
+          <div className="mt-3 flex justify-center gap-2">
+            <button type="button" onClick={() => setQuery('')}
+              className="text-xs font-bold text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
+              Clear search
+            </button>
+            {effFilter !== 'all' && (
+              <button type="button" onClick={() => setFilter('all')}
+                className="text-xs font-bold text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
+                Search all
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {LIST_BUCKETS.filter((b) => page[b].length).map((b) => {
+            const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
+            return (
+              <section key={b}>
+                {/* In "All", each stage gets its own heading; one tab needs none. */}
+                {effFilter === 'all' && (
+                  <div className="flex items-center gap-2 px-0.5 mb-2">
+                    <span className={`w-5 h-5 rounded-md grid place-items-center ${M.chip}`}><Ic size={12} /></span>
+                    <h3 className={`text-[12.5px] font-extrabold ${M.tone === 'red' ? 'text-red-700' : 'text-gray-700'}`}>{M.label}</h3>
+                    <span className="text-[11px] font-bold text-gray-400 tabular-nums">{shown(b).length}</span>
+                  </div>
+                )}
+                <ul className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-100 overflow-hidden">
+                  {page[b].map((o) => (
+                    <OrderCard key={o.id} o={o} bucket={b} themeColor={themeColor} onOpen={setActive} />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+
+          {/* A page size, never a cap: every shipment is one tap away. */}
+          {remaining > 0 && (
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <button type="button"
+                onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
+                className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800
+                           shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all">
+                Show {Math.min(LIST_PAGE_SIZE, remaining)} more
+              </button>
+              <p className="text-xs text-gray-400">Showing {Math.min(visible, shownTotal)} of {shownTotal} shipments</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Totals, below the list: canonical, uncapped, current state ───────
           Counts are the point; money is subtext. Delivery Orders is exactly
           Delivered + Returned + In Flight - orders with no AWB are a separate
-          queue below and are deliberately not in that sum. */}
+          queue and are deliberately not in that sum. */}
+      <div className="mt-6">
       {!summaryOk ? (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 mb-3 flex items-center gap-3" role="alert">
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3.5 flex items-center gap-3" role="alert">
           <PackageOpen size={18} className="text-amber-500 flex-shrink-0" />
           <div className="min-w-0 flex-grow">
             <p className="text-sm font-bold text-gray-900">Delivery summary unavailable</p>
@@ -259,21 +368,31 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3 mb-3">
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3.5">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">Shipments</p>
+            <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">Shipments so far</p>
             <p className="text-[11px] font-bold text-gray-700 tabular-nums">
               {summary.orders.count} <span className="font-semibold text-gray-400">· {formatINR(Math.round(summary.orders.amount))}</span>
             </p>
           </div>
-          <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
-            <div><dt className="text-[10.5px] text-gray-500">Delivered</dt>
-              <dd className="text-lg font-extrabold text-blue-700 tabular-nums">{summary.delivered.count}</dd></div>
-            <div><dt className="text-[10.5px] text-gray-500">In flight</dt>
-              <dd className="text-lg font-extrabold text-amber-700 tabular-nums">{summary.inFlight.count}</dd></div>
-            <div><dt className="text-[10.5px] text-gray-500">Returned</dt>
-              <dd className="text-lg font-extrabold text-rose-700 tabular-nums">{summary.returned.count}</dd></div>
+          <dl className="mt-2.5 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-gray-50 px-3 py-2.5"><dt className="text-[11px] font-semibold text-gray-500">Delivered</dt>
+              <dd className="text-lg font-extrabold text-blue-700 tabular-nums leading-tight">{summary.delivered.count}</dd></div>
+            <div className="rounded-xl bg-gray-50 px-3 py-2.5"><dt className="text-[11px] font-semibold text-gray-500">In flight</dt>
+              <dd className="text-lg font-extrabold text-amber-700 tabular-nums leading-tight">{summary.inFlight.count}</dd></div>
+            <div className="rounded-xl bg-gray-50 px-3 py-2.5"><dt className="text-[11px] font-semibold text-gray-500">Returned</dt>
+              <dd className="text-lg font-extrabold text-rose-700 tabular-nums leading-tight">{summary.returned.count}</dd></div>
           </dl>
+          {/* The population is in the label on purpose. Payments owns "Still to
+              collect", which covers every method and every unshipped order;
+              this is only COD riding on shipments still in flight. */}
+          <div className="mt-2 flex items-center justify-between gap-3 rounded-xl bg-amber-50/70 px-3 py-2.5">
+            <p className="text-[12px] font-semibold text-gray-600 leading-snug">
+              COD on shipments not yet delivered
+              <span className="block text-[10.5px] text-gray-400">{summary.codOnUndelivered.count} shipment{summary.codOnUndelivered.count === 1 ? '' : 's'}</span>
+            </p>
+            <p className="text-lg font-extrabold text-gray-900 tabular-nums">{formatINR(Math.round(summary.codOnUndelivered.amount))}</p>
+          </div>
           {(summary.notShipped.count > 0 || summary.deliveredPaymentPending.count > 0
             || summary.cancelledShipments.count > 0) && (
             <div className="mt-2.5 pt-2.5 border-t border-gray-100 space-y-1">
@@ -307,193 +426,7 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
           )}
         </div>
       )}
-
-      {/* A courier refresh that failed leaves the board showing what it already
-          had. Saying nothing would present stale statuses as fresh ones. */}
-      {syncStale && !syncing && (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 mb-3 flex items-center gap-2" role="status">
-          <AlertTriangle size={13} className="text-amber-500 flex-shrink-0" />
-          <span className="text-[11px] font-semibold text-amber-800 flex-grow">
-            Courier status refresh failed. Showing the last loaded delivery data.
-          </span>
-          <button type="button" onClick={sync} disabled={syncing}
-                  className="text-[11px] font-bold text-amber-900 underline underline-offset-2 disabled:opacity-50">
-            Retry
-          </button>
-        </div>
-      )}
-
-      {listPartial && (
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mb-2.5">
-          Some older orders didn&rsquo;t load, so the list below may be missing a few; the totals above read all of them.
-        </p>
-      )}
-
-      {/* live-sync indicator */}
-      <div className="flex items-center gap-1.5 mb-2.5 px-0.5">
-        {syncing ? (
-          <>
-            <RefreshCw size={12} className="animate-spin text-gray-400" />
-            <span className="text-[11px] font-semibold text-gray-400">Syncing live status from the courier…</span>
-          </>
-        ) : (
-          <>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 ring-2 ring-green-100" />
-            <span className="text-[11px] font-semibold text-green-600">Live status · synced from the courier</span>
-          </>
-        )}
       </div>
-
-      {/* courier selector (dropdown) — only when more than one courier ships */}
-      {showCourierSel && (
-        <div className="relative mb-3" ref={ddRef}>
-          {(() => { const Ic = CourierIcon(activeCourier); return (
-            <button type="button" onClick={() => { setStatusMenu(false); setCourierMenu((v) => !v); }} aria-haspopup="listbox" aria-expanded={courierMenu}
-              className={['inline-flex items-center gap-2 text-sm font-bold rounded-xl border px-3.5 py-2.5 shadow-sm active:scale-[0.98] transition',
-                TRIG[activeCourier] || TRIG.all].join(' ')}>
-              <Ic size={15} />
-              <span>{courierName(activeCourier)}</span>
-              <span className="text-[11px] font-extrabold text-gray-500 bg-black/5 rounded-full px-1.5 tabular-nums">{courierNum(activeCourier)}</span>
-              <ChevronDown size={15} className={`text-gray-400 transition-transform ${courierMenu ? 'rotate-180' : ''}`} />
-            </button>
-          ); })()}
-          {courierMenu && (
-            <div role="listbox" className="absolute left-0 top-full mt-1.5 z-30 w-60 max-w-[80vw] bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden">
-              {['all', ...courierKeys].map((k) => {
-                const on = activeCourier === k; const Ic = CourierIcon(k);
-                return (
-                  <button key={k} type="button" role="option" aria-selected={on}
-                    onClick={() => { setCourier(k); setCourierMenu(false); }}
-                    className={['w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-left', on ? 'bg-gray-50' : 'hover:bg-gray-50'].join(' ')}>
-                    <Ic size={15} className="text-gray-500 flex-shrink-0" />
-                    <span className="flex-1 text-gray-800">{courierName(k)}</span>
-                    <span className="text-[11px] font-extrabold text-gray-400 tabular-nums">{courierNum(k)}</span>
-                    {on && <Check size={14} className="text-gray-900" strokeWidth={3} />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* search */}
-      {total > 0 && (
-        <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 px-3 py-2 mb-3">
-          <Search size={15} className="text-gray-400 flex-shrink-0" />
-          <input id="delivery-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-                 placeholder="Search name, number or AWB…" aria-label="Search shipments"
-                 className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none" />
-          {query && (
-            <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="p-0.5 text-gray-400 hover:text-gray-600">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* status filter (dropdown) + refresh */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="relative" ref={sdRef}>
-          {(() => {
-            const cur = effFilter;
-            const Ic = cur === 'all' ? ListFilter : BUCKET_ICON[cur];
-            const label = cur === 'all' ? 'All statuses' : BUCKET_META[cur].label;
-            const n = cur === 'all' ? total : count(cur);
-            const tint = cur === 'all' ? 'bg-white border-gray-200 text-gray-800' : BUCKET_META[cur].soft;
-            return (
-              <button type="button" onClick={() => { setCourierMenu(false); setStatusMenu((v) => !v); }} aria-haspopup="listbox" aria-expanded={statusMenu}
-                className={['inline-flex items-center gap-2 text-sm font-bold rounded-xl border px-3.5 py-2.5 shadow-sm active:scale-[0.98] transition', tint].join(' ')}>
-                <Ic size={15} />
-                <span>{label}</span>
-                <span className="text-[11px] font-extrabold text-gray-500 bg-black/5 rounded-full px-1.5 tabular-nums">{n}</span>
-                <ChevronDown size={15} className={`text-gray-400 transition-transform ${statusMenu ? 'rotate-180' : ''}`} />
-              </button>
-            );
-          })()}
-          {statusMenu && (
-            <div role="listbox" className="absolute left-0 top-full mt-1.5 z-30 w-60 max-w-[80vw] bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden">
-              {['all', ...LIST_BUCKETS.filter((b) => count(b))].map((k) => {
-                const on = effFilter === k;
-                const Ic = k === 'all' ? ListFilter : BUCKET_ICON[k];
-                const label = k === 'all' ? 'All statuses' : BUCKET_META[k].label;
-                const n = k === 'all' ? total : count(k);
-                const dot = k === 'all' ? '#9ca3af' : BUCKET_META[k].stripe;
-                return (
-                  <button key={k} type="button" role="option" aria-selected={on}
-                    onClick={() => { setFilter(k); setStatusMenu(false); }}
-                    className={['w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-left', on ? 'bg-gray-50' : 'hover:bg-gray-50'].join(' ')}>
-                    <Ic size={15} className="flex-shrink-0" style={{ color: dot }} />
-                    <span className="flex-1 text-gray-800">{label}</span>
-                    <span className="text-[11px] font-extrabold text-gray-400 tabular-nums">{n}</span>
-                    {on && <Check size={14} className="text-gray-900" strokeWidth={3} />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <button onClick={sync} disabled={syncing}
-          className="ml-auto flex-shrink-0 p-2.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50" aria-label="Refresh live status">
-          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-        </button>
-      </div>
-
-      {/* body */}
-      {orders === null ? (
-        <div className="space-y-2.5">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-2xl bg-gray-100 animate-pulse" />)}</div>
-      ) : total === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
-          <PackageOpen size={30} className="mx-auto text-gray-300" />
-          <p className="text-sm font-bold text-gray-800 mt-3">No shipments yet</p>
-          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Book a courier from Ship (or any order card) and it will appear here to track — across Shadowfax, Delhivery and your delivery boys.</p>
-        </div>
-      ) : shownTotal === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
-          <Search size={26} className="mx-auto text-gray-300" />
-          <p className="text-sm font-bold text-gray-800 mt-3">No shipment matches “{searchText.trim()}”</p>
-          <p className="text-xs text-gray-500 mt-1">
-            {effFilter === 'all' ? 'Check the spelling, or search by phone number or AWB.' : `Only “${BUCKET_META[effFilter].label}” is showing. Try All statuses.`}
-          </p>
-          <button type="button" onClick={() => setQuery('')}
-            className="mt-3 text-xs font-bold text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
-            Clear search
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {LIST_BUCKETS.filter((b) => page[b].length).map((b) => {
-            const M = BUCKET_META[b]; const Ic = BUCKET_ICON[b];
-            return (
-              <section key={b}>
-                <div className="flex items-center gap-2 px-0.5 mb-2">
-                  <span className={`w-5 h-5 rounded-md grid place-items-center ${M.chip}`}><Ic size={12} /></span>
-                  <h3 className={`text-[12.5px] font-extrabold ${M.tone === 'red' ? 'text-red-700' : 'text-gray-700'}`}>{M.label}</h3>
-                  <span className="text-[11px] font-bold text-gray-400 tabular-nums">{shown(b).length}</span>
-                </div>
-                <div className="space-y-2.5">
-                  {page[b].map((o) => (
-                    <OrderCard key={o.id} o={o} bucket={b} themeColor={themeColor} onOpen={setActive} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-
-          {/* A page size, never a cap: every shipment is one tap away. */}
-          {remaining > 0 && (
-            <div className="flex flex-col items-center gap-2 pt-1">
-              <button type="button"
-                onClick={() => setMore({ view, n: visible + LIST_PAGE_SIZE })}
-                className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-800
-                           shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all">
-                Show {Math.min(LIST_PAGE_SIZE, remaining)} more
-              </button>
-              <p className="text-xs text-gray-400">Showing {Math.min(visible, shownTotal)} of {shownTotal} shipments</p>
-            </div>
-          )}
-        </div>
-      )}
 
       {active && (
         <TrackDrawer o={active} bucket={classifyBucket(active)} slug={slug} pin={pin}
@@ -503,69 +436,76 @@ export default function DeliveryBoard({ slug, pin, themeColor = '#0d9488', store
   );
 }
 
-// Memoised, with onOpen taking the order, so a card redraws only when its own
+// What is in the parcel, in one line.
+function itemsLine(o) {
+  const items = Array.isArray(o.items) ? o.items : [];
+  return items.length
+    ? items.map((i) => `${i.name}${i.qty > 1 ? ` × ${i.qty}` : ''}`).join(', ')
+    : `${o.item_count || 1} item${(o.item_count || 1) === 1 ? '' : 's'}`;
+}
+
+// The day the order came in ("12 Nov"), so an old parcel stands out.
+function orderDay(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  try { return new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }); } catch { return ''; }
+}
+
+// One shipment, one compact row: who, where it is now, which courier, how much.
+// Memoised, with onOpen taking the order, so a row redraws only when its own
 // shipment changes, not on every keystroke of the search.
 const OrderCard = memo(function OrderCard({ o, bucket, themeColor, onOpen }) {
   const M = BUCKET_META[bucket];
+  const Ic = BUCKET_ICON[bucket] || Truck;
   const open = () => onOpen(o);
   const c = courierInfo(o.courier);
   const isCod = o.payment_method === 'cod';
   const codCollected = isCod && bucket === 'delivered';   // COD delivered = cash taken at the door
   const phone = last10(o.customer_phone);
-  const items = Array.isArray(o.items) ? o.items : [];
-  const prod = items.length
-    ? items.map((i) => `${i.name}${i.qty > 1 ? ` × ${i.qty}` : ''}`).join(', ')
-    : `${o.item_count || 1} item${(o.item_count || 1) === 1 ? '' : 's'}`;
   const attention = bucket === 'attention';
+  const day = orderDay(o.created_at);
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      <button type="button" onClick={open} className="w-full text-left">
-        <div className="flex gap-3 px-3.5 pt-3.5 pb-2.5">
-          <span className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: M.stripe }} />
-          <div className="flex-1 min-w-0">
-            <p className="font-extrabold text-gray-900 leading-tight truncate">{o.customer_name || 'Customer'}</p>
-            <p className="text-xs text-gray-500 truncate mt-0.5">{prod}</p>
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.chip}`}>
-                {c.key === 'delhivery' ? <Truck size={10} /> : <Bike size={10} />}{c.name}
-              </span>
-              <span className="text-[10.5px] font-mono text-gray-400">{o.awb}</span>
-            </div>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-base font-extrabold text-gray-900 tabular-nums leading-none">{formatINR(o.total || 0)}</p>
-            <span className={`inline-block mt-1.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${
-              codCollected ? 'bg-emerald-100 text-emerald-700'
-              : isCod ? 'bg-amber-50 text-amber-700 border border-amber-200'
-              : 'bg-emerald-50 text-emerald-700'}`}>
-              {codCollected ? '✓ Collected' : isCod ? 'COD' : 'Paid'}
-            </span>
-          </div>
-          <ChevronRight size={16} className="text-gray-300 self-center flex-shrink-0" />
-        </div>
-        <div className="flex items-center gap-2 px-3.5 pb-3 -mt-0.5">
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${M.chip}`}>
-            {prettyStatus(o.shipment_status)}
+    <li className={attention ? 'bg-red-50/40' : ''}>
+      <button type="button" onClick={open} className="w-full text-left flex items-center gap-3 px-3.5 sm:px-4 py-3 hover:bg-gray-50/80 transition-colors">
+        <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${M.chip}`}><Ic size={17} /></span>
+        <span className="flex-1 min-w-0">
+          <span className="flex items-baseline gap-1.5 min-w-0">
+            <span className="font-bold text-[14.5px] text-gray-900 truncate">{o.customer_name || 'Customer'}</span>
+            <span className="text-[12px] font-semibold text-gray-400 flex-shrink-0">#{shipmentRef(o)}</span>
           </span>
-          {attention && <span className="text-[11px] text-red-500 font-medium">· action needed</span>}
-        </div>
+          <span className="flex items-center gap-1.5 mt-1 min-w-0">
+            <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${M.chip}`}>{prettyStatus(o.shipment_status)}</span>
+            <span className="text-[12px] text-gray-500 truncate">{c.name} · <span className="font-mono text-[11.5px]">{o.awb}</span></span>
+          </span>
+          <span className="block text-[12px] text-gray-400 truncate mt-0.5">{itemsLine(o)}{day ? ` · ${day}` : ''}</span>
+        </span>
+        <span className="text-right flex-shrink-0">
+          <span className="block text-[15px] font-extrabold text-gray-900 tabular-nums leading-none">{formatINR(o.total || 0)}</span>
+          <span className={`inline-block mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            codCollected ? 'bg-emerald-100 text-emerald-700'
+            : isCod ? 'bg-amber-50 text-amber-700 border border-amber-200'
+            : 'bg-emerald-50 text-emerald-700'}`}>
+            {codCollected ? '✓ Collected' : isCod ? 'COD' : 'Paid'}
+          </span>
+        </span>
+        <ChevronRight size={16} className="text-gray-300 flex-shrink-0 hidden sm:block" />
       </button>
 
       {attention && (
-        <div className="flex gap-2 px-3.5 pb-3.5">
+        <div className="flex gap-2 px-3.5 sm:px-4 pb-3 sm:pl-[68px]">
           <a href={phone ? `tel:+91${phone}` : undefined}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold py-2 rounded-xl border ${phone ? 'text-gray-800 border-gray-200 hover:bg-gray-50' : 'text-gray-300 border-gray-100 pointer-events-none'}`}>
+            className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 text-[12px] font-bold px-3 py-2 rounded-xl border bg-white ${phone ? 'text-gray-800 border-gray-200 hover:bg-gray-50' : 'text-gray-300 border-gray-100 pointer-events-none'}`}>
             <Phone size={13} /> Call customer
           </a>
           <button type="button" onClick={open}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold py-2 rounded-xl text-white active:scale-95"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 text-[12px] font-bold px-3 py-2 rounded-xl text-white active:scale-95"
             style={{ backgroundColor: themeColor }}>
             <MapPin size={13} /> Track & fix
           </button>
         </div>
       )}
-    </div>
+    </li>
   );
 });
 
@@ -615,8 +555,16 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
         {/* head */}
         <div className="px-5 pt-4 pb-3 border-b border-gray-100 bg-white rounded-t-2xl">
           <div className="flex items-start gap-3">
-            <p className="text-lg font-extrabold text-gray-900 leading-tight flex-1">{o.customer_name || 'Customer'}</p>
-            <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 flex-shrink-0"><X size={16} /></button>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-extrabold text-gray-900 leading-tight">
+                {o.customer_name || 'Customer'} <span className="text-[13px] font-semibold text-gray-400">#{shipmentRef(o)}</span>
+              </p>
+              <p className="text-[12px] text-gray-500 mt-0.5 line-clamp-2">{itemsLine(o)}{orderDay(o.created_at) ? ` · ordered ${orderDay(o.created_at)}` : ''}</p>
+              {o.destination && (
+                <p className="text-[12px] text-gray-500 mt-0.5 flex items-start gap-1"><MapPin size={12} className="mt-0.5 flex-shrink-0 text-gray-400" /><span className="line-clamp-2">{o.destination}</span></p>
+              )}
+            </div>
+            <button onClick={onClose} aria-label="Close" className="w-8 h-8 grid place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 flex-shrink-0"><X size={16} /></button>
           </div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.chip}`}>

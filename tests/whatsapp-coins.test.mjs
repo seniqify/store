@@ -179,7 +179,9 @@ test('wallet-topup: the bonus is the server’s and matches the app', () => {
   assert.ok(bonus);
   const map = Object.fromEntries(bonus[1].split(',').map((x) => x.split(':').map((n) => Number(n.trim()))));
   assert.deepEqual(map, Object.fromEntries(WALLET_PACKS.map((p) => [p.messages, p.bonusPaise])));
-  assert.match(TOPUP, /bonus_paise: BONUS_PAISE\[messages\] \?\? 0,/);
+  assert.match(TOPUP, /bonus = BONUS_PAISE\[messages\] \?\? 0;/);
+  assert.match(TOPUP, /bonus = bonusFor\(amount\);/, 'a typed amount gets the same bonus steps');
+  assert.match(TOPUP, /bonus_paise: bonus,/);
   assert.ok(!/body\.bonus/.test(TOPUP), 'never from the browser');
   assert.match(SWEEP, /supabase\.rpc\('order_messages_expire_stuck'\)/, 'stuck order messages are refunded by the 10-minute sweep');
 });

@@ -318,10 +318,12 @@ export default function PaymentsTab({
             </button>
           </div>
         ) : (
+          <div className="max-w-3xl">
           <HisaabTab slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} orders={orders}
                      listPartial={listPartial} comingIn={accountingOk ? acc.comingIn : null} loadedAt={loadedAt}
                      products={products} packagingCost={packagingCost} deliveryCost={deliveryCost} store={store}
                      onGoTab={onGoTab} onOpenMoney={openMoney} />
+          </div>
         )
       )}
 

@@ -39,7 +39,7 @@
  */
 import {
   buildCommerceMetrics, checkInvariants, classifyOrder,
-  dayKeyInZone, dayKeysBetween, weekdayInZone,
+  dayKeyInZone, dayKeysBetween, weekdayInZone, shipmentState,
 } from './commerceMetrics.js';
 
 const DAY = 86400000;
@@ -117,6 +117,30 @@ export function buildOverviewMetrics(facts, {
       : null;
   }
 
+  // ── Delivery at a glance: COUNTS ONLY, never money. Each row's shipment state
+  // comes from the model (shipmentState); these are queues a shopkeeper acts on.
+  //   readyToShip  accepted (confirmed) and nobody has sent it yet
+  //   onTheWay     booked with a courier and in flight, or out with the shop's
+  //                own delivery boy (dispatched, no AWB)
+  //   delivered30 / returned30  finished in the last 30 days (by delivered_at /
+  //                returned_at, else created_at)
+  // codOnTheWay is the model's own figure: COD money on parcels still in flight.
+  const shipping = { readyToShip: 0, onTheWay: 0, delivered30: 0, returned30: 0,
+    codOnTheWay: canonical.delivery.codOnUndelivered.amount };
+  const within30 = (iso) => {
+    const t = Date.parse(iso ?? '');
+    return clock !== null && Number.isFinite(t) && t > clock - 30 * DAY && t <= clock;
+  };
+  for (const o of rows) {
+    if (!isSaleRow(o) || status(o) === 'cancelled') continue;
+    const ship = shipmentState(o);
+    if (ship === 'delivered') { if (within30(o?.delivered_at || o?.created_at)) shipping.delivered30 += 1; continue; }
+    if (ship === 'returned') { if (within30(o?.returned_at || o?.created_at)) shipping.returned30 += 1; continue; }
+    if (ship === 'cancelled') continue;
+    if (ship === 'in_flight' || status(o) === 'dispatched') shipping.onTheWay += 1;
+    else if (status(o) === 'confirmed') shipping.readyToShip += 1;
+  }
+
   return {
     // flows
     todaySales,
@@ -124,6 +148,8 @@ export function buildOverviewMetrics(facts, {
     todayDeltaPct,
     week,
     weekTotal,
+    // delivery queues (counts)
+    shipping,
     // balance (a position, not an aggregate)
     toCollect,
     unpaidCount,

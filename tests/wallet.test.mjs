@@ -240,7 +240,10 @@ test('wallet-topup checks the PIN through the throttled verifier before any acti
 test('the price is the server\'s: packs in the function, never an amount from the browser', () => {
   const src = strip(EDGE);
   assert.ok(!/body\.amount|body\?\.amount/.test(src), 'no amount is read from the request');
-  assert.match(src, /const amount = PACKS\[messages\]/);
+  assert.match(src, /amount = PACKS\[messages\];/);
+  // A typed amount is whole rupees, checked here against the server's own limits.
+  assert.match(src, /amount = rupees \* 100;/);
+  assert.match(src, /!Number\.isInteger\(rupees\) \|\| amount < CUSTOM_MIN_PAISE \|\| amount > CUSTOM_MAX_PAISE/);
   const packs = Object.fromEntries([...EDGE.matchAll(/^\s+(\d+):\s+(\d+),$/gm)].map((m) => [Number(m[1]), Number(m[2])]));
   assert.deepEqual(packs, Object.fromEntries(WALLET_PACKS.map((p) => [p.messages, p.amountPaise])));
   for (const p of WALLET_PACKS) assert.equal(p.amountPaise, p.messages * MESSAGE_PRICE_PAISE, `${p.messages} at Rs 1.50`);

@@ -97,7 +97,8 @@ export default function AiInsightsTab({ slug, pin, themeColor = '#0d9488', enabl
   const intentTotal = insights.intentTotal || 1;
 
   return (
-    <div className="space-y-5">
+    // Phone: one column. Computer: the cards in two columns (the approved prototype).
+    <div className="space-y-5 lg:space-y-0 lg:columns-2 lg:gap-6 [&>*]:break-inside-avoid lg:[&>*]:mb-6">
 
       {/* Header */}
       <div className="flex items-center gap-2">

@@ -1,3 +1,5 @@
+import FoodMark from './FoodMark';
+import { FOOD_TYPES } from '../../utils/foodType';
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Share2, Plus, Check, Star, ChevronDown, Truck, ShieldCheck, Wallet, MessageCircle, BadgeCheck } from 'lucide-react';
 import { formatINR, discountPercent } from '../../utils/currency';
@@ -163,6 +165,11 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
 
             {/* Meta row */}
             <div className="flex items-center gap-2 flex-wrap">
+              {product.foodType && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg bg-gray-50 text-gray-700">
+                  <FoodMark type={product.foodType} />{FOOD_TYPES.find(([k]) => k === product.foodType)?.[1]}
+                </span>
+              )}
               {product.badge && (
                 <span className="text-[11px] font-bold px-2 py-1 rounded-lg bg-brand/10 text-brand-dark">{product.badge}</span>
               )}

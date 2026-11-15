@@ -616,7 +616,9 @@ test('the wording says the COURIER cancelled, not the customer', () => {
 
 test('cancelled shipments are not added to the active summary identity', () => {
   const board = code('../src/components/manage/DeliveryBoard.jsx');
-  const card = board.slice(board.indexOf('Shipments'), board.indexOf('syncStale &&'));
+  // The totals card sits below the list now (2026-11-15 Track redesign).
+  const card = board.slice(board.indexOf('Shipments so far'), board.indexOf('{active && ('));
+  assert.ok(card.length > 0, 'the totals card is found');
   for (const bit of ['summary.delivered.count', 'summary.inFlight.count', 'summary.returned.count']) {
     assert.ok(card.includes(bit), `${bit} is still in the three-way card`);
   }

@@ -61,6 +61,11 @@ const NICE = {
   cnr: 'Not reachable', npr: 'Payment not ready', ud: 'Undelivered',
   rto: 'Return to origin', rto_initiated: 'Return started', cancelled: 'Cancelled',
   pending: 'Attempt failed', 'in transit': 'In transit',
+  // The same statuses as couriers write them in words ("RTO Initiated",
+  // "Out For Delivery"); looked up with spaces and dashes as underscores.
+  in_transit: 'In transit', out_for_delivery: 'Out for delivery', not_contactable: 'Not contactable',
+  picked_up: 'Picked up', out_for_pickup: 'Out for pickup', not_picked: 'Not picked up', on_hold: 'On hold',
+  rto_in_transit: 'Return on the way', rto_delivered: 'Returned', returned_to_seller: 'Returned',
 };
 
 /** Turn a raw code/status into a human label ("bag_in_transit" → "In transit"). */
@@ -68,6 +73,8 @@ export function prettyStatus(raw) {
   const key = String(raw || '').toLowerCase().trim();
   if (!key) return 'Booked';
   if (NICE[key]) return NICE[key];
+  const underscored = key.replace(/[\s-]+/g, '_');
+  if (NICE[underscored]) return NICE[underscored];
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -79,13 +86,21 @@ export function courierInfo(courier) {
   return { key: 'delhivery', name: 'Delhivery', chip: 'bg-indigo-100 text-indigo-700' };
 }
 
-// Delivery board search: part of the customer's name, the AWB, or (when the query
-// is a number) part of their phone number.
+/** The short order number a buyer sees ("#A7F2C"), the same one Orders and Home show. */
+export const shipmentRef = (order) => String(order?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
+
+// Delivery board search: part of the customer's name, the AWB, the order number
+// ("#A7F2C", 3+ letters), a product in the parcel, the address, or (when the
+// query is a number) part of their phone number.
 export function matchesShipmentSearch(order, query) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return true;
   if (String(order?.customer_name || '').toLowerCase().includes(q)) return true;
   if (String(order?.awb || '').toLowerCase().includes(q)) return true;
+  const ref = q.replace(/^#/, '');
+  if (ref.length >= 3 && shipmentRef(order).toLowerCase().includes(ref)) return true;
+  if (Array.isArray(order?.items) && order.items.some((i) => String(i?.name || '').toLowerCase().includes(q))) return true;
+  if (q.length >= 3 && String(order?.destination || '').toLowerCase().includes(q)) return true;
   const qd = q.replace(/\D/g, '');
   return qd.length >= 3 && qd.length === q.replace(/[\s+-]/g, '').length
     && String(order?.customer_phone || '').replace(/\D/g, '').includes(qd);
