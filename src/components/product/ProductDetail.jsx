@@ -193,6 +193,7 @@ export default function ProductDetail({ product, onClose, onAddToCart, onViewCar
               {mrp && mrp > price && <span className="text-sm text-gray-400 line-through tabular-nums">{formatINR(mrp)}</span>}
               {off > 0 && <span className="text-[12px] font-extrabold text-brand bg-brand/10 rounded-md px-2 py-0.5">{off}% OFF</span>}
               {saving > 0 && <span className="w-full text-[13px] font-bold text-green-600">You save {formatINR(saving)}</span>}
+              {product._bxgy && <span className="w-full text-[13px] font-bold text-orange-700">🎁 {product._bxgy.label}: {product._bxgy.text}</span>}
               {lowStock && !outOfStock && <span className="w-full text-[13px] font-bold text-amber-600">🔥 Hurry — only {stockNum} left in stock!</span>}
             </div>
 

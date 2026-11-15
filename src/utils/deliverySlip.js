@@ -59,10 +59,10 @@ export function openDeliverySlip(order = {}, store = {}) {
     const rate = Number(it.price) || 0;
     return `<tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(it.name || '')}${esc(variant)}${it.unit ? `<span class="unit"> / ${esc(it.unit)}</span>` : ''}</td>
+      <td>${esc(it.name || '')}${esc(variant)}${it.unit ? `<span class="unit"> / ${esc(it.unit)}</span>` : ''}${it.free ? ` <b>(${it.gift ? 'FREE GIFT' : 'FREE'})</b>` : ''}</td>
       <td class="c">${qty}</td>
-      <td class="r">${esc(formatINR(rate))}</td>
-      <td class="r">${esc(formatINR(rate * qty))}</td>
+      <td class="r">${it.free ? 'FREE' : esc(formatINR(rate))}</td>
+      <td class="r">${it.free ? 'FREE' : esc(formatINR(rate * qty))}</td>
     </tr>`;
   }).join('');
 

@@ -105,8 +105,13 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* Badge → else discount chip */}
-        {product.badge ? (
+        {/* A running "Buy X Get Y" deal → else badge → else discount chip */}
+        {product._bxgy ? (
+          <span className="absolute top-2.5 left-2.5 bg-orange-600 text-white text-[10px] font-extrabold
+                           px-2.5 py-1 rounded-full leading-none shadow-md tracking-wide">
+            {product._bxgy.label}
+          </span>
+        ) : product.badge ? (
           <span className={[
             'absolute top-2.5 left-2.5 text-white text-[10px] font-bold',
             'px-2.5 py-1 rounded-full leading-none shadow-md',
@@ -201,6 +206,10 @@ export default function ProductCard({
             </span>
           )}
         </div>
+
+        {product._bxgy && (
+          <span className="text-[10.5px] font-bold text-orange-700 leading-tight">🎁 {product._bxgy.text}</span>
+        )}
 
         {/* Savings line (light only — premium shows the % OFF chip above instead) */}
         {!premium && saving > 0 && (

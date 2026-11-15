@@ -23,10 +23,11 @@ import QtyField from './QtyField';
  *   onDecrease  (id) => void   — automatically removes when qty hits 0
  *   onRemove    (id) => void
  */
-export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSetQty }) {
+export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSetQty, free = 0 }) {
   const [removing, setRemoving] = useState(false);
 
-  const unitSubtotal = item.price * item.qty;
+  // Buy X Get Y: `free` of these units cost nothing.
+  const unitSubtotal = item.price * (item.qty - free);
 
   function handleRemove() {
     setRemoving(true);
@@ -150,6 +151,12 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove, onSet
               <span className="text-base font-extrabold text-brand-dark tabular-nums tracking-tight">
                 {formatINR(unitSubtotal)}
               </span>
+              {free > 0 && (
+                <>
+                  <s className="block text-xs text-gray-400 tabular-nums">{formatINR(item.price * item.qty)}</s>
+                  <span className="block text-[11px] font-extrabold text-orange-700">🎁 {free} free</span>
+                </>
+              )}
             </div>
           </div>
         </div>
