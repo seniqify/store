@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle, Send, Loader2, X, Check } from 'lucide-react';
 import {
-  fetchCartReminderSummary, setCartReminders, fetchReminderPreview, sendRemindersNow,
+  fetchCartReminderSummary, setCartReminders, fetchReminderPreview, sendRemindersNow, setCartReminderLang,
 } from '../../utils/cartReminderService';
+import { cartReminderMessage, CART_REMINDER_LANGS } from '../../utils/cartReminderText';
 import { formatCoins, coinsOf } from '../../utils/walletPacks';
 import { formatINR } from '../../utils/currency';
 
@@ -27,15 +28,12 @@ function shortDay(iso) {
   return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progress, onSend, onClose }) {
+function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progress, onSend, onClose, lang = 'en' }) {
   const cost = Number(preview.cost_paise) || 0;
   const balance = Number(preview.balance_paise) || 0;
   const short = cost > balance;
   const affordable = Math.floor(balance / (Number(preview.price_paise) || 150));
-  const items = Array.isArray(sample?.items) ? sample.items : [];
-  const first = items[0]?.name || 'your items';
-  const more = items.length > 1 ? ` + ${items.length - 1} more` : '';
-  const name = String(sample?.customer_name || '').trim().split(/\s+/)[0] || 'there';
+  const msg = cartReminderMessage(lang, sample || {}, storeName);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Send cart reminders">
@@ -78,11 +76,11 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
         <div className="space-y-1.5">
           <p className="text-[11px] font-extrabold uppercase tracking-wider text-gray-500">What they get</p>
           <div className="rounded-2xl bg-[#e7ffdb] px-3 pt-2.5 text-[13px] leading-snug text-gray-800">
-            <p>Hi {name}, you left <b>{first}{more}</b> in your cart at <b>{storeName || 'your shop'}</b>
-              {sample?.total ? <> ({formatINR(Number(sample.total))})</> : null}. Your items are still saved — tap below to finish your order in under a minute.</p>
+            <p className="whitespace-pre-line">{msg.text}</p>
             <div className="mt-2 border-t border-[#c7eab4] grid grid-cols-2">
-              <span className="py-2 text-center text-[12.5px] font-bold text-sky-600">Complete my order</span>
-              <span className="py-2 text-center text-[12.5px] font-bold text-sky-600 border-l border-[#c7eab4]">Stop offers</span>
+              {msg.buttons.map((label, i) => (
+                <span key={label} className={['py-2 text-center text-[12.5px] font-bold text-sky-600', i ? 'border-l border-[#c7eab4]' : ''].join(' ')}>{label}</span>
+              ))}
             </div>
           </div>
           <p className="text-[11.5px] text-gray-500">Each customer sees their own name, cart and total.</p>
@@ -112,6 +110,7 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(null);
   const [notice, setNotice]   = useState(null);   // { ok, text }
+  const [langBusy, setLangBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -135,6 +134,22 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
       setNotice({ ok: false, text: e?.message || 'Could not change the setting.' });
     } finally {
       setSaving(false);
+    }
+  }, [slug, pin, summary, onSummary]);
+
+  // English or मराठी for every reminder from now on (the server keeps it).
+  const pickLang = useCallback(async (next) => {
+    if (!summary?.ok || (summary.data.lang || 'en') === next) return;
+    setLangBusy(true);
+    try {
+      const saved = await setCartReminderLang(slug, pin, next);
+      const data = { ...summary.data, lang: saved };
+      setSummary({ ok: true, data });
+      onSummary?.(data);
+    } catch (e) {
+      setNotice({ ok: false, text: e?.message || 'Could not change the language.' });
+    } finally {
+      setLangBusy(false);
     }
   }, [slug, pin, summary, onSummary]);
 
@@ -168,6 +183,10 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
   const spent = Number(s.spent_paise_30d) || 0;
   const won = Number(s.recovered_value_30d) || 0;
   const wins = Array.isArray(s.wins) ? s.wins.slice(0, 3) : [];
+  const lang = s.lang === 'mr' ? 'mr' : 'en';
+  // Which language brings more orders, once both have been sent.
+  const byLang = s.by_lang && s.by_lang.en && s.by_lang.mr ? s.by_lang : null;
+  const bothUsed = byLang && Number(byLang.en.sent) > 0 && Number(byLang.mr.sent) > 0;
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -212,6 +231,25 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
           </button>
         </div>
 
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-gray-900">Reminder language</p>
+            <p className="text-[11.5px] text-gray-500 leading-snug">Every reminder goes in this language</p>
+          </div>
+          <div className="inline-flex p-0.5 gap-0.5 rounded-lg bg-gray-100 flex-shrink-0" role="group" aria-label="Reminder language">
+            {CART_REMINDER_LANGS.map((l) => {
+              const on = lang === l.code;
+              return (
+                <button key={l.code} type="button" aria-pressed={on} disabled={langBusy} onClick={() => pickLang(l.code)}
+                  className={['h-8 px-3 rounded-md text-[12.5px] font-bold transition disabled:opacity-60',
+                    on ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'].join(' ')}>
+                  {l.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="grid grid-cols-4 gap-1.5 text-center">
           {[['Sent', s.sent_30d], ['Opened', s.clicked_30d], ['Ordered', s.recovered_30d]].map(([label, n]) => (
             <div key={label} className="rounded-xl bg-gray-50 px-1 py-2">
@@ -229,6 +267,12 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
           {Number(s.via_link_30d) > 0 ? ` · ${s.via_link_30d} through the reminder link` : ''}
         </p>
 
+        {bothUsed && (
+          <p className="-mt-1 text-[11px] text-gray-500">
+            By language: मराठी <b>{byLang.mr.won} of {byLang.mr.sent}</b> ordered · English <b>{byLang.en.won} of {byLang.en.sent}</b>
+          </p>
+        )}
+
         {wins.length > 0 && (
           <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 py-2 space-y-1">
             <p className="text-[10.5px] font-extrabold uppercase tracking-wider text-emerald-700">Won back</p>
@@ -243,7 +287,7 @@ export default function RecoveryCard({ slug, pin, themeColor = '#0d9488', storeN
       </div>
 
       {sheet && preview && (
-        <ConfirmSheet preview={preview} sample={sample} storeName={storeName} themeColor={themeColor}
+        <ConfirmSheet preview={preview} sample={sample} storeName={storeName} themeColor={themeColor} lang={lang}
           sending={sending} progress={progress} onSend={sendAll} onClose={() => setSheet(false)} />
       )}
     </div>

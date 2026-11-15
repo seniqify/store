@@ -80,7 +80,8 @@ test('Abandoned carts: four tiles, the list beside win-back and Coins, one compa
   assert.match(tab, /lg:grid lg:grid-cols-\[minmax\(0,1fr\)_360px\]/);
   assert.match(tab, /onSummary=\{setRecovery\}/);
   assert.match(tab, /<ul className="divide-y divide-gray-100">/);
-  assert.match(tab, /function CartThumbs\(/);
+  assert.match(read('src/components/manage/CartChat.jsx'), /export function CartThumbs\(/);
+  assert.match(tab, /<CartThumbs items=\{items\} products=\{products\} \/>/);
   const card = read('src/components/manage/RecoveryCard.jsx');
   assert.match(card, /onSummary\?\.\(s\?\.ok \? s\.data : null\)/);
 });

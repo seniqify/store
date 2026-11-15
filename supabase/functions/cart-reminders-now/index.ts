@@ -43,6 +43,8 @@ serve(async (req: Request) => {
 
     const templateUrl = Deno.env.get('SENIQIFY_CART_REMINDER_TEMPLATE_URL') ?? '';
     if (!templateUrl) return json({ error: 'Reminders are not set up yet. Please contact PocketLink.' });
+    // The Marathi template, for shops that chose मराठी (optional: English until it exists).
+    const mrUrl = Deno.env.get('SENIQIFY_CART_REMINDER_MR_TEMPLATE_URL') ?? '';
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const apiKey = Deno.env.get('SENIQIFY_API_KEY');
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -72,14 +74,22 @@ serve(async (req: Request) => {
         continue;
       }
 
+      // मराठी when the shop chose it and the Marathi template exists; English
+      // otherwise. The row records the language that actually went.
+      const useMr = claim.lang === 'mr' && Boolean(mrUrl) && Boolean(claim.values_mr);
+      if (useMr) {
+        const { error: langErr } = await supabase.rpc('cart_reminder_mark_lang', { p_reminder_id: claim.reminder_id, p_lang: 'mr' });
+        if (langErr) console.error('cart-reminders-now: could not record the language', claim.reminder_id, langErr.message);
+      }
+
       let sent = false;
       let status: number | null = null;
       let error = '';
       try {
-        const r = await fetch(templateUrl, {
+        const r = await fetch(useMr ? mrUrl : templateUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ receiver: claim.receiver, values: claim.values }),
+          body: JSON.stringify({ receiver: claim.receiver, values: useMr ? claim.values_mr : claim.values }),
         });
         status = r.status;
         sent = r.ok;

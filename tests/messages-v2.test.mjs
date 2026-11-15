@@ -340,9 +340,10 @@ test('cart-reminders-now: PIN first, the server picks "all", at most 100 a call,
   assert.ok(!/body\.(ids|phones|abandoned_ids)/.test(src), 'the browser cannot hand over a list');
   assert.match(src, /const MAX_PER_CALL = 100;/);
   assert.match(src, /Deno\.env\.get\('SENIQIFY_CART_REMINDER_TEMPLATE_URL'\)/);
-  assert.match(src, /body: JSON\.stringify\(\{ receiver: claim\.receiver, values: claim\.values \}\)/);
+  // 2026-11-15: the English or the Marathi values, each exactly as the database built them.
+  assert.match(src, /body: JSON\.stringify\(\{ receiver: claim\.receiver, values: useMr \? claim\.values_mr : claim\.values \}\)/);
   const loop = src.slice(src.indexOf("rpc('cart_reminder_claim'"));
-  assert.ok(loop.indexOf('await fetch(templateUrl') < loop.indexOf("rpc('cart_reminder_finish'"));
+  assert.ok(loop.indexOf('await fetch(useMr ? mrUrl : templateUrl') < loop.indexOf("rpc('cart_reminder_finish'"));
 });
 
 // ═══ the screens ═════════════════════════════════════════════════════════════

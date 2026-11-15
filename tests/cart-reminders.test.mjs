@@ -376,9 +376,10 @@ test('the template URL is a secret: read from the environment only, never logged
 
 test('every claimed reminder is sent exactly as the database built it, and its result is always recorded', () => {
   const src = strip(EDGE);
-  assert.match(src, /body: JSON\.stringify\(\{ receiver: claim\.receiver, values: claim\.values \}\)/);
+  // 2026-11-15: the English or the Marathi values, each exactly as the database built them.
+  assert.match(src, /body: JSON\.stringify\(\{ receiver: claim\.receiver, values: useMr \? claim\.values_mr : claim\.values \}\)/);
   const loop = src.slice(src.indexOf("rpc('cart_reminder_claim'"));
-  assert.ok(loop.indexOf('await fetch(templateUrl') < loop.indexOf("rpc('cart_reminder_finish'"));
+  assert.ok(loop.indexOf('await fetch(useMr ? mrUrl : templateUrl') < loop.indexOf("rpc('cart_reminder_finish'"));
   assert.match(loop, /p_sent: sent/);
   assert.ok(src.indexOf("rpc('cart_reminders_expire_stuck')") < src.indexOf("rpc('cart_reminders_due'"));
 });
