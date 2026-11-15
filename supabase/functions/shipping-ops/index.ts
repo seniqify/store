@@ -417,7 +417,21 @@ serve(async (req) => {
           trackUrl: null,
         });
       }
-      if (action === 'label')  return json({ error: 'Shadowfax doesn’t need a printed label — the pickup rider carries it.' });
+      if (action === 'label') {
+        // The printable label (developer.shadowfax.in, Forward Logistics -> Label
+        // and POD): one AWB per call, a link to a PDF in data.label_url. Only
+        // before pickup; after it Shadowfax answers 400 and the label is on the parcel.
+        const lr = await fetch(`${sBase}/client/generate_label/`, {
+          method: 'POST',
+          headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ awb_number: String(awb).trim(), file_type: 'pdf' }),
+        });
+        const ld = await lr.json().catch(() => ({}));
+        const link = typeof ld?.data?.label_url === 'string' && /^https:\/\//.test(ld.data.label_url) ? ld.data.label_url : null;
+        if (lr.ok && link) return json({ labelUrl: link });
+        if (lr.status === 400) return json({ error: 'Shadowfax gives the label only before pickup. Once the rider has the parcel, the label is already on it.' });
+        return json({ error: 'Label not ready yet — try again in a moment.' });
+      }
       if (action === 'reattempt') return json({ error: 'Shadowfax doesn’t take a reattempt request through PocketLink. Call the customer, then ask Shadowfax support to try again.' });
       return json({ error: 'Unknown action' });
     }

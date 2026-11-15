@@ -10,7 +10,7 @@ import { clearCachedStore } from '../../utils/businessStorage';
 const COURIERS = {
   delhivery: { name: 'Delhivery', blurb: 'Live rates at checkout, then one-tap booking + printed labels per order.',
                signup: 'https://one.delhivery.com/v2/register' },
-  shadowfax: { name: 'Shadowfax', blurb: 'Book a seller-pickup order; a rider collects it and delivers. The rider carries the label.',
+  shadowfax: { name: 'Shadowfax', blurb: 'Book a seller-pickup order; a rider collects it and delivers. Print the label before pickup, or the rider brings one.',
                signup: 'https://shadowfax360.in/login' },
 };
 const ORDER = ['delhivery', 'shadowfax'];
