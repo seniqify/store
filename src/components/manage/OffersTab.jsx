@@ -179,7 +179,7 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
           {/* ════════════ Coupon codes: one tile each ════════════ */}
           <section>
             <SectionHead icon={<Ticket size={16} />} title="Coupon codes" n={coupons.length}
-              note={coupons.length ? `${liveCoupons} buyers can use now` : ''} btn={btn} />
+              note={coupons.length ? `${liveCoupons} live now` : ''} btn={btn} />
 
             {couponEditId !== null && couponForm && (
               <CouponForm form={couponForm} setForm={setCouponForm} themeColor={themeColor}
