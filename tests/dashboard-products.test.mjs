@@ -45,7 +45,7 @@ test('Save changes stays in view at the bottom while editing a long grid', () =>
 test('Delivery on a computer: the work on the left, couriers and customer updates on the right', () => {
   assert.match(MANAGE, /const WIDE_TABS = new Set\(\[[^\]]*'delivery'/);
   assert.match(MANAGE, /\) : tab === 'delivery' \? \(/);
-  assert.match(MANAGE, /wide=\{isDesktop\}\n\s*\/>\n\s*<\/div>\n\s*\) : tab === 'products'/);
+  assert.match(MANAGE, /wide=\{isDesktop\}\n\s*\/>\n\s*<\/div>\n\s*\) : tab === 'offers'/);
   // The couriers card is a summary; connecting stays in Settings, the one place.
   assert.match(MANAGE, /function CouriersSummary\(/);
   assert.match(MANAGE, /onSettings=\{\(\) => setView\('settings'\)\}/);

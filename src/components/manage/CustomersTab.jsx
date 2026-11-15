@@ -17,7 +17,7 @@ import { recordOptOut } from '../../utils/offerService';
  * whole segment (OffersPanel, paid from the message wallet, never to customers
  * who asked to stop). No new data is collected; this organises what they own.
  */
-export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '', searchSeed = null, wide = false }) {
+export default function CustomersTab({ slug, pin, themeColor = '#0d9488', businessName = '', searchSeed = null, wide = false, offerSeed = null }) {
   const [orders,    setOrders]    = useState(null);   // null = loading
   const [seg,       setSeg]       = useState('all');
   const [query,     setQuery]     = useState('');
@@ -99,7 +99,8 @@ export default function CustomersTab({ slug, pin, themeColor = '#0d9488', busine
   const offers = (
     <>
       <OffersPanel slug={slug} pin={pin} businessName={businessName} themeColor={themeColor}
-                   audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg} />
+                   audience={filtered} audienceLabel={seg === 'all' ? 'all' : SEGMENTS[seg]?.label || seg}
+                   initialFields={offerSeed} />
       <WalletCard slug={slug} pin={pin} themeColor={themeColor} storeName={businessName} compact />
     </>
   );

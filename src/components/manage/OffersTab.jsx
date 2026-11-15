@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import {
-  Plus, X, Pencil, Trash2, Percent, Ticket, Megaphone, Copy, Check,
-  Sparkles, CheckCircle2, Lock,
+  Plus, Pencil, Trash2, Percent, Ticket, Megaphone, Copy, Check,
+  Sparkles, CheckCircle2, Lock, Send,
 } from 'lucide-react';
+import { pinColors } from '../../utils/pinGate';
 import { effectivePlan, hasFeature } from '../../utils/planLimits';
 import {
-  isOfferLive, isCouponLive, describeDiscount, describeSchedule, describeCoupon,
+  isOfferLive, isCouponLive, describeDiscount, describeSchedule,
 } from '../../utils/offers';
 
 // ── Shared field styles (kept local so this tab is self-contained) ───────────
@@ -52,17 +53,17 @@ function SaveBar({ status, error, onSave, dirty, themeColor }) {
   );
 }
 
-function Toggle({ on, onClick, themeColor }) {
+function Toggle({ on, onClick, themeColor, label }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={on}
-      className="relative w-9 h-5 rounded-full transition-colors flex-shrink-0"
+    <button type="button" onClick={onClick} role="switch" aria-checked={on} aria-label={label}
+      className="relative w-9 h-5 rounded-full transition-colors flex-shrink-0 mt-1"
       style={{ backgroundColor: on ? themeColor : '#d1d5db' }}>
       <span className={['absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all', on ? 'left-[18px]' : 'left-0.5'].join(' ')} />
     </button>
   );
 }
 
-export default function OffersTab({ config, onChange, onSave, saveStatus, saveError }) {
+export default function OffersTab({ config, onChange, onSave, saveStatus, saveError, onSendOffer = null }) {
   const themeColor = config.theme?.primary || '#0d9488';
   const isPremium  = hasFeature(effectivePlan(config), 'offersEngine');
   const cats       = (config.categories || []).filter((c) => c.id !== 'all');
@@ -138,175 +139,252 @@ export default function OffersTab({ config, onChange, onSave, saveStatus, saveEr
   function toggleCoupon(id) { update({ coupons: coupons.map((c) => (c.id === id ? { ...c, active: c.active === false } : c)) }); }
   function copyCode(code)   { navigator.clipboard?.writeText(code).then(() => { setCopiedCode(code); setTimeout(() => setCopiedCode(''), 1500); }); }
 
+  // Readable accent for text on a light tint (a pale shop colour would vanish).
+  const btn = pinColors(themeColor).button;
+  const liveCoupons = coupons.filter((c) => c.active !== false && isCouponLive(c)).length;
+  const liveSales   = offers.filter((o) => isOfferLive(o)).length;
+
   return (
     <div className="space-y-7">
 
-      {/* ════════════ Announcement banner (all plans) ════════════ */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Megaphone size={16} style={{ color: themeColor }} />
-          <h3 className="text-base font-extrabold text-gray-900">Announcement banner</h3>
-        </div>
-        <label className={labelCls}>Promo message <span className="text-gray-400 font-normal ml-1">(optional)</span></label>
-        <input type="text" maxLength={100}
-          placeholder="e.g. 🎉 Free delivery this week! · 10% off above ₹500"
-          value={promo}
-          onChange={(e) => update({ promoText: e.target.value })}
-          className={inputCls} />
-        <p className="mt-1 text-xs text-gray-400">
-          Start with an emoji 🚚 then your heading · optional subtitle. Use <strong className="text-gray-500">·</strong> to separate them.
+      {/* ── What this page is for, and the two ways to start ─────────────────── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-[14px] text-gray-600 flex-1 min-w-[220px] leading-relaxed">
+          Coupon codes buyers type at checkout, sales that switch on by themselves, and a banner at the top of your page.
         </p>
-        {promo && (
-          <div className="mt-3 rounded-2xl overflow-hidden relative" style={{ backgroundColor: `${themeColor}18` }}>
-            <div className="absolute inset-0 opacity-20 pointer-events-none"
-                 style={{ backgroundImage: `radial-gradient(circle, ${themeColor}40 1px, transparent 1px)`, backgroundSize: '18px 18px' }} />
-            <div className="relative flex items-stretch min-h-[80px]">
-              <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 px-4 py-3">
-                <p className="font-extrabold text-sm text-gray-900 leading-tight">{promoParts[0] ?? ''}</p>
-                {promoParts[1] && <p className="text-xs text-gray-500">{promoParts[1]}</p>}
-                <span className="mt-1 self-start text-[10px] font-bold text-white px-2.5 py-1 rounded-lg" style={{ backgroundColor: themeColor }}>
-                  Order Now →
-                </span>
-              </div>
-              <div className="flex-shrink-0 w-20 flex items-end justify-center pb-1 pr-1 pt-2 relative">
-                <div className="absolute bottom-1 right-0 w-16 h-16 rounded-full" style={{ backgroundColor: `${themeColor}20` }} />
-                <span className="relative text-4xl leading-none select-none">{promoEmoji ?? '🎉'}</span>
-              </div>
-            </div>
+        {isPremium && (
+          <div className="flex gap-2 flex-shrink-0">
+            {saleEditId === null && (
+              <button type="button" onClick={openAddSale}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold bg-white border border-gray-200 text-gray-800 hover:bg-gray-50 active:scale-95 transition-all">
+                <Percent size={15} /> Schedule a sale
+              </button>
+            )}
+            {couponEditId === null && (
+              <button type="button" onClick={openAddCoupon}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                style={{ backgroundColor: btn }}>
+                <Plus size={16} strokeWidth={2.5} /> Create coupon
+              </button>
+            )}
           </div>
         )}
-      </section>
-
-      <div className="h-px bg-gray-100" />
+      </div>
 
       {/* ════════════ Premium gate for the engine ════════════ */}
       {!isPremium ? (
         <PremiumTeaser themeColor={themeColor} whatsappNumber={config.whatsappNumber} />
       ) : (
         <>
-          {/* ════════════ Scheduled sales ════════════ */}
+          {/* ════════════ Coupon codes: one tile each ════════════ */}
           <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Percent size={16} style={{ color: themeColor }} />
-                <h3 className="text-base font-extrabold text-gray-900">Scheduled sales</h3>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{offers.length}</span>
-              </div>
-              {saleEditId === null && (
-                <button type="button" onClick={openAddSale}
-                  className="flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-xl text-white shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                  style={{ backgroundColor: themeColor }}>
-                  <Plus size={15} strokeWidth={2.5} /> Add
-                </button>
-              )}
-            </div>
-
-            {offers.length === 0 && saleEditId === null && (
-              <EmptyHint icon={<Percent size={20} />} title="No sales yet"
-                text="Schedule a flash, weekend or happy-hours sale — it turns on and off by itself." />
-            )}
-
-            <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-3">
-              {offers.map((o) => {
-                const live = isOfferLive(o);
-                return (
-                  <div key={o.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{o.name}</p>
-                        {o.active !== false && live && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Live
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400 truncate">
-                        {describeDiscount(o)} · {o.appliesTo === 'category' ? (cats.find((c) => c.id === o.categoryId)?.label || 'A category') : 'All products'} · {describeSchedule(o)}
-                      </p>
-                    </div>
-                    <Toggle on={o.active !== false} onClick={() => toggleSale(o.id)} themeColor={themeColor} />
-                    <button type="button" onClick={() => openEditSale(o)} className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 flex-shrink-0"><Pencil size={13} /></button>
-                    <button type="button" onClick={() => deleteSale(o.id)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0"><Trash2 size={13} /></button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {saleEditId !== null && saleForm && (
-              <SaleForm form={saleForm} setForm={setSaleForm} cats={cats} themeColor={themeColor}
-                isNew={saleEditId === 'new'} onSave={saveSale} onCancel={cancelSale} />
-            )}
-          </section>
-
-          <div className="h-px bg-gray-100" />
-
-          {/* ════════════ Coupon codes ════════════ */}
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Ticket size={16} style={{ color: themeColor }} />
-                <h3 className="text-base font-extrabold text-gray-900">Coupon codes</h3>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{coupons.length}</span>
-              </div>
-              {couponEditId === null && (
-                <button type="button" onClick={openAddCoupon}
-                  className="flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-xl text-white shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                  style={{ backgroundColor: themeColor }}>
-                  <Plus size={15} strokeWidth={2.5} /> Add
-                </button>
-              )}
-            </div>
-
-            {coupons.length === 0 && couponEditId === null && (
-              <EmptyHint icon={<Ticket size={20} />} title="No coupons yet"
-                text="Create codes like FIRST10 that customers enter at checkout for a discount." />
-            )}
-
-            <div className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-3">
-              {coupons.map((c) => {
-                const live = isCouponLive(c);
-                return (
-                  <div key={c.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-gray-900 tracking-wide">{c.code}</span>
-                        <button type="button" onClick={() => copyCode(c.code)} className="text-gray-300 hover:text-gray-600 flex-shrink-0">
-                          {copiedCode === c.code ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                        </button>
-                        {c.active !== false && live && (
-                          <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full flex-shrink-0">Active</span>
-                        )}
-                        {c.expiresAt && !live && (
-                          <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">Expired</span>
-                        )}
-                        {c.showOnOrderPage === true && (
-                          <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-full flex-shrink-0">On order pages</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400 truncate">{describeCoupon(c)}</p>
-                    </div>
-                    <Toggle on={c.active !== false} onClick={() => toggleCoupon(c.id)} themeColor={themeColor} />
-                    <button type="button" onClick={() => openEditCoupon(c)} className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 flex-shrink-0"><Pencil size={13} /></button>
-                    <button type="button" onClick={() => deleteCoupon(c.id)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0"><Trash2 size={13} /></button>
-                  </div>
-                );
-              })}
-            </div>
+            <SectionHead icon={<Ticket size={16} />} title="Coupon codes" n={coupons.length}
+              note={coupons.length ? `${liveCoupons} buyers can use now` : ''} btn={btn} />
 
             {couponEditId !== null && couponForm && (
               <CouponForm form={couponForm} setForm={setCouponForm} themeColor={themeColor}
                 isNew={couponEditId === 'new'} onSave={saveCoupon} onCancel={cancelCoupon} />
             )}
+
+            {coupons.length === 0 && couponEditId === null && (
+              <div className="mt-3">
+                <EmptyHint icon={<Ticket size={20} />} title="No coupons yet"
+                  text="Create codes like FIRST10 that customers enter at checkout for a discount." />
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 mt-3">
+              {coupons.map((c) => (
+                <CouponTile key={c.id} c={c} themeColor={themeColor} btn={btn}
+                  copied={copiedCode === c.code} onCopy={() => copyCode(c.code)}
+                  onSend={onSendOffer ? () => onSendOffer({ code: c.code, offer: describeDiscount(c) }) : null}
+                  onToggle={() => toggleCoupon(c.id)} onEdit={() => openEditCoupon(c)} onDelete={() => deleteCoupon(c.id)} />
+              ))}
+            </div>
+          </section>
+
+          {/* ════════════ Scheduled sales: one tile each ════════════ */}
+          <section>
+            <SectionHead icon={<Percent size={16} />} title="Sales that run by themselves" n={offers.length}
+              note={offers.length ? `${liveSales} running now` : ''} btn={btn} />
+
+            {saleEditId !== null && saleForm && (
+              <SaleForm form={saleForm} setForm={setSaleForm} cats={cats} themeColor={themeColor}
+                isNew={saleEditId === 'new'} onSave={saveSale} onCancel={cancelSale} />
+            )}
+
+            {offers.length === 0 && saleEditId === null && (
+              <div className="mt-3">
+                <EmptyHint icon={<Percent size={20} />} title="No sales yet"
+                  text="Schedule a flash, weekend or happy-hours sale — it turns on and off by itself." />
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 mt-3">
+              {offers.map((o) => (
+                <SaleTile key={o.id} o={o} themeColor={themeColor} btn={btn}
+                  where={o.appliesTo === 'category' ? (cats.find((c) => c.id === o.categoryId)?.label || 'A category') : 'All products'}
+                  onToggle={() => toggleSale(o.id)} onEdit={() => openEditSale(o)} onDelete={() => deleteSale(o.id)} />
+              ))}
+            </div>
           </section>
         </>
       )}
 
-      <SaveBar status={saveStatus} error={saveError} onSave={handleSave} dirty={dirty} themeColor={themeColor} />
+      {/* ════════════ Announcement banner (all plans) ════════════ */}
+      <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Megaphone size={16} style={{ color: btn }} />
+          <h3 className="text-base font-extrabold text-gray-900">Announcement banner</h3>
+        </div>
+        <p className="text-[13px] text-gray-500 mb-3">A strip at the top of your page. Good for a running offer or free delivery.</p>
+        <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+          <div>
+            <label className={labelCls}>Promo message <span className="text-gray-400 font-normal ml-1">(optional)</span></label>
+            <input type="text" maxLength={100}
+              placeholder="e.g. 🎉 Free delivery this week! · 10% off above ₹500"
+              value={promo}
+              onChange={(e) => update({ promoText: e.target.value })}
+              className={inputCls} />
+            <p className="mt-1 text-xs text-gray-400">
+              Start with an emoji 🚚 then your heading · optional subtitle. Use <strong className="text-gray-500">·</strong> to separate them.
+            </p>
+          </div>
+          {promo && (
+            <div className="mt-3 lg:mt-0 rounded-2xl overflow-hidden relative" style={{ backgroundColor: `${themeColor}18` }}>
+              <div className="absolute inset-0 opacity-20 pointer-events-none"
+                   style={{ backgroundImage: `radial-gradient(circle, ${themeColor}40 1px, transparent 1px)`, backgroundSize: '18px 18px' }} />
+              <div className="relative flex items-stretch min-h-[80px]">
+                <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 px-4 py-3">
+                  <p className="font-extrabold text-sm text-gray-900 leading-tight">{promoParts[0] ?? ''}</p>
+                  {promoParts[1] && <p className="text-xs text-gray-500">{promoParts[1]}</p>}
+                  <span className="mt-1 self-start text-[10px] font-bold text-white px-2.5 py-1 rounded-lg" style={{ backgroundColor: themeColor }}>
+                    Order Now →
+                  </span>
+                </div>
+                <div className="flex-shrink-0 w-20 flex items-end justify-center pb-1 pr-1 pt-2 relative">
+                  <div className="absolute bottom-1 right-0 w-16 h-16 rounded-full" style={{ backgroundColor: `${themeColor}20` }} />
+                  <span className="relative text-4xl leading-none select-none">{promoEmoji ?? '🎉'}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Kept in view at the bottom: a switch flipped on a tile still needs Save. */}
+      {(dirty || saveStatus === 'saved') && (
+        <div className="sticky bottom-24 lg:bottom-4 z-10 bg-white rounded-2xl border border-gray-200 shadow-lg px-4 py-3 [&>div]:mt-0 [&>div]:pt-0 [&>div]:border-t-0">
+          <SaveBar status={saveStatus} error={saveError} onSave={handleSave} dirty={dirty} themeColor={themeColor} />
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+function SectionHead({ icon, title, n, note, btn }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span style={{ color: btn }}>{icon}</span>
+      <h3 className="text-base font-extrabold text-gray-900">{title}</h3>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 tabular-nums">{n}</span>
+      {note && <span className="text-[12.5px] text-gray-500 ml-1">{note}</span>}
+    </div>
+  );
+}
+
+const fmtDay = (s) => {
+  try { return new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); } catch { return s; }
+};
+const tileBtn = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-bold transition active:scale-95';
+const iconBtn = 'w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:bg-gray-100 transition';
+
+// One coupon: the code big on a tinted top, its switch beside it; what it does,
+// when it ends, and Copy / Send / Edit / Delete underneath.
+function CouponTile({ c, themeColor, btn, copied, onCopy, onSend, onToggle, onEdit, onDelete }) {
+  const on = c.active !== false;
+  const live = on && isCouponLive(c);
+  const expired = Boolean(c.expiresAt) && !isCouponLive({ ...c, active: true });
+  const off = c.discountType === 'flat' ? `₹${c.discountValue} off` : `${c.discountValue}% off`;
+  return (
+    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col"
+         style={{ borderColor: live ? `${themeColor}66` : '#f3f4f6' }}>
+      <div className="p-4 flex items-start justify-between gap-3" style={{ background: live ? `${themeColor}14` : '#f9fafb' }}>
+        <div className="min-w-0">
+          <p className="font-mono text-[20px] font-extrabold tracking-wider truncate" style={{ color: live ? btn : '#6b7280' }}>{c.code}</p>
+          <p className="text-[13px] text-gray-700 mt-1">{off}{c.minOrder ? ` on orders above ₹${c.minOrder}` : ' on any order'}</p>
+        </div>
+        <Toggle on={on} onClick={onToggle} themeColor={themeColor} label={`Turn ${c.code} ${on ? 'off' : 'on'}`} />
+      </div>
+      <div className="px-4 pt-3 pb-3.5 flex flex-col gap-3 flex-1">
+        <div className="flex items-center gap-2 flex-wrap text-[12px]">
+          <span className={`font-bold px-2 py-0.5 rounded-md ${live ? 'bg-green-50 text-green-700' : expired ? 'bg-gray-100 text-gray-500' : 'bg-amber-50 text-amber-700'}`}>
+            {live ? 'Buyers can use it' : expired ? 'Expired' : 'Switched off'}
+          </span>
+          <span className="text-gray-500">{c.expiresAt ? `${expired ? 'Ended' : 'Ends'} ${fmtDay(c.expiresAt)}` : 'No end date'}</span>
+          {c.showOnOrderPage === true && (
+            <span className="font-bold px-2 py-0.5 rounded-md text-sky-700 bg-sky-50">On order pages</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-auto">
+          <button type="button" onClick={onCopy} className={`${tileBtn} bg-white border border-gray-200 text-gray-800 hover:bg-gray-50`}>
+            {copied ? <><Check size={14} className="text-green-600" /> Copied</> : <><Copy size={14} /> Copy</>}
+          </button>
+          {onSend && (
+            <button type="button" onClick={onSend} disabled={!live} title={live ? 'Send this code to your customers on WhatsApp' : 'Turn the code on to send it'}
+              className={`${tileBtn} disabled:opacity-45`} style={{ background: `${themeColor}18`, color: btn }}>
+              <Send size={14} /> Send
+            </button>
+          )}
+          <span className="flex-1" />
+          <button type="button" onClick={onEdit} aria-label={`Edit ${c.code}`} className={`${iconBtn} hover:text-gray-700`}><Pencil size={14} /></button>
+          <button type="button" onClick={onDelete} aria-label={`Delete ${c.code}`} className={`${iconBtn} hover:text-red-500 hover:bg-red-50`}><Trash2 size={14} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One sale: the discount big, the sale's name, where and when it runs.
+function SaleTile({ o, themeColor, btn, where, onToggle, onEdit, onDelete }) {
+  const on = o.active !== false;
+  const live = isOfferLive(o);
+  return (
+    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col"
+         style={{ borderColor: live ? `${themeColor}66` : '#f3f4f6' }}>
+      <div className="p-4 flex items-start justify-between gap-3" style={{ background: live ? `${themeColor}14` : '#f9fafb' }}>
+        <div className="min-w-0">
+          <p className="text-[20px] font-extrabold leading-tight" style={{ color: live ? btn : '#6b7280' }}>{describeDiscount(o)}</p>
+          <p className="text-[13px] font-semibold text-gray-800 mt-1 truncate">{o.name}</p>
+        </div>
+        <Toggle on={on} onClick={onToggle} themeColor={themeColor} label={`Turn ${o.name} ${on ? 'off' : 'on'}`} />
+      </div>
+      <div className="px-4 pt-3 pb-3.5 flex flex-col gap-3 flex-1">
+        <div className="flex items-center gap-2 flex-wrap text-[12px]">
+          {live ? (
+            <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md bg-green-50 text-green-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Running now
+            </span>
+          ) : (
+            <span className={`font-bold px-2 py-0.5 rounded-md ${on ? 'bg-gray-100 text-gray-600' : 'bg-amber-50 text-amber-700'}`}>
+              {on ? 'Waiting for its time' : 'Switched off'}
+            </span>
+          )}
+          <span className="text-gray-500">{describeSchedule(o)} · {where}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-auto">
+          <button type="button" onClick={onEdit} className={`${tileBtn} bg-white border border-gray-200 text-gray-800 hover:bg-gray-50`}>
+            <Pencil size={14} /> Edit
+          </button>
+          <span className="flex-1" />
+          <button type="button" onClick={onDelete} aria-label={`Delete ${o.name}`} className={`${iconBtn} hover:text-red-500 hover:bg-red-50`}><Trash2 size={14} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyHint({ icon, title, text }) {
   return (
     <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50">

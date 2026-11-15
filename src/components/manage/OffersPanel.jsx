@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Megaphone, Send, Loader2, Plus, X, Check, Languages } from 'lucide-react';
 import { listTemplates, requestTemplate, offerAudience, sendOffer } from '../../utils/offerService';
 import { fetchOfferSummary } from '../../utils/cartReminderService';
@@ -36,11 +36,13 @@ function hint(t) {
   return f ? OFFER_FIELDS[f].label : 'Ready to send';
 }
 
-export default function OffersPanel({ slug, pin, businessName = '', audience = [], audienceLabel = 'all', themeColor = '#0d9488' }) {
+export default function OffersPanel({ slug, pin, businessName = '', audience = [], audienceLabel = 'all', themeColor = '#0d9488', initialFields = null }) {
   const [templates, setTemplates] = useState(null);     // null = loading; [] or array; false = failed
   const [results, setResults]     = useState(null);
   const [pickedId, setPickedId]   = useState('');
-  const [fields, setFields]       = useState({});
+  // A coupon sent here from Offers arrives already filled in.
+  const [fields, setFields]       = useState(() => ({ ...(initialFields || {}) }));
+  const rootRef = useRef(null);
   const [check, setCheck]         = useState(null);     // offer_audience result, shown before sending
   const [busy, setBusy]           = useState('');       // '' | 'checking' | 'sending' | 'requesting'
   const [progress, setProgress]   = useState(null);
@@ -63,10 +65,19 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
     return () => { alive = false; };
   }, [slug, pin]);
 
+  const loaded = templates !== null;
+  useEffect(() => {
+    if (initialFields && loaded) rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [initialFields, loaded]);
+
   const approved = useMemo(() => (templates || []).filter((t) => t.status === 'approved'), [templates]);
   const own = useMemo(() => (templates || []).filter((t) => t.own && t.status !== 'approved'), [templates]);
   const bothLangs = new Set(approved.map((t) => offerLanguage(t.body))).size > 1;
-  const shown = bothLangs ? approved.filter((t) => offerLanguage(t.body) === lang) : approved;
+  const inLang = bothLangs ? approved.filter((t) => offerLanguage(t.body) === lang) : approved;
+  // With a coupon handed over (Offers → Send), the messages with a coupon code
+  // come first, so the one picked by default can carry it.
+  const hasCode = (t) => placeholdersIn(t.body).keys.includes('code');
+  const shown = initialFields?.code ? [...inLang.filter(hasCode), ...inLang.filter((t) => !hasCode(t))] : inLang;
   const picked = shown.find((t) => t.id === pickedId) || shown[0] || null;
   const pickedLang = picked ? offerLanguage(picked.body) : 'en';
   const uniqueFields = picked ? [...new Set(placeholdersIn(picked.body).keys.filter((k) => k in OFFER_FIELDS))] : [];
@@ -128,7 +139,7 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
   const sent = Number(results?.sent_30d) || 0;
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+    <div ref={rootRef} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
       <div className="px-4 py-3 flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${themeColor}1f, transparent)` }}>
         <Megaphone size={15} style={{ color: themeColor }} />
         <span className="text-[11px] font-extrabold uppercase tracking-widest text-gray-700">Send an offer</span>
@@ -139,6 +150,11 @@ export default function OffersPanel({ slug, pin, businessName = '', audience = [
 
       <div className="px-4 pt-3 pb-4 space-y-3">
         {templates === false && <p className="text-[12px] text-rose-600">Could not load your messages. Refresh to try again.</p>}
+        {initialFields?.code && (
+          <p className="text-[12.5px] rounded-xl bg-emerald-50 text-emerald-800 px-3 py-2">
+            Coupon <b className="font-mono">{initialFields.code}</b> is filled in. Check the message below, then send.
+          </p>
+        )}
 
         {bothLangs && (
           <div className="flex justify-end">

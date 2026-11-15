@@ -3085,6 +3085,8 @@ export default function ManageStore() {
   const [phoneSearch, setPhoneSearch] = useState(false);    // the phone's full-screen search
   // Text handed from the dashboard search to a section's own search box.
   const [searchSeed,  setSearchSeed]  = useState({ tab: '', q: '', n: 0 });
+  // A coupon handed from Offers (its Send button) to the Customers offer panel.
+  const [offerSeed,   setOfferSeed]   = useState(null);
   const [shared,      setShared]      = useState(false);    // "Link copied" after Share page
   const [arrivals,    setArrivals]    = useState([]);       // orders that landed while open (the bell)
   const isDesktop = useIsDesktop();
@@ -3113,7 +3115,10 @@ export default function ManageStore() {
   const goTab = useCallback((key) => {
     setTab(key);
     setSearchSeed((s) => (s.tab && s.tab !== key ? { ...s, tab: '', q: '' } : s));
+    setOfferSeed(null);
   }, []);
+  // Offers → a coupon's Send: open Customers with the code filled into the offer message.
+  const sendOffer = useCallback((seed) => { goTab('customers'); setOfferSeed(seed); }, [goTab]);
 
   const { newCount, markSeen } = useNewOrders({
     slug: businessSlug, pin: storePin, enabled: pinVerified, onArrive: handleOrderArrive,
@@ -3462,7 +3467,7 @@ export default function ManageStore() {
           <div className="animate-pl-fade-up">
             <AbandonedTab slug={businessSlug} pin={storePin} themeColor={themeColor} storeName={config.businessName}
                           allowed={Boolean(getPlanLimits(effectivePlan(config)).abandonedCarts)}
-                          waPhone={config.whatsappNumber} />
+                          waPhone={config.whatsappNumber} products={config.products || []} />
           </div>
         ) : tab === 'whatsapp' ? (
           <div className="animate-pl-fade-up">
@@ -3473,7 +3478,7 @@ export default function ManageStore() {
         ) : tab === 'customers' ? (
           <div className="animate-pl-fade-up">
             <CustomersTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName}
-                          searchSeed={seedFor('customers')} wide={isDesktop} />
+                          searchSeed={seedFor('customers')} wide={isDesktop} offerSeed={offerSeed} />
           </div>
         ) : tab === 'analytics' ? (
           <div className="animate-pl-fade-up">
@@ -3481,7 +3486,7 @@ export default function ManageStore() {
           </div>
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
-            <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName} />
+            <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName} onGoTab={goTab} />
           </div>
         ) : tab === 'insights' ? (
           <div className="animate-pl-fade-up">
@@ -3505,6 +3510,18 @@ export default function ManageStore() {
               saveStatus={saveStatus}
               saveError={saveError}
               wide={isDesktop}
+            />
+          </div>
+        ) : tab === 'offers' ? (
+          // Offers: coupon and sale tiles at full width, each its own card.
+          <div className="animate-pl-fade-up">
+            <OffersTab
+              config={config}
+              onChange={handleChange}
+              onSave={handleSave}
+              saveStatus={saveStatus}
+              saveError={saveError}
+              onSendOffer={sendOffer}
             />
           </div>
         ) : tab === 'products' ? (
@@ -3532,15 +3549,6 @@ export default function ManageStore() {
           </div>
         ) : (
         <div key={tab} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pl-fade-up">
-          {tab === 'offers' && (
-            <OffersTab
-              config={config}
-              onChange={handleChange}
-              onSave={handleSave}
-              saveStatus={saveStatus}
-              saveError={saveError}
-            />
-          )}
           {tab === 'settings' && (
             <ManageSettings
               config={config}

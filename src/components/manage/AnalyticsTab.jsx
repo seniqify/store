@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { isPaymentIncomplete } from '../../utils/orderState';
 import { TrendingUp, TrendingDown, Lock, Sparkles, Clock, Wallet } from 'lucide-react';
 import { fetchOrders, fetchOrderFacts } from '../../utils/orderService';
@@ -6,11 +6,14 @@ import { buildStatsMetrics, chartDayLabel } from '../../utils/statsMetrics';
 import { fetchViewStats } from '../../utils/viewService';
 import { formatINR } from '../../utils/currency';
 import { unitCostForItem, hasAnyCost } from '../../utils/variants';
+import { pinColors } from '../../utils/pinGate';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // The merchant's clock. Day and hour buckets are theirs, not the browser's.
 const STORE_TZ = 'Asia/Kolkata';
 const fmtHour = (h) => { const m = h % 12 === 0 ? 12 : h % 12; return `${m}${h < 12 ? 'am' : 'pm'}`; };
+// Products listed before "Show all".
+const PRODUCT_ROWS = 8;
 
 /**
  * Sales analytics — derived entirely from the orders table (no extra setup).
@@ -35,6 +38,10 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // during render, so the rolling windows are stable across re-renders and the
   // numbers describe a single moment.
   const [loadedAt, setLoadedAt] = useState(null);
+  // The chart: how many days back, and sales or orders (sales per day is Premium).
+  const [range, setRange] = useState(14);
+  const [chartKind, setChartKind] = useState('sales');
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -58,9 +65,9 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   // show them and returns the error state instead.
   const stats = useMemo(
     () => buildStatsMetrics(factsResult?.ok ? factsResult.data : [], {
-      timeZone: STORE_TZ, now: loadedAt,
+      timeZone: STORE_TZ, now: loadedAt, chartDays: range,
     }),
-    [factsResult, loadedAt],
+    [factsResult, loadedAt, range],
   );
 
   // ── Upsell (lapsed / unpaid page) ──
@@ -157,10 +164,6 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const weekViews  = views?.week  ?? 0;
   const conv = weekViews > 0 ? Math.min(100, Math.round((thisWeek / weekViews) * 100)) : null;
 
-  // Orders per day - canonical day buckets in the merchant's own zone.
-  const days = stats.days.map((d) => ({ label: chartDayLabel(d.key), n: d.orders }));
-  const maxDay = Math.max(1, ...days.map((d) => d.n));
-
   // Top products by revenue
   const pmap = {};
   for (const o of valid) for (const it of (o.items || [])) {
@@ -169,8 +172,6 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     pmap[k].qty += it.qty || 0;
     pmap[k].rev += (it.price || 0) * (it.qty || 0);
   }
-  const top = Object.entries(pmap).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5);
-  const topMax = Math.max(1, ...top.map(([, v]) => v.rev));
 
   // ── Profit Brain — real profit from per-product cost prices. Profit is computed
   // only over items whose product has a cost set, so the number is honest (an
@@ -207,7 +208,6 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const profRanked = Object.entries(profByProd)
     .map(([name, v]) => ({ name, profit: v.rev - v.cost, margin: v.rev > 0 ? Math.round(((v.rev - v.cost) / v.rev) * 100) : 0 }))
     .sort((a, b) => b.profit - a.profit);
-  const bestProfMax = Math.max(1, ...profRanked.map((p) => Math.abs(p.profit)));
   const thin = profRanked.filter((p) => p.margin < 15);
 
   // ── Operating costs → real profit. Packaging is a flat spend on every order;
@@ -265,10 +265,6 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
   const maxHour  = Math.max(1, ...hours);
   const bestDow  = stats.busiestWeekday;
 
-  // Revenue per day - the same canonical buckets as the orders chart.
-  const revDays = stats.days.map((d) => ({ label: chartDayLabel(d.key), rev: d.revenue }));
-  const maxRev = Math.max(1, ...revDays.map((d) => d.rev));
-
   // The canonical feed is the population of record and is a superset of the
   // detailed one, so "nothing here yet" is its answer to give. Reaching this
   // line at all means the read succeeded.
@@ -292,248 +288,383 @@ export default function AnalyticsTab({ slug, pin, themeColor = '#0d9488', enable
     </span>
   ) : null;
 
-  const Stat = ({ label, value, sub }) => (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-      <p className="text-xl font-extrabold text-gray-900 mt-1 tabular-nums">{value}</p>
-      {sub && <div className="mt-0.5">{sub}</div>}
+  const Stat = ({ label, value, sub, tone }) => (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 min-w-0">
+      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.12em]">{label}</p>
+      <p className="text-[22px] font-extrabold mt-2 leading-none tabular-nums" style={{ color: tone || '#111827' }}>{value}</p>
+      {sub && <div className="mt-1.5">{sub}</div>}
     </div>
   );
+  const card = 'rounded-2xl border border-gray-100 bg-white shadow-sm';
+  const btn = pinColors(themeColor).button;
+  // The chart: sales per day (Premium) or orders per day, over the chosen days.
+  const showSales = advanced && chartKind === 'sales';
+  const points = stats.days.map((d) => ({ key: d.key, label: chartDayLabel(d.key), v: showSales ? d.revenue : d.orders }));
+  const periodTotal = points.reduce((s, p) => s + p.v, 0);
+  // Products: what sold most, with the profit on it where a cost price is set.
+  const productRows = Object.entries(pmap).sort((a, b) => b[1].rev - a[1].rev).map(([name, v]) => {
+    const pr = profByProd[name];
+    return { name, qty: v.qty, rev: v.rev, profit: pr ? pr.rev - pr.cost : null, margin: pr && pr.rev > 0 ? Math.round(((pr.rev - pr.cost) / pr.rev) * 100) : null };
+  });
+  const prodShown = showAllProducts ? productRows : productRows.slice(0, PRODUCT_ROWS);
+  const imgFor = (name) => { const p = prodByName[name]; return p?.image || (Array.isArray(p?.images) ? p.images[0] : '') || ''; };
 
   return (
-    <div className="space-y-4">
-      {/* Stat cards: two across on a phone, four on a computer */}
+    <div className="space-y-5">
+      {/* The four numbers that matter: two across on a phone, four on a computer */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Revenue" value={formatINR(revenue)} sub={<span className="text-[11px] text-gray-400">from {count} orders</span>} />
+        <Stat label="Revenue" value={formatINR(revenue)} sub={<span className="text-[12px] font-semibold text-gray-500">from {count} orders</span>} tone="#047857" />
         <Stat label="Total orders" value={placed} sub={<>
-          {notCounted && <span className="block text-[11px] text-gray-400">{notCounted}</span>}
-          <span className={['text-[11px] font-semibold inline-flex items-center gap-0.5', wow >= 0 ? 'text-emerald-600' : 'text-red-500'].join(' ')}>
-            {wow >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(wow)}% vs last week
+          <span className={['text-[12px] font-semibold inline-flex items-center gap-0.5', wow >= 0 ? 'text-emerald-700' : 'text-red-600'].join(' ')}>
+            {wow >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(wow)}% vs last week
           </span>
+          {notCounted && <span className="block text-[11px] text-gray-400 mt-0.5">{notCounted}</span>}
         </>} />
-        <Stat label="Avg order" value={formatINR(Math.round(aov))} />
-        <Stat label="Customers" value={customers} sub={
-          <span className="text-[11px] text-gray-400">
-            unique buyers{capped ? ' · last ' + orders.length + ' orders' : ''}
+        <Stat label="Page visits" value={totalViews.toLocaleString('en-IN')} sub={
+          <span className="text-[12px] font-semibold text-gray-500">
+            {weekViews.toLocaleString('en-IN')} this week{conv === null ? '' : ` · ${conv}% bought`}
           </span>} />
-        <Stat label="Page views" value={totalViews.toLocaleString('en-IN')} sub={<span className="text-[11px] text-gray-400">{weekViews.toLocaleString('en-IN')} this week</span>} />
-        <Stat label="Conversion" value={conv === null ? '—' : `${conv}%`} sub={<span className="text-[11px] text-gray-400">visitors → orders (7d)</span>} />
+        <Stat label="Real profit" value={productsWithCost === 0 ? '—' : formatINR(Math.round(headProfit))}
+          tone={productsWithCost === 0 ? '#9ca3af' : headProfit >= 0 ? btn : '#dc2626'}
+          sub={productsWithCost === 0 ? (
+            <button type="button" onClick={() => onGoTab?.('products')} className="text-[12px] font-bold" style={{ color: btn }}>Add cost prices →</button>
+          ) : <span className="text-[12px] font-semibold text-gray-500">{headMargin}% of sales{hasOpCostsSet ? ' · after costs' : ''}</span>} />
       </div>
 
-      {/* ── Profit Brain ── */}
-      {productsWithCost === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed p-5" style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
-          <div className="flex items-center gap-2 mb-1.5">
-            <Wallet size={18} style={{ color: themeColor }} />
-            <p className="font-extrabold text-gray-900 text-sm">See your real profit</p>
-          </div>
-          <p className="text-xs text-gray-500 max-w-sm">
-            Add a <b>cost price</b> to your products and PocketLink shows exactly what you <b>earn</b> — not just what you sell. Takes a minute.
-          </p>
-          <button onClick={() => onGoTab?.('products')}
-            className="mt-3 inline-flex items-center gap-1.5 text-white font-bold text-xs px-4 py-2 rounded-xl active:scale-95"
-            style={{ backgroundColor: themeColor }}>
-            Add cost prices →
-          </button>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-              <Wallet size={15} style={{ color: themeColor }} /> Profit
-            </p>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ color: headProfit >= 0 ? '#15803d' : '#b91c1c', background: headProfit >= 0 ? '#dcfce7' : '#fee2e2' }}>
-              {headMargin}% margin
-            </span>
-          </div>
+      {/* ── Every day, as a line you can read off with the pointer ─────────── */}
+      <div className={`${card} p-5`}>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
           <div>
-            <p className="text-3xl font-extrabold tabular-nums leading-none"
-               style={{ color: headProfit >= 0 ? '#16a34a' : '#dc2626' }}>
-              {formatINR(Math.round(headProfit))}
+            <h3 className="text-[15px] font-extrabold text-gray-900">{showSales ? 'Sales every day' : 'Orders every day'}</h3>
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              {showSales ? formatINR(Math.round(periodTotal)) : `${periodTotal} order${periodTotal === 1 ? '' : 's'}`} in the last {range} days · move over the chart to see each day
             </p>
-            <p className="text-[11px] text-gray-400 mt-1">{hasOpCostsSet ? 'net profit after costs' : 'net profit'}</p>
           </div>
-
-          {/* Receipt-style breakdown — Sales minus each cost */}
-          <div className="mt-3 border-t border-gray-100 pt-3 space-y-1.5">
-            {pnl.map((r) => (
-              <div key={r.label} className="flex items-center justify-between text-[12px]">
-                <span className="text-gray-500">{r.label}</span>
-                <span className="tabular-nums font-semibold text-gray-700">{r.neg ? '−' : ''}{formatINR(Math.round(r.v))}</span>
-              </div>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap">
+            {advanced && (
+              <Seg value={chartKind} onChange={setChartKind} options={[['sales', 'Sales'], ['orders', 'Orders']]} />
+            )}
+            <Seg value={range} onChange={setRange} options={[[7, '7 days'], [14, '14 days'], [30, '30 days']]} />
           </div>
+        </div>
+        <DailyChart points={points} money={showSales} color={themeColor} />
+      </div>
 
-          {deliveryLoss && (
-            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
-              🚚 <b>Delivery is eating your profit</b> — you collected {formatINR(Math.round(deliveryCharged))} for delivery but paid couriers {formatINR(Math.round(deliverySpend))}. Consider a small delivery fee or a free-delivery minimum.
+      <div className="grid gap-5 lg:grid-cols-2 items-start">
+        {/* ── Where the money goes: the hisaab, line by line ─────────────────── */}
+        {productsWithCost === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed p-5" style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Wallet size={18} style={{ color: btn }} />
+              <p className="font-extrabold text-gray-900 text-[15px]">See your real profit</p>
+            </div>
+            <p className="text-[13px] text-gray-500 max-w-sm">
+              Add a <b>cost price</b> to your products and PocketLink shows exactly what you <b>earn</b> — not just what you sell. Takes a minute.
             </p>
-          )}
-          {uncoveredUnits > 0 && (
-            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
-              ⚠️ {productsWithCost} of {totalProducts} products have a cost price — add the rest for full accuracy.
-              <button onClick={() => onGoTab?.('products')} className="ml-1 font-bold underline" style={{ color: themeColor }}>Fix →</button>
-            </p>
-          )}
-          {!hasOpCostsSet && (
-            <button onClick={() => onGoTab?.('delivery')}
-              className="mt-3 text-[11px] font-bold active:scale-95" style={{ color: themeColor }}>
-              + Add packaging &amp; delivery costs for true profit →
+            <button onClick={() => onGoTab?.('products')}
+              className="mt-3 inline-flex items-center gap-1.5 text-white font-bold text-[13px] px-4 py-2 rounded-xl active:scale-95"
+              style={{ backgroundColor: btn }}>
+              Add cost prices →
             </button>
-          )}
-          <p className="mt-2 text-[10px] text-gray-400">
-            {hasOpCostsSet
-              ? 'Counts delivery & COD fees you charged as income, minus cost of goods, packaging & courier. Payment-gateway fees not counted.'
-              : 'Profit on the items themselves — add packaging & delivery costs to see profit after everything.'}
-            {' '}Cancelled orders are excluded from Sales &amp; Profit.
-          </p>
-        </div>
-      )}
-
-      {/* Orders over time */}
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-        <p className="text-sm font-bold text-gray-900 mb-3">Orders · last 14 days</p>
-        <div className="flex items-end gap-1.5 h-28">
-          {days.map((d, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full rounded-t-md transition-all" title={`${d.n} orders`}
-                   style={{ height: `${(d.n / maxDay) * 100}%`, minHeight: d.n ? 4 : 2,
-                            backgroundColor: d.n ? themeColor : '#e5e7eb' }} />
-              <span className="text-[8px] text-gray-300">{d.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Top products */}
-      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <p className="text-sm font-bold text-gray-900">Top products</p>
-          {capNote}
-        </div>
-        <div className="space-y-2.5">
-          {top.length === 0 && <p className="text-xs text-gray-400">No products sold yet.</p>}
-          {top.map(([name, v], i) => (
-            <div key={name}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold text-gray-700 truncate pr-2">{i + 1}. {name}</span>
-                <span className="text-gray-500 flex-shrink-0 tabular-nums">{v.qty} sold · {formatINR(v.rev)}</span>
+          </div>
+        ) : (
+          <div className={`${card} p-5`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-[15px] font-extrabold text-gray-900">Where your money goes</h3>
+                <p className="text-[12px] text-gray-500 mt-0.5">Profit after every cost, like a real hisaab</p>
               </div>
-              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${(v.rev / topMax) * 100}%`, backgroundColor: themeColor }} />
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ color: headProfit >= 0 ? '#15803d' : '#b91c1c', background: headProfit >= 0 ? '#dcfce7' : '#fee2e2' }}>
+                {headMargin}% margin
+              </span>
+            </div>
+
+            {/* Receipt-style breakdown — Sales minus each cost */}
+            <div className="mt-3">
+              {pnl.map((r) => (
+                <div key={r.label} className="flex items-center justify-between py-2 border-b border-gray-100 text-[14px]">
+                  <span className={r.neg ? 'text-gray-500' : 'text-gray-900'}>{r.label}</span>
+                  <span className={`tabular-nums font-semibold ${r.neg ? 'text-gray-500' : 'text-gray-900'}`}>{r.neg ? '− ' : ''}{formatINR(Math.round(r.v))}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-3 text-[16px] font-extrabold">
+                <span className="text-gray-900">You keep</span>
+                <span className="tabular-nums" style={{ color: headProfit >= 0 ? btn : '#dc2626' }}>{formatINR(Math.round(headProfit))}</span>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Profit by product — best earners + thin-margin flags */}
-      {hasCostData && profRanked.length > 0 && (
-        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-sm font-bold text-gray-900">Profit by product</p>
+            {deliveryLoss && (
+              <p className="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+                🚚 <b>Delivery is eating your profit</b> — you collected {formatINR(Math.round(deliveryCharged))} for delivery but paid couriers {formatINR(Math.round(deliverySpend))}. Consider a small delivery fee or a free-delivery minimum.
+              </p>
+            )}
+            {uncoveredUnits > 0 && (
+              <p className="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                ⚠️ {productsWithCost} of {totalProducts} products have a cost price — add the rest for full accuracy.
+                <button onClick={() => onGoTab?.('products')} className="ml-1 font-bold underline" style={{ color: btn }}>Fix →</button>
+              </p>
+            )}
+            {!hasOpCostsSet && (
+              <button onClick={() => onGoTab?.('delivery')}
+                className="mt-3 text-[12px] font-bold active:scale-95" style={{ color: btn }}>
+                + Add packaging &amp; delivery costs for true profit →
+              </button>
+            )}
+            <p className="mt-2 text-[11px] text-gray-400">
+              {hasOpCostsSet
+                ? 'Counts delivery & COD fees you charged as income, minus cost of goods, packaging & courier. Payment-gateway fees not counted.'
+                : 'Profit on the items themselves — add packaging & delivery costs to see profit after everything.'}
+              {' '}Cancelled orders are excluded from Sales &amp; Profit.{capped ? ` Counts the last ${orders.length} orders.` : ''}
+            </p>
+          </div>
+        )}
+
+        {/* ── Your buyers: who comes back, when they order ───────────────────── */}
+        <div className={`${card} p-5`}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-[15px] font-extrabold text-gray-900">Your buyers</h3>
             {capNote}
           </div>
-          <div className="space-y-2.5">
-            {profRanked.slice(0, 6).map((p) => (
-              <div key={p.name}>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="font-semibold text-gray-700 truncate pr-2">{p.name}</span>
-                  <span className="flex-shrink-0 tabular-nums inline-flex items-center gap-1.5">
-                    <span className="font-bold" style={{ color: p.profit >= 0 ? '#16a34a' : '#dc2626' }}>{formatINR(Math.round(p.profit))}</span>
-                    <span className={['text-[10px] font-bold px-1.5 py-0.5 rounded', p.margin < 15 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-600'].join(' ')}>{p.margin}%</span>
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${(Math.abs(p.profit) / bestProfMax) * 100}%`, backgroundColor: p.profit >= 0 ? themeColor : '#dc2626' }} />
-                </div>
+          <div className="grid grid-cols-2 gap-2.5 mt-3">
+            <div className="rounded-xl bg-gray-50 p-3">
+              <p className="font-extrabold tabular-nums text-[18px] text-gray-900">{formatINR(Math.round(aov))}</p>
+              <p className="text-[11.5px] text-gray-500 font-semibold">Average order</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3">
+              <p className="font-extrabold tabular-nums text-[18px] text-gray-900">{customers}</p>
+              <p className="text-[11.5px] text-gray-500 font-semibold">Customers · unique buyers</p>
+            </div>
+            {advanced && (<>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="font-extrabold tabular-nums text-[18px] text-gray-900">{returning}</p>
+                <p className="text-[11.5px] text-gray-500 font-semibold">Returning · {repeatRate}% reorder</p>
               </div>
-            ))}
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="font-extrabold text-[18px] text-gray-900">{bestDow === null ? '—' : DOW[bestDow]}</p>
+                <p className="text-[11.5px] text-gray-500 font-semibold">Busiest day</p>
+              </div>
+            </>)}
           </div>
-          {thin.length > 0 && (
-            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
-              💡 <b>Thin margin:</b> {thin.slice(0, 3).map((p) => p.name).join(', ')}{thin.length > 3 ? ` +${thin.length - 3} more` : ''} — under 15%. Consider raising the price or bundling a combo.
-            </p>
+
+          {advanced ? (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[13px] font-bold text-gray-800 flex items-center gap-1.5">
+                  <Clock size={14} className="text-gray-400" /> When orders come in
+                </p>
+                {peakHour !== null && (
+                  <span className="text-[12px] font-semibold text-gray-600">Busiest ~{fmtHour(peakHour)}</span>
+                )}
+              </div>
+              <div className="flex items-end gap-[2px] h-20">
+                {hours.map((n, h) => (
+                  <div key={h} className="flex-1 rounded-t-[3px]" title={`${fmtHour(h)} · ${n} order${n === 1 ? '' : 's'}`}
+                       style={{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 3 : 1,
+                                backgroundColor: h === peakHour ? themeColor : `${themeColor}40` }} />
+                ))}
+              </div>
+              <div className="flex justify-between text-[10.5px] text-gray-400 mt-1">
+                <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span>
+              </div>
+            </div>
+          ) : (
+            /* ── Standard → tease the Premium insights ── */
+            <div className="mt-4 rounded-xl border border-dashed p-4 text-center"
+                 style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
+              <Sparkles size={18} className="mx-auto" style={{ color: btn }} />
+              <p className="font-extrabold text-gray-900 text-sm mt-1.5">Unlock advanced insights</p>
+              <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+                See returning customers, peak ordering hours, your busiest day and sales every day with Premium.
+              </p>
+              <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', '')}
+                 className="inline-flex items-center gap-1.5 mt-3 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm"
+                 style={{ backgroundColor: btn }}>
+                Upgrade to Premium →
+              </a>
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      {advanced ? (
-        <>
-          {/* ── Advanced insights (Premium) ── */}
-          <div className="flex items-center gap-2 pt-1">
-            <Sparkles size={15} style={{ color: themeColor }} />
-            <h3 className="text-sm font-extrabold text-gray-900">Advanced insights</h3>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-white px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: themeColor }}>Premium</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Stat label="Returning customers" value={returning}
-                  sub={<span className="text-[11px] text-gray-400">
-                    {repeatRate}% of buyers reorder{capped ? ' · last ' + orders.length : ''}
-                  </span>} />
-            <Stat label="Busiest day" value={bestDow === null ? '—' : DOW[bestDow]}
-                  sub={<span className="text-[11px] text-gray-400">most orders land here</span>} />
-          </div>
-
-          {/* Revenue trend */}
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-            <p className="text-sm font-bold text-gray-900 mb-3">Revenue · last 14 days</p>
-            <div className="flex items-end gap-1.5 h-28">
-              {revDays.map((d, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full rounded-t-md transition-all" title={formatINR(d.rev)}
-                       style={{ height: `${(d.rev / maxRev) * 100}%`, minHeight: d.rev ? 4 : 2,
-                                backgroundColor: d.rev ? themeColor : '#e5e7eb' }} />
-                  <span className="text-[8px] text-gray-300">{d.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Peak ordering hours */}
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                <Clock size={14} className="text-gray-400" /> Peak ordering hours
-              </p>
-              {peakHour !== null && (
-                <span className="text-[11px] font-semibold" style={{ color: themeColor }}>Busiest ~{fmtHour(peakHour)}</span>
-              )}
-            </div>
-            <div className="flex items-end gap-[3px] h-20">
-              {hours.map((n, h) => (
-                <div key={h} className="flex-1 rounded-t-sm transition-all" title={`${fmtHour(h)} · ${n} order${n === 1 ? '' : 's'}`}
-                     style={{ height: `${(n / maxHour) * 100}%`, minHeight: n ? 3 : 1,
-                              backgroundColor: h === peakHour ? themeColor : `${themeColor}33` }} />
-              ))}
-            </div>
-            <div className="flex justify-between text-[8px] text-gray-300 mt-1">
-              <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span>
-            </div>
-          </div>
-        </>
-      ) : (
-        /* ── Standard → tease the Premium insights ── */
-        <div className="rounded-2xl border border-dashed p-5 text-center"
-             style={{ borderColor: `${themeColor}55`, background: `${themeColor}08` }}>
-          <div className="w-11 h-11 mx-auto rounded-2xl flex items-center justify-center mb-2"
-               style={{ backgroundColor: `${themeColor}1a` }}>
-            <Sparkles size={18} style={{ color: themeColor }} />
-          </div>
-          <p className="font-extrabold text-gray-900 text-sm">Unlock advanced insights</p>
-          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
-            See returning customers, peak ordering hours, your busiest day and revenue trends with Premium.
-          </p>
-          <a href="/plans" onClick={() => sessionStorage.setItem('pocketlink_verified_phone', '')}
-             className="inline-flex items-center gap-1.5 mt-4 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm"
-             style={{ backgroundColor: themeColor }}>
-            Upgrade to Premium →
-          </a>
+      {/* ── Products: what sold, and what each one earns ─────────────────────── */}
+      <div className={card}>
+        <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
+          <h3 className="text-[15px] font-extrabold text-gray-900">Products</h3>
+          {capNote}
         </div>
-      )}
+        {productRows.length === 0 ? (
+          <p className="px-5 pb-5 text-[13px] text-gray-400">No products sold yet.</p>
+        ) : (<>
+          {/* Phone: one stacked row per product, nothing to slide sideways. */}
+          <ul className="sm:hidden divide-y divide-gray-100 border-t border-gray-100">
+            {prodShown.map((p) => (
+              <li key={p.name} className="flex items-center gap-3 px-4 py-3">
+                {imgFor(p.name)
+                  ? <img src={imgFor(p.name)} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+                  : <span className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[14px] text-gray-800 truncate">{p.name}</p>
+                  <p className="text-[12.5px] text-gray-500 tabular-nums">{p.qty} sold · <b className="text-gray-900">{formatINR(Math.round(p.rev))}</b></p>
+                </div>
+                {p.profit !== null && (
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-[14px] tabular-nums" style={{ color: p.profit >= 0 ? '#15803d' : '#dc2626' }}>{formatINR(Math.round(p.profit))}</p>
+                    <span className={['text-[10.5px] font-bold px-1.5 py-0.5 rounded', p.margin < 15 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'].join(' ')}>{p.margin}% profit</span>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[440px]">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-gray-500">
+                  <th className="font-bold px-5 py-2">Product</th>
+                  <th className="font-bold py-2 pl-3 text-right">Sold</th>
+                  <th className="font-bold py-2 pl-4 text-right">Sales</th>
+                  <th className="font-bold py-2 pl-4 text-right pr-5">Profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {prodShown.map((p) => (
+                  <tr key={p.name} className="border-t border-gray-100">
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {imgFor(p.name)
+                          ? <img src={imgFor(p.name)} alt="" className="w-8 h-8 rounded-lg object-cover bg-gray-100 flex-shrink-0" />
+                          : <span className="w-8 h-8 rounded-lg bg-gray-100 flex-shrink-0" />}
+                        <span className="font-semibold text-gray-800 truncate">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 pl-3 text-right tabular-nums text-gray-700">{p.qty}</td>
+                    <td className="py-2.5 pl-4 text-right tabular-nums font-bold text-gray-900">{formatINR(Math.round(p.rev))}</td>
+                    <td className="py-2.5 pl-4 text-right pr-5 tabular-nums whitespace-nowrap">
+                      {p.profit === null ? <span className="text-gray-300">—</span> : (
+                        <span className="inline-flex items-center gap-1.5 justify-end">
+                          <span className="font-bold" style={{ color: p.profit >= 0 ? '#15803d' : '#dc2626' }}>{formatINR(Math.round(p.profit))}</span>
+                          <span className={['text-[10.5px] font-bold px-1.5 py-0.5 rounded', p.margin < 15 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'].join(' ')}>{p.margin}%</span>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>)}
+        {productRows.length > PRODUCT_ROWS && (
+          <div className="px-5 py-3 border-t border-gray-100">
+            <button type="button" onClick={() => setShowAllProducts((v) => !v)} className="text-[13px] font-bold" style={{ color: btn }}>
+              {showAllProducts ? 'Show fewer' : `Show all ${productRows.length} products`}
+            </button>
+          </div>
+        )}
+        {hasCostData && thin.length > 0 && (
+          <p className="mx-5 mb-4 text-[12px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+            💡 <b>Thin margin:</b> {thin.slice(0, 3).map((p) => p.name).join(', ')}{thin.length > 3 ? ` +${thin.length - 3} more` : ''} — under 15%. Consider raising the price or bundling a combo.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A small segmented switch (the prototype's): one of a few choices, the picked one raised.
+function Seg({ value, options, onChange }) {
+  return (
+    <div className="inline-flex p-1 rounded-xl bg-gray-100 gap-1" role="tablist">
+      {options.map(([v, label]) => (
+        <button key={v} type="button" role="tab" aria-selected={value === v} onClick={() => onChange(v)}
+          className={['h-8 px-3 rounded-lg text-[13px] font-bold whitespace-nowrap transition',
+            value === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'].join(' ')}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A round top for the y axis: 1, 2 or 5 times a power of ten, so the gridlines
+// land on plain numbers. Counts keep an even top so the middle line is whole.
+function niceMax(v, money) {
+  if (!(v > 0)) return money ? 1000 : 4;
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / exp;
+  let m = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+  if (!money) { m = Math.max(2, Math.ceil(m)); if (m % 2) m += 1; }
+  return m;
+}
+const shortINR = (t) => (t >= 1000 ? `₹${Math.round((t / 1000) * 10) / 10}k` : `₹${Math.round(t)}`);
+const fullDay = (key) => {
+  const t = Date.parse(`${key}T12:00:00Z`);
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : key;
+};
+
+// One series over the days: a 2px line, a soft area under it, three faint
+// gridlines, the last day marked. The pointer (or a finger) reads any day off it.
+function DailyChart({ points, money, color }) {
+  const ref = useRef(null);
+  const [w, setW] = useState(640);
+  const [hov, setHov] = useState(null);
+  const gid = `area-${useId().replace(/[^a-z0-9]/gi, '')}`;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((e) => setW(Math.max(260, Math.floor(e[0].contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const n = points.length;
+  if (n === 0) return <div ref={ref} className="h-[220px] grid place-items-center text-[13px] text-gray-400">No days to show yet</div>;
+  const H = 220;
+  const pad = { l: 46, r: 14, t: 16, b: 28 };
+  const max = niceMax(Math.max(0, ...points.map((p) => p.v)), money);
+  const last = n - 1;
+  const x = (i) => pad.l + (n === 1 ? (w - pad.l - pad.r) / 2 : (i * (w - pad.l - pad.r)) / last);
+  const y = (v) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(last).toFixed(1)} ${H - pad.b} L${x(0).toFixed(1)} ${H - pad.b} Z`;
+  const ticks = [0, max / 2, max];
+  const every = Math.max(1, Math.ceil(n / (w < 420 ? 4 : 7)));
+  const hi = hov === null ? last : hov;
+  const pick = (clientX, rect) => {
+    const i = Math.round(((clientX - rect.left - pad.l) / Math.max(1, w - pad.l - pad.r)) * last);
+    setHov(Math.max(0, Math.min(last, i)));
+  };
+  const val = (v) => (money ? formatINR(Math.round(v)) : `${v} order${v === 1 ? '' : 's'}`);
+  return (
+    <div ref={ref} className="relative w-full select-none">
+      <svg width={w} height={H} role="img" aria-label={money ? 'Sales every day' : 'Orders every day'} className="block touch-pan-y"
+           onPointerMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+           onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+           onPointerLeave={() => setHov(null)}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity="0.24" />
+            <stop offset="1" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={pad.l} x2={w - pad.r} y1={y(t)} y2={y(t)} stroke="#eef0ef" strokeWidth="1" />
+            <text x={pad.l - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#6b7280">{money ? shortINR(t) : t}</text>
+          </g>
+        ))}
+        <path d={area} fill={`url(#${gid})`} />
+        <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => ((last - i) % every === 0 ? (
+          <text key={p.key} x={x(i)} y={H - 8} textAnchor={i === last ? 'end' : i === 0 ? 'start' : 'middle'} fontSize="11" fill="#6b7280">
+            {i === last ? 'Today' : fullDay(p.key)}
+          </text>
+        ) : null))}
+        <line x1={x(hi)} x2={x(hi)} y1={pad.t} y2={H - pad.b} stroke="#d1d5db" strokeDasharray="3 3" />
+        <circle cx={x(hi)} cy={y(points[hi].v)} r="5" fill={color} stroke="#fff" strokeWidth="2.5" />
+      </svg>
+      <div className="absolute top-0 px-2.5 py-1.5 rounded-lg bg-gray-900 text-white text-[12px] font-bold pointer-events-none whitespace-nowrap"
+           style={{ left: Math.min(Math.max(x(hi) - 60, 0), Math.max(0, w - 140)) }}>
+        {hi === last ? 'Today' : fullDay(points[hi].key)}: {val(points[hi].v)}
+      </div>
     </div>
   );
 }
