@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { encode as encodeBase64 } from 'https://deno.land/std@0.168.0/encoding/base64.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -428,7 +429,24 @@ serve(async (req) => {
         });
         const ld = await lr.json().catch(() => ({}));
         const link = typeof ld?.data?.label_url === 'string' && /^https:\/\//.test(ld.data.label_url) ? ld.data.label_url : null;
-        if (lr.ok && link) return json({ labelUrl: link });
+        if (lr.ok && link) {
+          // Shadowfax's stored PDF downloads instead of opening (founder, 2026-11-15).
+          // Fetch it here and send the bytes back, so the app opens it in the
+          // browser's PDF viewer to print, like Delhivery's. Only from Shadowfax's
+          // own or its storage's hosts, only a real PDF, at most 3 MB; else the link.
+          try {
+            const host = new URL(link).hostname;
+            if (/(^|\.)(storage\.googleapis\.com|amazonaws\.com|shadowfax\.in)$/.test(host)) {
+              const pr = await fetch(link);
+              const ab = pr.ok ? await pr.arrayBuffer() : null;
+              const buf = ab ? new Uint8Array(ab) : null;
+              if (buf && buf.length > 4 && buf.length <= 3_000_000 && String.fromCharCode(buf[0], buf[1], buf[2], buf[3]) === '%PDF') {
+                return json({ labelUrl: link, labelPdf: encodeBase64(ab as ArrayBuffer) });
+              }
+            }
+          } catch { /* the link still works */ }
+          return json({ labelUrl: link });
+        }
         if (lr.status === 400) return json({ error: 'Shadowfax gives the label only before pickup. Once the rider has the parcel, the label is already on it.' });
         return json({ error: 'Label not ready yet — try again in a moment.' });
       }

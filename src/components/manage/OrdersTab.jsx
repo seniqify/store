@@ -23,6 +23,7 @@ import {
   STAGE_TABS, orderStage, stageTab, tabCounts, orderSteps, nextStep, needsCallFirst, courierProgress, paymentChip,
 } from '../../utils/orderCard';
 import { BUCKET_META, courierInfo, classifyBucket } from '../../utils/deliveryStatus';
+import { openPdfTab } from '../../utils/openPdf';
 
 // Two vocabularies over the same rows: product stores see Orders (delivery
 // lifecycle); service stores see Leads (inquiry lifecycle). Same status keys in
@@ -1116,7 +1117,12 @@ function useShipment(o, slug, pin, courier) {
     catch (e) { setErr(e.message || 'Something went wrong.'); }
     finally { setBusy(''); }
   }
-  const label  = () => run('label', async () => { const r = await shipmentOp(slug, pin, o.id, 'label'); if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener'); });
+  // A PDF sent back (Shadowfax) opens in the browser's viewer to print; else the courier's link (Delhivery).
+  const label  = () => run('label', async () => {
+    const r = await shipmentOp(slug, pin, o.id, 'label');
+    if (r.labelPdf) openPdfTab(r.labelPdf, `label-${awb || o.id}.pdf`);
+    else if (r.labelUrl) window.open(r.labelUrl, '_blank', 'noopener');
+  });
   const track  = () => run('track', async () => { const r = await shipmentOp(slug, pin, o.id, 'track'); setOver({ awb, status: r.status || status }); });
   const cancel = () => { if (!window.confirm(`Cancel this ${cName} shipment?`)) return; run('cancel', async () => { const r = await shipmentOp(slug, pin, o.id, 'cancel'); if (r.cancelled) setOver({ awb: null, status: 'Cancelled' }); else setErr(`${cName} could not cancel it.`); }); };
   const booked = (r) => { setBookedWith(r.courier || null); setOver({ awb: r.awb, status: r.status || 'Manifested' }); setPickup(r.pickup || null); setModal(false); };
