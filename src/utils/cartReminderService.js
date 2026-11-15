@@ -128,3 +128,13 @@ export async function fetchCartReminder(token) {
     return null;
   }
 }
+
+/** The language reminders go in ('en' | 'mr'). Resolves to the saved one, or throws. */
+export async function setCartReminderLang(slug, pin, lang) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('set_cart_reminder_lang', {
+    p_slug: slug, p_hashed_pin: hashed, p_lang: lang === 'mr' ? 'mr' : 'en',
+  });
+  if (error || (data !== 'en' && data !== 'mr')) throw new Error('Could not change the language. Please try again.');
+  return data;
+}

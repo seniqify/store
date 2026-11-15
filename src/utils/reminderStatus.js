@@ -77,3 +77,32 @@ export function reminderCounts(carts, map, now = Date.now()) {
   const all = Array.isArray(carts) ? carts.length : 0;
   return { all, reminded, notReminded: all - reminded };
 }
+
+/**
+ * What the customer did with the reminder, in one word per cart (2026-11-15).
+ * The order outranks everything: a customer who ordered and then said stop was
+ * still won back.
+ *   none     not reminded
+ *   sending  going out now
+ *   failed   WhatsApp refused it (the Coins came back)
+ *   sent     reminded, no tap yet
+ *   opened   tapped "Complete my order", no order yet
+ *   won      ordered (through the link, or from that number within 7 days)
+ *   stopped  tapped "Stop offers" (or asked the shop to stop)
+ */
+export function cartOutcome(cart, reminder) {
+  if (!reminder) return { key: 'none', label: 'Not reminded' };
+  if (reminder.status === 'failed') return { key: 'failed', label: 'Not delivered · Coins returned' };
+  if (reminder.won_order_id) return { key: 'won', label: 'Won back', total: Number(reminder.won_total) || 0 };
+  if (reminder.stopped_at) return { key: 'stopped', label: 'Asked to stop' };
+  if (reminder.clicked_at) return { key: 'opened', label: 'Opened · didn’t buy' };
+  if (reminder.status === 'sending') return { key: 'sending', label: 'Sending…' };
+  return { key: 'sent', label: 'Reminded · no reply' };
+}
+
+/** The extra list filters: what the customer did. */
+export const OUTCOME_FILTERS = Object.freeze([
+  ['opened', 'Opened, didn’t buy'],
+  ['won', 'Won back'],
+  ['stopped', 'Asked to stop'],
+]);
