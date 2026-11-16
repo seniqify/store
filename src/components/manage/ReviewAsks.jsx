@@ -139,7 +139,7 @@ function Row({ r, mode, checked, onToggle, onAsk, state, products, btn, now }) {
 }
 
 /** "Ask all": the cost, then PocketLink sends. */
-function AskAllSheet({ count, balancePaise, lang, sending, progress, result, err, onSend, onClose, btn }) {
+function AskAllSheet({ count, total, balancePaise, lang, sending, progress, result, err, onSend, onClose, btn }) {
   useScrollLock(true);
   const cost = count * 50;
   const short = cost > (Number(balancePaise) || 0);
@@ -190,8 +190,9 @@ function AskAllSheet({ count, balancePaise, lang, sending, progress, result, err
             <button type="button" onClick={onSend} disabled={sending || covers === 0}
               className="w-full h-[52px] rounded-2xl text-white text-[15.5px] font-extrabold inline-flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ backgroundColor: WA_GREEN }}>
-              <Send size={17} /> {sending ? `Sending… ${progress?.sent || 0} sent` : `Send · ${formatCoins(Math.min(count, covers))}`}
+              <Send size={17} /> {sending ? `Sending… ${progress?.sent || 0} of ${total || count} sent` : `${err ? `Send to the other ${count}` : 'Send'} · ${formatCoins(Math.min(count, covers))}`}
             </button>
+            {sending && <p className="text-[12px] text-gray-600 text-center">About a second each. Keep this open until it finishes.</p>}
           </>
         )}
       </div>
@@ -437,15 +438,25 @@ export default function ReviewAsks({
 
   async function sendAll() {
     const ids = askAll.rows.map((r) => r.o.id);
-    setAskAll((a) => ({ ...a, sending: true, err: '', progress: { sent: 0 } }));
+    setAskAll((a) => ({ ...a, sending: true, err: '', progress: { sent: 0 }, total: ids.length }));
+    // Ten at a time (askAllReviews): each batch moves to "Asked, waiting" as it goes.
+    const onProgress = (p) => {
+      (p.sentIds || []).forEach((id) => onAsked(id, 'all'));
+      setAskAll((a) => (a ? { ...a, progress: p } : a));
+    };
     try {
-      const res = await askAllReviews(slug, pin, ids, autoLang,
-        (p) => setAskAll((a) => (a ? { ...a, progress: p } : a)));
-      res.sentIds.forEach((id) => onAsked(id, 'all'));
+      const res = await askAllReviews(slug, pin, ids, autoLang, onProgress);
       setAskAll((a) => ({ ...a, sending: false, result: res }));
-      onSpent?.();
     } catch (e) {
-      setAskAll((a) => ({ ...a, sending: false, err: e.message || 'Sending stopped. Please try again.' }));
+      // Stopped part-way: offer the rest. The ones already sent are off the list,
+      // and the server skips anyone asked meanwhile, so nobody gets it twice.
+      const done = new Set((e.partial?.sentIds || []).map(String));
+      setAskAll((a) => ({
+        ...a, sending: false, err: e.message || 'Sending stopped. Please try again.',
+        rows: a.rows.filter((r) => !done.has(String(r.o.id))),
+      }));
+    } finally {
+      onSpent?.();
     }
   }
 
@@ -641,7 +652,7 @@ export default function ReviewAsks({
           onClose={() => setQueue(null)} />
       )}
       {askAll && (
-        <AskAllSheet count={askAll.rows.length} balancePaise={auto?.balance_paise} lang={autoLang}
+        <AskAllSheet count={askAll.rows.length} total={askAll.total} balancePaise={auto?.balance_paise} lang={autoLang}
           sending={askAll.sending} progress={askAll.progress} result={askAll.result} err={askAll.err}
           onSend={sendAll} onClose={() => setAskAll(null)} btn={btn} />
       )}

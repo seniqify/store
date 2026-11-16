@@ -131,13 +131,22 @@ test('the screens: as the mockup, and "Ask all" waits for the approved template'
   const asks = read('src/components/manage/ReviewAsks.jsx');
   assert.match(asks, /disabled=\{!ready \|\| list\.length === 0\}/);
   assert.match(asks, /askAllReviews\(slug, pin, ids, autoLang,/);
-  assert.match(asks, /res\.sentIds\.forEach\(\(id\) => onAsked\(id, 'all'\)\)/);
+  // Each batch moves to "Asked, waiting" as it goes (once: never again at the end).
+  assert.match(asks, /\(p\.sentIds \|\| \[\]\)\.forEach\(\(id\) => onAsked\(id, 'all'\)\)/);
+  assert.ok(!/res\.sentIds\.forEach/.test(asks));
+  // Stopped part-way: only the rest are offered.
+  assert.match(asks, /rows: a\.rows\.filter\(\(r\) => !done\.has\(String\(r\.o\.id\)\)\)/);
   const manage = read('src/pages/ManageStore.jsx');
   assert.match(manage, /const badges    = \{ orders: newCount, reviews: reviewToAsk \};/);
   assert.match(manage, /onToAsk=\{setReviewToAsk\}/);
   assert.match(read('src/components/manage/shell/ManageSidebar.jsx'), /key === 'reviews' \? 'bg-amber-500 text-gray-900'/);
   assert.match(read('src/components/manage/WhatsAppTab.jsx'), /onClick=\{\(\) => onGoTab\?\.\('reviews'\)\}/);
   const svc = read('src/utils/reviewService.js');
-  assert.match(svc, /const batch = left\.slice\(0, 100\);/);
+  // Ten a call, so the count moves and no call nears the 150-second limit; a
+  // dropped connection is tried once more; a stop says what went.
+  assert.match(svc, /export const ASK_ALL_BATCH = 10;/);
+  assert.match(svc, /const batch = left\.slice\(0, ASK_ALL_BATCH\);/);
+  assert.match(svc, /for \(let attempt = 0; attempt < 2; attempt\+\+\)/);
+  assert.match(svc, /\{ partial: sum \}/);
   assert.match(svc, /rpc\('set_review_ask_auto'/);
 });
