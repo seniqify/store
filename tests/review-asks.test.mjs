@@ -68,7 +68,7 @@ test('the three lists: to ask (oldest first), asked waiting, reviewed; skips and
 test('withAsk moves an order on the screen at once: asked, asked again, or skipped', () => {
   const at = iso(0);
   const one = withAsk([], 'x', { asked: true, at });
-  assert.deepEqual(one, [{ order_id: 'x', asked_at: at, first_asked_at: at, ask_count: 1, skipped_at: null }]);
+  assert.deepEqual(one, [{ order_id: 'x', asked_at: at, first_asked_at: at, ask_count: 1, skipped_at: null, source: null }]);
   const again = withAsk(one, 'x', { asked: true, at: 'later' });
   assert.equal(again[0].ask_count, 2);
   assert.equal(again[0].first_asked_at, at);
@@ -123,7 +123,7 @@ test('the Reviews tab lists who to ask and opens WhatsApp inside the tap', () =>
   assert.match(tab, /<ReviewAsks data=\{askData\} error=\{asksError\}/);
   assert.match(tab, /fetchOrders\(slug, pin\), fetchReviewAsks\(slug, pin\)/);
   assert.match(tab, /askRef\.current\?\.scrollIntoView/);
-  assert.match(read('src/pages/ManageStore.jsx'), /<ReviewsTab [^>]*products=\{config\.products \|\| \[\]\} shopPhones=\{\[config\.whatsappNumber, config\.ownerPhone\]\} \/>/);
+  assert.match(read('src/pages/ManageStore.jsx'), /<ReviewsTab [^>]*products=\{config\.products \|\| \[\]\}[^>]*shopPhones=\{\[config\.whatsappNumber, config\.ownerPhone\]\} \/>/);
   const asks = read('src/components/manage/ReviewAsks.jsx');
   const open = asks.slice(asks.indexOf('async function openReviewAsk'));
   assert.ok(open.indexOf("window.open('', '_blank')") < open.indexOf('await createReviewInvite'), 'the tab opens before the await');

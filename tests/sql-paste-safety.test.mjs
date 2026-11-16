@@ -47,6 +47,9 @@ const CHANGES_THE_DATABASE = [
   'supabase/custom-domains-lease-ROLLBACK.sql',
   'supabase/review-asks-forward.sql',
   'supabase/review-asks-ROLLBACK.sql',
+  'supabase/review-asks-auto-forward.sql',
+  'supabase/review-asks-auto-ROLLBACK.sql',
+  'supabase/review-asks-schedule.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {

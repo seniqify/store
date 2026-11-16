@@ -63,6 +63,7 @@ import { walletLow, clearWalletLow, onWalletLowChange }    from '../utils/courie
 import HeroBanner, { BANNER_STYLES }                      from '../components/store/HeroBanner';
 import NewOrderToast                                       from '../components/manage/NewOrderToast';
 import { useNewOrders }                                    from '../hooks/useNewOrders';
+import { fetchReviewAskAuto }                              from '../utils/reviewService';
 import { useStoreDomain }                                  from '../hooks/useStoreDomain';
 import { publicStoreUrl }                                  from '../utils/storeUrls';
 import { fetchProductSales }                               from '../utils/salesService';
@@ -3124,6 +3125,18 @@ export default function ManageStore() {
     slug: businessSlug, pin: storePin, enabled: pinVerified, onArrive: handleOrderArrive,
   });
 
+  // The orange number next to Reviews: delivered orders nobody has asked for a
+  // review yet (get_review_ask_auto). The Reviews tab keeps it up to date.
+  const [reviewToAsk, setReviewToAsk] = useState(0);
+  useEffect(() => {
+    if (!pinVerified || !businessSlug || !storePin) return undefined;
+    let alive = true;
+    fetchReviewAskAuto(businessSlug, storePin).then((r) => {
+      if (alive && r.ok) setReviewToAsk(Number(r.data.to_ask) || 0);
+    });
+    return () => { alive = false; };
+  }, [pinVerified, businessSlug, storePin]);
+
   // ── Own domain: one PIN-checked status read; `domain` is set only while it is live ──
   const domainState = useStoreDomain({ slug: businessSlug, pin: storePin, enabled: pinVerified });
   const liveDomain  = domainState.domain;
@@ -3300,7 +3313,7 @@ export default function ManageStore() {
 
   // ── The frame: side menu, top bars, search, bell, "More" ───────────────────
   const colors    = shellColors(themeColor);
-  const badges    = { orders: newCount };
+  const badges    = { orders: newCount, reviews: reviewToAsk };
   const viewHref  = publicStoreUrl(businessSlug, {}, liveDomain, window.location.origin);
   const address   = liveDomain || `pocketlink.store/${businessSlug}`;
   const planTitle = rawPlan === 'free' || planLapsed ? 'Free plan' : `${planName} plan`;
@@ -3487,7 +3500,8 @@ export default function ManageStore() {
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
             <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName}
-              products={config.products || []} shopPhones={[config.whatsappNumber, config.ownerPhone]} />
+              products={config.products || []} onGoTab={goTab} onToAsk={setReviewToAsk}
+              shopPhones={[config.whatsappNumber, config.ownerPhone]} />
           </div>
         ) : tab === 'insights' ? (
           <div className="animate-pl-fade-up">

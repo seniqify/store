@@ -59,7 +59,7 @@ export default function MoreScreen({ config, tabs, badges = {}, colors, address,
                     {count > 0 && (
                       <span className={[
                         'absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold tabular-nums grid place-items-center',
-                        key === 'orders' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-800',
+                        key === 'orders' ? 'bg-red-600 text-white' : key === 'reviews' ? 'bg-amber-500 text-gray-900' : 'bg-gray-200 text-gray-800',
                       ].join(' ')}>{count > 9 ? '9+' : count}</span>
                     )}
                   </button>
