@@ -4,6 +4,7 @@ import WalletCard from './WalletCard';
 import ShipUpdates, { Switch } from './ShipUpdates';
 import { getOrderMessageUsage } from '../../utils/deliveryTools';
 import { fetchCartReminderSummary, setCartReminders } from '../../utils/cartReminderService';
+import { fetchReviewAskAuto } from '../../utils/reviewService';
 import { COIN_PAISE } from '../../utils/walletPacks';
 
 /**
@@ -23,10 +24,12 @@ export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeNa
   const [cart, setCart]   = useState(null);    // { enabled } | { error }
   const [cartBusy, setCartBusy] = useState(false);
   const [version, setVersion] = useState(0);   // re-read the Coins after a change
+  const [reviewAsk, setReviewAsk] = useState(null); // get_review_ask_auto
 
   const load = useCallback(async () => {
     getOrderMessageUsage(slug, pin).then(setUsage).catch(() => setUsage({ error: true }));
     fetchCartReminderSummary(slug, pin).then((r) => setCart(r.ok ? { enabled: Boolean(r.data.enabled) } : { error: true }));
+    fetchReviewAskAuto(slug, pin).then((r) => setReviewAsk(r.ok ? r.data : { error: true }));
   }, [slug, pin]);
   useEffect(() => { load(); }, [load]);
 
@@ -142,6 +145,24 @@ export default function WhatsAppTab({ slug, pin, themeColor = '#0d9488', storeNa
       {/* Shipping updates: 1 Coin each */}
       <p className={label}>Shipping updates · 1 Coin each</p>
       <ShipUpdates slug={slug} pin={pin} themeColor={themeColor} storeName={storeName} />
+
+      {/* After delivery: ask for a review, 1 Coin each (set up in Reviews) */}
+      <p className={label}>After delivery · 1 Coin each</p>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-[13.5px] font-bold text-gray-900">Ask for a review</p>
+          <p className="text-[11.5px] text-gray-500">
+            {!reviewAsk ? 'Loading…'
+              : reviewAsk.error ? 'Couldn’t load this setting'
+                : reviewAsk.on ? `On · ${reviewAsk.days} day${reviewAsk.days === 1 ? '' : 's'} after delivery · ${reviewAsk.lang === 'mr' ? 'मराठी' : 'English'}`
+                  : 'Off · a WhatsApp with a review link after each delivery'}
+          </p>
+        </div>
+        <button type="button" onClick={() => onGoTab?.('reviews')}
+          className="h-9 px-3 rounded-xl border border-gray-200 bg-white text-[12.5px] font-bold text-gray-800 hover:bg-gray-50 flex-shrink-0">
+          Set up in Reviews
+        </button>
+      </div>
       </div>
 
       {!wide && winBack}

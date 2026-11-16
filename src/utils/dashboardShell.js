@@ -108,7 +108,7 @@ const SUBTITLES = {
   delivery: 'Book couriers and track every parcel',
   whatsapp: 'Coins and automatic messages',
   customers: 'Everyone who bought from you',
-  reviews: 'What buyers say about you',
+  reviews: 'What buyers say about your shop',
   offers: 'Coupon codes for your buyers',
   ads: 'Facebook and Instagram',
   abandoned: 'Added to cart but did not buy',

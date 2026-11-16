@@ -103,8 +103,9 @@ export function buildReviewAsks(orders = [], asks = [], reviews = [], { now = Da
   return { toAsk, older, asked, reviewed, skipped, rate: sent ? Math.round((reviewed.length / sent) * 100) : null };
 }
 
-/** The asks list after this screen asked or skipped an order (before a reload). */
-export function withAsk(asks = [], orderId, { asked = false, skipped = false, at = new Date().toISOString() } = {}) {
+/** The asks list after this screen asked or skipped an order (before a reload).
+ *  `source`: 'all' when PocketLink sent it ("Ask all"), null when the shop did. */
+export function withAsk(asks = [], orderId, { asked = false, skipped = false, source = null, at = new Date().toISOString() } = {}) {
   const id = String(orderId);
   let found = false;
   const out = (asks || []).map((a) => {
@@ -112,7 +113,7 @@ export function withAsk(asks = [], orderId, { asked = false, skipped = false, at
     found = true;
     return {
       ...a,
-      ...(asked ? { asked_at: at, ask_count: (Number(a.ask_count) || 0) + 1, first_asked_at: a.first_asked_at || at } : {}),
+      ...(asked ? { asked_at: at, ask_count: (Number(a.ask_count) || 0) + 1, first_asked_at: a.first_asked_at || at, source } : {}),
       ...(skipped ? { skipped_at: at } : {}),
     };
   });
@@ -123,7 +124,25 @@ export function withAsk(asks = [], orderId, { asked = false, skipped = false, at
       first_asked_at: asked ? at : null,
       ask_count: asked ? 1 : 0,
       skipped_at: skipped ? at : null,
+      source: asked ? source : null,
     });
   }
   return out;
+}
+
+/** The photo of an order's first item (its product's), or ''. */
+export function orderImage(o, products = []) {
+  const it = (o?.items || [])[0];
+  if (!it) return '';
+  const pid = String(it.productId ?? it.id ?? '').split('::')[0];
+  const p = (products || []).find((x) => pid && String(x.id) === pid) || (products || []).find((x) => x.name === it.name);
+  return p?.image || (Array.isArray(p?.images) ? p.images[0] : '') || it.image || '';
+}
+
+/** How a review's order was asked, for the chip on the review card. */
+export function askSourceLabel(asks = [], orderId) {
+  if (!orderId) return '';
+  const a = (asks || []).find((x) => String(x.order_id) === String(orderId));
+  if (!a || !(Number(a.ask_count) > 0)) return '';
+  return a.source === 'auto' ? 'Asked automatically' : 'Asked by you';
 }

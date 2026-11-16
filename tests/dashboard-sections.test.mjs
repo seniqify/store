@@ -90,9 +90,11 @@ test('Reviews: the rating panel on the left (average, 5 to 1 bars, ask for revie
   const tab = read('src/components/manage/ReviewsTab.jsx');
   assert.match(tab, /const dist = \[5, 4, 3, 2, 1\]\.map/);
   assert.match(tab, /all from real orders/);
-  // "Ask buyers for a review" now goes to the Ask for reviews list on this tab
-  // (2026-11-16), not to Orders: tests/review-asks.test.mjs.
-  assert.match(tab, /onClick=\{\(\) => askRef\.current\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)\}/);
+  // Asking for reviews lives on this tab now (2026-11-16, mockup 4G4RXkGPxexuUZYPDdwZeH):
+  // "Ask automatically" under the rating panel, the list beside it.
+  // tests/review-asks.test.mjs and tests/review-asks-auto.test.mjs.
+  assert.match(tab, /<AutoCard auto=\{auto\}/);
+  assert.match(tab, /<ReviewAsks data=\{askData\}/);
   assert.match(MANAGE, /<ReviewsTab [^>]*shopPhones=\{\[config\.whatsappNumber, config\.ownerPhone\]\} \/>/);
   // Still reply and report only: nothing is hidden or deleted.
   assert.match(tab, /replyToReview\(slug, pin, r\.id, text\)/);

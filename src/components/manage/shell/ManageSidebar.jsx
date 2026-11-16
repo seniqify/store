@@ -44,7 +44,7 @@ export default function ManageSidebar({ config, tabs, tab, onSelect, badges = {}
                     {count > 0 && (
                       <span className={[
                         'ml-auto min-w-[22px] h-5 px-1.5 rounded-full text-[11px] font-extrabold tabular-nums grid place-items-center',
-                        key === 'orders' ? 'bg-red-600 text-white' : 'bg-white/[0.16] text-white',
+                        key === 'orders' ? 'bg-red-600 text-white' : key === 'reviews' ? 'bg-amber-500 text-gray-900' : 'bg-white/[0.16] text-white',
                       ].join(' ')}>
                         {count > 99 ? '99+' : count}
                       </span>

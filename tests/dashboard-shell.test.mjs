@@ -97,7 +97,8 @@ test('the dashboard uses the new frame and drops the slide-out drawer', () => {
   // Lock still clears the PIN, so the PIN screen comes back.
   assert.match(MANAGE, /const lock {6}= \(\) => \{ setPinVerified\(false\); setStorePin\(''\);/);
   // The new-order count still drives the red Orders badge, now through the bell too.
-  assert.match(MANAGE, /const badges {4}= \{ orders: newCount \}/);
+  // Reviews also carries a number: delivered orders nobody has asked (2026-11-16).
+  assert.match(MANAGE, /const badges {4}= \{ orders: newCount, reviews: reviewToAsk \}/);
   assert.match(MANAGE, /<AlertsBell newCount=\{newCount\}/);
 });
 

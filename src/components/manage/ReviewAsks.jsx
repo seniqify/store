@@ -1,30 +1,40 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Play, Check, X, Star, MessageCircle, RefreshCw } from 'lucide-react';
-import { CartThumbs } from './CartChat';
-import { createReviewInvite, setReviewAskSkip } from '../../utils/reviewService';
+import { Send, Play, Check, X, Star, MessageCircle, RefreshCw, ShoppingBag } from 'lucide-react';
+import { createReviewInvite, setReviewAskSkip, askAllReviews } from '../../utils/reviewService';
 import { reviewLink, reviewInviteMessage } from '../../utils/reviewShape';
-import { phone10, daysAgo, ASK_WINDOW_DAYS } from '../../utils/reviewAsks';
+import { phone10, daysAgo, orderImage, ASK_WINDOW_DAYS } from '../../utils/reviewAsks';
 import { shipmentRef } from '../../utils/deliveryStatus';
 import { formatINR } from '../../utils/currency';
+import { coinsOf, formatCoins } from '../../utils/walletPacks';
 import { pinColors } from '../../utils/pinGate';
 import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
  * "Ask for reviews" (founder, 2026-11-16; mockup 4G4RXkGPxexuUZYPDdwZeH).
- * Delivered orders are listed here, so asking no longer means searching Orders
- * and tapping each card. "Send one by one" walks through the ticked customers:
- * WhatsApp opens with the message ready, the shop presses send, comes back, and
- * the next customer is waiting. Free: it goes from the shop's own WhatsApp.
+ * Delivered orders are listed here, so asking no longer means searching Orders.
  *
- * The lists come from buildReviewAsks (src/utils/reviewAsks.js).
+ *   Ask all N on WhatsApp   PocketLink sends each ticked customer the review
+ *                           request from its WhatsApp, 1 Coin each
+ *                           (review-asks-now). Starts once WhatsApp approves
+ *                           the template (`ready`).
+ *   Send one by one · free  WhatsApp opens on the shop's phone with the message
+ *                           ready for each ticked customer; press send, come
+ *                           back, the next one is waiting.
+ *
+ * On a phone the "N customers to ask" card comes first and the list opens from
+ * "See the N orders". The lists come from buildReviewAsks (utils/reviewAsks.js).
  */
 
 const LIST_CAP = 8;
+const WA_GREEN = '#16a34a';
 const LANG_KEY = (slug) => `pl-review-ask-lang:${slug}`;
 
-function readLang(slug) {
-  try { return localStorage.getItem(LANG_KEY(slug)) === 'mr' ? 'mr' : 'en'; } catch { return 'en'; }
+function readLang(slug, fallback) {
+  try {
+    const v = localStorage.getItem(LANG_KEY(slug));
+    return v === 'mr' || v === 'en' ? v : fallback;
+  } catch { return fallback; }
 }
 function saveLang(slug, lang) {
   try { localStorage.setItem(LANG_KEY(slug), lang); } catch { /* private mode: just this visit */ }
@@ -55,23 +65,24 @@ async function openReviewAsk({ o, slug, pin, storeName, lang }) {
   }
 }
 
-function Stars({ value = 0 }) {
-  return (
-    <span className="inline-flex items-center" role="img" aria-label={`${value} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star key={n} size={13} className={n <= Math.round(value) ? 'fill-amber-400 text-amber-400' : 'fill-gray-200 text-gray-300'} />
-      ))}
+function Pic({ src, size = 46, round = false, className = '' }) {
+  const shape = round ? 'rounded-full' : 'rounded-[10px]';
+  return src ? (
+    <img src={src} alt="" className={`${shape} object-cover border border-gray-100 flex-shrink-0 bg-gray-50 ${className}`} style={{ width: size, height: size }} />
+  ) : (
+    <span className={`${shape} bg-gray-100 text-gray-400 grid place-items-center flex-shrink-0 ${className}`} style={{ width: size, height: size }}>
+      <ShoppingBag size={Math.round(size * 0.38)} />
     </span>
   );
 }
 
 function LangSwitch({ lang, onChange }) {
   return (
-    <span className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Message language">
+    <span className="inline-flex rounded-full bg-white p-0.5" role="group" aria-label="Message language">
       {[['en', 'English'], ['mr', 'मराठी']].map(([k, label]) => (
         <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={lang === k}
-          className={['h-7 px-3 rounded-full text-[12px] font-bold transition',
-            lang === k ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'].join(' ')}>
+          className={['h-[26px] px-2.5 rounded-full text-[12px] font-bold transition',
+            lang === k ? 'bg-gray-900 text-white' : 'text-gray-700 hover:text-gray-900'].join(' ')}>
           {label}
         </button>
       ))}
@@ -88,18 +99,20 @@ function Row({ r, mode, checked, onToggle, onAsk, state, products, btn, now }) {
       : `${r.reviews} review${r.reviews === 1 ? '' : 's'} · #${shipmentRef(o)}`;
   const busy = state?.busy;
   return (
-    <li className="flex items-center gap-3 px-4 lg:px-5 py-3 border-t border-gray-100">
+    <li className="flex items-center gap-3.5 px-4 lg:px-5 py-3 border-t border-gray-100">
       {mode === 'ask' && (
         <input type="checkbox" checked={checked} onChange={onToggle}
           aria-label={`Ask ${o.customer_name || 'this customer'}`}
           className="w-[18px] h-[18px] flex-shrink-0 cursor-pointer" style={{ accentColor: btn }} />
       )}
-      <CartThumbs items={o.items || []} products={products} />
+      <Pic src={orderImage(o, products)} />
       <div className="flex-1 min-w-0">
         <p className="text-[14px] font-bold text-gray-900 truncate">{o.customer_name || 'Customer'}</p>
         <p className="text-[13px] text-gray-600 truncate">{itemsLine(o)}</p>
-        <p className="text-[12px] text-gray-500 mt-0.5 truncate inline-flex items-center gap-1.5 max-w-full">
-          {mode === 'reviewed' ? <Stars value={r.rating} /> : mode === 'ask' ? <Check size={12} className="text-emerald-600 flex-shrink-0" /> : null}
+        <p className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0">
+          {mode === 'reviewed'
+            ? <span className="text-amber-700 font-extrabold flex-shrink-0">{'★'.repeat(Math.round(r.rating))}{'☆'.repeat(5 - Math.round(r.rating))}</span>
+            : mode === 'ask' ? <Check size={13} strokeWidth={2.6} className="text-emerald-600 flex-shrink-0" /> : null}
           <span className="truncate">{meta}</span>
         </p>
         {state?.err && <p className="text-[12px] text-red-600 mt-0.5" role="alert">{state.err}</p>}
@@ -112,15 +125,78 @@ function Row({ r, mode, checked, onToggle, onAsk, state, products, btn, now }) {
       <span className="hidden sm:block text-[14px] font-extrabold tabular-nums text-gray-900">{formatINR(Number(o.total) || 0)}</span>
       {mode !== 'reviewed' && (
         <button type="button" onClick={() => onAsk(r)} disabled={busy}
+          aria-label={`Ask ${o.customer_name || 'this customer'} yourself on WhatsApp`}
           title="Send it yourself on WhatsApp, free"
-          className={['h-9 px-3 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-1.5 flex-shrink-0 active:scale-95 disabled:opacity-60',
+          className={['h-9 px-3 rounded-[10px] text-[12.5px] font-bold inline-flex items-center gap-1.5 flex-shrink-0 active:scale-95 disabled:opacity-60',
             mode === 'ask' ? 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
               : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'].join(' ')}>
-          {mode === 'ask' ? <Star size={13} className="fill-current" /> : <Send size={13} />}
+          {mode === 'ask' ? <Star size={14} className="fill-current" /> : <Send size={13} />}
           {busy ? '…' : mode === 'ask' ? 'Ask' : 'Ask again'}
         </button>
       )}
     </li>
+  );
+}
+
+/** "Ask all": the cost, then PocketLink sends. */
+function AskAllSheet({ count, balancePaise, lang, sending, progress, result, err, onSend, onClose, btn }) {
+  useScrollLock(true);
+  const cost = count * 50;
+  const short = cost > (Number(balancePaise) || 0);
+  const covers = coinsOf(balancePaise);
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Ask all on WhatsApp"
+         onKeyDown={(e) => { if (e.key === 'Escape' && !sending) onClose(); }}>
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl px-5 pt-3 pb-6 space-y-4 max-h-[92vh] overflow-y-auto">
+        <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto sm:hidden" />
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-extrabold text-gray-900">Ask {count} customer{count === 1 ? '' : 's'} on WhatsApp</h3>
+            <p className="text-[12.5px] text-gray-600 mt-0.5">From PocketLink’s WhatsApp, with your shop’s name · {lang === 'mr' ? 'मराठी' : 'English'}</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={sending} aria-label="Close" autoFocus
+            className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40">
+            <X size={16} />
+          </button>
+        </div>
+        {result ? (
+          <div className="space-y-2 text-[14px] text-gray-800">
+            <p className="text-[16px] font-extrabold text-gray-900">Sent to {result.sent} customer{result.sent === 1 ? '' : 's'}</p>
+            {result.failed > 0 && <p>{result.failed} could not be sent (not on WhatsApp). Their Coins came back.</p>}
+            {result.stoppedFor === 'no_balance' && <p className="text-amber-800 font-semibold">Your Coins ran out. Add Coins to ask the rest.</p>}
+            {result.stoppedFor === 'night' && <p className="text-amber-800 font-semibold">It’s night now. The rest can go after 9 am.</p>}
+            {result.skipped > 0 && !result.stoppedFor && <p>{result.skipped} skipped: already asked, or they asked to stop messages.</p>}
+            <button type="button" onClick={onClose} className="w-full h-12 rounded-xl text-white text-[15px] font-bold" style={{ backgroundColor: btn }}>Done</button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-gray-50 p-3">
+                <p className="text-2xl font-extrabold text-gray-900 tabular-nums">{formatCoins(count)}</p>
+                <p className="text-xs text-gray-600">1 Coin each</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-3">
+                <p className="text-2xl font-extrabold text-gray-900 tabular-nums">{formatCoins(covers)}</p>
+                <p className="text-xs text-gray-600">{short ? `cover ${covers} of them` : 'in your wallet'}</p>
+              </div>
+            </div>
+            <div className="space-y-1.5 text-[12.5px] text-gray-700">
+              <p className="flex items-center gap-2"><Check size={15} className="text-emerald-700 flex-shrink-0" />Each gets a link for their own order only</p>
+              <p className="flex items-center gap-2"><Check size={15} className="text-emerald-700 flex-shrink-0" />Anyone already asked, or who asked to stop, is skipped</p>
+              <p className="flex items-center gap-2"><Check size={15} className="text-emerald-700 flex-shrink-0" />Failed messages come back to your wallet</p>
+              {short && <p className="text-amber-700 font-semibold">Your Coins cover {covers}. The rest wait until you add Coins.</p>}
+            </div>
+            {err && <p className="text-[13px] text-red-600" role="alert">{err}</p>}
+            <button type="button" onClick={onSend} disabled={sending || covers === 0}
+              className="w-full h-[52px] rounded-2xl text-white text-[15.5px] font-extrabold inline-flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ backgroundColor: WA_GREEN }}>
+              <Send size={17} /> {sending ? `Sending… ${progress?.sent || 0} sent` : `Send · ${formatCoins(Math.min(count, covers))}`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -202,12 +278,12 @@ function OneByOne({ rows, slug, pin, storeName, lang, onLang, products, btn, now
           {rows.length <= 12 ? (
             <div className="mt-3 flex gap-1" aria-hidden="true">
               {rows.map((r, i) => (
-                <span key={r.id} className="h-1.5 flex-1 rounded-full"
-                  style={{ background: done[r.id] === 'sent' ? '#16a34a' : done[r.id] ? '#d1d5db' : i === pos ? '#f59e0b' : '#e5e7eb' }} />
+                <span key={r.id} className="h-[5px] flex-1 rounded-full"
+                  style={{ background: done[r.id] === 'sent' ? WA_GREEN : done[r.id] ? '#d1d5db' : i === pos ? '#f59e0b' : '#e5e7eb' }} />
               ))}
             </div>
           ) : (
-            <div className="mt-3 h-1.5 rounded-full bg-gray-200 overflow-hidden" aria-hidden="true">
+            <div className="mt-3 h-[5px] rounded-full bg-gray-200 overflow-hidden" aria-hidden="true">
               <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${Math.round((handled / rows.length) * 100)}%` }} />
             </div>
           )}
@@ -238,12 +314,12 @@ function OneByOne({ rows, slug, pin, storeName, lang, onLang, products, btn, now
         ) : (
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
             <div className="flex items-center gap-3.5">
-              <CartThumbs items={cur.o.items || []} products={products} />
+              <Pic src={orderImage(cur.o, products)} size={64} className="rounded-[14px]" />
               <div className="min-w-0">
-                <p className="text-[18px] font-extrabold text-gray-900 leading-tight truncate">{cur.o.customer_name || 'Customer'}</p>
+                <p className="text-[19px] font-extrabold text-gray-900 leading-tight truncate">{cur.o.customer_name || 'Customer'}</p>
                 <p className="text-[13.5px] text-gray-700 truncate">{itemsLine(cur.o)} · {formatINR(Number(cur.o.total) || 0)}</p>
                 <p className="text-[12.5px] text-gray-600 inline-flex items-center gap-1">
-                  <Check size={13} className="text-emerald-600" /> Delivered {daysAgo(cur.deliveredAt, now)} · #{shipmentRef(cur.o)}
+                  <Check size={13} strokeWidth={2.6} className="text-emerald-600" /> Delivered {daysAgo(cur.deliveredAt, now)} · #{shipmentRef(cur.o)}
                 </p>
               </div>
             </div>
@@ -260,15 +336,15 @@ function OneByOne({ rows, slug, pin, storeName, lang, onLang, products, btn, now
 
             {link ? (
               <a href={link} target="_blank" rel="noopener noreferrer" onClick={() => next(cur.id, 'sent')}
-                className="w-full h-[52px] rounded-2xl text-[15.5px] font-extrabold text-white flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#16a34a' }}>
-                <MessageCircle size={18} /> Open WhatsApp for {firstName(cur.o)}
+                className="w-full h-[54px] rounded-2xl text-[16px] font-extrabold text-white flex items-center justify-center gap-2.5"
+                style={{ backgroundColor: WA_GREEN }}>
+                <MessageCircle size={19} /> Open WhatsApp for {firstName(cur.o)}
               </a>
             ) : (
               <button type="button" onClick={send} disabled={busy}
-                className="w-full h-[52px] rounded-2xl text-[15.5px] font-extrabold text-white flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60"
-                style={{ backgroundColor: '#16a34a' }}>
-                <MessageCircle size={18} /> {busy ? 'Making the link…' : `Send to ${firstName(cur.o)} on WhatsApp`}
+                className="w-full h-[54px] rounded-2xl text-[16px] font-extrabold text-white flex items-center justify-center gap-2.5 active:scale-[0.98] disabled:opacity-60"
+                style={{ backgroundColor: WA_GREEN }}>
+                <MessageCircle size={19} /> {busy ? 'Making the link…' : `Send to ${firstName(cur.o)} on WhatsApp`}
               </button>
             )}
             {err && <p className="text-[13px] text-red-600 text-center" role="alert">{err}</p>}
@@ -293,6 +369,7 @@ function OneByOne({ rows, slug, pin, storeName, lang, onLang, products, btn, now
                 <ul className="space-y-2">
                   {rows.slice(pos + 1, pos + 4).map((r) => (
                     <li key={r.id} className="flex items-center gap-2.5">
+                      <Pic src={orderImage(r.o, products)} size={32} className="rounded-lg" />
                       <span className="flex-1 min-w-0 text-[13.5px] font-bold text-gray-800 truncate">{r.o.customer_name || 'Customer'}</span>
                       <span className="text-[12px] text-gray-500 flex-shrink-0">{daysAgo(r.deliveredAt, now)}</span>
                     </li>
@@ -310,15 +387,19 @@ function OneByOne({ rows, slug, pin, storeName, lang, onLang, products, btn, now
 
 export default function ReviewAsks({
   data, error = '', onRetry, slug, pin, storeName = '', products = [], themeColor = '#0d9488',
-  onAsked, onSkipped, cardRef = null,
+  onAsked, onSkipped, cardRef = null, ready = false, auto = null, onSpent, phoneMiddle = null,
+  listOpen = false, onListOpen, tab: tabProp, onTab,
 }) {
-  const [tab, setTab]           = useState('ask');      // 'ask' | 'asked' | 'reviewed'
+  const [tabState, setTabState] = useState('ask');      // 'ask' | 'asked' | 'reviewed'
+  const tab = tabProp || tabState;
+  const setTab = (t) => { setTabState(t); onTab?.(t); };
   const [unticked, setUnticked] = useState(() => new Set());
   const [showOlder, setShowOlder] = useState(false);
   const [showAll, setShowAll]   = useState(false);
-  const [lang, setLangState]    = useState(() => readLang(slug));
+  const [lang, setLangState]    = useState(() => readLang(slug, auto?.lang === 'mr' ? 'mr' : 'en'));
   const [rowState, setRowState] = useState({});        // order id -> { busy, err, url }
   const [queue, setQueue]       = useState(null);      // the rows being sent one by one
+  const [askAll, setAskAll]     = useState(null);      // { rows, sending, progress, result, err }
   const btn = pinColors(themeColor).button;
   const now = Date.now();
 
@@ -330,6 +411,7 @@ export default function ReviewAsks({
   const rows = tab === 'ask' ? askRows : tab === 'asked' ? (data?.asked || []) : (data?.reviewed || []);
   const shown = showAll ? rows : rows.slice(0, LIST_CAP);
   const ticked = askRows.filter((r) => !unticked.has(r.id));
+  const autoLang = auto?.lang === 'mr' ? 'mr' : 'en';
 
   function toggle(id) {
     setUnticked((s) => {
@@ -353,21 +435,96 @@ export default function ReviewAsks({
     }
   }
 
+  async function sendAll() {
+    const ids = askAll.rows.map((r) => r.o.id);
+    setAskAll((a) => ({ ...a, sending: true, err: '', progress: { sent: 0 } }));
+    try {
+      const res = await askAllReviews(slug, pin, ids, autoLang,
+        (p) => setAskAll((a) => (a ? { ...a, progress: p } : a)));
+      res.sentIds.forEach((id) => onAsked(id, 'all'));
+      setAskAll((a) => ({ ...a, sending: false, result: res }));
+      onSpent?.();
+    } catch (e) {
+      setAskAll((a) => ({ ...a, sending: false, err: e.message || 'Sending stopped. Please try again.' }));
+    }
+  }
+
+  const askAllButton = (list, phone = false) => (
+    <button type="button" onClick={() => setAskAll({ rows: list })} disabled={!ready || list.length === 0}
+      className={['rounded-xl text-white font-extrabold inline-flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50',
+        phone ? 'w-full h-[52px] rounded-[14px] text-[15.5px]' : 'h-[46px] px-[18px] text-[14.5px] w-full sm:w-auto'].join(' ')}
+      style={{ backgroundColor: WA_GREEN }}>
+      <Send size={phone ? 17 : 16} /> Ask all {list.length} on WhatsApp
+      <span className="bg-white/25 rounded-lg px-2 py-[3px] text-[12.5px]">{formatCoins(list.length)}</span>
+    </button>
+  );
+  const oneByOneButton = (list, phone = false) => (
+    <button type="button" onClick={() => setQueue(list)} disabled={list.length === 0}
+      className={['rounded-xl border border-gray-300 bg-white text-gray-900 font-bold inline-flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50',
+        phone ? 'w-full h-[46px] rounded-[14px] text-[14.5px]' : 'h-[46px] px-4 text-[14px] w-full sm:w-auto'].join(' ')}>
+      <Play size={14} className="fill-current" /> {phone ? 'Send one by one yourself · free' : 'Send one by one · free'}
+    </button>
+  );
+  const notReadyNote = !ready && (
+    <p className="text-[12px] text-amber-800 font-semibold">“Ask all” starts when WhatsApp approves the message. “Send one by one” works now.</p>
+  );
+
+  // ── Phone: "N customers to ask" ────────────────────────────────────────────
+  const n = data ? data.toAsk.length : 0;
+  const pics = data ? data.toAsk.slice(0, 3).map((r) => orderImage(r.o, products)) : [];
+  const phoneSummary = (
+    <section className="lg:hidden rounded-[18px] border border-amber-200 bg-white shadow-sm p-4">
+      {!data ? (
+        <div className="h-24 animate-pulse rounded-xl bg-gray-50" aria-label="Loading" />
+      ) : n === 0 ? (
+        <div>
+          <h2 className="text-[17px] font-extrabold text-gray-900">Nobody to ask right now</h2>
+          <p className="text-[12.5px] text-gray-600 mt-0.5">When an order is delivered, it shows here.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-3">
+            <div className="flex flex-shrink-0">
+              {pics.map((src, i) => (
+                <Pic key={i} src={src} size={38} round className={['border-2 border-white', i ? '-ml-3' : ''].join(' ')} />
+              ))}
+              {n > 3 && (
+                <span className="-ml-3 w-[38px] h-[38px] rounded-full border-2 border-white bg-amber-100 text-amber-800 text-[12px] font-extrabold grid place-items-center">+{n - 3}</span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-[17px] font-extrabold text-gray-900 leading-tight">{n} customer{n === 1 ? '' : 's'} to ask</h2>
+              <p className="text-[12.5px] text-gray-600 mt-0.5">Their orders were delivered. Nobody has asked them yet.</p>
+            </div>
+          </div>
+          <div className="mt-3.5">{askAllButton(data.toAsk, true)}</div>
+          <div className="mt-2">{oneByOneButton(data.toAsk, true)}</div>
+          {!ready && <div className="mt-2">{notReadyNote}</div>}
+          <button type="button" onClick={() => { setTab('ask'); onListOpen?.(!listOpen); }}
+            className="mt-2.5 w-full text-center text-[13px] font-bold" style={{ color: btn }}>
+            {listOpen ? 'Hide the orders' : `See the ${n} order${n === 1 ? '' : 's'}`}
+          </button>
+        </>
+      )}
+    </section>
+  );
+
+  // ── The list ───────────────────────────────────────────────────────────────
   const head = (
-    <div className="px-4 lg:px-5 pt-4 pb-3 flex flex-wrap items-center gap-3">
+    <div className="px-4 lg:px-5 pt-[18px] pb-3.5 flex flex-wrap items-center gap-3">
       <div className="flex-1 min-w-[220px]">
-        <h2 className="text-[17px] font-extrabold text-gray-900">Ask for reviews</h2>
-        <p className="text-[13px] text-gray-500">Delivered orders, ready to ask. No searching, no copying.</p>
+        <h2 className="text-[18px] font-extrabold text-gray-900">Ask for reviews</h2>
+        <p className="text-[13px] text-gray-500 mt-0.5">Delivered orders, ready to ask. No searching, no copying.</p>
       </div>
       {data && (
         <div className="flex gap-1.5 flex-wrap">
-          {[['ask', 'To ask', askRows.length], ['asked', 'Asked, waiting', data.asked.length], ['reviewed', 'Reviewed', data.reviewed.length]].map(([k, label, n]) => {
+          {[['ask', 'To ask', askRows.length], ['asked', 'Asked, waiting', data.asked.length], ['reviewed', 'Reviewed', data.reviewed.length]].map(([k, label, c]) => {
             const on = tab === k;
             return (
               <button key={k} type="button" aria-pressed={on} onClick={() => { setTab(k); setShowAll(false); }}
-                className={['px-3.5 py-1.5 rounded-full text-xs font-semibold border transition',
-                  on ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'].join(' ')}>
-                {label} <span className={on ? 'opacity-70' : 'text-gray-400'}>{n}</span>
+                className={['h-8 px-3.5 rounded-full text-[12.5px] border transition',
+                  on ? 'bg-gray-900 text-white border-gray-900 font-bold' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 font-semibold'].join(' ')}>
+                {label} · {c}
               </button>
             );
           })}
@@ -393,7 +550,7 @@ export default function ReviewAsks({
       <ul aria-label="Loading">
         {[0, 1, 2].map((i) => (
           <li key={i} className="flex items-center gap-3 px-4 lg:px-5 py-3 border-t border-gray-100 animate-pulse">
-            <span className="w-10 h-10 rounded-lg bg-gray-100" />
+            <span className="w-[46px] h-[46px] rounded-[10px] bg-gray-100" />
             <span className="flex-1 space-y-2"><span className="block h-3 w-1/3 bg-gray-200 rounded" /><span className="block h-3 w-1/2 bg-gray-100 rounded" /></span>
           </li>
         ))}
@@ -420,7 +577,7 @@ export default function ReviewAsks({
     body = (
       <>
         {tab === 'ask' && (
-          <div className="border-t border-gray-100 bg-gray-50/70 px-4 lg:px-5 py-2.5 flex items-center gap-2.5 flex-wrap">
+          <div className="border-t border-gray-100 bg-gray-50/80 px-4 lg:px-5 py-2.5 flex items-center gap-2.5 flex-wrap">
             <input id="review-ask-all" type="checkbox" checked={ticked.length === askRows.length}
               onChange={toggleAll} className="w-[18px] h-[18px] cursor-pointer" style={{ accentColor: btn }} />
             <label htmlFor="review-ask-all" className="text-[13px] font-bold text-gray-900 cursor-pointer">
@@ -452,17 +609,16 @@ export default function ReviewAsks({
           </div>
         ) : null}
         {tab === 'ask' && (
-          <div className="border-t border-gray-200 bg-gray-50 px-4 lg:px-5 py-3.5 flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-[180px]">
-              <p className="text-[14px] font-extrabold text-gray-900">{ticked.length} customer{ticked.length === 1 ? '' : 's'} selected</p>
-              <p className="text-[12px] text-gray-500">Each gets a link for their own order only</p>
+          <div className="border-t border-gray-200 bg-gray-50 px-4 lg:px-5 py-3.5 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <p className="text-[14px] font-extrabold text-gray-900">{ticked.length} customer{ticked.length === 1 ? '' : 's'} selected</p>
+                <p className="text-[12px] text-gray-500">Each gets a link for their own order only</p>
+              </div>
+              {oneByOneButton(ticked)}
+              {askAllButton(ticked)}
             </div>
-            <LangSwitch lang={lang} onChange={setLang} />
-            <button type="button" onClick={() => setQueue(ticked)} disabled={ticked.length === 0}
-              className="h-12 px-5 rounded-xl text-[14.5px] font-extrabold text-white inline-flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 w-full sm:w-auto"
-              style={{ backgroundColor: btn }}>
-              <Play size={15} className="fill-current" /> Send one by one · free
-            </button>
+            {notReadyNote}
           </div>
         )}
       </>
@@ -470,15 +626,25 @@ export default function ReviewAsks({
   }
 
   return (
-    <section ref={cardRef} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
-      {head}
-      {body}
+    <>
+      {phoneSummary}
+      {phoneMiddle && <div className="lg:hidden space-y-3">{phoneMiddle}</div>}
+      <section ref={cardRef}
+        className={['rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24', listOpen ? '' : 'hidden lg:block'].join(' ')}>
+        {head}
+        {body}
+      </section>
       {queue && (
         <OneByOne rows={queue} slug={slug} pin={pin} storeName={storeName} lang={lang} onLang={setLang}
           products={products} btn={btn} now={now}
           onAsked={onAsked} onSkipped={onSkipped}
           onClose={() => setQueue(null)} />
       )}
-    </section>
+      {askAll && (
+        <AskAllSheet count={askAll.rows.length} balancePaise={auto?.balance_paise} lang={autoLang}
+          sending={askAll.sending} progress={askAll.progress} result={askAll.result} err={askAll.err}
+          onSend={sendAll} onClose={() => setAskAll(null)} btn={btn} />
+      )}
+    </>
   );
 }

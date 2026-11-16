@@ -159,6 +159,72 @@ export async function setReviewAskSkip(slug, pin, orderId, skip = true) {
   if (error) throw fail(error, 'Could not save that.');
 }
 
+/**
+ * "Ask automatically": the switch, the wallet, the last 30 days and how many
+ * delivered orders wait to be asked (supabase/review-asks-auto-forward.sql).
+ * `{ ok, data }` | `{ ok: false, error }`. Never throws.
+ */
+export async function fetchReviewAskAuto(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('get_review_ask_auto', { p_slug: slug, p_hashed_pin: hashed });
+    if (error || !data) return { ok: false, error: error?.message || 'Could not load.' };
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Could not load.' };
+  }
+}
+
+/** Save the switch and its choices: { on, days, lang, couriers, manual }. Throws with the reason. */
+export async function saveReviewAskAuto(slug, pin, s) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('set_review_ask_auto', {
+    p_slug: slug, p_hashed_pin: hashed, p_on: Boolean(s.on), p_days: Number(s.days), p_lang: s.lang === 'mr' ? 'mr' : 'en',
+    p_couriers: Boolean(s.couriers), p_manual: Boolean(s.manual),
+  });
+  if (error) throw fail(error, 'Could not save that.');
+  return data;
+}
+
+/** Has WhatsApp approved the review message yet? `{ ready, ready_mr }`. Never throws. */
+export async function reviewAsksReady(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.functions.invoke('review-asks-now', { body: { slug, hashedPin: hashed, check: true } });
+    if (error || data?.error) return { ready: false, ready_mr: false };
+    return { ready: Boolean(data?.ready), ready_mr: Boolean(data?.ready_mr) };
+  } catch {
+    return { ready: false, ready_mr: false };
+  }
+}
+
+/**
+ * "Ask all": PocketLink sends the review request to each ticked order, 1 Coin
+ * each. Calls again while the server reports more. Resolves
+ * { sent, failed, skipped, sentIds, stoppedFor: '' | 'no_balance' | 'night' }.
+ */
+export async function askAllReviews(slug, pin, orderIds, lang, onProgress) {
+  const hashed = await hashPin(pin);
+  const sum = { sent: 0, failed: 0, skipped: 0, sentIds: [], stoppedFor: '' };
+  let left = [...orderIds];
+  for (let round = 0; round < 20 && left.length; round++) {
+    const batch = left.slice(0, 100);
+    left = left.slice(100);
+    const { data, error } = await supabase.functions.invoke('review-asks-now', {
+      body: { slug, hashedPin: hashed, order_ids: batch, lang },
+    });
+    if (error || data?.error) throw new Error(data?.error || 'Sending stopped. Please try again.');
+    sum.sent += Number(data.sent) || 0;
+    sum.failed += Number(data.failed) || 0;
+    sum.skipped += Number(data.skipped) || 0;
+    sum.sentIds.push(...(data.sent_ids || []));
+    onProgress?.({ sent: sum.sent, failed: sum.failed });
+    if (data.reasons?.no_balance) { sum.stoppedFor = 'no_balance'; break; }
+    if (data.reasons?.night) { sum.stoppedFor = 'night'; break; }
+  }
+  return sum;
+}
+
 /** Public reply under a review. An empty reply removes it. */
 export async function replyToReview(slug, pin, reviewId, reply) {
   const hashed = await hashPin(pin);
