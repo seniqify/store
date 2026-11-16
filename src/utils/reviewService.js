@@ -200,25 +200,44 @@ export async function reviewAsksReady(slug, pin) {
 
 /**
  * "Ask all": PocketLink sends the review request to each ticked order, 1 Coin
- * each. Calls again while the server reports more. Resolves
- * { sent, failed, skipped, sentIds, stoppedFor: '' | 'no_balance' | 'night' }.
+ * each. TEN orders a call (founder, 2026-11-16: 102 in one call sat at "0 sent"
+ * for minutes — the server sends one by one, about a second each, and the
+ * screen only heard back after the whole call): the count moves every few
+ * seconds and no call comes near the 150-second connection limit.
+ *
+ * onProgress({ sent, failed, sentIds }) after each call; `sentIds` = the orders
+ * that call sent. A dropped connection is tried once more (safe: every order is
+ * locked and re-checked, so nobody gets it twice). If it still fails, the error
+ * carries `partial` (what went so far) and the screen offers to continue.
+ * Resolves { sent, failed, skipped, sentIds, stoppedFor: '' | 'no_balance' | 'night' }.
  */
+export const ASK_ALL_BATCH = 10;
 export async function askAllReviews(slug, pin, orderIds, lang, onProgress) {
   const hashed = await hashPin(pin);
   const sum = { sent: 0, failed: 0, skipped: 0, sentIds: [], stoppedFor: '' };
   let left = [...orderIds];
-  for (let round = 0; round < 20 && left.length; round++) {
-    const batch = left.slice(0, 100);
-    left = left.slice(100);
-    const { data, error } = await supabase.functions.invoke('review-asks-now', {
-      body: { slug, hashedPin: hashed, order_ids: batch, lang },
-    });
-    if (error || data?.error) throw new Error(data?.error || 'Sending stopped. Please try again.');
+  while (left.length) {
+    const batch = left.slice(0, ASK_ALL_BATCH);
+    let data = null;
+    let error = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      ({ data, error } = await supabase.functions.invoke('review-asks-now', {
+        body: { slug, hashedPin: hashed, order_ids: batch, lang },
+      }));
+      if (!error || data?.error) break;          // answered, or refused on purpose: no retry
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (error || data?.error) {
+      const why = data?.error || 'Sending stopped: the connection dropped.';
+      throw Object.assign(new Error(sum.sent > 0 ? `${why} ${sum.sent} sent so far.` : why), { partial: sum });
+    }
+    left = left.slice(ASK_ALL_BATCH);
+    const ids = data.sent_ids || [];
     sum.sent += Number(data.sent) || 0;
     sum.failed += Number(data.failed) || 0;
     sum.skipped += Number(data.skipped) || 0;
-    sum.sentIds.push(...(data.sent_ids || []));
-    onProgress?.({ sent: sum.sent, failed: sum.failed });
+    sum.sentIds.push(...ids);
+    onProgress?.({ sent: sum.sent, failed: sum.failed, sentIds: ids });
     if (data.reasons?.no_balance) { sum.stoppedFor = 'no_balance'; break; }
     if (data.reasons?.night) { sum.stoppedFor = 'night'; break; }
   }
