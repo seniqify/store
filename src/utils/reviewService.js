@@ -134,6 +134,31 @@ export async function fetchOwnerReviews(slug, pin) {
   }
 }
 
+/**
+ * Which orders were asked for a review, when, how many times, and which the shop
+ * said not to ask (supabase/review-asks-forward.sql). `{ rows, error }`: the
+ * list must not pretend nobody was asked when this failed.
+ */
+export async function fetchReviewAsks(slug, pin) {
+  try {
+    const hashed = await hashPin(pin);
+    const { data, error } = await supabase.rpc('get_review_asks', { p_slug: slug, p_hashed_pin: hashed });
+    if (error) return { rows: [], error: error.message || 'Could not load who was asked.' };
+    return { rows: data || [], error: '' };
+  } catch (e) {
+    return { rows: [], error: e?.message || 'Could not load who was asked.' };
+  }
+}
+
+/** "Don't ask this customer" (skip = true), or undo it. Throws with the server's reason. */
+export async function setReviewAskSkip(slug, pin, orderId, skip = true) {
+  const hashed = await hashPin(pin);
+  const { error } = await supabase.rpc('set_review_ask_skip', {
+    p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId, p_skip: Boolean(skip),
+  });
+  if (error) throw fail(error, 'Could not save that.');
+}
+
 /** Public reply under a review. An empty reply removes it. */
 export async function replyToReview(slug, pin, reviewId, reply) {
   const hashed = await hashPin(pin);

@@ -69,8 +69,14 @@ export function reviewLink(origin, token) {
  * emoji (they turn into � on some WhatsApp clients), and it says the link is
  * personal so it is not forwarded around.
  */
-export function reviewInviteMessage({ customerName, storeName, link } = {}) {
+export function reviewInviteMessage({ customerName, storeName, link, lang = 'en' } = {}) {
   const first = String(customerName || '').trim().split(/\s+/)[0];
+  if (lang === 'mr') {
+    return `${first ? `नमस्कार ${first}` : 'नमस्कार'}, *${storeName || 'आमच्या दुकाना'}* कडून ऑर्डर केल्याबद्दल धन्यवाद.\n\n` +
+      `तुम्हाला कसे वाटले? तुम्ही घेतलेल्या वस्तूंना रेटिंग द्या. फक्त ३० सेकंद लागतात आणि इतर ग्राहकांना मदत होते:\n` +
+      `${link}\n\n` +
+      `ही लिंक फक्त तुमच्या ऑर्डरसाठी आहे.`;
+  }
   return `${first ? `Hi ${first}` : 'Hi'}, thank you for your order from *${storeName || 'our store'}*.\n\n` +
     `How was it? Please rate what you bought. It takes 30 seconds and helps other customers:\n` +
     `${link}\n\n` +

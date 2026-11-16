@@ -3486,7 +3486,8 @@ export default function ManageStore() {
           </div>
         ) : tab === 'reviews' ? (
           <div className="animate-pl-fade-up">
-            <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName} onGoTab={goTab} />
+            <ReviewsTab slug={businessSlug} pin={storePin} themeColor={themeColor} businessName={config.businessName}
+              products={config.products || []} shopPhones={[config.whatsappNumber, config.ownerPhone]} />
           </div>
         ) : tab === 'insights' ? (
           <div className="animate-pl-fade-up">

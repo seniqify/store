@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Star, BadgeCheck, Flag, Reply, ChevronDown, Send } from 'lucide-react';
-import { fetchOwnerReviews, replyToReview, reportReview, reviewStats } from '../../utils/reviewService';
+import { fetchOwnerReviews, replyToReview, reportReview, reviewStats, fetchReviewAsks } from '../../utils/reviewService';
+import { fetchOrders } from '../../utils/orderService';
+import { buildReviewAsks, withAsk } from '../../utils/reviewAsks';
 import { pinColors } from '../../utils/pinGate';
+import ReviewAsks from './ReviewAsks';
 
 function Stars({ value = 0, size = 13 }) {
   return (
@@ -162,25 +165,51 @@ function ReviewCard({ r, slug, pin, themeColor, onChange }) {
  *
  * Layout (the approved prototype): the rating panel (average, the 5-to-1 bars,
  * how to get more) on the left on a computer, the reviews beside it.
+ *
+ * "Ask for reviews" (2026-11-16): delivered orders are listed above the reviews
+ * (ReviewAsks), with who was asked and who reviewed, so nobody searches Orders.
  */
-export default function ReviewsTab({ slug, pin, themeColor = '#0d9488', onGoTab = null }) {
+export default function ReviewsTab({ slug, pin, themeColor = '#0d9488', businessName = '', products = [], shopPhones = [] }) {
   const [rows, setRows]     = useState(null);   // null = loading
   const [error, setError]   = useState('');
   const [showOld, setShowOld] = useState(false);
   const [filter, setFilter] = useState('all');  // 'all' | 'unreplied'
+  const [orders, setOrders] = useState(null);   // delivered orders to ask; null = loading
+  const [asks, setAsks]     = useState(null);   // get_review_asks rows; null = loading
+  const [asksError, setAsksError] = useState('');
+  const askRef = useRef(null);
+
+  const loadAsks = useCallback(async () => {
+    setAsks(null);
+    setAsksError('');
+    const [list, res] = await Promise.all([fetchOrders(slug, pin), fetchReviewAsks(slug, pin)]);
+    setOrders(list);
+    setAsksError(res.error);
+    setAsks(res.rows);
+  }, [slug, pin]);
 
   const load = useCallback(async () => {
     setRows(null);
+    loadAsks();
     const res = await fetchOwnerReviews(slug, pin);
     setRows(res.rows);
     setError(res.error);
-  }, [slug, pin]);
+  }, [slug, pin, loadAsks]);
 
   useEffect(() => { load(); }, [load]);
 
   function onChange(id, patch) {
     setRows((rs) => rs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
+
+  // The shop's own numbers: orders placed from them can't be reviewed.
+  const phonesKey = (shopPhones || []).filter(Boolean).join(',');
+  const askData = useMemo(() => (orders && asks && rows && !asksError
+    ? buildReviewAsks(orders, asks, rows, { shopPhones: phonesKey ? phonesKey.split(',') : [] })
+    : null), [orders, asks, rows, asksError, phonesKey]);
+  const onAsked   = useCallback((id) => setAsks((a) => withAsk(a || [], id, { asked: true })), []);
+  const onSkipped = useCallback((id) => setAsks((a) => withAsk(a || [], id, { skipped: true })), []);
+  const toAskCount = askData ? askData.toAsk.length : 0;
 
   if (rows === null) {
     return (
@@ -234,19 +263,33 @@ export default function ReviewsTab({ slug, pin, themeColor = '#0d9488', onGoTab 
           {reported > 0 && (
             <p className="mt-3 text-[12px] font-semibold text-amber-700">{reported} reported · PocketLink is checking</p>
           )}
-          {onGoTab && (
-            <button type="button" onClick={() => onGoTab('orders')}
-              className="mt-4 w-full h-10 rounded-xl text-[13.5px] font-bold inline-flex items-center justify-center gap-2 active:scale-[0.98] transition"
-              style={{ background: `${themeColor}18`, color: btn }}>
-              <Send size={15} /> Ask a buyer for a review
-            </button>
+          {askData && (
+            <div className="mt-4 pt-3.5 border-t border-gray-100 grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-[20px] font-extrabold tabular-nums text-amber-700">{askData.toAsk.length}</p>
+                <p className="text-[11.5px] text-gray-500">to ask</p>
+              </div>
+              <div>
+                <p className="text-[20px] font-extrabold tabular-nums text-gray-900">{askData.asked.length}</p>
+                <p className="text-[11.5px] text-gray-500">asked, waiting</p>
+              </div>
+              <div>
+                <p className="text-[20px] font-extrabold tabular-nums text-emerald-700">{askData.rate === null ? '—' : `${askData.rate}%`}</p>
+                <p className="text-[11.5px] text-gray-500">of asked review</p>
+              </div>
+            </div>
           )}
+          <button type="button" onClick={() => askRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="mt-4 w-full h-10 rounded-xl text-[13.5px] font-bold inline-flex items-center justify-center gap-2 active:scale-[0.98] transition"
+            style={{ background: `${themeColor}18`, color: btn }}>
+            <Send size={15} /> Ask buyers for a review{toAskCount > 0 ? ` · ${toAskCount}` : ''}
+          </button>
         </div>
 
-        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 space-y-1.5">
+        <div className="hidden lg:block rounded-2xl border border-gray-100 bg-white shadow-sm p-4 space-y-1.5">
           <p className="text-sm font-extrabold text-gray-900">📮 Get verified reviews</p>
           <p className="text-xs text-gray-500 leading-relaxed">
-            Open <b>Orders</b>, find a delivered order and tap <b>Ask for a review</b>. The customer gets a WhatsApp link for that order only, so every review is from a real purchase and shows under the product they bought.
+            Every delivered order shows under <b>Ask for reviews</b>. Tap <b>Send one by one</b>: WhatsApp opens with the message ready for each customer. Press send, come back, and the next one is waiting. Each link works for that order only, so every review is from a real purchase and shows under the product they bought.
           </p>
           <p className="text-xs text-gray-500 leading-relaxed">
             You can reply to any review. If one breaks the rules, report it and PocketLink will check it. Reviews can’t be deleted.
@@ -256,6 +299,11 @@ export default function ReviewsTab({ slug, pin, themeColor = '#0d9488', onGoTab 
 
       {/* ── The reviews ──────────────────────────────────────────────────────── */}
       <div className="space-y-3 min-w-0">
+        <ReviewAsks data={askData} error={asksError} onRetry={loadAsks} slug={slug} pin={pin}
+          storeName={businessName} products={products} themeColor={themeColor}
+          onAsked={onAsked} onSkipped={onSkipped} cardRef={askRef} />
+
+        <h2 className="text-[15px] font-extrabold text-gray-900 pt-2">Your reviews</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {[['all', 'All', live.length], ['unreplied', 'Waiting for your reply', unreplied]].map(([k, label, n]) => {
             const on = filter === k;
