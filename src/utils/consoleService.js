@@ -139,6 +139,29 @@ export async function askAssistant(question, context) {
   return data;
 }
 
+// ── Meta Pixel check (founder-only) ───────────────────────────────────────────
+/** Every store's Meta Pixel, checked for rules saved in Meta Events Manager
+ *  that log purchases (or other conversions) by themselves
+ *  (/api/meta/pixel-health, scope 'all'; the server checks crm_team admin).
+ *  Returns { checkedAt, stores: [{ slug, name, pixels: [...] }] } or { error }. */
+export async function fetchPixelHealthAll() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return { error: 'not_signed_in' };
+    const res = await fetch('/api/meta/pixel-health', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ scope: 'all' }),
+    });
+    const body = await res.json().catch(() => ({ error: 'server' }));
+    if (!res.ok && !body?.error) return { error: 'server' };
+    return body;
+  } catch {
+    return { error: 'network' };
+  }
+}
+
 // ── Team management (founder-only edge function) ──────────────────────────────
 /** Add / remove / re-role a crm_team member. payload:
  *  { action:'add', email, name, role } | { action:'remove', userId }

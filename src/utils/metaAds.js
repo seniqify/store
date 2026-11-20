@@ -21,3 +21,25 @@ export async function fetchAdsPerformance(slug, pin, range = '7d', adAccountId =
   if (!res.ok && !data?.error) return { error: 'server' };
   return data;
 }
+
+/**
+ * Does this store's Meta Pixel log purchases (or other conversions) by itself?
+ * /api/meta/pixel-health reads each pixel's public settings from Meta. Works
+ * without a Meta connection. Returns { pixels: [{ pixelId, used, status,
+ * findings }] } or { error }.
+ */
+export async function fetchPixelHealth(slug, pin) {
+  try {
+    const hashedPin = await hashPin(pin);
+    const res = await fetch('/api/meta/pixel-health', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, hashedPin }),
+    });
+    const data = await res.json().catch(() => ({ error: 'server' }));
+    if (!res.ok && !data?.error) return { error: 'server' };
+    return data;
+  } catch {
+    return { error: 'network' };
+  }
+}

@@ -10,7 +10,9 @@ import {
   consoleUpdateStore, askAssistant, manageTeam, yearsFromNowIso,
   fetchReviewReports, resolveReviewReport,
   fetchMessageTemplates, decideMessageTemplate, createReadyTemplate,
+  fetchPixelHealthAll,
 } from '../utils/consoleService';
+import { eventWords, shortPage } from '../utils/adsTruth';
 import { seniqifyTemplate, requestError } from '../utils/offerText';
 import { formatINR } from '../utils/currency';
 import { isPaymentIncomplete } from '../utils/orderState';
@@ -389,6 +391,7 @@ export default function Console() {
   const [team, setTeam]       = useState([]);
   const [reports, setReports] = useState([]);   // reported reviews awaiting a decision
   const [templates, setTemplates] = useState([]); // WhatsApp message templates + shops' requests
+  const [pixelCheck, setPixelCheck] = useState(null); // null = checking; { stores } | { error }
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState('overview');
   const [query, setQuery]     = useState('');
@@ -411,8 +414,15 @@ export default function Console() {
   }, [session]);
   const isAdmin = me?.role === 'admin';
 
+  // Meta is slower than our own database, so the pixel check never holds up the rest.
+  const checkPixels = useCallback(() => {
+    setPixelCheck(null);
+    fetchPixelHealthAll().then(setPixelCheck);
+  }, []);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
+    checkPixels();
     const [st, od, tm, rv, mt] = await Promise.all([
       fetchStoresConsole(),
       fetchConsoleOrders(new Date(Date.now() - 7 * DAY).toISOString()),
@@ -421,7 +431,7 @@ export default function Console() {
       fetchMessageTemplates(),
     ]);
     setStores(st); setOrders(od); setTeam(tm); setReports(rv); setTemplates(mt); setLoading(false);
-  }, []);
+  }, [checkPixels]);
   useEffect(() => { if (isAdmin) loadAll(); }, [isAdmin, loadAll]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 3200); return () => clearTimeout(t); }, [toast]);
 
@@ -573,8 +583,20 @@ export default function Console() {
       if (s.theme?.mode === 'dark')
         items.push({ key: `dark-${s.slug}`, tone: 'slate', title: `${s.name || s.slug} is live in Premium Dark`, sub: 'Customers see the dark storefront', store: s, themeItem: true });
     });
+    // A rule on a shop's Meta Pixel that logs purchases by itself: Meta's numbers
+    // and the shop's ads are both wrong until it is deleted in Events Manager.
+    for (const s of pixelCheck?.stores || []) {
+      for (const p of s.pixels || []) {
+        for (const f of p.findings || []) {
+          items.push({ key: `px-${s.slug}-${p.pixelId}-${f.ruleId}`, tone: f.severity === 'critical' ? 'rose' : 'amber', pixelItem: true,
+            title: `${s.name} — Meta Pixel counts visits as ${eventWords(f.event)}`,
+            sub: `Pixel ${p.pixelId} · rule on ${f.pages?.[0] ? shortPage(f.pages[0]) : 'the shop'} · delete it in Meta Events Manager` });
+        }
+      }
+    }
     return items.sort((a, b) => (a.tone === 'slate' ? 1 : 0) - (b.tone === 'slate' ? 1 : 0)).slice(0, 8);
-  }, [stores]);
+  }, [stores, pixelCheck]);
+  const pixelProblems = (pixelCheck?.stores || []).reduce((n, s) => n + (s.pixels || []).filter((p) => p.status === 'problem').length, 0);
 
   const shownStores = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -657,7 +679,7 @@ export default function Console() {
     { id: 'assistant',label: 'Assistant',icon: Sparkles },
     { id: 'access',   label: 'Access',   icon: Users, count: team.length || undefined },
   ];
-  const attn = kpis.expiring + kpis.expired;
+  const attn = kpis.expiring + kpis.expired + pixelProblems;
 
   return (
     <div className="min-h-screen" style={{ background: BG, colorScheme: 'dark' }}>
@@ -715,11 +737,35 @@ export default function Console() {
                             <p className={`text-sm font-semibold ${BODY} truncate`}>{it.title}</p>
                             <p className={`text-[11px] ${FAINT}`}>{it.sub}</p>
                           </div>
-                          {it.themeItem
+                          {it.pixelItem
+                            ? <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-rose-300 border border-rose-500/25 bg-rose-500/10 rounded-lg px-2.5 py-1.5 hover:border-rose-500/50 inline-flex items-center gap-1">Events Manager <ExternalLink size={11} /></a>
+                            : it.themeItem
                             ? <button onClick={() => toggleTheme(it.store)} disabled={busySlug === it.store.slug} className={`text-xs font-bold ${BODY} border border-white/[0.08] rounded-lg px-2.5 py-1.5 hover:border-white/20 disabled:opacity-50`}>Revert to light</button>
                             : <button onClick={() => setModal(it.store)} className="text-xs font-bold text-emerald-300 border border-emerald-500/25 bg-emerald-500/10 rounded-lg px-2.5 py-1.5 hover:border-emerald-500/50">Manage</button>}
                         </div>
                       ))}
+                    </div>}
+              </Panel>
+              <Panel title="Meta Pixels" icon={ShieldAlert} count={pixelCheck?.stores?.length}
+                     right={<button onClick={checkPixels} disabled={pixelCheck === null} className="text-emerald-300 font-bold disabled:opacity-50">{pixelCheck === null ? 'Checking…' : 'Check again'}</button>}>
+                {pixelCheck === null ? <div className={`p-5 text-center text-sm ${FAINT}`}>Checking every shop’s Pixel with Meta…</div>
+                  : pixelCheck.error ? <div className={`p-5 text-center text-sm ${FAINT}`}>Couldn’t check the Pixels right now. Try again in a minute.</div>
+                  : !pixelCheck.stores?.length ? <div className={`p-5 text-center text-sm ${FAINT}`}>No shop has a Meta Pixel yet.</div>
+                  : <div className="divide-y divide-white/[0.05]">
+                      {pixelCheck.stores.flatMap((s) => s.pixels.map((p) => (
+                        <div key={`${s.slug}-${p.pixelId}`} className="flex items-center gap-3 px-4 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm font-semibold ${BODY} truncate`}>{s.name}</p>
+                            <p className={`text-[11px] ${FAINT} tabular-nums`}>Pixel {p.pixelId} · {p.used.includes('ads') && p.used.includes('storefront') ? 'shop and ads' : p.used.includes('ads') ? 'ads' : 'shop'}</p>
+                          </div>
+                          <span className={['text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border',
+                            p.status === 'ok' ? 'text-emerald-300 border-emerald-500/25 bg-emerald-500/10'
+                              : p.status === 'problem' ? 'text-rose-300 border-rose-500/25 bg-rose-500/10'
+                              : `${DIM} border-white/[0.08]`].join(' ')}>
+                            {p.status === 'ok' ? 'OK' : p.status === 'problem' ? `Fake ${eventWords(p.findings[0]?.event)}` : 'Not checked'}
+                          </span>
+                        </div>
+                      )))}
                     </div>}
               </Panel>
             </div>
