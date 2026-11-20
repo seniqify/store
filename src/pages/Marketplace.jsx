@@ -227,7 +227,7 @@ export default function Marketplace() {
         <nav className="relative z-10 border-b border-white/10 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-3">
             <Link to="/" className="flex-shrink-0">
-              <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-7 sm:h-8 w-auto brightness-0 invert" />
+              <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-9 sm:h-11 w-auto" />
             </Link>
 
             {/* Area picker — flexes/truncates so the nav never overflows on mobile */}
@@ -719,7 +719,7 @@ function MarketplaceFooter() {
       <div className="relative max-w-6xl mx-auto px-4 py-12">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-2">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert mb-4" />
+            <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-11 w-auto mb-4" />
             <p className="text-white/50 text-sm max-w-xs leading-relaxed">
               Your neighbourhood, online. Discover local businesses and order on WhatsApp — no app, no commission.
             </p>

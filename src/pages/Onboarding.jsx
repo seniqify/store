@@ -417,7 +417,7 @@ export default function Onboarding() {
       <header className="relative z-10">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
-            <img src="/pocketlink-logo.svg" alt="PocketLink" className="h-8 w-auto brightness-0 invert" />
+            <img src="/pocketlink-logo-white.svg" alt="PocketLink" className="h-11 w-auto" />
           </Link>
           <div className="flex items-center gap-3">
             <LanguageSwitcher variant="dark" />
