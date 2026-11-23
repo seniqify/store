@@ -121,27 +121,61 @@ serve(async (req) => {
     );
 
     const last10 = String(phone).replace(/\D/g, '').slice(-10);
-    const { data: rows } = await supabase
+
+    // Find the store. The subscription id it already records is the reliable
+    // key: the phone the owner paid with is often not the shop's WhatsApp
+    // number, and then a renewal matched nothing and was dropped. The phone is
+    // the fallback for a first payment, before any store records the id.
+    const { data: bySub, error: subErr } = await supabase
       .from('stores')
       .select('slug, config')
-      .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+      .eq('config->>razorpaySubscriptionId', sub.id)
       .limit(1);
+    if (subErr) {
+      console.error(`razorpay-webhook: store lookup failed for ${type} sub=${sub.id}: ${subErr.message}`);
+      return new Response('db_error', { status: 500 }); // Razorpay retries
+    }
+    let store = bySub?.[0] ?? null;
+    let matchedBy = 'subscription';
+    if (!store) {
+      const { data: rows, error: phoneErr } = await supabase
+        .from('stores')
+        .select('slug, config')
+        .filter('config->>whatsappNumber', 'ilike', `%${last10}`)
+        .limit(1);
+      if (phoneErr) {
+        console.error(`razorpay-webhook: store lookup failed for ${type} sub=${sub.id}: ${phoneErr.message}`);
+        return new Response('db_error', { status: 500 });
+      }
+      store = rows?.[0] ?? null;
+      matchedBy = 'phone';
+    }
 
-    const store = rows?.[0];
     if (store) {
+      // A paid event never shortens what the store already has: events can
+      // arrive out of order, and the daily subscription-sync may already have
+      // moved the date forward.
+      const prevMs = new Date(store.config?.planExpiresAt ?? '').getTime();
+      if (active && Number.isFinite(prevMs) && planExpiresAt && prevMs > new Date(planExpiresAt).getTime()) {
+        planExpiresAt = store.config.planExpiresAt;
+      }
       const newConfig = {
         ...store.config,
         plan:                  plan ?? store.config.plan,
         planExpiresAt,
         razorpaySubscriptionId: sub.id,
       };
-      await supabase
+      const { error: updErr } = await supabase
         .from('stores')
         .update({ config: newConfig, updated_at: new Date().toISOString() })
         .eq('slug', store.slug);
+      if (updErr) {
+        console.error(`razorpay-webhook: could not save ${type} for ${store.slug}: ${updErr.message}`);
+        return new Response('db_error', { status: 500 }); // Razorpay retries
+      }
       console.log(
         `razorpay-webhook: ${type} → ${store.slug} plan=${plan} until=${planExpiresAt} ` +
-        `(phone from ${fromNotes ? 'notes' : 'payment.contact'})`,
+        `(matched by ${matchedBy}; phone from ${fromNotes ? 'notes' : 'payment.contact'})`,
       );
     } else if (active && plan) {
       // No store yet → a first-time subscriber who paid but hasn't built their

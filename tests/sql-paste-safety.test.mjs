@@ -50,6 +50,9 @@ const CHANGES_THE_DATABASE = [
   'supabase/review-asks-auto-forward.sql',
   'supabase/review-asks-auto-ROLLBACK.sql',
   'supabase/review-asks-schedule.sql',
+  'supabase/subscription-sync-forward.sql',
+  'supabase/subscription-sync-ROLLBACK.sql',
+  'supabase/subscription-sync-schedule.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
