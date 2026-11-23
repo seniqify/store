@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, Send, Loader2, X, Check } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import {
   fetchCartReminderSummary, setCartReminders, fetchReminderPreview, sendRemindersNow, setCartReminderLang,
 } from '../../utils/cartReminderService';
@@ -34,9 +36,15 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
   const short = cost > balance;
   const affordable = Math.floor(balance / (Number(preview.price_paise) || 150));
   const msg = cartReminderMessage(lang, sample || {}, storeName);
+  useScrollLock(true);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Send cart reminders">
+  // Rendered on <body>: every Manage tab sits inside an `animate-pl-fade-up`
+  // wrapper, and its leftover transform traps `position: fixed` children. Kept
+  // inline, the dim layer covered only the tab and the sheet sat at the bottom
+  // of the long tab, off screen on phones.
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="Send cart reminders"
+         onKeyDown={(e) => { if (e.key === 'Escape' && !sending) onClose(); }}>
       <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl px-5 pt-3 pb-6 space-y-4 max-h-[92vh] overflow-y-auto">
         <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto sm:hidden" />
         <div className="flex items-start justify-between gap-3">
@@ -98,7 +106,8 @@ function ConfirmSheet({ preview, sample, storeName, themeColor, sending, progres
         <button type="button" onClick={onClose} disabled={sending}
           className="w-full text-[13px] font-bold text-gray-500 py-1.5 disabled:opacity-40">Cancel</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
