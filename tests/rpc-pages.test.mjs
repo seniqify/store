@@ -228,24 +228,24 @@ test('readAllRowsOrEmpty: every row, or [] when a page fails - as those screens 
   assert.deepEqual(await readAllRowsOrEmpty(() => { throw new Error('no client'); }), []);
 });
 
-test('the Console and Sales Hub read every row: no .limit(), every list paged, newest first where it was', () => {
-  for (const f of ['src/utils/consoleService.js', 'src/utils/hubService.js']) {
-    const src = code(f);
-    assert.ok(!/\.limit\(/.test(src), `${f}: no .limit() - the API clamps it to 1,000 anyway`);
-    assert.match(src, /import \{ readAllRowsOrEmpty, newestFirst \} from '\.\/rpcPages\.js';/);
-  }
+test('the Console reads every row: no .limit(), every list paged, newest first where it was', () => {
   const con = code('src/utils/consoleService.js');
-  const hub = code('src/utils/hubService.js');
+  assert.ok(!/\.limit\(/.test(con), 'consoleService: no .limit() - the API clamps it to 1,000 anyway');
+  assert.match(con, /import \{ readAllRowsOrEmpty, newestFirst \} from '\.\/rpcPages\.js';/);
   const paged = (src, fn) => new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return (newestFirst\(await )?readAllRowsOrEmpty\(\(withCount\) => supabase`).test(src);
   for (const fn of ['fetchStoresConsole', 'fetchConsoleOrders']) assert.ok(paged(con, fn), fn);
-  for (const fn of ['listLeads', 'fetchStoresLite', 'fetchRecentOrders', 'fetchViewsSince']) assert.ok(paged(hub, fn), fn);
-  for (const [src, fn] of [[con, 'fetchConsoleOrders'], [hub, 'listLeads'], [hub, 'fetchRecentOrders']]) {
-    assert.match(src, new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return newestFirst\(`), `${fn} stays newest first`);
-  }
-  assert.equal((con + hub).match(/withCount \? \{ count: 'exact' \} : undefined/g).length, 6, 'each of the 6 lists asks for its total');
-  assert.match(hub, /\.select\('id, store_slug, viewed_on'/, 'views carry their id, so a row is never counted twice');
+  assert.match(con, new RegExp(String.raw`export async function fetchConsoleOrders\([^)]*\) \{\s+return newestFirst\(`), 'fetchConsoleOrders stays newest first');
+  assert.equal(con.match(/withCount \? \{ count: 'exact' \} : undefined/g).length, 2, 'each Console list asks for its total');
   // Stores have no id column: they page by created_at + slug and dedupe by slug.
   const storeOpts = /\{ order: \[\['created_at', true\], \['slug', true\]\], key: 'slug' \}\);/g;
   assert.equal((con.match(storeOpts) || []).length, 1, 'Console stores');
-  assert.equal((hub.match(storeOpts) || []).length, 1, 'Hub stores');
+});
+
+test('the Sales CRM pages its long lists (leads, activity, attendance): never stops at 1,000', () => {
+  const crm = code('src/crm/crmService.js');
+  assert.match(crm, /import \{ readAllRowsOrEmpty \} from '\.\.\/utils\/rpcPages\.js';/);
+  for (const fn of ['listLeads', 'activitiesSince', 'attendanceBetween']) {
+    assert.match(crm, new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return readAllRowsOrEmpty\(\(c\) => supabase`), fn);
+  }
+  assert.equal(crm.match(/c \? \{ count: 'exact' \} : undefined/g).length, 3, 'each long list asks for its total');
 });

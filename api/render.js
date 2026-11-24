@@ -20,7 +20,7 @@ export { PL_ORIGIN, normalizeHost };
 
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
-  'sell', 'marketplace', 'explore', 'hub',
+  'sell', 'marketplace', 'explore', 'hub', 'crm',
   'demo', 'sitemap.xml', 'robots.txt', 'llms.txt', 'favicon.svg', 'og-image.jpg',
   'icons.svg', 'pocketlink-logo.svg', 'assets', 'api', 'manage',
 ]);
