@@ -53,6 +53,10 @@ const CHANGES_THE_DATABASE = [
   'supabase/subscription-sync-forward.sql',
   'supabase/subscription-sync-ROLLBACK.sql',
   'supabase/subscription-sync-schedule.sql',
+  'supabase/sales-crm-forward.sql',
+  'supabase/sales-crm-import.sql',
+  'supabase/sales-crm-ROLLBACK.sql',
+  'supabase/sales-crm-cutover.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {

@@ -35,6 +35,7 @@
 // store. Every answer on a merchant's domain is no-store; every redirect is
 // temporary (a domain's store and primary name can change).
 import { normalizeHost, routingMode } from './api/_hosts.js';
+import { isCrmHost } from './src/crm/crmHost.js';
 import { resolverFromEnv } from './api/_resolve.js';
 import { responses, TEST_ROBOTS } from './api/_pages.js';
 import {
@@ -106,6 +107,23 @@ async function routeMerchantDomain(req, resolver, mode) {
 }
 
 /**
+ * crm.pocketlink.store is the Sales CRM and nothing else: every page is the SPA
+ * (which renders only the CRM there), robots are told to stay out, and the four
+ * store endpoints the matcher sends here (render, sitemap, og, qr) are 404 --
+ * no shop is ever served on the CRM's host. Checked before custom-domain routing,
+ * so turning that on can never treat this host as a merchant's domain.
+ */
+function crmHost(req) {
+  const { pathname } = new URL(req.url);
+  if (pathname.startsWith('/api/')) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  if (pathname === '/robots.txt') {
+    return new Response('User-agent: *\nDisallow: /\n', { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+  }
+  if (pathname === '/sitemap.xml') return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  return rewrite(new URL('/index.html', req.url));
+}
+
+/**
  * The middleware, given where its database lookups come from. The deployed
  * middleware (default export) uses one resolver per instance, so answers are
  * cached across requests for RESOLVE_CACHE_MS (api/_resolve.js).
@@ -113,7 +131,9 @@ async function routeMerchantDomain(req, resolver, mode) {
 export function createMiddleware({ env = process.env, resolverFor = (e) => resolverFromEnv(e) } = {}) {
   let resolver = null;
   return async function middleware(req) {
-    const mode = routingMode(normalizeHost(new URL(req.url).hostname), env);
+    const host = normalizeHost(new URL(req.url).hostname);
+    if (isCrmHost(host)) return crmHost(req);
+    const mode = routingMode(host, env);
     if (mode === 'off') return legacy(req);
     return routeMerchantDomain(req, (resolver ??= resolverFor(env)), mode);
   };

@@ -15,6 +15,7 @@ import { applyTheme }   from './utils/theme';
 import { I18nProvider } from './i18n/I18nContext';
 import { hostMode }     from './utils/hostMode';
 import { pocketlinkTarget } from './utils/customDomainRoutes';
+import { isCrmHost, CRM_ORIGIN } from './crm/crmHost.js';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
 const Landing    = lazy(() => import('./pages/Landing'));
@@ -24,7 +25,7 @@ const Checkout   = lazy(() => import('./pages/Checkout'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const ManageStore = lazy(() => import('./pages/ManageStore'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
-const SalesHub   = lazy(() => import('./pages/SalesHub'));
+const CrmApp     = lazy(() => import('./crm/CrmApp'));
 const Console    = lazy(() => import('./pages/Console'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
@@ -214,6 +215,19 @@ function ScrollToTop() {
 const MAIN_ORIGIN   = 'https://www.pocketlink.store';
 const isMarketHost  = typeof window !== 'undefined' && window.location.hostname.startsWith('market.');
 
+// ── Sales CRM ─────────────────────────────────────────────────────────────────
+// crm.pocketlink.store renders ONLY the CRM (the edge middleware sends every
+// page there to the SPA). The retired Hub at /hub now opens the CRM.
+const isCrm = typeof window !== 'undefined' && isCrmHost(window.location.hostname);
+
+function HubMoved() {
+  useEffect(() => {
+    const onMain = /(^|\.)pocketlink\.store$/.test(window.location.hostname);
+    window.location.replace(onMain ? `${CRM_ORIGIN}/` : '/crm/');
+  }, []);
+  return <PageLoader />;
+}
+
 function ToMainSite() {
   const { pathname, search } = useLocation();
   useEffect(() => {
@@ -272,6 +286,10 @@ export default function App() {
             <MerchantRoutes slug={HOST.slug} />
           ) : HOST.mode === 'invalid' ? (
             <DomainUnavailable />
+          ) : isCrm ? (
+            <Routes>
+              <Route path="/*" element={<CrmApp base="" />} />
+            </Routes>
           ) : isMarketHost ? (
             <Routes>
               <Route path="*" element={<ToMainSite />} />
@@ -298,7 +316,10 @@ export default function App() {
             {/* "Shop now" in a WhatsApp offer (counts opens and orders). */}
             <Route path="/o/:token"              element={<OfferLink />} />
             <Route path="/review/:token"         element={<ReviewInvite />} />
-            <Route path="/hub"                   element={<SalesHub />} />
+            {/* The Sales CRM (crm.pocketlink.store). /crm/* on the main site
+                serves it too, for preview builds; the old Hub sends people there. */}
+            <Route path="/crm/*"                 element={<CrmApp base="/crm" />} />
+            <Route path="/hub"                   element={<HubMoved />} />
             <Route path="/console"               element={<Console />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />
             <Route path="/:businessSlug/manage"  element={<ErrorBoundary><ManageStore /></ErrorBoundary>} />
