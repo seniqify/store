@@ -21,10 +21,14 @@ export function toInstantLocal(value) {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
-/** The menu for each role: [path, label, icon]. The phone shows the first five. */
+/** The menu for each role: [path, label, icon]. The phone shows the first four, then More. */
 export const MENUS = {
-  manager: [['', 'Today', 'home'], ['leads', 'Leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['assign', 'Assign', 'assign'],
-    ['queue', 'Call queue', 'phone'], ['checkin', 'Check in', 'pin'], ['attendance', 'Attendance', 'clock'], ['team', 'Team', 'team']],
-  caller: [['', 'Today', 'home'], ['queue', 'Call queue', 'phone'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['attendance', 'Attendance', 'clock']],
-  field: [['', 'Today', 'home'], ['checkin', 'Check in', 'pin'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['attendance', 'Attendance', 'clock']],
+  manager: [['', 'Today', 'home'], ['leads', 'Leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['performance', 'Performance', 'chart'],
+    ['assign', 'Assign', 'assign'], ['queue', 'Call queue', 'phone'], ['checkin', 'Check in', 'pin'], ['visits', 'Field visits', 'map'],
+    ['attendance', 'Attendance', 'clock'], ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help'], ['team', 'Team & targets', 'team']],
+  caller: [['', 'Today', 'home'], ['queue', 'Call queue', 'phone'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
+    ['performance', 'My score', 'chart'], ['attendance', 'Attendance', 'clock'], ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
+  field: [['', 'Today', 'home'], ['checkin', 'Check in', 'pin'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
+    ['performance', 'My score', 'chart'], ['attendance', 'Attendance', 'clock'], ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
 };
+export const PHONE_TABS = 4;

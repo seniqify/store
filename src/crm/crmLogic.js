@@ -237,6 +237,7 @@ export const DAY_STATUS = Object.freeze({
   holiday: { label: 'Holiday', cls: 'bg-violet-100 text-violet-900' },
   off: { label: 'Weekly off', cls: 'bg-gray-100 text-gray-700' },
   future: { label: '', cls: 'bg-white text-gray-500 border border-dashed border-gray-300' },
+  before: { label: 'Not started', cls: 'bg-gray-50 text-gray-400' },
   today: { label: 'Not in yet', cls: 'bg-white text-gray-700 border border-gray-300' },
 });
 
@@ -248,11 +249,14 @@ const minutesOf = (time) => {
 /**
  * One person's status on one India date.
  * row: their sales_attendance row for that day (or null).
- * Order: manager's override > weekly off > holiday > approved leave >
+ * Days before the person was added to the CRM are 'before' and never count.
+ * Order: manager's override > before they started > weekly off > holiday > approved leave >
  * future > no login (today: not in yet; earlier: absent) > late > half day > present.
  */
 export function dayStatus({ day, today, staff, row, holidays, leaveDays }) {
   if (row?.status_override) return row.status_override;
+  const start = staff?.created_at ? istDate(Date.parse(staff.created_at)) : '';
+  if (start && day < start) return 'before';
   if (weekday(day) === Number(staff?.weekly_off ?? 0)) return 'off';
   if (holidays?.has?.(day)) return 'holiday';
   if (leaveDays?.has?.(day)) return 'leave';
@@ -296,7 +300,7 @@ export function monthCalendar({ year, month, today, staff, rows, holidays, leave
     const row = byDay.get(day) || null;
     const status = dayStatus({ day, today, staff, row, holidays: holidaySet, leaveDays });
     if (counts[status] !== undefined) counts[status]++;
-    const isWorking = status !== 'off' && status !== 'holiday';
+    const isWorking = status !== 'off' && status !== 'holiday' && status !== 'before';
     if (isWorking) workingDays++;
     if (isWorking && day <= today && status !== 'today') workedSoFar++;
     if (status === 'leave' && day <= today) leaveSoFar++;
@@ -320,4 +324,278 @@ export function hoursLabel(from, to) {
   if (!from || !to) return '';
   const m = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60000));
   return `${Math.floor(m / 60)} h ${m % 60} m`;
+}
+
+// ── Performance: KPIs, KPAs and the score ──────────────────────────────────
+// Five areas (KPAs) with fixed weights; each KPI is actual against target,
+// capped at 100%. A KPA is the average of its KPIs; the score is the weighted
+// average of the KPAs that have data. Counts and money are monthly targets,
+// scaled to how much of the period has passed ("by today").
+export const KPA = Object.freeze([
+  { key: 'activity', label: 'Activity', weight: 20 },
+  { key: 'reach', label: 'Reach', weight: 15 },
+  { key: 'conversion', label: 'Conversion', weight: 30 },
+  { key: 'revenue', label: 'Revenue', weight: 25 },
+  { key: 'discipline', label: 'Discipline', weight: 10 },
+]);
+
+const ratio = (a, b) => (b > 0 ? (a / b) * 100 : null);
+const perDay = (n, r) => (n > 0 || r.days_present > 0 ? n / Math.max(1, r.days_present) : null);
+const onTime = (r) => (r.open_followups > 0 ? 100 - ratio(r.late_followups, r.open_followups) : null);
+
+/** kind: 'perday' and 'pct' are compared as they are; 'count' and 'money' are monthly and scaled. */
+export const KPI_DEFS = Object.freeze({
+  caller: [
+    { key: 'calls_per_day', kpa: 'activity', label: 'Calls a day (average)', kind: 'perday', def: 80, column: 'daily_target', actual: (r) => perDay(r.calls, r) },
+    { key: 'pickup_pct', kpa: 'reach', label: 'Pick-up rate', kind: 'pct', def: 45, actual: (r) => ratio(r.answered, r.calls) },
+    { key: 'demos', kpa: 'conversion', label: 'Demos booked', kind: 'count', def: 20, actual: (r) => r.demos },
+    { key: 'demo_to_won_pct', kpa: 'conversion', label: 'Demo to won', kind: 'pct', def: 30, actual: (r) => (r.demos > 0 ? ratio(r.won, r.demos) : r.won > 0 ? 100 : null) },
+    { key: 'paid', kpa: 'revenue', label: 'Paid shops', kind: 'count', def: 10, column: 'monthly_target', actual: (r) => r.won },
+    { key: 'money', kpa: 'revenue', label: 'Money collected', kind: 'money', def: null, actual: (r) => Number(r.money) || 0 },
+    { key: 'followups_pct', kpa: 'discipline', label: 'Follow-ups on time', kind: 'pct', def: 90, actual: onTime },
+    { key: 'notes_pct', kpa: 'discipline', label: 'Notes after answered calls', kind: 'pct', def: 95, actual: (r) => ratio(r.answered_noted, r.answered) },
+  ],
+  field: [
+    { key: 'visits_per_day', kpa: 'activity', label: 'Visits a day (average)', kind: 'perday', def: 8, column: 'daily_target', actual: (r) => perDay(r.visits, r) },
+    { key: 'met_owner_pct', kpa: 'reach', label: 'Met the owner', kind: 'pct', def: 70, actual: (r) => ratio(r.visits_owner, r.visits) },
+    { key: 'demos', kpa: 'conversion', label: 'Demos given', kind: 'count', def: 12, actual: (r) => r.demos },
+    { key: 'new_shops', kpa: 'conversion', label: 'New shops added', kind: 'count', def: 40, actual: (r) => r.new_leads },
+    { key: 'paid', kpa: 'revenue', label: 'Paid shops', kind: 'count', def: 8, column: 'monthly_target', actual: (r) => r.won },
+    { key: 'money', kpa: 'revenue', label: 'Money collected', kind: 'money', def: null, actual: (r) => Number(r.money) || 0 },
+    { key: 'followups_pct', kpa: 'discipline', label: 'Follow-ups on time', kind: 'pct', def: 90, actual: onTime },
+    { key: 'notes_pct', kpa: 'discipline', label: 'Visit notes filled', kind: 'pct', def: 95, actual: (r) => ratio(r.visits_noted, r.visits) },
+  ],
+});
+
+/** The full-month (or per-day / percent) target for one KPI of one person. */
+export function kpiTarget(def, person, price = 1499) {
+  const own = Number(person?.targets?.[def.key]);
+  if (Number.isFinite(own) && own > 0) return own;
+  const col = def.column ? Number(person?.[def.column]) : NaN;
+  if (Number.isFinite(col) && col > 0) return col;
+  if (def.kind === 'money') {
+    const paidDef = (KPI_DEFS[person?.role] || KPI_DEFS.caller).find((d) => d.key === 'paid');
+    return kpiTarget(paidDef, person, price) * price;
+  }
+  return def.def;
+}
+
+/**
+ * How much of a monthly target is expected by `today` for the period
+ * [from, to] (India dates): this month on the 15th of 30 = 0.5; a finished
+ * month = 1.
+ */
+export function periodShare(from, to, today) {
+  const days = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) + 1;
+  const total = days(from, to);
+  const passed = today >= to ? total : today < from ? 1 : days(from, today);
+  return Math.max(1, passed) / total;
+}
+
+export function band(score) {
+  if (score == null) return { label: 'No data yet', cls: 'bg-gray-100 text-gray-700' };
+  if (score >= 90) return { label: 'Excellent', cls: 'bg-green-700 text-white' };
+  if (score >= 75) return { label: 'Good', cls: 'bg-green-100 text-green-800' };
+  if (score >= 60) return { label: 'Needs work', cls: 'bg-amber-100 text-amber-900' };
+  return { label: 'At risk', cls: 'bg-red-100 text-red-800' };
+}
+
+/**
+ * One person's KPIs, KPAs and score from their scoreboard row.
+ * share: periodShare(...) for count / money targets.
+ */
+export function scorePerson(row, { share = 1, price = 1499 } = {}) {
+  const defs = KPI_DEFS[row?.role] || KPI_DEFS.caller;
+  const kpis = defs.map((d) => {
+    const full = kpiTarget(d, row, price);
+    const target = d.kind === 'count' || d.kind === 'money' ? full * share : full;
+    const raw = d.actual(row || {});
+    const actual = raw == null || Number.isNaN(raw) ? null : raw;
+    const pct = actual == null || !(target > 0) ? null : Math.min(100, Math.round((actual / target) * 100));
+    return { ...d, full, target, actual, pct };
+  });
+  const kpa = {};
+  for (const a of KPA) {
+    const xs = kpis.filter((k) => k.kpa === a.key && k.pct != null).map((k) => k.pct);
+    kpa[a.key] = xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null;
+  }
+  const scored = KPA.filter((a) => kpa[a.key] != null);
+  const w = scored.reduce((s, a) => s + a.weight, 0);
+  const score = w ? Math.round(scored.reduce((s, a) => s + kpa[a.key] * a.weight, 0) / w) : null;
+  const ranked = kpis.filter((k) => k.pct != null).sort((x, y) => x.pct - y.pct);
+  return { kpis, kpa, score, weakest: ranked[0] || null, strongest: ranked[ranked.length - 1] || null };
+}
+
+/** How a KPI value reads: '74', '44%', '₹8,994', '6.4'. */
+export function kpiValue(kind, v) {
+  if (v == null) return '—';
+  if (kind === 'pct') return `${Math.round(v)}%`;
+  if (kind === 'money') return `₹${Math.round(v).toLocaleString('en-IN')}`;
+  if (kind === 'perday') return v >= 10 ? String(Math.round(v)) : String(Math.round(v * 10) / 10);
+  return String(Math.round(v * 10) / 10);
+}
+
+/** Score the whole board and rank it (best first, ties by name). */
+export function rankBoard(rows, opts) {
+  return (rows || []).map((r) => ({ row: r, ...scorePerson(r, opts) }))
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(a.row.name).localeCompare(String(b.row.name)))
+    .map((p, i) => ({ ...p, rank: i + 1 }));
+}
+
+// ── Visit checks ────────────────────────────────────────────────────────────
+/** Metres between two { lat, lng } points. */
+export function distanceM(a, b) {
+  if (a?.lat == null || b?.lat == null) return null;
+  const R = 6371000, rad = (x) => (x * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+export const kmLabel = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`);
+
+/** The photo's fingerprint from its storage path (<user>/<day>/<16 hex>-<uuid>.jpg), or ''. */
+export const photoPrint = (path) => (String(path || '').match(/\/([0-9a-f]{16})-[^/]+$/) || [])[1] || '';
+
+export const WEAK_GPS_M = 150;
+export const FAR_FROM_SHOP_M = 1000;
+
+/**
+ * Why a visit looks odd: { [activityId]: ['...', ...] }.
+ * visits: every visit to the shops involved (any day), with id, lead_id,
+ * staff_id, lat, lng, accuracy_m, photo_path, created_at, review.
+ */
+export function visitFlags(visits) {
+  const out = {};
+  const add = (id, why) => { (out[id] ||= []).push(why); };
+  const live = (visits || []).filter((v) => v.review !== 'rejected')
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const firstAt = new Map();
+  const prints = new Map();
+  const byStaff = new Map();
+  for (const v of live) {
+    if (!firstAt.has(v.lead_id)) firstAt.set(v.lead_id, v);
+    const p = photoPrint(v.photo_path);
+    if (p) prints.set(p, (prints.get(p) || 0) + 1);
+    if (!byStaff.has(v.staff_id)) byStaff.set(v.staff_id, []);
+    byStaff.get(v.staff_id).push(v);
+  }
+  for (const v of live) {
+    if (v.accuracy_m > WEAK_GPS_M) add(v.id, `Weak location: accurate to ${kmLabel(v.accuracy_m)} only`);
+    const first = firstAt.get(v.lead_id);
+    if (first && first.id !== v.id) {
+      const d = distanceM(first, v);
+      if (d != null && d > FAR_FROM_SHOP_M) add(v.id, `${kmLabel(d)} from where this shop was first checked in`);
+    }
+    const p = photoPrint(v.photo_path);
+    if (p && prints.get(p) > 1) add(v.id, 'The same photo was used for another visit');
+  }
+  for (const xs of byStaff.values()) {
+    for (let i = 1; i < xs.length; i++) {
+      const d = distanceM(xs[i - 1], xs[i]);
+      const min = (Date.parse(xs[i].created_at) - Date.parse(xs[i - 1].created_at)) / 60000;
+      if (d != null && d > 2000 && (d / 1000) / (Math.max(min, 1) / 60) > 60) {
+        add(xs[i].id, `${kmLabel(d)} from the visit before, only ${Math.max(1, Math.round(min))} min later`);
+      }
+    }
+  }
+  return out;
+}
+
+// ── Import a list (Excel / CSV) ─────────────────────────────────────────────
+/** Rows of a CSV / TSV / semicolon file as arrays of trimmed strings. */
+export function parseCsv(text) {
+  const s = String(text || '').replace(/^\uFEFF/, '');
+  const firstLine = s.split(/\r?\n/, 1)[0] || '';
+  const sep = [',', ';', '\t'].map((c) => [c, firstLine.split(c).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (q) {
+      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"' && cell === '') q = true;
+    else if (ch === sep) { row.push(cell.trim()); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && s[i + 1] === '\n') i++;
+      row.push(cell.trim()); cell = '';
+      if (row.some((c) => c !== '')) rows.push(row);
+      row = [];
+    } else cell += ch;
+  }
+  row.push(cell.trim());
+  if (row.some((c) => c !== '')) rows.push(row);
+  return rows;
+}
+
+export const IMPORT_FIELDS = Object.freeze([
+  { key: 'shop_name', label: 'Shop name', required: true, words: ['shop', 'business', 'firm', 'store', 'company', 'dukan', 'party'] },
+  { key: 'phone', label: 'Mobile', required: true, words: ['mobile', 'phone', 'contact no', 'whatsapp', 'number', 'mob', 'cell'] },
+  { key: 'owner_name', label: 'Owner’s name', words: ['owner', 'person', 'proprietor', 'contact name'] },
+  { key: 'city', label: 'City', words: ['city', 'town', 'district', 'taluka'] },
+  { key: 'area', label: 'Area', words: ['area', 'locality', 'address', 'location', 'road', 'peth'] },
+  { key: 'business_type', label: 'Type of business', words: ['category', 'type', 'segment', 'trade'] },
+  { key: 'note', label: 'Note', words: ['note', 'remark', 'comment'] },
+]);
+
+/** Which column holds what, from the header row: { field: index or -1 }. */
+export function guessColumns(header) {
+  const h = (header || []).map((x) => String(x || '').toLowerCase().trim());
+  const taken = new Set();
+  const map = {};
+  for (const f of IMPORT_FIELDS) {
+    const i = h.findIndex((col, idx) => !taken.has(idx) && f.words.some((w) => col.includes(w)));
+    map[f.key] = i;
+    if (i >= 0) taken.add(i);
+  }
+  // A bare "Name" column: the shop if no shop column was found, else the owner.
+  const bare = h.findIndex((col, idx) => !taken.has(idx) && /^(full )?name$/.test(col));
+  if (bare >= 0) {
+    if (map.shop_name < 0) map.shop_name = bare;
+    else if (map.owner_name < 0) map.owner_name = bare;
+  }
+  return map;
+}
+
+/**
+ * Turn sheet rows into leads. Skips numbers already in the CRM, repeats inside
+ * the file and wrong mobiles. Returns { ready, dupes, bad }; `line` is the
+ * row number in the file, for "see skipped rows".
+ */
+export function planImport(rows, map, existingPhones, { hasHeader = true } = {}) {
+  const ready = [], dupes = [], bad = [];
+  const seen = new Set();
+  const get = (r, k) => (map[k] >= 0 ? String(r[map[k]] ?? '').trim() : '');
+  (rows || []).forEach((r, i) => {
+    if (hasHeader && i === 0) return;
+    const line = i + 1;
+    const p = phone10(get(r, 'phone'));
+    const shop = get(r, 'shop_name') || get(r, 'owner_name');
+    if (!p || !/^[6-9]/.test(p)) { bad.push({ line, why: 'Wrong mobile number', value: get(r, 'phone') || '(empty)' }); return; }
+    if (!shop) { bad.push({ line, why: 'No shop name', value: p }); return; }
+    if (existingPhones?.has(p)) { dupes.push({ line, why: 'Already in the CRM', value: `${shop} · ${p}` }); return; }
+    if (seen.has(p)) { dupes.push({ line, why: 'Twice in this file', value: `${shop} · ${p}` }); return; }
+    seen.add(p);
+    ready.push({
+      shop_name: shop.slice(0, 120), phone: p,
+      owner_name: get(r, 'owner_name').slice(0, 80) || null, city: get(r, 'city').slice(0, 80) || null,
+      area: get(r, 'area').slice(0, 120) || null, business_type: get(r, 'business_type').slice(0, 60) || null,
+      note: get(r, 'note').slice(0, 180) || null,
+    });
+  });
+  return { ready, dupes, bad };
+}
+
+/** How many leads each person gets when the fewest-open go first: { userId: n }. */
+export function fewestFirst(n, people, openCounts) {
+  const load = new Map((people || []).map((u) => [u, openCounts?.[u] || 0]));
+  const out = Object.fromEntries((people || []).map((u) => [u, 0]));
+  if (!load.size) return out;
+  for (let i = 0; i < n; i++) {
+    let best = null;
+    for (const [u, c] of load) if (best === null || c < load.get(best)) best = u;
+    out[best]++; load.set(best, load.get(best) + 1);
+  }
+  return out;
 }

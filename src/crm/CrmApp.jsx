@@ -3,13 +3,13 @@
 // Shows NO shop, order or admin data: CRM logins are refused those by the
 // database (supabase/sales-crm-forward.sql), not just hidden here.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   crmSession, onCrmAuthChange, crmSignIn, crmSignOut, crmResetPassword, crmSetPassword,
-  fetchMe, fetchStaff, touch,
+  fetchMe, fetchStaff, touch, listLeave, listQuestions, fetchSettings,
 } from './crmService.js';
 import { Icon, Field, Notice, Spinner } from './ui.jsx';
-import { btn, input, MENUS } from './crmStyles.js';
+import { btn, input, MENUS, PHONE_TABS } from './crmStyles.js';
 import CrmToday from './CrmToday.jsx';
 import { CrmLeads, CrmLeadPage } from './CrmLeads.jsx';
 import CrmAddLead from './CrmAddLead.jsx';
@@ -19,6 +19,11 @@ import CrmFollowups from './CrmFollowups.jsx';
 import CrmCheckin from './CrmCheckin.jsx';
 import CrmAttendance from './CrmAttendance.jsx';
 import CrmTeam from './CrmTeam.jsx';
+import CrmPerformance from './CrmPerformance.jsx';
+import CrmScripts from './CrmScripts.jsx';
+import CrmHelp from './CrmHelp.jsx';
+import CrmVisits from './CrmVisits.jsx';
+import CrmAccount from './CrmAccount.jsx';
 import { CrmCtx, useCrm, initials, ROLE_LABEL } from './crmContext.js';
 
 
@@ -84,35 +89,89 @@ function NotOnTeam() {
   );
 }
 
+// Things waiting for the manager: leave to approve, questions to answer.
+function useBadges(me) {
+  const [b, setB] = useState({});
+  useEffect(() => {
+    if (me.role !== 'manager') return undefined;
+    let alive = true;
+    const load = async () => {
+      const [leave, qs] = await Promise.all([listLeave(), listQuestions()]);
+      if (alive) setB({ attendance: leave.filter((l) => l.status === 'pending').length, help: qs.filter((q) => !q.answer).length });
+    };
+    load();
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(id); };
+  }, [me.role]);
+  return b;
+}
+
+const Badge = ({ n }) => (n ? <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-amber-400 text-amber-950 text-[11px] font-extrabold grid place-items-center">{n}</span> : null);
+
 function Shell({ children }) {
   const { me, base } = useCrm();
+  const [more, setMore] = useState(false);
+  const badges = useBadges(me);
+  const { pathname } = useLocation();
+  const [seenPath, setSeenPath] = useState(pathname);
+  if (seenPath !== pathname) { setSeenPath(pathname); setMore(false); }
   const items = MENUS[me.role] || MENUS.caller;
+  const tabs = items.slice(0, PHONE_TABS);
+  const rest = items.slice(PHONE_TABS);
+  const restBadge = rest.reduce((n, [p]) => n + (badges[p] || 0), 0);
   const to = (p) => (p ? `${base}/${p}` : `${base}/`);
-  const linkCls = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-green-600/25 text-white font-bold' : 'text-gray-300 font-semibold hover:text-white'}`;
+  const linkCls = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm no-underline ${isActive ? 'bg-green-600/25 text-white font-bold' : 'text-gray-300 font-semibold hover:text-white'}`;
   return (
-    <div className="min-h-screen bg-[#f4f5f4] lg:flex">
-      <nav aria-label="CRM" className="hidden lg:flex lg:flex-col w-60 shrink-0 bg-[#0f1f18] text-white px-3 py-5 gap-1 sticky top-0 h-screen">
+    <div className="min-h-screen bg-[#f4f5f4]">
+      {/* fixed, not sticky: the site's overflow-x on body stops sticky from working */}
+      <nav aria-label="CRM" className="hidden lg:flex lg:flex-col w-60 fixed inset-y-0 left-0 z-30 bg-[#0f1f18] text-white px-3 py-5 gap-1 overflow-y-auto">
         <div className="flex items-center gap-2.5 px-2 pb-4">
           <span aria-hidden="true" className="w-9 h-9 rounded-xl bg-green-600 grid place-items-center font-extrabold text-[13px]">PL</span>
           <div><div className="font-extrabold">PocketLink</div><div className="text-[12px] text-green-200 font-semibold">Sales CRM</div></div>
         </div>
         {items.map(([p, label, icon]) => (
-          <NavLink key={p || 'today'} to={to(p)} end={!p} className={linkCls}><Icon name={icon} />{label}</NavLink>
+          <NavLink key={p || 'today'} to={to(p)} end={!p} className={linkCls}><Icon name={icon} />{label}<Badge n={badges[p]} /></NavLink>
         ))}
         <div className="mt-auto border-t border-white/10 pt-3 px-2 flex items-center gap-2.5">
-          <span aria-hidden="true" className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 grid place-items-center font-extrabold text-[12px]">{initials(me.name)}</span>
-          <div className="flex-1 min-w-0"><div className="text-sm font-bold truncate">{me.name}</div><div className="text-[12px] text-green-200">{ROLE_LABEL[me.role]}</div></div>
+          <NavLink to={to('account')} className="flex flex-1 min-w-0 items-center gap-2.5 rounded-lg -m-1 p-1 hover:bg-white/5 no-underline" title="My account" aria-label={`${me.name}: my account`}>
+            <span aria-hidden="true" className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 grid place-items-center font-extrabold text-[12px]">{initials(me.name)}</span>
+            <span className="flex-1 min-w-0"><span className="block text-sm font-bold truncate text-white">{me.name}</span><span className="block text-[12px] text-green-200 truncate">{ROLE_LABEL[me.role]}</span></span>
+          </NavLink>
           <button type="button" aria-label="Sign out" onClick={() => crmSignOut()} className="w-9 h-9 rounded-lg bg-white/10 grid place-items-center"><Icon name="out" size={16} /></button>
         </div>
       </nav>
-      <main className="flex-1 min-w-0 pb-24 lg:pb-10">{children}</main>
-      <nav aria-label="Main" className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 grid grid-cols-5 pt-2 pb-3">
-        {items.slice(0, 5).map(([p, label, icon]) => (
+      <header className="lg:hidden bg-[#0f1f18] text-white px-4 h-14 flex items-center gap-2.5">
+        <span aria-hidden="true" className="w-8 h-8 rounded-lg bg-green-600 grid place-items-center font-extrabold text-[12px]">PL</span>
+        <span className="font-extrabold flex-1">PocketLink CRM</span>
+        <NavLink to={to('account')} aria-label="My account" className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 grid place-items-center font-extrabold text-[12px] no-underline">{initials(me.name)}</NavLink>
+      </header>
+      <main className="min-w-0 pb-24 lg:pb-10 lg:ml-60">{children}</main>
+      {more && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMore(false)} role="presentation">
+          <div role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}
+            className="absolute inset-x-0 bottom-0 bg-white rounded-t-3xl px-4 pt-4 pb-24 space-y-1 max-h-[80vh] overflow-y-auto">
+            {rest.map(([p, label, icon]) => (
+              <NavLink key={p} to={to(p)} className={({ isActive }) => `flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] no-underline ${isActive ? 'bg-green-50 text-green-800 font-extrabold' : 'text-gray-900 font-semibold'}`}>
+                <Icon name={icon} />{label}<Badge n={badges[p]} />
+              </NavLink>
+            ))}
+            <NavLink to={to('account')} className="flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] text-gray-900 font-semibold no-underline"><Icon name="user" />My account</NavLink>
+            <button type="button" onClick={() => crmSignOut()} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] text-red-700 font-semibold"><Icon name="out" />Sign out</button>
+          </div>
+        </div>
+      )}
+      <nav aria-label="Main" className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-white border-t border-gray-200 grid grid-cols-5 pt-2 pb-3">
+        {tabs.map(([p, label, icon]) => (
           <NavLink key={p || 'today'} to={to(p)} end={!p}
-            className={({ isActive }) => `flex flex-col items-center gap-0.5 text-[11.5px] ${isActive ? 'text-green-700 font-extrabold' : 'text-gray-500 font-semibold'}`}>
+            className={({ isActive }) => `flex flex-col items-center gap-0.5 text-[11.5px] no-underline ${isActive ? 'text-green-700 font-extrabold' : 'text-gray-500 font-semibold'}`}>
             <Icon name={icon} size={20} />{label}
           </NavLink>
         ))}
+        <button type="button" aria-expanded={more} onClick={() => setMore((m) => !m)}
+          className={`relative flex flex-col items-center gap-0.5 text-[11.5px] ${more ? 'text-green-700 font-extrabold' : 'text-gray-500 font-semibold'}`}>
+          <Icon name="more" size={20} />More
+          {restBadge > 0 && <span aria-label={`${restBadge} waiting`} className="absolute top-0 right-[calc(50%-18px)] w-2.5 h-2.5 rounded-full bg-amber-400" />}
+        </button>
       </nav>
     </div>
   );
@@ -123,6 +182,7 @@ export default function CrmApp({ base = '' }) {
   const [recovery, setRecovery] = useState(false);
   const [me, setMe] = useState(undefined);
   const [staff, setStaff] = useState([]);
+  const [settings, setSettings] = useState(null);   // null until loaded
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -151,7 +211,8 @@ export default function CrmApp({ base = '' }) {
   }, [session]);
 
   const refreshStaff = useCallback(async () => setStaff(await fetchStaff()), []);
-  useEffect(() => { if (me) refreshStaff(); }, [me, refreshStaff]);
+  const refreshSettings = useCallback(async () => setSettings(await fetchSettings()), []);
+  useEffect(() => { if (me) { refreshStaff(); refreshSettings(); } }, [me, refreshStaff, refreshSettings]);
 
   // Login time and "last active": once on open, then every 5 minutes while the tab is visible.
   useEffect(() => {
@@ -164,11 +225,11 @@ export default function CrmApp({ base = '' }) {
   }, [me]);
 
   const value = useMemo(() => ({
-    me, staff, base, refreshStaff,
+    me, staff, base, refreshStaff, settings, refreshSettings,
     path: (p = '') => (p ? `${base}/${p}` : `${base}/`),
     go: (p = '') => navigate(p ? `${base}/${p}` : `${base}/`),
     nameOf: (id) => staff.find((s) => s.user_id === id)?.name || '',
-  }), [me, staff, base, refreshStaff, navigate]);
+  }), [me, staff, base, refreshStaff, settings, refreshSettings, navigate]);
 
   if (session === undefined) return <Spinner />;
   if (!session || recovery) return <Login recovery={recovery} onDone={() => { setRecovery(false); window.history.replaceState(null, '', base || '/'); }} />;
@@ -190,6 +251,11 @@ export default function CrmApp({ base = '' }) {
           <Route path="attendance" element={<CrmAttendance />} />
           <Route path="assign" element={isManager ? <CrmAssign /> : <Navigate to={value.path()} replace />} />
           <Route path="team" element={isManager ? <CrmTeam /> : <Navigate to={value.path()} replace />} />
+          <Route path="visits" element={isManager ? <CrmVisits /> : <Navigate to={value.path()} replace />} />
+          <Route path="performance" element={<CrmPerformance />} />
+          <Route path="scripts" element={<CrmScripts />} />
+          <Route path="help" element={<CrmHelp />} />
+          <Route path="account" element={<CrmAccount />} />
           <Route path="*" element={<Navigate to={value.path()} replace />} />
         </Routes>
       </Shell>

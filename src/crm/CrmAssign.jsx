@@ -1,15 +1,17 @@
-// Manager: give leads to people. Tick leads, then one person, or split evenly
-// between the people you pick. Each person's open-lead count keeps workloads fair.
+// Manager: give leads to people. Tick leads, then one person, split evenly, or
+// fewest open leads first. Each person's open-lead count keeps workloads fair.
+// Below: the auto-assign rules for leads that arrive by themselves.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
 import { listLeads, assignLeads } from './crmService.js';
-import { sourceLabel, splitEvenly, dueLabel } from './crmLogic.js';
+import { sourceLabel, splitEvenly, fewestFirst, dueLabel } from './crmLogic.js';
+import CrmRules from './CrmRules.jsx';
 import { Spinner, Empty, Notice, StagePill } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
 
 export default function CrmAssign() {
-  const { staff, path } = useCrm();
+  const { staff, path, settings } = useCrm();
   const [leads, setLeads] = useState(null);
   const [show, setShow] = useState('none');
   const [sel, setSel] = useState(new Set());
@@ -35,6 +37,7 @@ export default function CrmAssign() {
     if (l.stage === 'won' || l.stage === 'lost') return false;
     if (show === 'none') return !l.assigned_to;
     if (show === 'stale') return Date.parse(l.last_activity_at || l.created_at) < weekAgo;
+    if (show === 'unreachable') return (l.call_attempts || 0) >= 3;
     if (show === 'all') return true;
     return l.assigned_to === show;
   }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)), [leads, show, weekAgo]);
@@ -50,6 +53,12 @@ export default function CrmAssign() {
       let moved = 0;
       if (mode === 'one') {
         moved = await assignLeads(ids, to || null);
+      } else if (mode === 'fewest') {
+        let i = 0;
+        for (const [uid, k] of Object.entries(fewestFirst(ids.length, [...split], open))) {
+          if (k) moved += await assignLeads(ids.slice(i, i + k), uid);
+          i += k;
+        }
       } else {
         const groups = splitEvenly(ids, [...split]);
         for (const [uid, group] of Object.entries(groups)) if (group.length) moved += await assignLeads(group, uid);
@@ -80,6 +89,7 @@ export default function CrmAssign() {
             <select id="show" className={`${input} h-10 sm:w-56`} value={show} onChange={(e) => { setShow(e.target.value); setSel(new Set()); }}>
               <option value="none">Not assigned</option>
               <option value="stale">Untouched for 7 days</option>
+              <option value="unreachable">Not reachable (3+ tries)</option>
               <option value="all">Everyone’s open leads</option>
               {people.map((s) => <option key={s.user_id} value={s.user_id}>{s.name}’s leads</option>)}
             </select>
@@ -108,8 +118,8 @@ export default function CrmAssign() {
 
         <section aria-label="Give to" className={`${card} w-full lg:w-[420px] shrink-0 p-4 space-y-3`}>
           <h2 className="text-lg font-extrabold">Give {sel.size} lead{sel.size === 1 ? '' : 's'} to…</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {[['one', 'One person'], ['split', 'Split evenly']].map(([k, label]) => (
+          <div className="grid grid-cols-3 gap-2">
+            {[['one', 'One person'], ['split', 'Split evenly'], ['fewest', 'Fewest open first']].map(([k, label]) => (
               <button key={k} type="button" aria-pressed={mode === k} onClick={() => setMode(k)}
                 className={`h-11 rounded-xl border-2 text-[13.5px] font-bold ${mode === k ? 'border-green-700 bg-green-50' : 'border-gray-200 bg-white'}`}>{label}</button>
             ))}
@@ -132,11 +142,12 @@ export default function CrmAssign() {
             })}
           </div>
           <button type="button" className={`${btn.primary} w-full`} disabled={!ready || busy} onClick={give}>
-            {busy ? 'Giving…' : !sel.size ? 'Tick the leads to give' : mode === 'one' ? 'Give them' : `Split between ${split.size} people`}
+            {busy ? 'Giving…' : !sel.size ? 'Tick the leads to give' : mode === 'one' ? 'Give them' : mode === 'fewest' ? `Fewest open first, ${split.size} people` : `Split between ${split.size} people`}
           </button>
           <p className="text-[12.5px] text-gray-500">The leads appear at the top of each person’s queue under “New for you”.</p>
         </section>
       </div>
+      {leads && settings && <CrmRules unassignedIds={leads.filter((l) => !l.assigned_to && l.stage !== 'won' && l.stage !== 'lost').map((l) => l.id)} onAssigned={load} />}
     </div>
   );
 }

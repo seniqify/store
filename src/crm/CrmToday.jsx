@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
-import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay } from './crmService.js';
+import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions } from './crmService.js';
 import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS } from './crmLogic.js';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -53,15 +53,18 @@ export default function CrmToday() {
   const [leads, setLeads] = useState(null);
   const [acts, setActs] = useState([]);
   const [att, setAtt] = useState([]);
+  const [leave, setLeave] = useState([]);
+  const [qs, setQs] = useState([]);
+  const [loadedAt, setLoadedAt] = useState(0);
   const today = istDate();
   const isManager = me.role === 'manager';
 
   const load = useCallback(async () => {
     const monthStart = `${today.slice(0, 8)}01`;
-    const [ls, as, at] = await Promise.all([
-      listLeads(), activitiesSince(new Date(istInstant(monthStart)).toISOString()), attendanceBetween(today, today),
+    const [ls, as, at, lv, q] = await Promise.all([
+      listLeads(), activitiesSince(new Date(istInstant(monthStart)).toISOString()), attendanceBetween(today, today), listLeave(), listQuestions(),
     ]);
-    setLeads(ls); setActs(as); setAtt(at);
+    setLeads(ls); setActs(as); setAtt(at); setLeave(lv); setQs(q); setLoadedAt(Date.now());
   }, [today]);
   useEffect(() => { load(); }, [load]);
 
@@ -95,6 +98,12 @@ export default function CrmToday() {
       <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
         <DayCard me={me} row={row} onChanged={load} />
+        {leave.filter((l) => l.staff_id === me.user_id && l.status !== 'pending' && l.decided_at && loadedAt - Date.parse(l.decided_at) < 7 * 86400000).slice(0, 2).map((l) => (
+          <Notice key={l.id} kind={l.status === 'approved' ? 'ok' : 'warn'}>Your leave for {shortDay(l.from_day)}{l.to_day !== l.from_day ? ` – ${shortDay(l.to_day)}` : ''} was {l.status === 'approved' ? 'approved' : 'not approved'}.</Notice>
+        ))}
+        {qs.filter((q) => q.asked_by === me.user_id && q.answer && q.answered_at && loadedAt - Date.parse(q.answered_at) < 3 * 86400000).slice(0, 2).map((q) => (
+          <Link key={q.id} to={path('help')} className="block no-underline"><Notice kind="ok">Your manager answered: “{q.question.slice(0, 80)}”. Tap to read.</Notice></Link>
+        ))}
         <div className="grid grid-cols-3 gap-3">
           {me.role === 'field'
             ? <Stat label="Visits" value={count(mineToday, (a) => a.kind === 'visit')} sub={me.daily_target ? `of ${me.daily_target}` : 'today'} />
@@ -122,6 +131,9 @@ export default function CrmToday() {
   }
 
   const unassigned = count(leads, (l) => !l.assigned_to && l.stage !== 'won' && l.stage !== 'lost');
+  const pendingLeave = leave.filter((l) => l.status === 'pending');
+  const waitingQs = qs.filter((q) => !q.answer);
+  const notCalled = count(leads, (l) => l.assigned_to && l.stage === 'new' && !l.last_activity_at && Date.parse(l.created_at) < loadedAt - 86400000);
   const late = followupColumns(leads).late.length;
   const inToday = perPerson.filter((p) => p.row?.first_seen_at || p.row?.day_start_at).length;
   return (
@@ -175,6 +187,25 @@ export default function CrmToday() {
               <Link to={path('assign')} className={btn.dark + ' h-9'}>Assign</Link>
             </div>
           )}
+          {pendingLeave.length > 0 && (
+            <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 flex items-center gap-3">
+              <div className="flex-1"><div className="font-bold text-sm">{pendingLeave.length} leave request{pendingLeave.length === 1 ? '' : 's'}</div>
+                <div className="text-[12.5px] text-blue-900">{pendingLeave.slice(0, 2).map((l) => `${staff.find((s) => s.user_id === l.staff_id)?.name || ''} · ${shortDay(l.from_day)}`).join(', ')}</div></div>
+              <Link to={path('attendance')} className={btn.small}>See</Link>
+            </div>
+          )}
+          {waitingQs.length > 0 && (
+            <div className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+              <div className="flex-1"><div className="font-bold text-sm">{waitingQs.length} question{waitingQs.length === 1 ? '' : 's'} from the team</div><div className="text-[12.5px] text-gray-600 truncate">{waitingQs[0].question}</div></div>
+              <Link to={path('help')} className={btn.small}>Answer</Link>
+            </div>
+          )}
+          {notCalled > 0 && (
+            <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 flex items-center gap-3">
+              <div className="flex-1"><div className="font-bold text-sm">{notCalled} new lead{notCalled === 1 ? '' : 's'} not called for 24 h</div><div className="text-[12.5px] text-amber-800">Given out, but nobody has called yet</div></div>
+              <Link to={path('leads')} className={btn.small}>See</Link>
+            </div>
+          )}
           {perPerson.filter((p) => p.late >= 3).map((p) => (
             <div key={p.s.user_id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3">
               <div className="flex-1"><div className="font-bold text-sm">{p.s.name} has {p.late} late follow-ups</div></div>
@@ -184,7 +215,7 @@ export default function CrmToday() {
           {perPerson.filter((p) => p.status === 'today' && p.s.role !== 'manager').map((p) => (
             <div key={`in-${p.s.user_id}`} className="border border-gray-200 rounded-xl p-3 text-sm"><b>{p.s.name}</b> has not logged in today.</div>
           ))}
-          {!unassigned && !perPerson.some((p) => p.late >= 3) && <p className="text-sm text-gray-500">All clear.</p>}
+          {!unassigned && !pendingLeave.length && !waitingQs.length && !notCalled && !perPerson.some((p) => p.late >= 3) && <p className="text-sm text-gray-500">All clear.</p>}
         </section>
       </div>
     </div>

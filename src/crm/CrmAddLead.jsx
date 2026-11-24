@@ -2,9 +2,10 @@
 // two people never work the same shop. A manager picks who gets it; anyone
 // else adds it to their own list. The first step becomes a follow-up.
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
-import { addLead, lookupPhone, listLeads } from './crmService.js';
+import { addLead, lookupPhone, listLeads, autoAssign } from './crmService.js';
+import CrmImport from './CrmImport.jsx';
 import { phone10, BUSINESS_TYPES, SOURCES, whenPresets, stageOf } from './crmLogic.js';
 import { Field, Notice } from './ui.jsx';
 import { btn, input, card } from './crmStyles.js';
@@ -15,9 +16,12 @@ const FIRST_STEPS = [
 const PICKABLE_SOURCES = ['referral', 'calling_list', 'field', 'walk_in', 'instagram', 'facebook', 'google', 'website', 'manual'];
 
 export default function CrmAddLead() {
-  const { me, staff, path } = useCrm();
+  const { me, staff, path, settings } = useCrm();
   const navigate = useNavigate();
   const isManager = me.role === 'manager';
+  const [params, setParams] = useSearchParams();
+  const tab = isManager && params.get('tab') === 'import' ? 'import' : 'one';
+  const rulesOn = !!settings?.auto_assign?.on;
   const [f, setF] = useState({
     shop_name: '', owner_name: '', phone: '', business_type: '', city: '', area: '',
     source: me.role === 'field' ? 'field' : 'referral', heat: 'warm', assigned_to: isManager ? '' : me.user_id, step: 'call_today', note: '',
@@ -60,9 +64,10 @@ export default function CrmAddLead() {
       const row = await addLead({
         shop_name: f.shop_name.trim(), owner_name: f.owner_name.trim() || null, phone: p10,
         business_type: f.business_type || null, city: f.city.trim() || null, area: f.area.trim() || null,
-        source: f.source, heat: f.heat, assigned_to: f.assigned_to || null,
+        source: f.source, heat: f.heat, assigned_to: f.assigned_to && f.assigned_to !== 'auto' ? f.assigned_to : null,
         next_action_at: new Date(step[0]).toISOString(), next_action: f.note.trim() ? `${step[1]} · ${f.note.trim()}`.slice(0, 200) : step[1],
       });
+      if (f.assigned_to === 'auto') await autoAssign([row.id]);
       if (again) {
         setF({ ...f, shop_name: '', owner_name: '', phone: '', area: '', note: '' });
       } else {
@@ -79,8 +84,17 @@ export default function CrmAddLead() {
     <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
       <header className="flex items-center gap-3">
         <Link to={path('leads')} className="text-sm font-bold text-green-700">← Leads</Link>
-        <h1 className="text-2xl font-extrabold">Add a lead</h1>
+        <h1 className="text-2xl font-extrabold">{tab === 'import' ? 'Import a list' : 'Add a lead'}</h1>
       </header>
+      {isManager && (
+        <div className="flex gap-2" role="tablist" aria-label="How to add">
+          {[['one', 'One lead'], ['import', 'Import a list (Excel / CSV)']].map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setParams(k === 'import' ? { tab: 'import' } : {}, { replace: true })}
+              className={`h-10 px-4 rounded-full border text-[13.5px] font-bold ${tab === k ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 text-gray-700'}`}>{label}</button>
+          ))}
+        </div>
+      )}
+      {tab === 'import' ? <CrmImport /> : (
       <form className={`${card} p-5 space-y-4`} onSubmit={(e) => { e.preventDefault(); if (valid) save(false); }}>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Shop name *" htmlFor="sn"><input id="sn" className={input} value={f.shop_name} onChange={set('shop_name')} required /></Field>
@@ -122,6 +136,7 @@ export default function CrmAddLead() {
           {isManager ? (
             <Field label="Give it to" htmlFor="as">
               <select id="as" className={input} value={f.assigned_to} onChange={set('assigned_to')}>
+                {rulesOn && <option value="auto">Auto: follow my rules</option>}
                 <option value="">Keep unassigned for now</option>
                 {people.map((s) => <option key={s.user_id} value={s.user_id}>{s.name} · {s.role} · {openCounts[s.user_id] || 0} open</option>)}
               </select>
@@ -142,6 +157,7 @@ export default function CrmAddLead() {
           <button type="button" className={btn.ghost} disabled={!valid || busy} onClick={() => save(true)}>Save and add another</button>
         </div>
       </form>
+      )}
     </div>
   );
 }
