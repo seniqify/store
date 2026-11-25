@@ -6,10 +6,10 @@ with f as (
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
      and p.proname in ('sales_callable_at', 'sales_lead_in', 'sales_lead_failed', 'sales_lead_feed', 'sales_rotate_slow_leads',
-                       'sales_win_from_payment', 'sales_capture_payment', 'sales_win_review', 'sales_pending_wins', 'sales_scoreboard')
+                       'sales_win_from_payment', 'sales_capture_payment', 'sales_capture_plan_paid', 'sales_win_review', 'sales_pending_wins', 'sales_scoreboard')
 )
-select 'Q1 ten functions exist and pin search_path' as check_name,
-       case when (select count(*) from f) = 10
+select 'Q1 eleven functions exist and pin search_path' as check_name,
+       case when (select count(*) from f) = 11
              and not exists (select 1 from f where proconfig is null or not (proconfig::text like '%search_path=public, pg_temp%'))
             then 'PASS' else 'FAIL' end as result
 union all
@@ -26,7 +26,7 @@ select 'Q3 nobody signed in can read sales_private (no policy, no grant)',
 union all
 select 'Q4 only the service role can put a lead in',
        case when not exists (select 1 from f, (values ('anon'), ('authenticated')) r(role)
-                              where f.proname in ('sales_lead_in', 'sales_lead_failed', 'sales_rotate_slow_leads', 'sales_win_from_payment', 'sales_capture_payment')
+                              where f.proname in ('sales_lead_in', 'sales_lead_failed', 'sales_rotate_slow_leads', 'sales_win_from_payment', 'sales_capture_payment', 'sales_capture_plan_paid')
                                 and has_function_privilege(r.role, f.oid, 'execute'))
              and has_function_privilege('service_role', (select oid from f where proname = 'sales_lead_in'), 'execute')
             then 'PASS' else 'FAIL' end
@@ -47,8 +47,11 @@ select 'Q7 scoreboard v2 returns talk time and pending wins',
              and (select prosrc from f where proname = 'sales_scoreboard') like '%sum(a.duration_sec)%'
             then 'PASS' else 'FAIL' end
 union all
-select 'Q8 payment capture swallows its own errors',
+select 'Q8 both payment captures swallow their own errors; the shop one trusts only the server',
        case when (select prosrc from f where proname = 'sales_capture_payment') like '%exception when others then%'
+             and (select prosrc from f where proname = 'sales_capture_plan_paid') like '%exception when others then%'
+             and (select prosrc from f where proname = 'sales_capture_plan_paid') like '%= ''service_role''%'
+             and exists (select 1 from pg_trigger where tgname = 'sales_capture_plan_paid' and tgrelid = 'public.stores'::regclass and not tgisinternal)
             then 'PASS' else 'FAIL' end
 union all
 select 'Q9 payment trigger present (when plan_entitlements exists)',

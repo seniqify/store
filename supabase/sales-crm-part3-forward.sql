@@ -439,8 +439,69 @@ begin
   end if;
 end $$;
 
+-- Most payments today reach the shop through server functions that write
+-- stores.config directly (the Razorpay webhook, the renewal sync, plan
+-- activation), not through plan_entitlements. So: when the server (the
+-- request's role is service_role) moves a shop's paid-until date forward on a
+-- paid plan, that is payment proof too. A browser call (anon / authenticated,
+-- including the old upgrade_store_plan path) never counts, and a shop's own
+-- settings saves keep planExpiresAt as it was, so they do not fire this.
+create or replace function public.sales_capture_plan_paid()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_role text;
+  v_exp  timestamptz;
+  v_old  timestamptz;
+begin
+  begin
+    v_role := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb->>'role', '');
+    if v_role = 'service_role'
+       and coalesce(new.config->>'plan', 'free') <> 'free'
+       and coalesce(new.config->>'planExpiresAt', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' then
+      v_exp := (new.config->>'planExpiresAt')::timestamptz;
+      if coalesce(old.config->>'planExpiresAt', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' then
+        v_old := (old.config->>'planExpiresAt')::timestamptz;
+      end if;
+      if v_exp > now() and (v_old is null or v_exp > v_old) then
+        perform public.sales_win_from_payment(new.slug, now(), v_exp, now(), true);
+      end if;
+    end if;
+  exception when others then
+    raise warning 'sales_capture_plan_paid skipped: %', sqlerrm;
+  end;
+  return new;
+end;
+$fn$;
+
+drop trigger if exists sales_capture_plan_paid on public.stores;
+create trigger sales_capture_plan_paid
+  after update of config on public.stores
+  for each row
+  when ((old.config->>'planExpiresAt') is distinct from (new.config->>'planExpiresAt'))
+  execute function public.sales_capture_plan_paid();
+
 -- Shops that already paid: their leads are won with proof (no credit to
--- anyone today; the wins happened before).
+-- anyone today; the wins happened before). From the ledger, and from shops
+-- on a paid plan that carry a Razorpay subscription.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select s.slug, (s.config->>'planExpiresAt')::timestamptz as exp
+      from public.stores s
+     where coalesce(s.config->>'plan', 'free') <> 'free'
+       and coalesce(s.config->>'razorpaySubscriptionId', '') <> ''
+       and coalesce(s.config->>'planExpiresAt', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+       and (s.config->>'planExpiresAt')::timestamptz > now()
+  loop
+    perform public.sales_win_from_payment(r.slug, now(), r.exp, now(), false);
+  end loop;
+end $$;
 do $$
 declare
   r record;
@@ -601,6 +662,7 @@ revoke all on function public.sales_lead_feed(timestamptz) from public, anon;
 revoke all on function public.sales_rotate_slow_leads(timestamptz) from public, anon, authenticated;
 revoke all on function public.sales_win_from_payment(text, timestamptz, timestamptz, timestamptz, boolean) from public, anon, authenticated;
 revoke all on function public.sales_capture_payment() from public, anon, authenticated;
+revoke all on function public.sales_capture_plan_paid() from public, anon, authenticated;
 revoke all on function public.sales_win_review(uuid, boolean) from public, anon;
 revoke all on function public.sales_pending_wins() from public, anon;
 grant execute on function public.sales_pending_wins() to authenticated;

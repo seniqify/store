@@ -18,6 +18,8 @@ begin
 end $$;
 
 drop function if exists public.sales_capture_payment();
+drop trigger if exists sales_capture_plan_paid on public.stores;
+drop function if exists public.sales_capture_plan_paid();
 drop function if exists public.sales_win_review(uuid, boolean);
 drop function if exists public.sales_pending_wins();
 drop function if exists public.sales_win_from_payment(text, timestamptz, timestamptz, timestamptz, boolean);

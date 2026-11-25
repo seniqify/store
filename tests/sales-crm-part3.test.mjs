@@ -104,6 +104,10 @@ test('part 3 SQL: only the service role puts leads in; proof only by the databas
   const cap = f.slice(f.indexOf('function public.sales_capture_payment()'), f.indexOf('$fn$;', f.indexOf('function public.sales_capture_payment()')));
   assert.match(cap, /exception when others then\s+raise warning/, 'a CRM problem never blocks a payment');
   assert.match(cap, /'razorpay_subscription', 'razorpay_payment'/, 'coupons and console grants are not payments');
+  const shop = f.slice(f.indexOf('function public.sales_capture_plan_paid()'), f.indexOf('$fn$;', f.indexOf('function public.sales_capture_plan_paid()')));
+  assert.match(shop, /v_role = 'service_role'/, 'only the server (webhook, sync, activation) proves a payment, never a browser call');
+  assert.match(shop, /exception when others then\s+raise warning/);
+  assert.ok(f.includes("when ((old.config->>'planExpiresAt') is distinct from (new.config->>'planExpiresAt'))"), 'shop saves that keep the date never fire it');
   const sb = f.slice(f.indexOf('function public.sales_scoreboard'), f.indexOf('$fn$;', f.indexOf('function public.sales_scoreboard')));
   assert.match(sb, /w\.won_proof is not null/);
   assert.match(sb, /sum\(a\.duration_sec\)/);

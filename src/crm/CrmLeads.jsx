@@ -107,7 +107,7 @@ export function LeadDetail({ leadId, onChanged }) {
         <StagePill stage={lead.stage} />
       </div>
 
-      {lead.stage === 'won' && (
+      {lead.stage === 'won' && (lead.won_proof || (hist || []).some((x) => x.kind === 'stage' && x.outcome === 'won' && x.staff_id)) && (
         lead.won_proof ? (
           <Notice kind="ok"><b>{lead.won_proof === 'payment' ? 'Payment seen by PocketLink' : 'Win approved by the manager'}</b>
             {lead.won_amount ? ` · ${lead.won_plan === 'yearly' ? 'yearly' : 'monthly'} plan, ₹${Number(lead.won_amount).toLocaleString('en-IN')}` : ''}
