@@ -142,20 +142,23 @@ export default function CrmPerformance() {
   );
 
   if (!isManager) {
-    const p = board.find((x) => x.row.user_id === me.user_id);
+    // The Ads & leads team is ranked among itself; callers and field as before.
+    const peers = me.role === 'ads' ? board.filter((x) => x.row.role === 'ads') : board;
+    const found = board.find((x) => x.row.user_id === me.user_id);
+    const p = found && { ...found, rank: peers.findIndex((x) => x.row.user_id === me.user_id) + 1 };
     return (
       <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
         <header className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-extrabold flex-1">My performance · {cur.label}</h1>{periodPicker}
         </header>
         {err && <Notice>{err}</Notice>}
-        {!p ? <Empty>Your score starts with your first call or visit.</Empty> : (
+        {!p ? <Empty>{me.role === 'ads' ? 'Your score starts with your first lead check.' : 'Your score starts with your first call or visit.'}</Empty> : (
           <>
             <section className="bg-[#0f1f18] text-white rounded-2xl p-5 space-y-3">
               <div className="flex items-end gap-3">
                 <span className="text-5xl font-extrabold leading-none">{p.score ?? '—'}</span>
                 <div className="pb-1"><BandPill score={p.score} />
-                  <div className="text-[13px] text-green-100 mt-1">Rank {p.rank} of {board.length}{lastScore.has(me.user_id) && p.score != null && lastScore.get(me.user_id) != null ? ` · ${p.score - lastScore.get(me.user_id) >= 0 ? 'up' : 'down'} ${Math.abs(p.score - lastScore.get(me.user_id))} from ${prev.label}` : ''}</div></div>
+                  <div className="text-[13px] text-green-100 mt-1">Rank {p.rank} of {peers.length}{lastScore.has(me.user_id) && p.score != null && lastScore.get(me.user_id) != null ? ` · ${p.score - lastScore.get(me.user_id) >= 0 ? 'up' : 'down'} ${Math.abs(p.score - lastScore.get(me.user_id))} from ${prev.label}` : ''}</div></div>
               </div>
               <div className="relative h-2.5 rounded-full bg-gradient-to-r from-red-400 via-amber-300 to-green-500" aria-hidden="true">
                 {p.score != null && <span className="absolute -top-1 w-1.5 h-[18px] rounded bg-white shadow" style={{ left: `calc(${Math.min(100, p.score)}% - 3px)` }} />}
@@ -165,9 +168,9 @@ export default function CrmPerformance() {
             </section>
             {p.row.pending_wins > 0 && <Notice kind="warn">{p.row.pending_wins} win{p.row.pending_wins === 1 ? '' : 's'} waiting for proof. {p.row.pending_wins === 1 ? 'It counts' : 'They count'} once PocketLink sees the payment, or your manager approves.</Notice>}
             <Advice p={p} />
-            <section className={`${card} overflow-hidden`}><h2 className="px-4 pt-3 pb-1 font-extrabold">My 5 areas</h2><KpiTable p={p} weights={opts.weights} /></section>
+            <section className={`${card} overflow-hidden`}><h2 className="px-4 pt-3 pb-1 font-extrabold">{me.role === 'ads' ? 'My areas' : 'My 5 areas'}</h2><KpiTable p={p} weights={opts.weights} /></section>
             <Link to={path('incentives')} className={`${card} p-4 flex items-center gap-3 no-underline text-gray-900`}>
-              <div className="flex-1"><div className="font-extrabold">My incentive</div><div className="text-[13px] text-gray-500">Paid shops, the 30-day check and what is earned</div></div>
+              <div className="flex-1"><div className="font-extrabold">My incentive</div><div className="text-[13px] text-gray-500">{me.role === 'ads' ? 'Paid shops from leads you checked, the 30-day check' : 'Paid shops, the 30-day check and what is earned'}</div></div>
               <span className="text-green-700 font-bold text-sm">Open</span>
             </Link>
           </>
@@ -179,7 +182,8 @@ export default function CrmPerformance() {
   const chosen = board.find((x) => x.row.user_id === sel) || board[0];
   const scored = board.filter((p) => p.score != null);
   const teamScore = scored.length ? Math.round(scored.reduce((s, p) => s + p.score, 0) / scored.length) : null;
-  const sum = (f) => board.reduce((s, p) => s + (Number(f(p)) || 0), 0);
+  // Team totals count sellers only: a shop from a checked lead is already in its caller's numbers.
+  const sum = (f) => board.filter((p) => p.row.role !== 'ads').reduce((s, p) => s + (Number(f(p)) || 0), 0);
   const paidTarget = sum((p) => p.kpis.find((k) => k.key === 'paid')?.full);
   const moneyTarget = sum((p) => p.kpis.find((k) => k.key === 'money')?.full);
   const demos = sum((p) => p.row.demos), won = sum((p) => p.row.won);

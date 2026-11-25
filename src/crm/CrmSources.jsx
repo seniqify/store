@@ -1,7 +1,8 @@
-// Manager: where leads come from by themselves. Connect cards (website form,
-// Google Ads lead forms, Facebook / Instagram lead ads, WhatsApp), a live feed
-// with how fast each lead was called, and this month's report per campaign:
-// leads -> called -> demo -> paid, with ad spend for the cost per paid shop.
+// Manager and Ads & leads: where leads come from by themselves. Connect cards
+// (website form, Google Ads lead forms, Facebook / Instagram lead ads,
+// WhatsApp; manager only, they hold the keys), a live feed with how fast each
+// lead was called, and this month's report per campaign: leads -> checked real
+// / junk -> called -> demo -> paid, with ad spend for the cost per paid shop.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
@@ -43,7 +44,8 @@ function Step({ n, children }) {
 }
 
 export default function CrmSources() {
-  const { settings, refreshSettings, nameOf, path } = useCrm();
+  const { me, settings, refreshSettings, nameOf, path } = useCrm();
+  const isAds = me.role === 'ads';
   const today = istDate();
   const monthKey = today.slice(0, 7);
   const monthStart = `${monthKey}-01`;
@@ -75,9 +77,11 @@ export default function CrmSources() {
     const m = new Map();
     for (const l of monthLeads) {
       const k = `${l.source}|${l.source_detail || ''}`;
-      if (!m.has(k)) m.set(k, { source: l.source, detail: l.source_detail || '', leads: 0, called: 0, demo: 0, paid: 0, money: 0 });
+      if (!m.has(k)) m.set(k, { source: l.source, detail: l.source_detail || '', leads: 0, real: 0, junk: 0, called: 0, demo: 0, paid: 0, money: 0 });
       const r = m.get(k);
       r.leads++;
+      if (l.verify_status === 'verified') r.real++;
+      else if (l.verify_status) r.junk++;
       if (l.last_activity_at) r.called++;
       if (['demo', 'interested', 'won'].includes(l.stage)) r.demo++;
       if (l.stage === 'won' && l.won_proof) { r.paid++; r.money += Number(l.won_amount) || 0; }
@@ -108,11 +112,19 @@ export default function CrmSources() {
   return (
     <div className="px-4 lg:px-7 py-5 space-y-4">
       <header><h1 className="text-2xl font-extrabold">Lead sources</h1>
-        <p className="text-sm text-gray-500">Leads from ads and the website come in by themselves, are given out by your auto-assign rules, and should be called within 5 minutes. Night leads wait for 9:30 am.</p></header>
+        <p className="text-sm text-gray-500">{isAds
+          ? 'Leads from ads and the website come in by themselves and go straight to a caller. Check each one within 30 minutes in Check leads. Enter what each source spent so the cost per paid shop is right.'
+          : 'Leads from ads and the website come in by themselves, are given out by your auto-assign rules, and should be called within 5 minutes. Night leads wait for 9:30 am.'}</p></header>
       {err && <Notice>{err}</Notice>}
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      {isAds && (
+        <section className={`${card} p-4 flex flex-wrap items-center gap-3`} aria-label="Sources">
+          <p className="flex-1 min-w-[220px] text-[13.5px] text-gray-700">Website form, Google Ads lead forms, Facebook &amp; Instagram lead ads. Your manager connects them. Facebook leads not connected yet: download them from Meta’s <b>Leads Center</b> and import them.</p>
+          <Link to={path('add?tab=import')} className={btn.ghost}><Icon name="upload" size={16} />Import a list</Link>
+        </section>
+      )}
+      {!isAds && <div className="grid lg:grid-cols-2 gap-4">
         <section className={`${card} p-4 space-y-3`} aria-label="Website">
           <div className="flex items-center gap-3">
             <div className="flex-1"><h2 className="font-extrabold">Website · “Call me back” form</h2>
@@ -180,7 +192,7 @@ export default function CrmSources() {
           <p className="text-[13.5px] text-gray-800">Needs the messages sent to PocketLink’s WhatsApp number to come to the CRM (a webhook on PocketLink’s WhatsApp Business account). Not set up yet.</p>
           <p className="text-[12.5px] text-gray-500">Meanwhile, add people who message you with <Link to={path('add')} className="font-bold">Add a lead</Link> and pick “WhatsApp ad”.</p>
         </section>
-      </div>
+      </div>}
 
       <section aria-label="Live feed" className={`${card} overflow-hidden`}>
         <h2 className="px-4 pt-3 pb-1 font-extrabold">Coming in</h2>
@@ -225,9 +237,9 @@ export default function CrmSources() {
         )}
         {!report.length ? <Empty>No ad or website leads this month yet.</Empty> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[720px]">
+            <table className="w-full text-sm min-w-[860px]">
               <thead><tr className="text-left text-[12px] uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-2 font-bold">Source · campaign</th><th className="px-2 py-2 font-bold">Leads</th><th className="px-2 py-2 font-bold">Called</th>
+                <th className="px-4 py-2 font-bold">Source · campaign</th><th className="px-2 py-2 font-bold">Leads</th><th className="px-2 py-2 font-bold">Checked real</th><th className="px-2 py-2 font-bold">Junk</th><th className="px-2 py-2 font-bold">Called</th>
                 <th className="px-2 py-2 font-bold">Demo or better</th><th className="px-2 py-2 font-bold">Paid</th><th className="px-2 py-2 font-bold">Collected</th><th className="px-4 py-2 font-bold">Cost per paid shop</th>
               </tr></thead>
               <tbody>
@@ -239,6 +251,8 @@ export default function CrmSources() {
                     <tr key={`${r.source}|${r.detail}`} className="border-t border-gray-100">
                       <td className="px-4 py-2.5"><div className="font-bold">{sourceLabel(r.source)}</div><div className="text-[12.5px] text-gray-500">{r.detail || '—'}</div></td>
                       <td className="px-2 py-2.5 font-bold">{r.leads}</td>
+                      <td className="px-2 py-2.5">{r.real}</td>
+                      <td className={`px-2 py-2.5 ${r.junk && r.junk * 3 >= r.leads ? 'font-bold text-red-700' : ''}`}>{r.junk}</td>
                       <td className="px-2 py-2.5">{r.called}</td>
                       <td className="px-2 py-2.5">{r.demo}</td>
                       <td className="px-2 py-2.5 font-bold">{r.paid}</td>
@@ -251,7 +265,7 @@ export default function CrmSources() {
             </table>
           </div>
         )}
-        <p className="px-4 py-2 text-[12px] text-gray-500 border-t border-gray-100">“Paid” counts only shops whose payment PocketLink has seen, or wins you approved. Spend is per source for {monthKey}.</p>
+        <p className="px-4 py-2 text-[12px] text-gray-500 border-t border-gray-100">“Checked real” and “Junk” come from Check leads (junk = spam, wrong number, duplicate, not a business; red when it is a third or more). “Paid” counts only shops whose payment PocketLink has seen, or approved wins. Spend is per source for {monthKey}.</p>
       </section>
     </div>
   );

@@ -46,21 +46,21 @@ export const SCRIPTS = {
       ['Open', 'Namaskar {owner}, I am {me} from PocketLink. You made your shop {shop} on PocketLink. Congratulations! Did it go smoothly?', ''],
       ['Help', 'Have you added your products yet? How many products do you sell?', 'Stuck? Offer to add the first products together on this call.'],
       ['Value', 'With the plan you get unlimited products, online payments into your own Razorpay, Delhivery and Shadowfax couriers, and 500 free WhatsApp order confirmations every month.', ''],
-      ['Close', `It is ${M} a month, or ${Y} a year, which is two months free. Shall I send the payment link on WhatsApp now?`, 'Prices include GST. They can pay by UPI, card or net banking.'],
+      ['Close', `It is ${M} a month, or ${Y} a year, which is two months free. Shall I send you the link to pay on WhatsApp now?`, 'Send pocketlink.store/plans. They pick monthly or yearly, confirm their WhatsApp number and pay by UPI, card or net banking (GST invoice). Never cash.'],
       ['If not today', 'No problem. I will call you on {day} after you add your products.', 'Set the follow-up date before you hang up.'],
     ] },
     mr: { title: 'साइन-अप नंतरचा कॉल', time: 'सुमारे ३–४ मिनिटे', goal: 'उद्देश: दुकान पूर्ण करायला मदत करणे, मग प्लॅनचे पेमेंट घेणे.', steps: [
       ['सुरुवात', 'नमस्कार {owner}, मी PocketLink कडून {me}. तुम्ही PocketLink वर {shop} हे दुकान बनवलं, अभिनंदन! सगळं नीट झालं का?', ''],
       ['मदत', 'तुमच्या वस्तू टाकल्या का? तुम्ही किती वस्तू विकता?', 'अडकले असतील तर: याच कॉलवर पहिल्या वस्तू सोबत टाकूया असं सांगा.'],
       ['फायदे', 'प्लॅनमध्ये अमर्याद वस्तू, तुमच्याच Razorpay मध्ये ऑनलाइन पेमेंट, Delhivery आणि Shadowfax कुरिअर, आणि दर महिन्याला ५०० मोफत WhatsApp ऑर्डर कन्फर्मेशन मिळतात.', ''],
-      ['पेमेंट', `महिन्याला ${M}, किंवा वर्षाला ${Y}, म्हणजे दोन महिने मोफत. पेमेंटची लिंक आत्ता WhatsApp वर पाठवू का?`, 'किमतीत GST समाविष्ट आहे. UPI, कार्ड किंवा नेट बँकिंगने भरता येते.'],
+      ['पेमेंट', `महिन्याला ${M}, किंवा वर्षाला ${Y}, म्हणजे दोन महिने मोफत. पेमेंटसाठी लिंक आत्ता WhatsApp वर पाठवू का?`, 'pocketlink.store/plans पाठवा. महिना किंवा वर्ष निवडून, WhatsApp नंबर कन्फर्म करून UPI, कार्ड किंवा नेट बँकिंगने भरता येते (GST बिल मिळते). रोख कधीच नाही.'],
       ['आज नाही तर', 'काही हरकत नाही. वस्तू टाकल्यावर {day} ला मी पुन्हा फोन करेन.', 'फोन ठेवण्याआधी फॉलो-अपची तारीख ठेवा.'],
     ] },
     hi: { title: 'साइन-अप के बाद कॉल', time: 'लगभग 3–4 मिनट', goal: 'लक्ष्य: दुकान पूरी करने में मदद करना, फिर प्लान का पेमेंट लेना।', steps: [
       ['शुरुआत', 'नमस्ते {owner} जी, मैं PocketLink से {me}। आपने PocketLink पर {shop} दुकान बनाई, बधाई हो! सब ठीक से हो गया?', ''],
       ['मदद', 'क्या आपने अपने सामान डाल दिए? आप कितने सामान बेचते हैं?', 'अटके हों तो: इसी कॉल पर पहले सामान साथ में डालने की पेशकश करें।'],
       ['फ़ायदे', 'प्लान में अनलिमिटेड सामान, आपके अपने Razorpay में ऑनलाइन पेमेंट, Delhivery और Shadowfax कूरियर, और हर महीने 500 मुफ़्त WhatsApp ऑर्डर कन्फ़र्मेशन मिलते हैं।', ''],
-      ['पेमेंट', `${M} महीना, या ${Y} साल, यानी दो महीने मुफ़्त। पेमेंट का लिंक अभी WhatsApp पर भेजूँ?`, 'दाम में GST शामिल है। UPI, कार्ड या नेट बैंकिंग से भर सकते हैं।'],
+      ['पेमेंट', `${M} महीना, या ${Y} साल, यानी दो महीने मुफ़्त। पेमेंट के लिए लिंक अभी WhatsApp पर भेजूँ?`, 'pocketlink.store/plans भेजें। महीना या साल चुनकर, WhatsApp नंबर कन्फ़र्म करके UPI, कार्ड या नेट बैंकिंग से भरें (GST बिल मिलता है)। नकद कभी नहीं।'],
       ['आज नहीं तो', 'कोई बात नहीं। सामान डालने के बाद {day} को फिर बात करते हैं।', 'फ़ोन रखने से पहले फ़ॉलो-अप की तारीख सेट करें।'],
     ] },
   },
@@ -139,7 +139,7 @@ export const MESSAGES = Object.freeze([
   { t: 'Make your shop (your own link)', text: 'Namaskar {owner}, make your shop on PocketLink here: {my link} - it takes 2 minutes. Call me if you need any help. — {me}, PocketLink' },
   { t: 'After the call', text: 'Namaskar {owner}, thank you for your time. Here is a shop like yours on PocketLink: {example link}. — {me}, PocketLink' },
   { t: 'Demo reminder (day before)', text: 'Namaskar {owner}, reminder: our 10-minute PocketLink demo is tomorrow at {time}. See you then! — {me}, PocketLink' },
-  { t: 'Payment link', text: `Here is your PocketLink plan link: {payment link}. ${M} a month incl. GST, cancel anytime. Your plan starts as soon as you pay. — {me}, PocketLink` },
+  { t: 'How to pay for the plan', text: `To start your PocketLink plan: open https://www.pocketlink.store/plans, pick monthly or yearly, confirm your WhatsApp number and pay by UPI, card or net banking. ${M} a month incl. GST, cancel anytime. Your plan starts as soon as you pay. — {me}, PocketLink` },
 ]);
 
 /** Put the known values into a script line; unknown {placeholders} stay for the screen to mark. */

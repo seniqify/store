@@ -7,6 +7,7 @@ import { useCrm, initials } from './crmContext.js';
 import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions } from './crmService.js';
 import { pendingWins } from './crmService.js';
 import MyLinkCard from './CrmMyLink.jsx';
+import { AdsToday } from './CrmCheckLeads.jsx';
 import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS } from './crmLogic.js';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -88,10 +89,21 @@ export default function CrmToday() {
       calls: count(mine, (a) => a.kind === 'call'),
       picked: count(mine, (a) => a.kind === 'call' && !['no_answer', 'wrong_number'].includes(a.outcome)),
       visits: count(mine, (a) => a.kind === 'visit'),
+      checked: count(mine, (a) => a.kind === 'system' && String(a.outcome || '').startsWith('checked_')),
     };
   }), [staff, todayActs, att, leads, acts, dayStart, today, settings]);
 
   if (!leads) return <Spinner />;
+
+  if (me.role === 'ads') {
+    const row = att.find((r) => r.staff_id === me.user_id && r.day === today);
+    return (
+      <AdsToday dayCard={<DayCard me={me} row={row} onChanged={load} />} todayActs={todayActs}
+        trainingNotice={me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
+          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Short modules for your role, with screenshots, and a short exam. Check leads opens when you pass.</Notice></Link>
+        )} />
+    );
+  }
 
   if (!isManager) {
     const mineLeads = leads.filter((l) => l.assigned_to === me.user_id);
@@ -104,7 +116,7 @@ export default function CrmToday() {
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
         <DayCard me={me} row={row} onChanged={load} />
         {me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
-          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Ten short modules with screenshots and a short exam. The call queue and check-ins open when you pass.</Notice></Link>
+          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Short modules for your role, with screenshots, and a short exam. {me.role === 'field' ? 'Check-ins open' : 'The call queue opens'} when you pass.</Notice></Link>
         )}
         {notify === 'default' && (
           <button type="button" className={`${btn.ghost} w-full`} onClick={async () => { try { setNotify(await Notification.requestPermission()); } catch { setNotify('denied'); } }}>
@@ -172,10 +184,10 @@ export default function CrmToday() {
             <table className="w-full text-sm min-w-[720px]">
               <thead><tr className="text-left text-[12px] uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-2 font-bold">Person</th><th className="px-2 py-2 font-bold">Logged in · last seen</th>
-                <th className="px-2 py-2 font-bold">Calls / visits</th><th className="px-2 py-2 font-bold">Late follow-ups</th><th className="px-4 py-2 font-bold">Won this month</th>
+                <th className="px-2 py-2 font-bold">Calls / visits / checks</th><th className="px-2 py-2 font-bold">Late follow-ups</th><th className="px-4 py-2 font-bold">Won this month</th>
               </tr></thead>
               <tbody>
-                {perPerson.map(({ s, row, late: lt, won, calls, picked, visits, status }) => (
+                {perPerson.map(({ s, row, late: lt, won, calls, picked, visits, checked, status }) => (
                   <tr key={s.user_id} className="border-t border-gray-100">
                     <td className="px-4 py-3"><div className="flex items-center gap-2.5">
                       <span aria-hidden="true" className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[11px] font-extrabold">{initials(s.name)}</span>
@@ -184,7 +196,7 @@ export default function CrmToday() {
                       <span className={`text-[12px] font-bold rounded-full px-2 py-0.5 ${DAY_STATUS[status]?.cls || ''}`}>{DAY_STATUS[status]?.label || status}</span>
                       <div className="text-[12.5px] text-gray-600 mt-1">{row ? `In ${istTime(row.day_start_at || row.first_seen_at)} · last ${istTime(row.last_seen_at)}` : '—'}</div>
                     </td>
-                    <td className="px-2 py-3 font-semibold">{s.role === 'field' ? `${visits} visits` : `${calls} calls · ${picked} picked up`}</td>
+                    <td className="px-2 py-3 font-semibold">{s.role === 'field' ? `${visits} visits` : s.role === 'ads' ? `${checked} leads checked` : `${calls} calls · ${picked} picked up`}</td>
                     <td className="px-2 py-3"><span className={`font-bold rounded-lg px-2 py-0.5 ${lt ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{lt ? `${lt} late` : 'None'}</span></td>
                     <td className="px-4 py-3 font-bold">{won}{s.monthly_target ? ` of ${s.monthly_target}` : ''}</td>
                   </tr>

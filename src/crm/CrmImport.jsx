@@ -1,7 +1,8 @@
-// Manager: import a list of shops from Excel (.xlsx) or CSV. Match the
-// columns, see what will be skipped (already in the CRM, twice in the file,
-// wrong mobile), choose who gets them, import. A Meta / Google lead-form
-// export works too: pick "Facebook ad" etc. as where they came from.
+// Manager or Ads & leads: import a list of shops from Excel (.xlsx) or CSV.
+// Match the columns, see what will be skipped (already in the CRM, twice in
+// the file, wrong mobile), choose who gets them (manager), import. A Meta /
+// Google lead-form export works too: pick "Facebook ad" etc. as where they
+// came from. An Ads & leads import has no owner: it waits in Check leads.
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
@@ -14,7 +15,8 @@ import { btn, card, input } from './crmStyles.js';
 const IMPORT_SOURCES = ['import', 'calling_list', 'walk_in', 'facebook', 'instagram', 'google', 'website', 'referral'];
 
 export default function CrmImport() {
-  const { staff, settings, path } = useCrm();
+  const { me, staff, settings, path } = useCrm();
+  const isAds = me.role === 'ads';
   const [file, setFile] = useState(null);
   const [rows, setRows] = useState(null);
   const [map, setMap] = useState({});
@@ -25,14 +27,14 @@ export default function CrmImport() {
   const [one, setOne] = useState('');
   const [pick, setPick] = useState(new Set());
   const [listName, setListName] = useState('');
-  const [source, setSource] = useState('import');
+  const [source, setSource] = useState(isAds ? 'facebook' : 'import');
   const [showSkipped, setShowSkipped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
   const rulesOn = !!settings?.auto_assign?.on;
-  const people = useMemo(() => staff.filter((s) => s.active), [staff]);
+  const people = useMemo(() => staff.filter((s) => s.active && s.role !== 'ads'), [staff]);
 
   useEffect(() => {
     listLeads().then((ls) => {
@@ -115,12 +117,20 @@ export default function CrmImport() {
       <section className={`${card} p-6 text-center space-y-3`}>
         <div className="w-14 h-14 rounded-full bg-green-100 text-green-800 grid place-items-center mx-auto"><Icon name="check" size={28} /></div>
         <h2 className="text-xl font-extrabold">{done.added} lead{done.added === 1 ? '' : 's'} added</h2>
-        <p className="text-sm text-gray-600">{done.given} given out{done.skipped ? ` · ${done.skipped} skipped` : ''}. Each person sees theirs at the top of their queue.</p>
+        {isAds ? <p className="text-sm text-gray-600">They wait in Check leads{done.skipped ? ` · ${done.skipped} skipped` : ''}. Check each one, then give the checked ones out by the rules.</p>
+          : <p className="text-sm text-gray-600">{done.given} given out{done.skipped ? ` · ${done.skipped} skipped` : ''}. Each person sees theirs at the top of their queue.</p>}
+        {isAds ? (
+          <div className="flex gap-2 justify-center">
+            <Link to={path('check')} className={btn.primary}>Check them now</Link>
+            <button type="button" className={btn.ghost} onClick={() => setDone(null)}>Import another</button>
+          </div>
+        ) : (
         <div className="flex gap-2 justify-center">
           <Link to={path('leads')} className={btn.primary}>See the leads</Link>
           {done.added > done.given && <Link to={path('assign')} className={btn.ghost}>Assign the rest</Link>}
           <button type="button" className={btn.ghost} onClick={() => setDone(null)}>Import another</button>
         </div>
+        )}
       </section>
     );
   }
@@ -184,8 +194,9 @@ export default function CrmImport() {
 
           {plan && plan.ready.length > 0 && (
             <section className={`${card} p-5 space-y-3`}>
-              <h2 className="font-extrabold">3. Who gets them?</h2>
-              <div className="grid sm:grid-cols-2 gap-2">
+              <h2 className="font-extrabold">3. {isAds ? 'Name the list' : 'Who gets them?'}</h2>
+              {isAds && <p className="text-[13.5px] text-gray-700">They come in with no owner and wait in Check leads. You check them, then give the good ones out by the rules.</p>}
+              {!isAds && <div className="grid sm:grid-cols-2 gap-2">
                 {[
                   ['none', 'Leave them unassigned', 'Give them out later in Assign'],
                   ...(rulesOn ? [['rules', 'Follow my auto-assign rules', 'As set in Assign']] : []),
@@ -198,7 +209,7 @@ export default function CrmImport() {
                     <span className="block font-bold text-[14px]">{label}</span>{sub && <span className="block text-[12px] text-gray-500">{sub}</span>}
                   </button>
                 ))}
-              </div>
+              </div>}
               {how === 'one' && (
                 <select aria-label="Give them to" className={input} value={one} onChange={(e) => setOne(e.target.value)}>
                   <option value="">Pick a person</option>
@@ -228,7 +239,7 @@ export default function CrmImport() {
                   </select>
                 </Field>
               </div>
-              <p className="text-[12.5px] text-gray-500">Each lead gets a “Call” follow-up for today, so none is forgotten. The note column (if any) goes with it.</p>
+              <p className="text-[12.5px] text-gray-500">{isAds ? 'Each lead gets a “Call” follow-up, so the caller it goes to sees it first.' : 'Each lead gets a “Call” follow-up for today, so none is forgotten.'} The note column (if any) goes with it.</p>
               <button type="button" className={`${btn.primary} w-full h-12`} disabled={!ready || busy} onClick={run}>
                 {busy ? `Importing… ${progress} of ${plan.ready.length}` : `Import ${plan.ready.length} lead${plan.ready.length === 1 ? '' : 's'}`}
               </button>

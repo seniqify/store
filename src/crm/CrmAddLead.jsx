@@ -1,6 +1,8 @@
 // Add one lead. The number is checked against every lead as it is typed, so
-// two people never work the same shop. A manager picks who gets it; anyone
-// else adds it to their own list. The first step becomes a follow-up.
+// two people never work the same shop. A manager picks who gets it; a caller
+// or field executive adds it to their own list. The Ads & leads executive adds
+// it with no owner: it waits in Check leads until they check it and give it
+// out by the rules. The first step becomes a follow-up.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
@@ -19,12 +21,13 @@ export default function CrmAddLead() {
   const { me, staff, path, settings } = useCrm();
   const navigate = useNavigate();
   const isManager = me.role === 'manager';
+  const isAds = me.role === 'ads';
   const [params, setParams] = useSearchParams();
-  const tab = isManager && params.get('tab') === 'import' ? 'import' : 'one';
+  const tab = (isManager || isAds) && params.get('tab') === 'import' ? 'import' : 'one';
   const rulesOn = !!settings?.auto_assign?.on;
   const [f, setF] = useState({
     shop_name: '', owner_name: '', phone: '', business_type: '', city: '', area: '',
-    source: me.role === 'field' ? 'field' : 'referral', heat: 'warm', assigned_to: isManager ? '' : me.user_id, step: 'call_today', note: '',
+    source: { field: 'field', ads: 'facebook' }[me.role] || 'referral', heat: 'warm', assigned_to: isManager || isAds ? '' : me.user_id, step: 'call_today', note: '',
   });
   const [dupe, setDupe] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -48,7 +51,7 @@ export default function CrmAddLead() {
     return () => clearTimeout(t);
   }, [p10]);
 
-  const people = useMemo(() => staff.filter((s) => s.active), [staff]);
+  const people = useMemo(() => staff.filter((s) => s.active && s.role !== 'ads'), [staff]);
   const valid = f.shop_name.trim() && /^[6-9][0-9]{9}$/.test(p10) && !dupe.length;
 
   const save = async (again) => {
@@ -64,14 +67,14 @@ export default function CrmAddLead() {
       const row = await addLead({
         shop_name: f.shop_name.trim(), owner_name: f.owner_name.trim() || null, phone: p10,
         business_type: f.business_type || null, city: f.city.trim() || null, area: f.area.trim() || null,
-        source: f.source, heat: f.heat, assigned_to: f.assigned_to && f.assigned_to !== 'auto' ? f.assigned_to : null,
+        source: f.source, heat: f.heat, assigned_to: !isAds && f.assigned_to && f.assigned_to !== 'auto' ? f.assigned_to : null,
         next_action_at: new Date(step[0]).toISOString(), next_action: f.note.trim() ? `${step[1]} · ${f.note.trim()}`.slice(0, 200) : step[1],
       });
       if (f.assigned_to === 'auto') await autoAssign([row.id]);
       if (again) {
         setF({ ...f, shop_name: '', owner_name: '', phone: '', area: '', note: '' });
       } else {
-        navigate(path(`leads/${row.id}`));
+        navigate(path(isAds ? 'check' : `leads/${row.id}`));
       }
     } catch (e) {
       setErr(e.message);
@@ -83,10 +86,11 @@ export default function CrmAddLead() {
   return (
     <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
       <header className="flex items-center gap-3">
-        <Link to={path('leads')} className="text-sm font-bold text-green-700">← Leads</Link>
+        <Link to={path(isAds ? 'check' : 'leads')} className="text-sm font-bold text-green-700">← {isAds ? 'Check leads' : 'Leads'}</Link>
         <h1 className="text-2xl font-extrabold">{tab === 'import' ? 'Import a list' : 'Add a lead'}</h1>
       </header>
-      {isManager && (
+      {isAds && <Notice kind="ok">Leads you add wait in <b>Check leads</b>. Check each one, then give the checked ones out by the rules. Nobody calls an unchecked list.</Notice>}
+      {(isManager || isAds) && (
         <div className="flex gap-2" role="tablist" aria-label="How to add">
           {[['one', 'One lead'], ['import', 'Import a list (Excel / CSV)']].map(([k, label]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setParams(k === 'import' ? { tab: 'import' } : {}, { replace: true })}
@@ -110,7 +114,7 @@ export default function CrmAddLead() {
           <Notice kind="warn">
             <b>This number is already a lead:</b> {dupe[0].shop_name}, {stageOf(dupe[0].stage).label}
             {dupe[0].owner_name ? `, with ${dupe[0].owner_name}` : ', not assigned'}.{' '}
-            {(dupe[0].mine || isManager) ? <Link className="font-bold" to={path(`leads/${dupe[0].lead_id}`)}>Open it</Link> : 'Ask your manager if you should have it.'}
+            {(dupe[0].mine || isManager) ? <Link className="font-bold" to={path(`leads/${dupe[0].lead_id}`)}>Open it</Link> : isAds ? 'No need to add it again.' : 'Ask your manager if you should have it.'}
           </Notice>
         )}
         {f.phone && !p10 && <p className="text-[13px] text-red-700">Enter all 10 digits.</p>}
@@ -132,7 +136,7 @@ export default function CrmAddLead() {
             ))}
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3 border-t border-gray-100 pt-4">
+        {!isAds && <div className="grid sm:grid-cols-2 gap-3 border-t border-gray-100 pt-4">
           {isManager ? (
             <Field label="Give it to" htmlFor="as">
               <select id="as" className={input} value={f.assigned_to} onChange={set('assigned_to')}>
@@ -149,8 +153,8 @@ export default function CrmAddLead() {
               {FIRST_STEPS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
             </select>
           </Field>
-        </div>
-        <Field label="Note for them" htmlFor="nt"><input id="nt" className={input} value={f.note} onChange={set('note')} placeholder="Anything to know before calling" /></Field>
+        </div>}
+        <Field label={isAds ? 'Note for the caller' : 'Note for them'} htmlFor="nt"><input id="nt" className={input} value={f.note} onChange={set('note')} placeholder="Anything to know before calling" /></Field>
         {err && <Notice>{err}</Notice>}
         <div className="flex flex-wrap gap-2">
           <button type="submit" className={btn.primary} disabled={!valid || busy}>{busy ? 'Saving…' : 'Save lead'}</button>

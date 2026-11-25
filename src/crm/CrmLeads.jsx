@@ -159,7 +159,7 @@ export function LeadDetail({ leadId, onChanged }) {
               <select id="own" className={input} value={lead.assigned_to || ''} disabled={busy}
                 onChange={(e) => run(() => assignLeads([lead.id], e.target.value || null))}>
                 <option value="">Not assigned</option>
-                {staff.filter((s) => s.active).map((s) => <option key={s.user_id} value={s.user_id}>{s.name}</option>)}
+                {staff.filter((s) => s.active && s.role !== 'ads').map((s) => <option key={s.user_id} value={s.user_id}>{s.name}</option>)}
               </select>
             </Field>
           ) : (

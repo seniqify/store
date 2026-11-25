@@ -368,6 +368,15 @@ export const KPI_DEFS = Object.freeze({
     { key: 'followups_pct', kpa: 'discipline', label: 'Follow-ups on time', kind: 'pct', def: 90, actual: onTime },
     { key: 'notes_pct', kpa: 'discipline', label: 'Visit notes filled', kind: 'pct', def: 95, actual: (r) => ratio(r.visits_noted, r.visits) },
   ],
+  // Ads & leads executive: checks leads and adds new ones; scored on how many,
+  // how fast, and how many of their checked leads go on to a demo and to pay.
+  ads: [
+    { key: 'checked_per_day', kpa: 'activity', label: 'Leads checked a day (average)', kind: 'perday', def: 40, column: 'daily_target', actual: (r) => perDay(r.checked, r) },
+    { key: 'fast_pct', kpa: 'reach', label: 'Ad leads checked within 30 min', kind: 'pct', def: 80, actual: (r) => ratio(r.checked_fast, r.checked_ad) },
+    { key: 'demo_rate_pct', kpa: 'conversion', label: 'Checked leads that reached a demo', kind: 'pct', def: 25, actual: (r) => ratio(r.verified_demo, r.verified_total) },
+    { key: 'added', kpa: 'conversion', label: 'New leads added', kind: 'count', def: 150, actual: (r) => r.new_leads },
+    { key: 'paid', kpa: 'revenue', label: 'Paid shops from your checked leads', kind: 'count', def: 4, column: 'monthly_target', actual: (r) => r.verified_paid },
+  ],
 });
 
 /**
@@ -637,12 +646,13 @@ export const AD_SOURCES = Object.freeze(['facebook', 'instagram', 'google', 'wha
 /** The recommended rule; every number can be changed in Settings. */
 export const RECOMMENDED_INCENTIVE = Object.freeze({
   monthly: 300, yearly: 1500, slab_after: 10, slab_monthly: 400, slab_yearly: 2000, hold_days: 30,
+  verifier_monthly: 50, verifier_yearly: 250,
   pay_day: 'with salary on the 5th of the next month',
 });
 /** The rule from Settings, filled with the recommended values where empty. */
 export function incentiveRule(cfg) {
   const r = { ...RECOMMENDED_INCENTIVE };
-  for (const k of ['monthly', 'yearly', 'slab_after', 'slab_monthly', 'slab_yearly', 'hold_days']) {
+  for (const k of ['monthly', 'yearly', 'slab_after', 'slab_monthly', 'slab_yearly', 'hold_days', 'verifier_monthly', 'verifier_yearly']) {
     const v = Number(cfg?.[k] ?? (k === 'monthly' ? cfg?.per_paid : undefined));
     if (Number.isFinite(v) && v >= 0) r[k] = v;
   }
@@ -653,9 +663,17 @@ export function incentiveRule(cfg) {
   return r;
 }
 const rs = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
-/** The rule in plain words, for the team. */
-export function incentiveRuleLines(cfg) {
+/** The rule in plain words, for the team (role 'ads': the lead checker's rule). */
+export function incentiveRuleLines(cfg, role) {
   const r = incentiveRule(cfg);
+  if (role === 'ads') {
+    return [
+      `${rs(r.verifier_monthly)} for each shop that pays for the monthly plan, ${rs(r.verifier_yearly)} for the yearly plan, when it came from a lead you checked and marked Verified.`,
+      `Earned only if the shop is still paying ${r.hold_days} days later (checked automatically on day ${r.hold_days + 4}, after the renewal).`,
+      'Spam, wrong numbers and duplicates earn nothing, so check carefully: a good lead is one a caller can sell to.',
+      `Paid ${r.pay_day}.`,
+    ];
+  }
   const lines = [
     `${rs(r.monthly)} for each shop that pays for the monthly plan, ${rs(r.yearly)} for the yearly plan.`,
   ];
@@ -672,5 +690,30 @@ export const INCENTIVE_STATUS = Object.freeze({
   check: { label: 'Manager to confirm', cls: 'bg-blue-100 text-blue-800' },
   paid: { label: 'Paid out', cls: 'bg-green-700 text-white' },
 });
+// ── Checking leads (Ads & leads executive) ──────────────────────────────────
+export const VERIFY_RESULTS = Object.freeze({
+  verified: { label: 'Verified', short: 'Real lead', cls: 'bg-green-100 text-green-800', hint: 'A real person, a real business, the number works' },
+  spam: { label: 'Spam', short: 'Spam', cls: 'bg-red-100 text-red-800', hint: 'Fake name, test, abuse, a bot' },
+  wrong_number: { label: 'Wrong number', short: 'Wrong number', cls: 'bg-red-100 text-red-800', hint: 'Not reachable, not their number' },
+  duplicate: { label: 'Duplicate', short: 'Duplicate', cls: 'bg-gray-100 text-gray-800', hint: 'The same shop is already a lead' },
+  not_business: { label: 'Not a business', short: 'Not a business', cls: 'bg-amber-100 text-amber-900', hint: 'A buyer, a job seeker, a student' },
+});
+/** A lead an Ads & leads person added and has not checked yet: it waits in Check leads, nobody calls it. */
+export const waitsForCheck = (lead, staff) => !!lead && !lead.verify_status && !lead.assigned_to
+  && lead.stage !== 'won' && lead.stage !== 'lost'
+  && (staff || []).some((s) => s.user_id === lead.created_by && s.role === 'ads');
+/** Leads to check, newest first: not checked, not closed. */
+export function toCheck(leads) {
+  return (leads || []).filter((l) => !l.verify_status && l.stage !== 'won' && l.stage !== 'lost')
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+/** Minutes from a lead arriving to now, as '4 min' / '2 h' / '3 days'. */
+export function waitedLabel(fromIso, now = Date.now()) {
+  const m = Math.max(0, Math.round((now - Date.parse(fromIso)) / 60000));
+  if (m < 60) return `${m} min`;
+  if (m < 48 * 60) return `${Math.round(m / 60)} h`;
+  return `${Math.round(m / 1440)} days`;
+}
+
 /** Own sign-up link. */
 export const signupLink = (code) => `https://www.pocketlink.store/start?ref=${encodeURIComponent(code || '')}`;

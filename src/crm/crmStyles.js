@@ -33,5 +33,8 @@ export const MENUS = {
   field: [['', 'Today', 'home'], ['checkin', 'Check in', 'pin'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
     ['performance', 'My score', 'chart'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
     ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
+  ads: [['', 'Today', 'home'], ['check', 'Check leads', 'shield'], ['add', 'Add leads', 'plus'], ['sources', 'Lead sources', 'bolt'],
+    ['performance', 'My score', 'chart'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
+    ['help', 'FAQ & help', 'help']],
 };
 export const PHONE_TABS = 4;

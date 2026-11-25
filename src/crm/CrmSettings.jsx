@@ -16,6 +16,7 @@ import { btn, card, input } from './crmStyles.js';
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SECTIONS = [['score', 'Score'], ['incentive', 'Incentive'], ['work', 'Work hours'], ['people', 'Shifts & weekly offs'], ['holidays', 'Holidays'], ['training', 'Training'], ['reports', 'Reports']];
 const num = (v) => (v === '' || v == null ? null : Number(v));
+const TARGET_ROLES = [['caller', 'Calling executives'], ['field', 'Field executives'], ['ads', 'Ads & leads executives']];
 
 function Section({ id, title, sub, children }) {
   return (
@@ -58,7 +59,7 @@ function SettingsForm() {
 
   // Score
   const [w, setW] = useState(() => Object.fromEntries(KPA.map((a) => [a.key, String(weightsFrom(score)[a.key])])));
-  const [tt, setTt] = useState(() => ({ caller: { ...(score.targets?.caller || {}) }, field: { ...(score.targets?.field || {}) } }));
+  const [tt, setTt] = useState(() => Object.fromEntries(TARGET_ROLES.map(([r]) => [r, { ...(score.targets?.[r] || {}) }])));
   const wTotal = KPA.reduce((s, a) => s + (Number(w[a.key]) || 0), 0);
   // Incentive
   const [inc, setInc] = useState(() => { const r = incentiveRule(settings?.incentive); return Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v)])); });
@@ -95,9 +96,9 @@ function SettingsForm() {
           ))}
         </div>
         <p className={`text-[13px] font-bold ${wTotal === 100 ? 'text-green-700' : 'text-red-700'}`}>Total {wTotal}% {wTotal === 100 ? '' : '(must be 100%)'}</p>
-        {['caller', 'field'].map((role) => (
+        {TARGET_ROLES.map(([role, roleLabel]) => (
           <div key={role}>
-            <p className="text-[13px] font-extrabold text-gray-700 mt-2">{role === 'caller' ? 'Calling executives' : 'Field executives'} <span className="font-semibold text-gray-500">· a month unless it says a day or %</span></p>
+            <p className="text-[13px] font-extrabold text-gray-700 mt-2">{roleLabel} <span className="font-semibold text-gray-500">· a month unless it says a day or %</span></p>
             <div className="grid sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-1.5">
               {KPI_DEFS[role].filter((d) => d.kind !== 'money').map((d) => (
                 <Field key={d.key} label={`${d.label}${d.kind === 'pct' ? ' (%)' : d.kind === 'minutes' ? ' (min)' : ''}`} htmlFor={`t-${role}-${d.key}`}>
@@ -112,7 +113,7 @@ function SettingsForm() {
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btn.primary} disabled={wTotal !== 100} onClick={() => save('score', () => saveSetting('score', {
             weights: Object.fromEntries(KPA.map((a) => [a.key, Number(w[a.key]) || 0])),
-            targets: Object.fromEntries(['caller', 'field'].map((r) => [r, Object.fromEntries(Object.entries(tt[r]).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)]))])),
+            targets: Object.fromEntries(TARGET_ROLES.map(([r]) => [r, Object.fromEntries(Object.entries(tt[r]).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)]))])),
           }))}>Save score settings</button>
           <button type="button" className={btn.ghost} onClick={() => setW(Object.fromEntries(Object.entries(DEFAULT_WEIGHTS).map(([k, v]) => [k, String(v)])))}>Usual weights (20/15/30/25/10)</button>
         </div>
@@ -126,11 +127,16 @@ function SettingsForm() {
           <Field label="Higher rate, monthly (₹)" htmlFor="i-sm"><input id="i-sm" type="number" min="0" className={input} value={inc.slab_monthly} onChange={(e) => setInc({ ...inc, slab_monthly: e.target.value })} /></Field>
           <Field label="Higher rate, yearly (₹)" htmlFor="i-sy"><input id="i-sy" type="number" min="0" className={input} value={inc.slab_yearly} onChange={(e) => setInc({ ...inc, slab_yearly: e.target.value })} /></Field>
           <Field label="Shop must still pay after (days)" htmlFor="i-h" hint="Checked 4 days later, after the renewal"><input id="i-h" type="number" min="0" max="120" className={input} value={inc.hold_days} onChange={(e) => setInc({ ...inc, hold_days: e.target.value })} /></Field>
+          <Field label="Lead checker: monthly plan shop (₹)" htmlFor="i-vm" hint="Ads & leads, for a lead they checked"><input id="i-vm" type="number" min="0" className={input} value={inc.verifier_monthly} onChange={(e) => setInc({ ...inc, verifier_monthly: e.target.value })} /></Field>
+          <Field label="Lead checker: yearly plan shop (₹)" htmlFor="i-vy"><input id="i-vy" type="number" min="0" className={input} value={inc.verifier_yearly} onChange={(e) => setInc({ ...inc, verifier_yearly: e.target.value })} /></Field>
+          <span className="hidden sm:block" />
           <div className="col-span-2 sm:col-span-3"><Field label="When it is paid" htmlFor="i-p"><input id="i-p" className={input} value={inc.pay_day} onChange={(e) => setInc({ ...inc, pay_day: e.target.value })} /></Field></div>
         </div>
         <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
           <p className="text-[12px] font-extrabold uppercase tracking-wide text-gray-500">What the team sees</p>
           <ul className="mt-1 space-y-0.5 text-[13.5px] list-disc pl-5">{incentiveRuleLines(inc).map((x) => <li key={x}>{x}</li>)}</ul>
+          <p className="mt-2 text-[12px] font-extrabold uppercase tracking-wide text-gray-500">What the Ads & leads team sees</p>
+          <ul className="mt-1 space-y-0.5 text-[13.5px] list-disc pl-5">{incentiveRuleLines(inc, 'ads').map((x) => <li key={x}>{x}</li>)}</ul>
         </div>
         <details className="rounded-xl border border-gray-200 p-3"><summary className="text-[13px] font-bold text-green-700 cursor-pointer">See the pictures the team sees</summary>
           <div className="mt-3"><IncentiveExplainer cfg={Object.fromEntries(Object.entries(inc).map(([k, v]) => [k, k === 'pay_day' ? v : num(v)]))} /></div></details>
@@ -150,7 +156,7 @@ function SettingsForm() {
           <Field label="Half day under (hours)" htmlFor="wk-h"><input id="wk-h" type="number" min="1" max="12" step="0.5" className={input} value={wk.half_day_hours} onChange={(e) => setWk({ ...wk, half_day_hours: e.target.value })} /></Field>
           <Field label="Usual weekly off" htmlFor="wk-o"><select id="wk-o" className={input} value={wk.weekly_off} onChange={(e) => setWk({ ...wk, weekly_off: e.target.value })}>{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select></Field>
           <span />
-          <Field label="Callers start" htmlFor="wk-cs"><input id="wk-cs" type="time" className={input} value={wk.caller_start} onChange={(e) => setWk({ ...wk, caller_start: e.target.value })} /></Field>
+          <Field label="Callers start" htmlFor="wk-cs" hint="Also Ads & leads"><input id="wk-cs" type="time" className={input} value={wk.caller_start} onChange={(e) => setWk({ ...wk, caller_start: e.target.value })} /></Field>
           <Field label="Callers end" htmlFor="wk-ce"><input id="wk-ce" type="time" className={input} value={wk.caller_end} onChange={(e) => setWk({ ...wk, caller_end: e.target.value })} /></Field>
           <Field label="Field starts" htmlFor="wk-fs"><input id="wk-fs" type="time" className={input} value={wk.field_start} onChange={(e) => setWk({ ...wk, field_start: e.target.value })} /></Field>
           <Field label="Field ends" htmlFor="wk-fe"><input id="wk-fe" type="time" className={input} value={wk.field_end} onChange={(e) => setWk({ ...wk, field_end: e.target.value })} /></Field>
@@ -163,7 +169,7 @@ function SettingsForm() {
           }))}>Save work rules</button>
           <button type="button" className={btn.ghost} onClick={() => {
             const next = { ...people };
-            for (const s of staff) if (s.role !== 'manager') next[s.user_id] = { shift_start: wk[`${s.role}_start`], shift_end: wk[`${s.role}_end`], weekly_off: wk.weekly_off };
+            for (const s of staff) if (s.role !== 'manager') { const r = s.role === 'field' ? 'field' : 'caller'; next[s.user_id] = { shift_start: wk[`${r}_start`], shift_end: wk[`${r}_end`], weekly_off: wk.weekly_off }; }
             setPeople(next);
           }}>Copy these shifts to everyone below</button>
         </div>
@@ -217,7 +223,7 @@ function SettingsForm() {
         {msg.holidays && <Notice kind={msg.holidays.kind}>{msg.holidays.text}</Notice>}
       </Section>
 
-      <Section id="training" title="Training" sub="New people read ten modules (with screenshots) and pass a 15-question exam.">
+      <Section id="training" title="Training" sub="New people read the modules for their role (with screenshots) and pass a 15-question exam on their role. Then you sign them off in Team.">
         <div className="grid sm:grid-cols-2 gap-3 items-end">
           <Field label="Pass mark (%)" htmlFor="tr-p"><input id="tr-p" type="number" min="50" max="100" className={input} value={tr.pass_pct} onChange={(e) => setTr({ ...tr, pass_pct: e.target.value })} /></Field>
           <label className="flex items-center gap-2 text-[14px] font-semibold text-gray-800 h-11">

@@ -31,7 +31,7 @@ test('own sign-up codes: cleaned, and carried from the link into the new shop', 
 });
 
 test('the recommended incentive rule, and what the team reads', () => {
-  assert.deepEqual({ ...RECOMMENDED_INCENTIVE }, { monthly: 300, yearly: 1500, slab_after: 10, slab_monthly: 400, slab_yearly: 2000, hold_days: 30, pay_day: 'with salary on the 5th of the next month' });
+  assert.deepEqual({ ...RECOMMENDED_INCENTIVE }, { monthly: 300, yearly: 1500, slab_after: 10, slab_monthly: 400, slab_yearly: 2000, hold_days: 30, verifier_monthly: 50, verifier_yearly: 250, pay_day: 'with salary on the 5th of the next month' });
   assert.equal(incentiveRule({ per_paid: 250 }).monthly, 250, 'the old single amount still works');
   assert.equal(incentiveRule({ monthly: 350, yearly: 'x' }).yearly, 1500);
   const lines = incentiveRuleLines({}).join(' ');
@@ -83,9 +83,9 @@ test('WhatsApp reports: periods and safe values', () => {
   assert.ok(!/^\{\{|\}\}$/.test(DAILY_TEMPLATE) && !/^\{\{|\}\}$/.test(WEEKLY_TEMPLATE), 'WhatsApp: a template cannot start or end with a value');
 });
 
-test('training: ten modules, accurate prices, exam size', () => {
-  assert.equal(MODULES.length, 10);
-  assert.equal(new Set(MODULES.map((m) => m.key)).size, 10);
+test('training: the first ten modules are still there, accurate prices, exam size', () => {
+  for (const k of ['product', 'day', 'prospects', 'first_call', 'demo', 'objections', 'field', 'crm', 'wins', 'rules']) assert.ok(MODULES.some((m) => m.key === k), k);
+  assert.equal(new Set(MODULES.map((m) => m.key)).size, MODULES.length);
   for (const m of MODULES) assert.ok(/^[a-z0-9_]{2,40}$/.test(m.key) && m.sections.length && m.points.length, m.key);
   const all = JSON.stringify(MODULES);
   assert.ok(all.includes(`₹${PRICE.monthly.toLocaleString('en-IN')}`) && all.includes(`₹${PRICE.yearly.toLocaleString('en-IN')}`));
@@ -105,8 +105,8 @@ test('wiring: menus, routes, the training gate, the login', () => {
   const app = read('src/crm/CrmApp.jsx');
   assert.match(app, /path="settings" element=\{isManager \? <CrmSettings \/> : <Navigate/);
   assert.match(app, /path="reports" element=\{isManager \? <CrmReports \/> : <Navigate/);
-  assert.match(app, /path="queue" element=\{needsTraining \? <TrainingFirst \/> : <CrmQueue \/>\}/);
-  assert.match(app, /path="checkin" element=\{needsTraining \? <TrainingFirst \/> : <CrmCheckin \/>\}/);
+  assert.match(app, /path="queue" element=\{isAds \? home : needsTraining \? <TrainingFirst \/> : <CrmQueue \/>\}/);
+  assert.match(app, /path="checkin" element=\{isAds \? home : needsTraining \? <TrainingFirst \/> : <CrmCheckin \/>\}/);
   assert.match(app, /Every lead, call and visit in one place\./, 'the designed sign-in');
   assert.match(app, /const AURORA = \{/, 'same look as the shop dashboard PIN screen');
 });
