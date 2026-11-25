@@ -7,6 +7,7 @@ import StepProducts     from '../components/onboarding/StepProducts';
 import StepPublish      from '../components/onboarding/StepPublish';
 import { buildBusinessConfig } from '../utils/buildConfig';
 import { saveBusiness, cacheStore } from '../utils/businessStorage';
+import { readSalesRef } from '../utils/salesRef';
 import { sendWelcome }              from '../utils/otpService';
 import { listSlugs }           from '../utils/BusinessLoader';
 import { slugExists, clearPendingSignup, updateStore, getPendingSignup } from '../utils/storeService';
@@ -340,6 +341,9 @@ export default function Onboarding() {
         slug = `${config.slug}${attempt++}`;
       }
       config = { ...config, slug };
+      // The PocketLink team member who brought this shop (their link or code).
+      const salesRef = readSalesRef();
+      if (salesRef) config = { ...config, salesRef };
 
       // Save the page immediately with photos kept as-is, so "Launch" feels
       // instant even on a slow field connection (one insert, no image upload

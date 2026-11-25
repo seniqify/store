@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials, ROLE_LABEL } from './crmContext.js';
 import { fetchScoreboard, downloadCsv, pendingWins, reviewWin } from './crmService.js';
-import { istDate, addDays, KPA, band, rankBoard, periodShare, kpiValue } from './crmLogic.js';
+import { istDate, addDays, KPA, band, rankBoard, periodShare, kpiValue, weightsFrom } from './crmLogic.js';
 import { PRICE } from '../utils/planLimits.js';
 import { Spinner, Notice, Empty } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -39,14 +39,15 @@ function Trend({ now, before }) {
 }
 
 /** One person's KPA / KPI table. */
-function KpiTable({ p }) {
+function KpiTable({ p, weights }) {
+  const wt = (a) => weights?.[a.key] ?? a.weight;
   return (
     <>
     {/* Phone: one block per area, no sideways scrolling. */}
     <ul className="sm:hidden divide-y divide-gray-200">
       {KPA.map((a) => (
         <li key={a.key} className="px-4 py-3 space-y-2">
-          <div className="flex items-center gap-2"><span className="font-extrabold flex-1">{a.label} <span className="text-gray-500 font-bold text-[12.5px]">· {a.weight}%</span></span>
+          <div className="flex items-center gap-2"><span className="font-extrabold flex-1">{a.label} <span className="text-gray-500 font-bold text-[12.5px]">· {wt(a)}%</span></span>
             <span className={`min-w-[40px] text-center rounded-md px-2 py-0.5 text-[13px] font-extrabold ${heat(p.kpa[a.key])}`}>{p.kpa[a.key] ?? '—'}</span></div>
           {p.kpis.filter((k) => k.kpa === a.key).map((k) => (
             <div key={k.key}>
@@ -69,7 +70,7 @@ function KpiTable({ p }) {
         <tbody>
           {KPA.map((a) => p.kpis.filter((k) => k.kpa === a.key).map((k, i) => (
             <tr key={k.key} className={i === 0 ? 'border-t border-gray-200' : ''}>
-              <td className="px-3 py-2 font-bold align-top">{i === 0 ? `${a.label} · ${a.weight}%` : ''}</td>
+              <td className="px-3 py-2 font-bold align-top">{i === 0 ? `${a.label} · ${wt(a)}%` : ''}</td>
               <td className="px-2 py-2">{k.label}</td>
               <td className="px-2 py-2 text-gray-700">{kpiValue(k.kind, k.target)}
                 {(k.kind === 'count' || k.kind === 'money') && k.target !== k.full && <span className="block text-[11.5px] text-gray-500">by today · {kpiValue(k.kind, k.full)} a month</span>}</td>
@@ -108,7 +109,6 @@ export default function CrmPerformance() {
   const [pending, setPending] = useState([]);
   const [reload, setReload] = useState(0);
   const isManager = me.role === 'manager';
-  const perPaid = Number(settings?.incentive?.per_paid) || 0;
 
   const cur = monthRange(today, back);
   const prev = monthRange(today, back + 1);
@@ -122,12 +122,13 @@ export default function CrmPerformance() {
     return () => { alive = false; };
   }, [cur.from, cur.to, prev.from, prev.to, isManager, reload]);
 
-  const board = useMemo(() => (data ? rankBoard(data.now, { share: periodShare(cur.from, cur.to, today), price: PRICE.monthly }) : []), [data, cur.from, cur.to, today]);
+  const opts = useMemo(() => ({ price: PRICE.monthly, weights: weightsFrom(settings?.score), teamTargets: settings?.score?.targets || null }), [settings]);
+  const board = useMemo(() => (data ? rankBoard(data.now, { ...opts, share: periodShare(cur.from, cur.to, today) }) : []), [data, cur.from, cur.to, today, opts]);
   const lastScore = useMemo(() => {
     const m = new Map();
-    if (data) for (const p of rankBoard(data.before, { share: 1, price: PRICE.monthly })) m.set(p.row.user_id, p.score);
+    if (data) for (const p of rankBoard(data.before, { ...opts, share: 1 })) m.set(p.row.user_id, p.score);
     return m;
-  }, [data]);
+  }, [data, opts]);
 
   if (!data) return <Spinner />;
   const daysLeft = back === 0 ? Math.max(0, Math.round((Date.parse(`${cur.to}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)) : 0;
@@ -164,13 +165,11 @@ export default function CrmPerformance() {
             </section>
             {p.row.pending_wins > 0 && <Notice kind="warn">{p.row.pending_wins} win{p.row.pending_wins === 1 ? '' : 's'} waiting for proof. {p.row.pending_wins === 1 ? 'It counts' : 'They count'} once PocketLink sees the payment, or your manager approves.</Notice>}
             <Advice p={p} />
-            <section className={`${card} overflow-hidden`}><h2 className="px-4 pt-3 pb-1 font-extrabold">My 5 areas</h2><KpiTable p={p} /></section>
-            {perPaid > 0 && (
-              <section className={`${card} p-4 flex items-center gap-3`}>
-                <div className="flex-1"><div className="font-extrabold">Incentive so far</div><div className="text-[13px] text-gray-500">{inr(perPaid)} for each paid shop{settings?.incentive?.pay_day ? ` · paid ${settings.incentive.pay_day}` : ''}</div></div>
-                <div className="text-2xl font-extrabold">{inr(p.row.won * perPaid)}</div>
-              </section>
-            )}
+            <section className={`${card} overflow-hidden`}><h2 className="px-4 pt-3 pb-1 font-extrabold">My 5 areas</h2><KpiTable p={p} weights={opts.weights} /></section>
+            <Link to={path('incentives')} className={`${card} p-4 flex items-center gap-3 no-underline text-gray-900`}>
+              <div className="flex-1"><div className="font-extrabold">My incentive</div><div className="text-[13px] text-gray-500">Paid shops, the 30-day check and what is earned</div></div>
+              <span className="text-green-700 font-bold text-sm">Open</span>
+            </Link>
           </>
         )}
       </div>
@@ -188,7 +187,7 @@ export default function CrmPerformance() {
 
   const exportReport = () => {
     const keys = [...new Set(board.flatMap((p) => p.kpis.map((k) => k.key)))];
-    const header = ['Rank', 'Name', 'Role', 'Score', 'Band', ...KPA.map((a) => `${a.label} (${a.weight}%)`), 'Paid shops', 'Money collected', ...keys];
+    const header = ['Rank', 'Name', 'Role', 'Score', 'Band', ...KPA.map((a) => `${a.label} (${opts.weights[a.key]}%)`), 'Paid shops', 'Money collected', ...keys];
     const lines = board.map((p) => [p.rank, p.row.name, ROLE_LABEL[p.row.role], p.score ?? '', band(p.score).label, ...KPA.map((a) => p.kpa[a.key] ?? ''),
       p.row.won, p.row.money, ...keys.map((k) => { const x = p.kpis.find((y) => y.key === k); return x ? `${kpiValue(x.kind, x.actual)} / ${kpiValue(x.kind, x.target)}` : ''; })]);
     downloadCsv(`performance-${cur.from.slice(0, 7)}.csv`, [header, ...lines]);
@@ -227,7 +226,6 @@ export default function CrmPerformance() {
                   <thead><tr className="text-left text-[12px] uppercase tracking-wide text-gray-500">
                     <th className="px-4 py-2 font-bold">#</th><th className="px-2 py-2 font-bold">Person</th><th className="px-2 py-2 font-bold">Score</th>
                     <th className="px-2 py-2 font-bold">vs {prev.label.slice(0, 3)}</th><th className="px-2 py-2 font-bold">Paid shops</th><th className="px-2 py-2 font-bold">Collected</th>
-                    {perPaid > 0 && <th className="px-4 py-2 font-bold">Incentive</th>}
                   </tr></thead>
                   <tbody>
                     {board.map((p) => (
@@ -240,13 +238,12 @@ export default function CrmPerformance() {
                         <td className="px-2 py-3"><Trend now={p.score} before={lastScore.get(p.row.user_id)} /></td>
                         <td className="px-2 py-3 font-bold">{p.row.won}{p.row.pending_wins > 0 && <span className="block text-[11.5px] font-semibold text-amber-700">+{p.row.pending_wins} waiting</span>}</td>
                         <td className="px-2 py-3">{inr(p.row.money)}</td>
-                        {perPaid > 0 && <td className="px-4 py-3 font-bold">{inr(p.row.won * perPaid)}</td>}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {!perPaid && <p className="px-4 py-3 text-[12.5px] text-gray-500 border-t border-gray-100">Set an incentive per paid shop in <Link to={path('team')} className="font-bold">Team &amp; targets</Link> to show it here.</p>}
+              <p className="px-4 py-3 text-[12.5px] text-gray-500 border-t border-gray-100">Paid shops count when PocketLink sees the payment or you approve the win. Incentives are in <Link to={path('incentives')} className="font-bold">Incentives</Link>; weights and targets in <Link to={path('settings')} className="font-bold">Settings</Link>.</p>
             </section>
 
             <section aria-label="Areas at a glance" className={`${card} w-full xl:w-[420px] shrink-0 p-4`}>
@@ -294,7 +291,7 @@ export default function CrmPerformance() {
                   <p className="text-[13px] text-gray-500">{ROLE_LABEL[chosen.row.role]} · rank {chosen.rank} of {board.length}</p></div>
                 <span className="text-3xl font-extrabold">{chosen.score ?? '—'}</span><BandPill score={chosen.score} />
               </div>
-              <KpiTable p={chosen} />
+              <KpiTable p={chosen} weights={opts.weights} />
               <div className="p-4"><Advice p={chosen} /></div>
             </section>
           )}

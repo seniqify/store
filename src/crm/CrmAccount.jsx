@@ -5,6 +5,7 @@ import { crmSetPassword, crmSignOut } from './crmService.js';
 import { prettyPhone } from './crmLogic.js';
 import { Field, Notice, Icon } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
+import MyLinkCard from './CrmMyLink.jsx';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -42,6 +43,8 @@ export default function CrmAccount() {
           <div className="text-[13px] text-gray-500">Shift {String(me.shift_start).slice(0, 5)} – {String(me.shift_end).slice(0, 5)} · weekly off {DAYS[me.weekly_off]}</div>
         </div>
       </section>
+
+      <MyLinkCard />
 
       <form onSubmit={save} className={`${card} p-5 space-y-3`}>
         <h2 className="font-extrabold text-lg">Change my password</h2>

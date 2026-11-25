@@ -253,7 +253,7 @@ const minutesOf = (time) => {
  * Order: manager's override > before they started > weekly off > holiday > approved leave >
  * future > no login (today: not in yet; earlier: absent) > late > half day > present.
  */
-export function dayStatus({ day, today, staff, row, holidays, leaveDays }) {
+export function dayStatus({ day, today, staff, row, holidays, leaveDays, rules }) {
   if (row?.status_override) return row.status_override;
   const start = staff?.created_at ? istDate(Date.parse(staff.created_at)) : '';
   if (start && day < start) return 'before';
@@ -264,10 +264,12 @@ export function dayStatus({ day, today, staff, row, holidays, leaveDays }) {
   const inAt = row?.day_start_at || row?.first_seen_at;
   if (!inAt) return day === today ? 'today' : 'absent';
   const loginMin = Math.round((Date.parse(inAt) - istInstant(day)) / 60000);
-  const late = loginMin > minutesOf(staff?.shift_start) + LATE_GRACE_MIN;
+  const grace = Number.isFinite(Number(rules?.grace_min)) ? Number(rules.grace_min) : LATE_GRACE_MIN;
+  const halfH = Number(rules?.half_day_hours) > 0 ? Number(rules.half_day_hours) : HALF_DAY_HOURS;
+  const late = loginMin > minutesOf(staff?.shift_start) + grace;
   const outAt = row?.day_end_at || row?.last_seen_at;
   const hours = outAt ? (Date.parse(outAt) - Date.parse(inAt)) / 3600000 : 0;
-  if (day < today && hours < HALF_DAY_HOURS) return 'half';
+  if (day < today && hours < halfH) return 'half';
   return late ? 'late' : 'present';
 }
 
@@ -285,7 +287,7 @@ export function leaveDaySet(leaves, staffId) {
  * A month's calendar for one person, Monday first.
  * Returns { cells: [{ day, n, status, inAt }|null], counts, workingDays, workedSoFar }.
  */
-export function monthCalendar({ year, month, today, staff, rows, holidays, leaves }) {
+export function monthCalendar({ year, month, today, staff, rows, holidays, leaves, rules }) {
   const first = `${year}-${String(month).padStart(2, '0')}-01`;
   const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const byDay = new Map((rows || []).filter((r) => r.staff_id === staff?.user_id).map((r) => [r.day, r]));
@@ -298,7 +300,7 @@ export function monthCalendar({ year, month, today, staff, rows, holidays, leave
   for (let n = 1; n <= days; n++) {
     const day = `${year}-${String(month).padStart(2, '0')}-${String(n).padStart(2, '0')}`;
     const row = byDay.get(day) || null;
-    const status = dayStatus({ day, today, staff, row, holidays: holidaySet, leaveDays });
+    const status = dayStatus({ day, today, staff, row, holidays: holidaySet, leaveDays, rules });
     if (counts[status] !== undefined) counts[status]++;
     const isWorking = status !== 'off' && status !== 'holiday' && status !== 'before';
     if (isWorking) workingDays++;
@@ -368,17 +370,33 @@ export const KPI_DEFS = Object.freeze({
   ],
 });
 
-/** The full-month (or per-day / percent) target for one KPI of one person. */
-export function kpiTarget(def, person, price = 1499) {
+/**
+ * The full-month (or per-day / percent) target for one KPI of one person:
+ * their own target > their daily / monthly column > the team target for
+ * their role (Settings) > the usual.
+ */
+export function kpiTarget(def, person, price = 1499, teamTargets = null) {
   const own = Number(person?.targets?.[def.key]);
   if (Number.isFinite(own) && own > 0) return own;
   const col = def.column ? Number(person?.[def.column]) : NaN;
   if (Number.isFinite(col) && col > 0) return col;
+  const team = Number(teamTargets?.[person?.role]?.[def.key]);
+  if (Number.isFinite(team) && team > 0) return team;
   if (def.kind === 'money') {
     const paidDef = (KPI_DEFS[person?.role] || KPI_DEFS.caller).find((d) => d.key === 'paid');
-    return kpiTarget(paidDef, person, price) * price;
+    return kpiTarget(paidDef, person, price, teamTargets) * price;
   }
   return def.def;
+}
+
+export const DEFAULT_WEIGHTS = Object.freeze({ activity: 20, reach: 15, conversion: 30, revenue: 25, discipline: 10 });
+/** The KPA weights from Settings when they are whole numbers adding up to 100, else the usual ones. */
+export function weightsFrom(score) {
+  const w = score?.weights;
+  if (!w || typeof w !== 'object') return { ...DEFAULT_WEIGHTS };
+  const out = {};
+  for (const a of KPA) { const v = Number(w[a.key]); if (!Number.isInteger(v) || v < 0 || v > 100) return { ...DEFAULT_WEIGHTS }; out[a.key] = v; }
+  return Object.values(out).reduce((x, y) => x + y, 0) === 100 ? out : { ...DEFAULT_WEIGHTS };
 }
 
 /**
@@ -405,10 +423,10 @@ export function band(score) {
  * One person's KPIs, KPAs and score from their scoreboard row.
  * share: periodShare(...) for count / money targets.
  */
-export function scorePerson(row, { share = 1, price = 1499 } = {}) {
+export function scorePerson(row, { share = 1, price = 1499, weights = DEFAULT_WEIGHTS, teamTargets = null } = {}) {
   const defs = KPI_DEFS[row?.role] || KPI_DEFS.caller;
   const kpis = defs.map((d) => {
-    const full = kpiTarget(d, row, price);
+    const full = kpiTarget(d, row, price, teamTargets);
     const target = d.kind === 'count' || d.kind === 'money' ? full * share : full;
     const raw = d.actual(row || {});
     const actual = raw == null || Number.isNaN(raw) ? null : raw;
@@ -420,9 +438,10 @@ export function scorePerson(row, { share = 1, price = 1499 } = {}) {
     const xs = kpis.filter((k) => k.kpa === a.key && k.pct != null).map((k) => k.pct);
     kpa[a.key] = xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null;
   }
-  const scored = KPA.filter((a) => kpa[a.key] != null);
-  const w = scored.reduce((s, a) => s + a.weight, 0);
-  const score = w ? Math.round(scored.reduce((s, a) => s + kpa[a.key] * a.weight, 0) / w) : null;
+  const wt = (a) => (Number.isFinite(Number(weights?.[a.key])) ? Number(weights[a.key]) : a.weight);
+  const scored = KPA.filter((a) => kpa[a.key] != null && wt(a) > 0);
+  const w = scored.reduce((s, a) => s + wt(a), 0);
+  const score = w ? Math.round(scored.reduce((s, a) => s + kpa[a.key] * wt(a), 0) / w) : null;
   const ranked = kpis.filter((k) => k.pct != null).sort((x, y) => x.pct - y.pct);
   return { kpis, kpa, score, weakest: ranked[0] || null, strongest: ranked[ranked.length - 1] || null };
 }
@@ -613,3 +632,42 @@ export const secondsLabel = (s) => (s == null ? '' : s >= 60 ? `${Math.floor(s /
 
 /** Ad and website leads (part 3 lead sources). */
 export const AD_SOURCES = Object.freeze(['facebook', 'instagram', 'google', 'whatsapp', 'website']);
+
+// ── Incentive rule (part 4) ─────────────────────────────────────────────────
+/** The recommended rule; every number can be changed in Settings. */
+export const RECOMMENDED_INCENTIVE = Object.freeze({
+  monthly: 300, yearly: 1500, slab_after: 10, slab_monthly: 400, slab_yearly: 2000, hold_days: 30,
+  pay_day: 'with salary on the 5th of the next month',
+});
+/** The rule from Settings, filled with the recommended values where empty. */
+export function incentiveRule(cfg) {
+  const r = { ...RECOMMENDED_INCENTIVE };
+  for (const k of ['monthly', 'yearly', 'slab_after', 'slab_monthly', 'slab_yearly', 'hold_days']) {
+    const v = Number(cfg?.[k] ?? (k === 'monthly' ? cfg?.per_paid : undefined));
+    if (Number.isFinite(v) && v >= 0) r[k] = v;
+  }
+  if (cfg?.pay_day) r.pay_day = String(cfg.pay_day);
+  return r;
+}
+const rs = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+/** The rule in plain words, for the team. */
+export function incentiveRuleLines(cfg) {
+  const r = incentiveRule(cfg);
+  const lines = [
+    `${rs(r.monthly)} for each shop that pays for the monthly plan, ${rs(r.yearly)} for the yearly plan.`,
+  ];
+  if (r.slab_after > 0) lines.push(`From your ${r.slab_after + 1}th paid shop in a month: ${rs(r.slab_monthly)} (monthly) and ${rs(r.slab_yearly)} (yearly) for each.`);
+  lines.push(`Earned only if the shop is still paying ${r.hold_days} days later (checked automatically on day ${r.hold_days + 4}, after the renewal).`);
+  lines.push('It is yours when the shop signed up with your own link or code, or when you called or visited the shop before it paid. A win you mark yourself counts once the manager approves it.');
+  lines.push(`Paid ${r.pay_day}.`);
+  return lines;
+}
+export const INCENTIVE_STATUS = Object.freeze({
+  waiting: { label: 'Waiting for the 30-day check', cls: 'bg-amber-100 text-amber-900' },
+  earned: { label: 'Earned', cls: 'bg-green-100 text-green-800' },
+  cancelled: { label: 'Shop stopped paying', cls: 'bg-red-100 text-red-800' },
+  check: { label: 'Manager to confirm', cls: 'bg-blue-100 text-blue-800' },
+  paid: { label: 'Paid out', cls: 'bg-green-700 text-white' },
+});
+/** Own sign-up link. */
+export const signupLink = (code) => `https://www.pocketlink.store/start?ref=${encodeURIComponent(code || '')}`;

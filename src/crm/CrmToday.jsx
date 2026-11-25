@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
 import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions } from './crmService.js';
 import { pendingWins } from './crmService.js';
+import MyLinkCard from './CrmMyLink.jsx';
 import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS } from './crmLogic.js';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -50,7 +51,7 @@ export function DayCard({ me, row, onChanged }) {
 }
 
 export default function CrmToday() {
-  const { me, staff, path } = useCrm();
+  const { me, staff, path, settings } = useCrm();
   const [leads, setLeads] = useState(null);
   const [acts, setActs] = useState([]);
   const [att, setAtt] = useState([]);
@@ -81,14 +82,14 @@ export default function CrmToday() {
     const row = att.find((r) => r.staff_id === s.user_id && r.day === today);
     const late = (leads || []).filter((l) => l.assigned_to === s.user_id && l.stage !== 'won' && l.stage !== 'lost' && l.next_action_at && Date.parse(l.next_action_at) < dayStart).length;
     const won = acts.filter((a) => a.staff_id === s.user_id && a.kind === 'stage' && a.outcome === 'won').length;
-    const status = dayStatus({ day: today, today, staff: s, row, holidays: new Set(), leaveDays: new Set() });
+    const status = dayStatus({ day: today, today, staff: s, row, holidays: new Set(), leaveDays: new Set(), rules: settings?.work });
     return {
       s, row, late, won, status,
       calls: count(mine, (a) => a.kind === 'call'),
       picked: count(mine, (a) => a.kind === 'call' && !['no_answer', 'wrong_number'].includes(a.outcome)),
       visits: count(mine, (a) => a.kind === 'visit'),
     };
-  }), [staff, todayActs, att, leads, acts, dayStart, today]);
+  }), [staff, todayActs, att, leads, acts, dayStart, today, settings]);
 
   if (!leads) return <Spinner />;
 
@@ -102,6 +103,9 @@ export default function CrmToday() {
       <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
         <DayCard me={me} row={row} onChanged={load} />
+        {me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
+          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Nine short modules and a short exam. The call queue and check-ins open when you pass.</Notice></Link>
+        )}
         {notify === 'default' && (
           <button type="button" className={`${btn.ghost} w-full`} onClick={async () => { try { setNotify(await Notification.requestPermission()); } catch { setNotify('denied'); } }}>
             <Icon name="bolt" size={16} />Turn on new-lead alerts
@@ -120,6 +124,7 @@ export default function CrmToday() {
           <Stat label="Due now" value={q.now.length} sub="call or visit" />
           <Stat label="New for you" value={q.fresh.length} sub="never contacted" />
         </div>
+        <MyLinkCard compact />
         <Link to={path(me.role === 'field' ? 'checkin' : 'queue')} className={`${btn.primary} w-full h-12 text-base`}>
           <Icon name={me.role === 'field' ? 'pin' : 'phone'} />{me.role === 'field' ? 'Check in at a shop' : 'Open my call queue'}
         </Link>
