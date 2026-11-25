@@ -134,6 +134,7 @@ export const BUSINESS_HOOKS = Object.freeze([
 export const shopLink = (slug) => `https://www.pocketlink.store/${slug}`;
 
 export const MESSAGES = Object.freeze([
+  { t: 'Make your shop (your own link)', text: 'Namaskar {owner}, make your shop on PocketLink here: {my link} - it takes 2 minutes. Call me if you need any help. — {me}, PocketLink' },
   { t: 'After the call', text: 'Namaskar {owner}, thank you for your time. Here is a shop like yours on PocketLink: {example link}. — {me}, PocketLink' },
   { t: 'Demo reminder (day before)', text: 'Namaskar {owner}, reminder: our 10-minute PocketLink demo is tomorrow at {time}. See you then! — {me}, PocketLink' },
   { t: 'Payment link', text: `Here is your PocketLink plan link: {payment link}. ${M} a month incl. GST, cancel anytime. Your plan starts as soon as you pay. — {me}, PocketLink` },

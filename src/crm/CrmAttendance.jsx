@@ -50,7 +50,8 @@ function downloadCsv(name, rows) {
 }
 
 export default function CrmAttendance() {
-  const { me, staff } = useCrm();
+  const { me, staff, settings } = useCrm();
+  const rules = settings?.work;
   const today = istDate();
   const [ym, setYm] = useState({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) });
   const [rows, setRows] = useState(null);
@@ -75,8 +76,8 @@ export default function CrmAttendance() {
 
   const run = async (fn) => { setErr(''); try { await fn(); await load(); } catch (e) { setErr(e.message); } };
   const person = staff.find((s) => s.user_id === who) || me;
-  const cal = useMemo(() => (rows ? monthCalendar({ year: ym.y, month: ym.m, today, staff: person, rows, holidays, leaves: leave }) : null),
-    [rows, ym, today, person, holidays, leave]);
+  const cal = useMemo(() => (rows ? monthCalendar({ year: ym.y, month: ym.m, today, staff: person, rows, holidays, leaves: leave, rules }) : null),
+    [rows, ym, today, person, holidays, leave, rules]);
   const holidaySet = useMemo(() => new Set(holidays.map((h) => h.day)), [holidays]);
   const shiftMonth = (d) => setYm(({ y, m }) => { const n = m + d; return n < 1 ? { y: y - 1, m: 12 } : n > 12 ? { y: y + 1, m: 1 } : { y, m: n }; });
 
@@ -87,7 +88,7 @@ export default function CrmAttendance() {
   const exportMonth = () => {
     const header = ['Name', 'Role', ...cal.cells.filter(Boolean).map((c) => c.day), 'Working days', 'Present', 'Late', 'Half day', 'Absent', 'Leave'];
     const lines = staff.filter((s) => s.active).map((s) => {
-      const c = monthCalendar({ year: ym.y, month: ym.m, today, staff: s, rows, holidays, leaves: leave });
+      const c = monthCalendar({ year: ym.y, month: ym.m, today, staff: s, rows, holidays, leaves: leave, rules });
       return [s.name, s.role, ...c.cells.filter(Boolean).map((x) => `${DAY_STATUS[x.status]?.label || ''}${x.inAt ? ` ${istTime(x.inAt)}` : ''}`),
         c.workingDays, c.counts.present, c.counts.late, c.counts.half, c.counts.absent, c.counts.leave];
     });
@@ -117,7 +118,7 @@ export default function CrmAttendance() {
               <tbody>
                 {staff.filter((s) => s.active).map((s) => {
                   const r = rows.find((x) => x.staff_id === s.user_id && x.day === today);
-                  const st = dayStatus({ day: today, today, staff: s, row: r, holidays: holidaySet, leaveDays: leaveDaySet(leave, s.user_id) });
+                  const st = dayStatus({ day: today, today, staff: s, row: r, holidays: holidaySet, leaveDays: leaveDaySet(leave, s.user_id), rules });
                   return (
                     <tr key={s.user_id} className="border-t border-gray-100">
                       <td className="px-4 py-3"><div className="flex items-center gap-2.5"><span aria-hidden="true" className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[11px] font-extrabold">{initials(s.name)}</span>

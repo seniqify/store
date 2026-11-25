@@ -2,8 +2,9 @@
 // weekly off; the incentive per paid shop. Adding a person creates their login (sales-staff edge function); someone
 // who leaves is switched off and their leads can be moved in Assign.
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useCrm, initials, ROLE_LABEL } from './crmContext.js';
-import { addStaff, updateStaff, resetStaffPassword, saveSetting } from './crmService.js';
+import { addStaff, updateStaff, resetStaffPassword } from './crmService.js';
 import { KPI_DEFS, kpiTarget, kpiValue } from './crmLogic.js';
 import { PRICE } from '../utils/planLimits.js';
 import { Field, Notice } from './ui.jsx';
@@ -14,7 +15,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 function Person({ s, me, onSaved }) {
   const [f, setF] = useState({
     role: s.role, area: s.area || '', daily_target: s.daily_target ?? '', monthly_target: s.monthly_target ?? '',
-    shift_start: String(s.shift_start).slice(0, 5), shift_end: String(s.shift_end).slice(0, 5), weekly_off: s.weekly_off, active: s.active,
+    shift_start: String(s.shift_start).slice(0, 5), shift_end: String(s.shift_end).slice(0, 5), weekly_off: s.weekly_off, active: s.active, must_train: !!s.must_train,
     targets: Object.fromEntries(Object.entries(s.targets || {}).map(([k, v]) => [k, String(v)])),
   });
   const [busy, setBusy] = useState(false);
@@ -28,7 +29,7 @@ function Person({ s, me, onSaved }) {
       await updateStaff(s.user_id, {
         role: f.role, area: f.area.trim() || null,
         daily_target: f.daily_target === '' ? null : Number(f.daily_target), monthly_target: f.monthly_target === '' ? null : Number(f.monthly_target),
-        shift_start: f.shift_start, shift_end: f.shift_end, weekly_off: Number(f.weekly_off), active: f.active,
+        shift_start: f.shift_start, shift_end: f.shift_end, weekly_off: Number(f.weekly_off), active: f.active, must_train: f.must_train,
         targets: Object.fromEntries(Object.entries(f.targets).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])),
       });
       setMsg({ kind: 'ok', text: 'Saved.' });
@@ -49,6 +50,9 @@ function Person({ s, me, onSaved }) {
         <span aria-hidden="true" className="w-10 h-10 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[12px] font-extrabold">{initials(s.name)}</span>
         <span className="flex-1 min-w-0"><span className="block font-bold">{s.name}{self ? ' (you)' : ''}</span>
           <span className="block text-[12.5px] text-gray-500 truncate">{s.email || ''}</span></span>
+        {s.ref_code && <span className="hidden sm:inline text-[12px] font-extrabold tracking-widest rounded-md px-2 py-0.5 bg-gray-900 text-white" title="Own sign-up code">{s.ref_code}</span>}
+        {s.role !== 'manager' && (s.qualified_at ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-green-100 text-green-800">Qualified</span>
+          : s.must_train ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-amber-100 text-amber-900">In training</span> : null)}
         <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-gray-100 text-gray-800">{ROLE_LABEL[s.role]}{s.active ? '' : ' · off'}</span>
       </summary>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
@@ -65,6 +69,13 @@ function Person({ s, me, onSaved }) {
         <Field label="Weekly off" htmlFor={`w-${s.user_id}`}>
           <select id={`w-${s.user_id}`} className={input} value={f.weekly_off} onChange={set('weekly_off')}>{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
         </Field>
+        {f.role !== 'manager' && (
+          <Field label="Must pass training" htmlFor={`mt-${s.user_id}`}>
+            <select id={`mt-${s.user_id}`} className={input} value={f.must_train ? 'yes' : 'no'} onChange={(e) => setF({ ...f, must_train: e.target.value === 'yes' })}>
+              <option value="yes">Yes, before calling or visits</option><option value="no">No</option>
+            </select>
+          </Field>
+        )}
         <Field label="Can sign in" htmlFor={`ac-${s.user_id}`}>
           <select id={`ac-${s.user_id}`} className={input} value={f.active ? 'yes' : 'no'} onChange={(e) => setF({ ...f, active: e.target.value === 'yes' })} disabled={self}>
             <option value="yes">Yes</option><option value="no">No (left or paused)</option>
@@ -94,36 +105,8 @@ function Person({ s, me, onSaved }) {
   );
 }
 
-function Incentive() {
-  const { settings, refreshSettings } = useCrm();
-  const cur = settings?.incentive || {};
-  const [f, setF] = useState({ per_paid: cur.per_paid ? String(cur.per_paid) : '', pay_day: cur.pay_day || '' });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const save = async () => {
-    setBusy(true); setMsg(null);
-    try {
-      await saveSetting('incentive', { ...cur, per_paid: Number(f.per_paid) > 0 ? Math.round(Number(f.per_paid)) : 0, pay_day: f.pay_day.trim().slice(0, 80) });
-      await refreshSettings();
-      setMsg({ kind: 'ok', text: 'Saved. It shows on Performance and on each person’s score.' });
-    } catch (e) { setMsg({ kind: 'error', text: e.message }); } finally { setBusy(false); }
-  };
-  return (
-    <section className={`${card} p-5 space-y-3`}>
-      <h2 className="font-extrabold text-lg">Incentive</h2>
-      <p className="text-sm text-gray-600">Shown to the team on their score. Leave the amount empty if there is no incentive. Write the full rule in FAQ &amp; help.</p>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="For each paid shop (₹)" htmlFor="inc-a"><input id="inc-a" type="number" min="0" className={input} value={f.per_paid} onChange={(e) => setF({ ...f, per_paid: e.target.value })} placeholder="e.g. 300" /></Field>
-        <Field label="When it is paid" htmlFor="inc-d"><input id="inc-d" className={input} value={f.pay_day} onChange={(e) => setF({ ...f, pay_day: e.target.value })} placeholder="e.g. on the 5th of next month" /></Field>
-      </div>
-      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-      <button type="button" className={btn.primary} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save incentive'}</button>
-    </section>
-  );
-}
-
 export default function CrmTeam() {
-  const { me, staff, refreshStaff, settings } = useCrm();
+  const { me, staff, refreshStaff, path } = useCrm();
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'caller', phone: '', area: '' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -145,7 +128,7 @@ export default function CrmTeam() {
       <h1 className="text-2xl font-extrabold">Team &amp; targets</h1>
       <p className="text-sm text-gray-600">Callers and field executives see only their own leads. Managers see everything. Nobody in the CRM can see shops, orders or the Console.</p>
       <div className="space-y-3">{staff.map((s) => <Person key={s.user_id} s={s} me={me} onSaved={refreshStaff} />)}</div>
-      {settings && <Incentive />}
+      <p className="text-[13px] text-gray-600">The incentive rule, team targets, score weights, shifts and holidays are in <Link to={path('settings')} className="font-bold">Settings</Link>.</p>
       <form onSubmit={add} className={`${card} p-5 space-y-3`}>
         <h2 className="font-extrabold text-lg">Add a person</h2>
         <div className="grid sm:grid-cols-2 gap-3">

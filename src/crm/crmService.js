@@ -350,3 +350,59 @@ export async function reviewWin(leadId, ok) {
   const { error } = await supabase.rpc('sales_win_review', { p_lead: leadId, p_ok: ok });
   if (error) fail(error);
 }
+
+// ── Own sign-up link, incentives (part 4) ──────────────────────────────────
+export async function myLinkStats() {
+  const { data, error } = await supabase.rpc('sales_my_link_stats');
+  return error ? null : (data || [])[0] || null;
+}
+/** My incentives (the database shows a manager everyone's). */
+export async function listIncentives() {
+  const { data, error } = await supabase.from('sales_incentives').select('*, sales_leads(shop_name)').order('won_at', { ascending: false }).limit(1000);
+  return error ? [] : data || [];
+}
+export async function setIncentive(leadId, status, note) {
+  const { error } = await supabase.rpc('sales_incentive_set', { p_lead: leadId, p_status: status, p_note: note ?? null });
+  if (error) fail(error);
+}
+
+// ── Training and the exam ───────────────────────────────────────────────────
+export async function trainingDone() {
+  const { data, error } = await supabase.from('sales_training').select('staff_id, module, done_at');
+  return error ? [] : data || [];
+}
+export async function markModuleDone(userId, module) {
+  const { error } = await supabase.from('sales_training').insert({ staff_id: userId, module });
+  if (error && error.code !== '23505') fail(error);
+}
+export async function examStart() {
+  const { data, error } = await supabase.rpc('sales_exam_start');
+  if (error) fail(error);
+  return data;
+}
+export async function examSubmit(attemptId, answers) {
+  const { data, error } = await supabase.rpc('sales_exam_submit', { p_attempt: attemptId, p_answers: answers });
+  if (error) fail(error);
+  return data;
+}
+export async function examAttempts() {
+  const { data, error } = await supabase.from('sales_exam_attempts').select('id, staff_id, started_at, score, total, passed, submitted_at').order('started_at', { ascending: false }).limit(300);
+  return error ? [] : data || [];
+}
+
+// ── Reports ─────────────────────────────────────────────────────────────────
+export async function listReports() {
+  const { data, error } = await supabase.from('sales_reports').select('*').order('created_at', { ascending: false }).limit(60);
+  return error ? [] : data || [];
+}
+export async function reportData(from, to) {
+  const { data, error } = await supabase.rpc('sales_report_data', { p_from: from, p_to: to });
+  if (error) fail(error);
+  return data;
+}
+export async function sendTestReport() {
+  const { data, error } = await supabase.functions.invoke('sales-report', { body: { kind: 'test' } });
+  if (error) fail(error);
+  if (data?.error) throw new Error(data.error);
+  return data;
+}

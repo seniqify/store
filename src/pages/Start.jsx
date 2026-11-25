@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { cleanRef, readSalesRef, saveSalesRef } from '../utils/salesRef';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, MessageCircle, Check } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
@@ -20,6 +21,10 @@ export default function Start() {
   const [params]   = useSearchParams();
   const planParam  = params.get('plan') || 'free';
   const isUpgrade  = params.get('upgrade') === '1';
+  // A PocketLink team member's code: from their own link (?ref=) or typed below.
+  const [refCode, setRefCode] = useState(() => cleanRef(params.get('ref')) || readSalesRef());
+  const [refOpen, setRefOpen] = useState(false);
+  useEffect(() => { const r = cleanRef(params.get('ref')); if (r) saveSalesRef(r); }, [params]);
 
   const [step,       setStep]       = useState('phone'); // 'phone' | 'otp' | 'exists'
   const [digits,     setDigits]     = useState('');
@@ -197,6 +202,19 @@ export default function Start() {
                   </div>
                   {error && <p className="text-xs text-red-300 mt-2">{error}</p>}
                 </div>
+
+                {refCode && !refOpen ? (
+                  <p className="text-[11px] text-white/60">PocketLink team code: <b className="text-white tracking-wider">{refCode}</b>{' '}
+                    <button type="button" onClick={() => setRefOpen(true)} className="underline text-white/70">change</button></p>
+                ) : refOpen ? (
+                  <input
+                    type="text" aria-label="Code from someone at PocketLink" placeholder="Code from someone at PocketLink" maxLength={10}
+                    value={refCode} onChange={(e) => { const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); setRefCode(v); saveSalesRef(v); }}
+                    className="w-full bg-white rounded-xl px-4 py-3 text-sm font-mono tracking-widest text-gray-900 placeholder-gray-400 shadow-md focus:outline-none focus:ring-4 focus:ring-emerald-400/40"
+                  />
+                ) : (
+                  <button type="button" onClick={() => setRefOpen(true)} className="text-[11px] text-white/60 underline">Have a code from someone at PocketLink?</button>
+                )}
 
                 <button
                   type="submit"

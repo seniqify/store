@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
 import { getLead } from './crmService.js';
-import { waHref } from './crmLogic.js';
+import { waHref, signupLink } from './crmLogic.js';
 import { LANGS, SCRIPT_LIST, SCRIPTS, OBJECTIONS, OBJ_TITLE, BUSINESS_HOOKS, MESSAGES, shopLink, fillScript } from './crmScripts.js';
 import { Icon } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -52,7 +52,7 @@ export default function CrmScripts() {
 
   const pickLang = (k) => { setLang(k); try { localStorage.setItem(LANG_KEY, k); } catch { /* private mode */ } };
   const pickScript = (k) => { const p = new URLSearchParams(params); p.set('s', k); setParams(p, { replace: true }); };
-  const values = { me: me.name.split(' ')[0], shop: lead?.shop_name, owner: lead?.owner_name };
+  const values = { me: me.name.split(' ')[0], shop: lead?.shop_name, owner: lead?.owner_name, 'my link': me.ref_code ? signupLink(me.ref_code) : '' };
   const cur = SCRIPTS[which][lang];
 
   return (
