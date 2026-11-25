@@ -11,6 +11,8 @@ import {
   STAGES, sourceLabel, SOURCES, prettyPhone, telHref, waHref, mapHref, dueLabel, istTime, shortDay, istDate,
 } from './crmLogic.js';
 import { Icon, Field, StagePill, Spinner, Empty, Notice, OutcomePanel } from './ui.jsx';
+import { startCallTimer, useCallTimer } from './crmCallTimer.js';
+import { reviewWin } from './crmService.js';
 import { btn, input, card, toLocalInput, toInstantLocal } from './crmStyles.js';
 
 const ACT_LABEL = {
@@ -69,6 +71,7 @@ export function LeadDetail({ leadId, onChanged }) {
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
   const [nextAt, setNextAt] = useState('');
+  const [callSecs, clearCall] = useCallTimer(leadId);
   const [nextText, setNextText] = useState('');
   const [edit, setEdit] = useState({});
   const isManager = me.role === 'manager';
@@ -104,8 +107,26 @@ export function LeadDetail({ leadId, onChanged }) {
         <StagePill stage={lead.stage} />
       </div>
 
+      {lead.stage === 'won' && (
+        lead.won_proof ? (
+          <Notice kind="ok"><b>{lead.won_proof === 'payment' ? 'Payment seen by PocketLink' : 'Win approved by the manager'}</b>
+            {lead.won_amount ? ` · ${lead.won_plan === 'yearly' ? 'yearly' : 'monthly'} plan, ₹${Number(lead.won_amount).toLocaleString('en-IN')}` : ''}
+            {lead.won_proof_at ? ` · ${shortDay(istDate(Date.parse(lead.won_proof_at)))}` : ''}</Notice>
+        ) : (
+          <Notice kind="warn">
+            <b>Waiting for proof.</b> This win counts once PocketLink sees the shop’s payment, or the manager approves it.
+            {isManager && (
+              <span className="flex flex-wrap gap-2 mt-2">
+                <button type="button" className={btn.smallGreen} disabled={busy} onClick={() => run(() => reviewWin(lead.id, true))}>Approve the win</button>
+                <button type="button" className={btn.small} disabled={busy} onClick={() => run(() => reviewWin(lead.id, false))}>Not paid yet</button>
+              </span>
+            )}
+          </Notice>
+        )
+      )}
+
       <div className="grid grid-cols-3 gap-2">
-        <a href={telHref(lead.phone)} className={btn.primary}><Icon name="phone" size={16} />Call</a>
+        <a href={telHref(lead.phone)} onClick={() => startCallTimer(lead.id)} className={btn.primary}><Icon name="phone" size={16} />Call</a>
         <a href={waHref(lead.phone)} target="_blank" rel="noreferrer" className={btn.ghost}>WhatsApp</a>
         {canWork ? <button type="button" className={btn.ghost} onClick={() => setMode(mode === 'call' ? null : 'call')}>Log call</button>
           : <span className={`${btn.ghost} opacity-50`}>Log call</span>}
@@ -115,10 +136,11 @@ export function LeadDetail({ leadId, onChanged }) {
         <div className={`${card} p-4`}>
           <h3 className="font-extrabold mb-3">How did the call go?</h3>
           <OutcomePanel lead={lead} busy={busy} onSave={(r) => run(async () => {
-            await logActivity({ leadId: lead.id, kind: 'call', outcome: r.outcome, note: r.note, stage: r.stage, nextAt: r.nextAt, next: r.next, lost: r.lost });
+            await logActivity({ leadId: lead.id, kind: 'call', outcome: r.outcome, note: r.note, stage: r.stage, nextAt: r.nextAt, next: r.next, lost: r.lost, duration: r.duration });
+            clearCall();
             if (r.outcome === 'won') await updateLead(lead.id, { won_plan: r.wonPlan, won_amount: r.wonAmount });
             setMode(null);
-          })} />
+          })} callSecs={callSecs} onClearCall={clearCall} />
         </div>
       )}
 

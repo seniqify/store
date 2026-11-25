@@ -5,6 +5,7 @@ import { useCrm } from './crmContext.js';
 import { listLeads, listActivities, logActivity, updateLead, activitiesSince } from './crmService.js';
 import { buildQueue, dueLabel, telHref, waHref, prettyPhone, sourceLabel, istDate, istInstant, shortDay, istTime } from './crmLogic.js';
 import { Icon, Spinner, Empty, Notice, OutcomePanel, StagePill } from './ui.jsx';
+import { startCallTimer, useCallTimer } from './crmCallTimer.js';
 import { btn, card } from './crmStyles.js';
 
 // A line or two to start with, by type of business. The full scripts come in
@@ -48,6 +49,7 @@ export default function CrmQueue() {
   const q = useMemo(() => buildQueue(leads || []), [leads]);
   const order = useMemo(() => [...q.now, ...q.later, ...q.fresh, ...q.ahead], [q]);
   const current = useMemo(() => order.find((l) => l.id === cur) || q.now[0] || q.fresh[0] || q.later[0] || q.ahead[0] || null, [order, cur, q]);
+  const [callSecs, clearCall] = useCallTimer(current?.id);
 
   useEffect(() => {
     if (!current) { setLast(null); return undefined; }
@@ -60,7 +62,8 @@ export default function CrmQueue() {
   const save = async (r) => {
     setBusy(true); setErr('');
     try {
-      await logActivity({ leadId: current.id, kind: 'call', outcome: r.outcome, note: r.note, stage: r.stage, nextAt: r.nextAt, next: r.next, lost: r.lost });
+      await logActivity({ leadId: current.id, kind: 'call', outcome: r.outcome, note: r.note, stage: r.stage, nextAt: r.nextAt, next: r.next, lost: r.lost, duration: r.duration });
+      clearCall();
       if (r.outcome === 'won') await updateLead(current.id, { won_plan: r.wonPlan, won_amount: r.wonAmount });
       const idx = order.findIndex((l) => l.id === current.id);
       const next = order[idx + 1] || null;
@@ -116,7 +119,7 @@ export default function CrmQueue() {
                   <StagePill stage={current.stage} />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <a href={telHref(current.phone)} className={`${btn.primary} h-12 px-6 text-base`}><Icon name="phone" />Call {prettyPhone(current.phone)}</a>
+                  <a href={telHref(current.phone)} onClick={() => startCallTimer(current.id)} className={`${btn.primary} h-12 px-6 text-base`}><Icon name="phone" />Call {prettyPhone(current.phone)}</a>
                   <a href={waHref(current.phone)} target="_blank" rel="noreferrer" className={`${btn.ghost} h-12`}>WhatsApp</a>
                 </div>
                 <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700">
@@ -131,7 +134,7 @@ export default function CrmQueue() {
               <div className={`${card} p-5`}>
                 <h3 className="font-extrabold text-lg mb-3">How did the call go?</h3>
                 {err && <div className="mb-3"><Notice>{err}</Notice></div>}
-                <OutcomePanel key={`${current.id}-${panelKey}`} lead={current} busy={busy} onSave={save} saveLabel="Save and call next" />
+                <OutcomePanel key={`${current.id}-${panelKey}`} lead={current} busy={busy} onSave={save} saveLabel="Save and call next" callSecs={callSecs} onClearCall={clearCall} />
               </div>
             </section>
           )}

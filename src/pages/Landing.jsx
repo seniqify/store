@@ -11,6 +11,7 @@ import { listBusinesses } from '../utils/BusinessLoader';
 import { normalizeBusiness, isMarketplaceVisible } from '../utils/marketplace';
 import { getStoreStatus } from '../utils/storeHours';
 import { PRICE } from '../utils/planLimits';
+import CallBackForm from '../components/CallBackForm';
 import { CARD_FEATURES, PRICING_FAQS, FREE_ORDER_MESSAGES } from '../utils/pricingCopy';
 
 /**
@@ -1381,8 +1382,13 @@ export default function Landing() {
             ))}
           </div>
 
+          {/* Want a call? (goes straight to the sales CRM) */}
+          <Reveal delay={0.05} className="mt-8">
+            <CallBackForm />
+          </Reveal>
+
           {/* Still have questions? */}
-          <Reveal delay={0.1} className="mt-8 text-center">
+          <Reveal delay={0.1} className="mt-4 text-center">
             <div className="inline-flex flex-col sm:flex-row items-center gap-3 bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4">
               <span className="text-sm text-gray-500">Still have a question?</span>
               <a href="mailto:hello@pocketlink.store"
