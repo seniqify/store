@@ -30,6 +30,7 @@ import CrmSettings from './CrmSettings.jsx';
 import CrmIncentives from './CrmIncentives.jsx';
 import CrmTraining from './CrmTraining.jsx';
 import CrmReports from './CrmReports.jsx';
+import CrmCheckLeads from './CrmCheckLeads.jsx';
 import { CrmCtx, useCrm, initials, ROLE_LABEL } from './crmContext.js';
 
 
@@ -45,6 +46,7 @@ const AURORA = {
 const INSIDE = [
   ['phone', 'Your call queue', 'Who to call now, with the script and the follow-up'],
   ['pin', 'Shop visits', 'Check in with a photo and the place'],
+  ['shield', 'Leads checked fast', 'From ads and the website, before anyone calls twice'],
   ['chart', 'Your score and incentive', 'Wins count when the shop pays'],
 ];
 
@@ -81,7 +83,7 @@ function Login({ recovery, onDone }) {
         <div className="space-y-4 mt-7">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-300">Sales CRM</p>
           <h2 className="text-[40px] leading-[1.12] font-extrabold tracking-tight">Every lead, call and visit in one place.</h2>
-          <p className="text-base leading-relaxed text-[#b6d3c7]">For PocketLink’s calling and field team, and their manager.</p>
+          <p className="text-base leading-relaxed text-[#b6d3c7]">For PocketLink’s calling, field and ads team, and their manager.</p>
         </div>
         <ul className="space-y-[18px]">
           {INSIDE.map(([icon, t, x]) => (
@@ -139,14 +141,15 @@ function Login({ recovery, onDone }) {
   );
 }
 
-// New people pass the training exam before they call or check in (Settings → Training).
+// New people pass the training exam before their work opens (Settings → Training).
+const OPENS = { caller: 'the call queue opens', field: 'check-ins open', ads: 'Check leads opens' };
 function TrainingFirst() {
-  const { path } = useCrm();
+  const { path, me } = useCrm();
   return (
     <div className="px-4 lg:px-7 py-10 max-w-md mx-auto text-center space-y-3">
       <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 grid place-items-center mx-auto"><Icon name="book" size={26} /></div>
       <h1 className="text-xl font-extrabold">Finish your training first</h1>
-      <p className="text-sm text-gray-600">Read the ten short modules and pass the exam. Then the call queue and check-ins open for you.</p>
+      <p className="text-sm text-gray-600">Read the short modules for your role and pass the exam. Then {OPENS[me.role] || 'your work opens'} for you.</p>
       <NavLink to={path('training')} className={btn.primary}>Go to training</NavLink>
     </div>
   );
@@ -313,7 +316,9 @@ export default function CrmApp({ base = '' }) {
   if (me === null) return <NotOnTeam />;
 
   const isManager = me.role === 'manager';
+  const isAds = me.role === 'ads';
   const needsTraining = !isManager && me.must_train && !me.qualified_at && settings?.training?.gate !== false;
+  const home = <Navigate to={value.path()} replace />;
   return (
     <CrmCtx.Provider value={value}>
       <Shell>
@@ -321,15 +326,16 @@ export default function CrmApp({ base = '' }) {
           <Route index element={<CrmToday />} />
           <Route path="leads" element={<CrmLeads />} />
           <Route path="leads/:id" element={<CrmLeadPage />} />
-          <Route path="add" element={<CrmAddLead />} />
-          <Route path="queue" element={needsTraining ? <TrainingFirst /> : <CrmQueue />} />
-          <Route path="followups" element={<CrmFollowups />} />
-          <Route path="checkin" element={needsTraining ? <TrainingFirst /> : <CrmCheckin />} />
+          <Route path="add" element={needsTraining && isAds ? <TrainingFirst /> : <CrmAddLead />} />
+          <Route path="queue" element={isAds ? home : needsTraining ? <TrainingFirst /> : <CrmQueue />} />
+          <Route path="followups" element={isAds ? home : <CrmFollowups />} />
+          <Route path="checkin" element={isAds ? home : needsTraining ? <TrainingFirst /> : <CrmCheckin />} />
           <Route path="attendance" element={<CrmAttendance />} />
           <Route path="assign" element={isManager ? <CrmAssign /> : <Navigate to={value.path()} replace />} />
           <Route path="team" element={isManager ? <CrmTeam /> : <Navigate to={value.path()} replace />} />
           <Route path="visits" element={isManager ? <CrmVisits /> : <Navigate to={value.path()} replace />} />
-          <Route path="sources" element={isManager ? <CrmSources /> : <Navigate to={value.path()} replace />} />
+          <Route path="sources" element={isManager || isAds ? <CrmSources /> : home} />
+          <Route path="check" element={isManager || isAds ? (needsTraining ? <TrainingFirst /> : <CrmCheckLeads />) : home} />
           <Route path="performance" element={<CrmPerformance />} />
           <Route path="scripts" element={<CrmScripts />} />
           <Route path="help" element={<CrmHelp />} />

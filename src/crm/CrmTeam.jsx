@@ -4,13 +4,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials, ROLE_LABEL } from './crmContext.js';
-import { addStaff, updateStaff, resetStaffPassword } from './crmService.js';
+import { addStaff, updateStaff, resetStaffPassword, signOff } from './crmService.js';
 import { KPI_DEFS, kpiTarget, kpiValue } from './crmLogic.js';
 import { PRICE } from '../utils/planLimits.js';
 import { Field, Notice } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAILY_LABEL = { field: 'Visits a day', ads: 'Leads checked a day' };
 
 function Person({ s, me, onSaved }) {
   const [f, setF] = useState({
@@ -36,6 +37,11 @@ function Person({ s, me, onSaved }) {
       await onSaved();
     } catch (e) { setMsg({ kind: 'error', text: e.message }); } finally { setBusy(false); }
   };
+  const toggleSignOff = async () => {
+    setBusy(true); setMsg(null);
+    try { await signOff(s.user_id, !s.signed_off_at); setMsg({ kind: 'ok', text: s.signed_off_at ? 'Sign-off removed.' : `${s.name} is signed off.` }); await onSaved(); }
+    catch (e) { setMsg({ kind: 'error', text: e.message }); } finally { setBusy(false); }
+  };
   const newPassword = async () => {
     const pw = window.prompt(`New password for ${s.name} (at least 8 characters):`);
     if (!pw) return;
@@ -51,19 +57,20 @@ function Person({ s, me, onSaved }) {
         <span className="flex-1 min-w-0"><span className="block font-bold">{s.name}{self ? ' (you)' : ''}</span>
           <span className="block text-[12.5px] text-gray-500 truncate">{s.email || ''}</span></span>
         {s.ref_code && <span className="hidden sm:inline text-[12px] font-extrabold tracking-widest rounded-md px-2 py-0.5 bg-gray-900 text-white" title="Own sign-up code">{s.ref_code}</span>}
-        {s.role !== 'manager' && (s.qualified_at ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-green-100 text-green-800">Qualified</span>
+        {s.role !== 'manager' && (s.signed_off_at ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-green-100 text-green-800">Signed off</span>
+          : s.qualified_at ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-blue-100 text-blue-800">Passed · to sign off</span>
           : s.must_train ? <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-amber-100 text-amber-900">In training</span> : null)}
         <span className="text-[12px] font-bold rounded-full px-2.5 py-0.5 bg-gray-100 text-gray-800">{ROLE_LABEL[s.role]}{s.active ? '' : ' · off'}</span>
       </summary>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
         <Field label="Role" htmlFor={`r-${s.user_id}`}>
           <select id={`r-${s.user_id}`} className={input} value={f.role} onChange={set('role')} disabled={self}>
-            <option value="manager">Manager</option><option value="caller">Calling executive</option><option value="field">Field executive</option>
+            <option value="manager">Manager</option><option value="caller">Calling executive</option><option value="field">Field executive</option><option value="ads">Ads &amp; leads executive</option>
           </select>
         </Field>
         <Field label="Area or list" htmlFor={`a-${s.user_id}`}><input id={`a-${s.user_id}`} className={input} value={f.area} onChange={set('area')} placeholder="e.g. Solapur east" /></Field>
-        <Field label={f.role === 'field' ? 'Visits a day' : 'Calls a day'} htmlFor={`d-${s.user_id}`}><input id={`d-${s.user_id}`} type="number" min="0" className={input} value={f.daily_target} onChange={set('daily_target')} placeholder={f.role === 'field' ? '8' : '80'} /></Field>
-        <Field label="Paid shops a month" htmlFor={`m-${s.user_id}`}><input id={`m-${s.user_id}`} type="number" min="0" className={input} value={f.monthly_target} onChange={set('monthly_target')} placeholder={f.role === 'field' ? '8' : '10'} /></Field>
+        <Field label={DAILY_LABEL[f.role] || 'Calls a day'} htmlFor={`d-${s.user_id}`}><input id={`d-${s.user_id}`} type="number" min="0" className={input} value={f.daily_target} onChange={set('daily_target')} placeholder={{ field: '8', ads: '40' }[f.role] || '80'} /></Field>
+        <Field label={f.role === 'ads' ? 'Paid shops from checked leads a month' : 'Paid shops a month'} htmlFor={`m-${s.user_id}`}><input id={`m-${s.user_id}`} type="number" min="0" className={input} value={f.monthly_target} onChange={set('monthly_target')} placeholder={{ field: '8', ads: '4' }[f.role] || '10'} /></Field>
         <Field label="Shift starts" htmlFor={`ss-${s.user_id}`}><input id={`ss-${s.user_id}`} type="time" className={input} value={f.shift_start} onChange={set('shift_start')} /></Field>
         <Field label="Shift ends" htmlFor={`se-${s.user_id}`}><input id={`se-${s.user_id}`} type="time" className={input} value={f.shift_end} onChange={set('shift_end')} /></Field>
         <Field label="Weekly off" htmlFor={`w-${s.user_id}`}>
@@ -72,7 +79,7 @@ function Person({ s, me, onSaved }) {
         {f.role !== 'manager' && (
           <Field label="Must pass training" htmlFor={`mt-${s.user_id}`}>
             <select id={`mt-${s.user_id}`} className={input} value={f.must_train ? 'yes' : 'no'} onChange={(e) => setF({ ...f, must_train: e.target.value === 'yes' })}>
-              <option value="yes">Yes, before calling or visits</option><option value="no">No</option>
+              <option value="yes">Yes, before their work opens</option><option value="no">No</option>
             </select>
           </Field>
         )}
@@ -94,6 +101,15 @@ function Person({ s, me, onSaved }) {
               </Field>
             ))}
           </div>
+        </div>
+      )}
+      {f.role === 'ads' && s.role !== 'ads' && <div className="mt-3"><Notice kind="warn">The Ads &amp; leads team owns no leads. Move this person’s open leads in Assign before you save.</Notice></div>}
+      {s.role !== 'manager' && s.qualified_at && (
+        <div className="mt-4 border-t border-gray-100 pt-3 flex flex-wrap items-center gap-3">
+          <p className="flex-1 min-w-[220px] text-[13.5px] text-gray-700">{s.signed_off_at
+            ? <>Signed off on {new Date(s.signed_off_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ready to work on their own.</>
+            : <>Passed the exam. Listen to a few of their calls, join a visit or watch them check leads, then sign them off.</>}</p>
+          <button type="button" className={s.signed_off_at ? btn.ghost : btn.dark} disabled={busy} onClick={toggleSignOff}>{s.signed_off_at ? 'Undo sign-off' : 'Sign off: ready to work'}</button>
         </div>
       )}
       {msg && <div className="mt-3"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
@@ -126,7 +142,7 @@ export default function CrmTeam() {
   return (
     <div className="px-4 lg:px-7 py-5 max-w-5xl space-y-4">
       <h1 className="text-2xl font-extrabold">Team &amp; targets</h1>
-      <p className="text-sm text-gray-600">Callers and field executives see only their own leads. Managers see everything. Nobody in the CRM can see shops, orders or the Console.</p>
+      <p className="text-sm text-gray-600">Callers and field executives see only their own leads. The Ads &amp; leads executive sees leads from ads and the website, checks them and adds new ones, but owns none and sees nobody else’s score or incentive. Managers see everything. Nobody in the CRM can see shops, orders or the Console.</p>
       <div className="space-y-3">{staff.map((s) => <Person key={s.user_id} s={s} me={me} onSaved={refreshStaff} />)}</div>
       <p className="text-[13px] text-gray-600">The incentive rule, team targets, score weights, shifts and holidays are in <Link to={path('settings')} className="font-bold">Settings</Link>.</p>
       <form onSubmit={add} className={`${card} p-5 space-y-3`}>
@@ -135,7 +151,7 @@ export default function CrmTeam() {
           <Field label="Name" htmlFor="tn"><input id="tn" className={input} value={f.name} onChange={set('name')} required /></Field>
           <Field label="Role" htmlFor="tr">
             <select id="tr" className={input} value={f.role} onChange={set('role')}>
-              <option value="caller">Calling executive</option><option value="field">Field executive</option><option value="manager">Manager</option>
+              <option value="caller">Calling executive</option><option value="field">Field executive</option><option value="ads">Ads &amp; leads executive</option><option value="manager">Manager</option>
             </select>
           </Field>
           <Field label="Email (they sign in with it)" htmlFor="te"><input id="te" type="email" className={input} value={f.email} onChange={set('email')} required /></Field>

@@ -182,8 +182,77 @@ function Example({ r }) {
   );
 }
 
-export default function IncentiveExplainer({ cfg, compact = false }) {
+/** The Ads & leads executive's small amount: from a checked lead to a payout. */
+function CheckerTimeline({ r }) {
+  const steps = [
+    { icon: 'bolt', title: 'A lead comes in', text: 'From an ad, the website, or a list you import.' },
+    { icon: 'shield', title: 'You check it: Verified', text: 'A real person, a real business, a working number.' },
+    { icon: 'phone', title: 'A caller sells it', text: 'The rules give it to a caller, who calls and shows a demo.' },
+    { icon: 'coin', title: 'Day 0: the shop pays', text: `Your ${inr(r.verifier_monthly)} (monthly) or ${inr(r.verifier_yearly)} (yearly) starts “waiting”.` },
+    { icon: 'calendar', title: `Day ${r.hold_days + 4}: the CRM checks`, text: 'Still paying: Earned. Stopped: Cancelled.' },
+    { icon: 'check', title: 'You are paid', text: `Paid ${r.pay_day}.` },
+  ];
+  return (
+    <ol className="grid sm:grid-cols-3 lg:grid-cols-6 gap-2" aria-label="From a checked lead to your payout">
+      {steps.map((s, i) => (
+        <li key={s.title} className="rounded-xl border border-gray-200 bg-white p-3">
+          <div className="flex items-center gap-2">
+            <span className={`w-8 h-8 rounded-full grid place-items-center shrink-0 ${i === 4 ? 'bg-amber-100 text-amber-900' : i === 5 ? 'bg-green-700 text-white' : 'bg-green-100 text-green-800'}`}><Icon name={s.icon} size={16} /></span>
+            <span className="text-[11.5px] font-extrabold text-gray-500">STEP {i + 1}</span>
+          </div>
+          <div className="font-extrabold text-[14px] mt-2 leading-snug">{s.title}</div>
+          <p className="text-[12.5px] text-gray-600 mt-0.5">{s.text}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** A worked month for the lead checker: 220 checked, 160 real, 7 paid, 1 stopped. */
+function CheckerExample({ r }) {
+  const paid = [['monthly', true], ['monthly', true], ['yearly', true], ['monthly', true], ['monthly', true], ['monthly', true], ['monthly', false]];
+  const amt = (p) => (p === 'yearly' ? r.verifier_yearly : r.verifier_monthly);
+  const earned = paid.filter(([, ok]) => ok).reduce((s, [p]) => s + amt(p), 0);
+  const lost = paid.filter(([, ok]) => !ok).reduce((s, [p]) => s + amt(p), 0);
+  return (
+    <div className="space-y-2">
+      <p className="text-[13.5px] text-gray-700">Example: in November you check 220 leads. 160 are real (Verified), 60 are junk. Callers sell to 7 of your real leads; the 7th stops paying before its check.</p>
+      <div className="grid grid-cols-3 gap-2 text-center" aria-label="The month in numbers">
+        {[['CHECKED', '220'], ['REAL', '160'], ['PAID', '7']].map(([k, v]) => (
+          <div key={k} className="rounded-xl bg-white border border-gray-200 p-2"><div className="text-[11.5px] font-bold text-gray-500">{k}</div><div className="text-xl font-extrabold">{v}</div></div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5" aria-label="The 7 paid shops">
+        {paid.map(([p, ok], i) => (
+          <span key={i} className={`rounded-lg px-2 py-1.5 text-[12px] font-bold border ${ok ? 'bg-white border-gray-200 text-gray-800' : 'bg-red-50 border-red-200 text-red-800 line-through'}`}>#{i + 1} {p === 'yearly' ? 'Y' : 'M'} {inr(amt(p))}</span>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl bg-green-50 border border-green-200 p-2"><div className="text-[11.5px] font-bold text-green-800">EARNED</div><div className="text-xl font-extrabold">{inr(earned)}</div></div>
+        <div className="rounded-xl bg-red-50 border border-red-200 p-2"><div className="text-[11.5px] font-bold text-red-800">CANCELLED</div><div className="text-xl font-extrabold">{inr(lost)}</div></div>
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-2"><div className="text-[11.5px] font-bold text-gray-600">PAID</div><div className="text-[13px] font-extrabold leading-tight mt-1">{r.pay_day}</div></div>
+      </div>
+      <p className="text-[12px] text-gray-500">Junk earns nothing, and neither does a lead you marked Verified that turns out fake. Check carefully: real leads are what callers can sell.</p>
+    </div>
+  );
+}
+
+export default function IncentiveExplainer({ cfg, compact = false, role }) {
   const r = incentiveRule(cfg);
+  if (role === 'ads') {
+    return (
+      <div className="space-y-4">
+        <section className={`${card} p-4 space-y-3`}>
+          <h2 className="font-extrabold">How you earn it</h2>
+          <CheckerTimeline r={r} />
+        </section>
+        <section className={`${card} p-4 space-y-3`}>
+          <h2 className="font-extrabold">A worked month</h2>
+          <CheckerExample r={r} />
+        </section>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4">
       <section className={`${card} p-4 space-y-3`}>

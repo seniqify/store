@@ -1,12 +1,15 @@
-// Training: ten modules with screenshots of the real CRM to read, then a 15-question exam graded on the
-// server (sales_exam_submit). New people must pass before they start calling
-// or checking in. A manager sees everyone's progress and results.
+// Training by role: each role reads its own modules (crmTraining.js TRACKS)
+// with screenshots of the real CRM, then a 15-question exam on its role,
+// graded on the server (sales_exam_start / sales_exam_submit). New people must
+// pass before their work opens; the manager then signs them off in Team. A
+// manager has their own track and exam, can read every role's track, and sees
+// everyone's progress and results.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
 import { trainingDone, markModuleDone, examStart, examSubmit, examAttempts } from './crmService.js';
 import { istTime, shortDay, istDate } from './crmLogic.js';
-import { MODULES, EXAM_SIZE } from './crmTraining.js';
+import { EXAM_SIZE, TRACKS, TRACK_LABEL, modulesFor } from './crmTraining.js';
 import SHOTS from './trainingShots.json';
 import IncentiveExplainer from './CrmIncentiveExplainer.jsx';
 import { Icon, Spinner, Notice } from './ui.jsx';
@@ -64,7 +67,7 @@ function SelfCheck({ c }) {
   );
 }
 
-function ModuleView({ m, done, onDone, onBack, next }) {
+function ModuleView({ m, role, done, onDone, onBack, next }) {
   const { settings } = useCrm();
   const [busy, setBusy] = useState(false);
   return (
@@ -77,7 +80,7 @@ function ModuleView({ m, done, onDone, onBack, next }) {
           return (
             <section key={`w${i}`} className="space-y-2">
               <h3 className="font-extrabold">How the incentive works</h3>
-              <IncentiveExplainer cfg={settings?.incentive} />
+              <IncentiveExplainer cfg={settings?.incentive} role={role === 'ads' ? 'ads' : undefined} />
             </section>
           );
         }
@@ -119,7 +122,9 @@ function ModuleView({ m, done, onDone, onBack, next }) {
   );
 }
 
-function Exam({ onFinished }) {
+const OPENS = { caller: 'You can now use the call queue.', field: 'You can now check in at shops.', ads: 'Check leads is open for you now.', manager: 'Well done.' };
+
+function Exam({ role, onFinished }) {
   const [exam, setExam] = useState(null);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -142,7 +147,7 @@ function Exam({ onFinished }) {
       <section className={`${card} p-5 space-y-3 max-w-3xl`}>
         <h2 className="text-xl font-extrabold">{result.passed ? 'Passed. Well done!' : 'Not passed yet'}</h2>
         <p className="text-[15px]">{result.score} of {result.total} right · pass mark {result.pass_pct}%</p>
-        {result.passed ? <Notice kind="ok">You can now use the call queue and check-ins.</Notice>
+        {result.passed ? <Notice kind="ok">{OPENS[role] || OPENS.caller} Your manager signs you off after watching your work.</Notice>
           : <Notice kind="warn">Read again: {topics.join(', ') || 'the modules'}. You have three tries a day.</Notice>}
         {!result.passed && <button type="button" className={btn.primary} onClick={start} disabled={busy}>Try again</button>}
       </section>
@@ -152,7 +157,7 @@ function Exam({ onFinished }) {
     return (
       <section className={`${card} p-5 space-y-3 max-w-3xl`}>
         <h2 className="text-xl font-extrabold">The exam</h2>
-        <p className="text-[14.5px] text-gray-700">{EXAM_SIZE} questions from all the modules, one answer each. 60 minutes, three tries a day. The pass mark is set by your manager (usually 80%).</p>
+        <p className="text-[14.5px] text-gray-700">{EXAM_SIZE} questions on your role ({TRACK_LABEL[role] || 'your role'}) and on PocketLink, one answer each. 60 minutes, three tries a day. The pass mark is set by your manager (usually 80%).</p>
         {err && <Notice>{err}</Notice>}
         <button type="button" className={btn.primary} onClick={start} disabled={busy}>{busy ? 'Starting…' : 'Start the exam'}</button>
       </section>
@@ -185,6 +190,10 @@ export default function CrmTraining() {
   const { me, staff, refreshMe } = useCrm();
   const isManager = me.role === 'manager';
   const [params, setParams] = useSearchParams();
+  // A manager can read any role's track; everyone else reads their own.
+  const role = isManager && TRACKS[params.get('t')] ? params.get('t') : me.role;
+  const MODULES = useMemo(() => modulesFor(role), [role]);
+  const ownTrack = role === me.role;
   const [done, setDone] = useState(null);
   const [attempts, setAttempts] = useState([]);
   const [passedNow, setPassedNow] = useState(false);
@@ -199,13 +208,13 @@ export default function CrmTraining() {
   const open = MODULES.find((m) => m.key === params.get('m'));
   const allRead = MODULES.every((m) => mine.has(m.key));
   const qualified = !!me.qualified_at || passedNow;
-  const go = (k) => setParams(k ? { m: k } : {}, { replace: false });
+  const go = (k) => setParams({ ...(role !== me.role ? { t: role } : {}), ...(k ? { m: k } : {}) }, { replace: false });
 
   if (!done) return <Spinner />;
   if (open) {
     return (
       <div className="px-4 lg:px-7 py-5">
-        <ModuleView m={open} done={mine.has(open.key)} onBack={() => go(null)}
+        <ModuleView m={open} role={role} done={mine.has(open.key)} onBack={() => go(null)}
           next={MODULES[MODULES.findIndex((x) => x.key === open.key) + 1] ? () => go(MODULES[MODULES.findIndex((x) => x.key === open.key) + 1].key) : null}
           onDone={async (k) => { await markModuleDone(me.user_id, k); await load(); const i = MODULES.findIndex((x) => x.key === k); go(MODULES[i + 1]?.key || null); }} />
       </div>
@@ -215,19 +224,29 @@ export default function CrmTraining() {
     return (
       <div className="px-4 lg:px-7 py-5 space-y-3">
         <button type="button" className="text-sm font-bold text-green-700" onClick={() => setParams({})}>← Training</button>
-        <Exam onFinished={(r) => { if (r.passed) { setPassedNow(true); refreshMe?.(); } load(); }} />
+        <Exam role={me.role} onFinished={(r) => { if (r.passed) { setPassedNow(true); refreshMe?.(); } load(); }} />
       </div>
     );
   }
 
   return (
     <div className="px-4 lg:px-7 py-5 space-y-4">
-      <header><h1 className="text-2xl font-extrabold">Training</h1>
-        <p className="text-sm text-gray-500">Ten short modules with screenshots, then a {EXAM_SIZE}-question exam. New team members pass it before they start calling or visiting.</p></header>
+      <header><h1 className="text-2xl font-extrabold">Training{ownTrack ? '' : ` · ${TRACK_LABEL[role]}`}</h1>
+        <p className="text-sm text-gray-500">{MODULES.length} short modules for {ownTrack ? 'your role' : 'this role'} ({TRACK_LABEL[role]}), with screenshots, then a {EXAM_SIZE}-question exam on the role. After the exam, the manager signs each person off.</p></header>
 
-      {!isManager && (
-        qualified ? <Notice kind="ok"><b>You are qualified.</b> Read the modules again whenever you like.</Notice>
-          : me.must_train ? <Notice kind="warn"><b>Finish the training and pass the exam to start.</b> Read all ten modules, then take the exam.</Notice> : null
+      {isManager && (
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Which role">
+          {['manager', 'caller', 'field', 'ads'].map((r) => (
+            <button key={r} type="button" role="tab" aria-selected={role === r} onClick={() => setParams(r === me.role ? {} : { t: r })}
+              className={`h-10 px-4 rounded-full border text-[13.5px] font-bold ${role === r ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 text-gray-700'}`}>{r === 'manager' ? 'My training (manager)' : TRACK_LABEL[r]}</button>
+          ))}
+        </div>
+      )}
+
+      {ownTrack && (
+        me.signed_off_at ? <Notice kind="ok"><b>You are signed off.</b> Read the modules again whenever you like.</Notice>
+          : qualified ? <Notice kind="ok"><b>You passed the exam.</b> {isManager ? 'Read the modules again whenever you like.' : 'Your manager signs you off after watching your work.'}</Notice>
+          : me.must_train ? <Notice kind="warn"><b>Finish the training and pass the exam to start.</b> Read all {MODULES.length} modules, then take the exam.</Notice> : null
       )}
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -243,10 +262,10 @@ export default function CrmTraining() {
         ))}
       </div>
 
-      {!isManager && (
+      {ownTrack && (
         <section className={`${card} p-4 flex flex-wrap items-center gap-3`}>
           <div className="flex-1 min-w-[220px]"><h2 className="font-extrabold">The exam</h2>
-            <p className="text-[13px] text-gray-600">{allRead ? 'You have read every module.' : `Read all modules first (${mine.size} of ${MODULES.length} done).`}</p></div>
+            <p className="text-[13px] text-gray-600">{allRead ? 'You have read every module.' : `Read all modules first (${MODULES.filter((m) => mine.has(m.key)).length} of ${MODULES.length} done).`}</p></div>
           <button type="button" className={btn.primary} disabled={!allRead} onClick={() => setParams({ exam: '1' })}><Icon name="book" size={16} />{qualified ? 'Take it again' : 'Take the exam'}</button>
         </section>
       )}
@@ -260,16 +279,18 @@ export default function CrmTraining() {
                 <th className="px-4 py-2 font-bold">Person</th><th className="px-2 py-2 font-bold">Modules</th><th className="px-2 py-2 font-bold">Best exam</th><th className="px-4 py-2 font-bold">Status</th>
               </tr></thead>
               <tbody>
-                {staff.filter((s) => s.active && s.role !== 'manager').map((s) => {
-                  const n = (done || []).filter((d) => d.staff_id === s.user_id).length;
+                {staff.filter((s) => s.active && s.user_id !== me.user_id).map((s) => {
+                  const track = TRACKS[s.role] || TRACKS.caller;
+                  const n = (done || []).filter((d) => d.staff_id === s.user_id && track.includes(d.module)).length;
                   const tries = attempts.filter((a) => a.staff_id === s.user_id && a.submitted_at);
                   const bestTry = [...tries].sort((a, b) => (b.score || 0) - (a.score || 0))[0];
                   return (
                     <tr key={s.user_id} className="border-t border-gray-100">
-                      <td className="px-4 py-3"><div className="flex items-center gap-2.5"><span aria-hidden="true" className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[11px] font-extrabold">{initials(s.name)}</span><span className="font-bold">{s.name}</span></div></td>
-                      <td className="px-2 py-3">{n} of {MODULES.length}</td>
+                      <td className="px-4 py-3"><div className="flex items-center gap-2.5"><span aria-hidden="true" className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[11px] font-extrabold">{initials(s.name)}</span><span><span className="block font-bold">{s.name}</span><span className="block text-[12px] text-gray-500">{TRACK_LABEL[s.role]}</span></span></div></td>
+                      <td className="px-2 py-3">{n} of {track.length}</td>
                       <td className="px-2 py-3">{bestTry ? `${bestTry.score}/${bestTry.total} · ${shortDay(istDate(Date.parse(bestTry.submitted_at)))} ${istTime(bestTry.submitted_at)}` : '—'}{tries.length > 1 ? ` (${tries.length} tries)` : ''}</td>
-                      <td className="px-4 py-3">{s.qualified_at ? <span className="text-[12px] font-bold rounded-full px-2 py-0.5 bg-green-100 text-green-800">Qualified</span>
+                      <td className="px-4 py-3">{s.signed_off_at ? <span className="text-[12px] font-bold rounded-full px-2 py-0.5 bg-green-100 text-green-800">Signed off</span>
+                        : s.qualified_at ? <span className="text-[12px] font-bold rounded-full px-2 py-0.5 bg-blue-100 text-blue-800">Passed · to sign off</span>
                         : s.must_train ? <span className="text-[12px] font-bold rounded-full px-2 py-0.5 bg-amber-100 text-amber-900">Training</span>
                           : <span className="text-[12px] font-bold rounded-full px-2 py-0.5 bg-gray-100 text-gray-700">Not required</span>}</td>
                     </tr>
@@ -278,7 +299,7 @@ export default function CrmTraining() {
               </tbody>
             </table>
           </div>
-          <p className="px-4 py-2 text-[12px] text-gray-500 border-t border-gray-100">New people must pass before they can call or check in. Change who must train in Team.</p>
+          <p className="px-4 py-2 text-[12px] text-gray-500 border-t border-gray-100">New people must pass before their work opens. Change who must train, and sign people off, in Team.</p>
         </section>
       )}
     </div>

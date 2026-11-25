@@ -12,10 +12,10 @@ import { btn, card, input } from './crmStyles.js';
 export default function CrmRules({ unassignedIds, onAssigned }) {
   const { staff, settings, refreshSettings, nameOf } = useCrm();
   const cur = settings?.auto_assign || {};
-  const people = staff.filter((s) => s.active && s.role !== 'manager');
+  const people = staff.filter((s) => s.active && s.role !== 'manager' && s.role !== 'ads');
   const [on, setOn] = useState(!!cur.on);
   const [how, setHow] = useState(cur.how === 'fewest' ? 'fewest' : 'turns');
-  const [pool, setPool] = useState(() => (Array.isArray(cur.pool) ? cur.pool.filter((u) => staff.some((s) => s.user_id === u)) : []));
+  const [pool, setPool] = useState(() => (Array.isArray(cur.pool) ? cur.pool.filter((u) => staff.some((s) => s.user_id === u && s.role !== 'ads')) : []));
   const [places, setPlaces] = useState(() => (Array.isArray(cur.places) ? cur.places.map((p) => ({ match: p.match || '', to: p.to || '' })) : []));
   const [rotate, setRotate] = useState(String(Number(cur.rotate_min) || 0));
   const [busy, setBusy] = useState(false);

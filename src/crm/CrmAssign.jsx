@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
 import { listLeads, assignLeads } from './crmService.js';
-import { sourceLabel, splitEvenly, fewestFirst, dueLabel } from './crmLogic.js';
+import { sourceLabel, splitEvenly, fewestFirst, dueLabel, waitsForCheck } from './crmLogic.js';
 import CrmRules from './CrmRules.jsx';
 import { Spinner, Empty, Notice, StagePill } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
@@ -25,7 +25,7 @@ export default function CrmAssign() {
   const load = useCallback(async () => { const ls = await listLeads(); setLeads(ls); setLoadedAt(Date.now()); setSel(new Set()); }, []);
   useEffect(() => { load(); }, [load]);
 
-  const people = useMemo(() => staff.filter((s) => s.active), [staff]);
+  const people = useMemo(() => staff.filter((s) => s.active && s.role !== 'ads'), [staff]);
   const open = useMemo(() => {
     const c = {};
     for (const l of leads || []) if (l.assigned_to && l.stage !== 'won' && l.stage !== 'lost') c[l.assigned_to] = (c[l.assigned_to] || 0) + 1;
@@ -105,7 +105,7 @@ export default function CrmAssign() {
                   <label className={`flex gap-3 items-center px-4 py-3 cursor-pointer ${sel.has(l.id) ? 'bg-green-50' : ''}`}>
                     <input type="checkbox" checked={sel.has(l.id)} onChange={() => toggle(l.id)} className="w-[18px] h-[18px] accent-green-700" />
                     <span className="flex-1 min-w-0">
-                      <span className="block font-bold text-[14px] truncate">{l.shop_name}</span>
+                      <span className="block font-bold text-[14px] truncate">{l.shop_name}{waitsForCheck(l, staff) && <span className="ml-2 text-[11.5px] font-bold rounded-full px-2 py-0.5 bg-amber-100 text-amber-900 align-middle">Waiting for the check</span>}</span>
                       <span className="block text-[12.5px] text-gray-500 truncate">{[l.city, sourceLabel(l.source), l.next_action_at ? dueLabel(l.next_action_at) : ''].filter(Boolean).join(' · ')}</span>
                     </span>
                     <StagePill stage={l.stage} />
@@ -147,7 +147,7 @@ export default function CrmAssign() {
           <p className="text-[12.5px] text-gray-500">The leads appear at the top of each person’s queue under “New for you”.</p>
         </section>
       </div>
-      {leads && settings && <CrmRules unassignedIds={leads.filter((l) => !l.assigned_to && l.stage !== 'won' && l.stage !== 'lost').map((l) => l.id)} onAssigned={load} />}
+      {leads && settings && <CrmRules unassignedIds={leads.filter((l) => !l.assigned_to && l.stage !== 'won' && l.stage !== 'lost' && !waitsForCheck(l, staff)).map((l) => l.id)} onAssigned={load} />}
     </div>
   );
 }

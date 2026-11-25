@@ -63,7 +63,7 @@ export async function resetStaffPassword(userId, password) {
 }
 
 // ── Leads ───────────────────────────────────────────────────────────────────
-const LEAD_COLS = 'id, created_at, updated_at, shop_name, owner_name, phone, business_type, city, area, source, source_detail, stage, heat, won_plan, won_amount, lost_reason, signed_up, next_action_at, next_action, assigned_to, created_by, last_activity_at, call_attempts, won_proof, won_proof_at';
+const LEAD_COLS = 'id, created_at, updated_at, shop_name, owner_name, phone, business_type, city, area, source, source_detail, stage, heat, won_plan, won_amount, lost_reason, signed_up, next_action_at, next_action, assigned_to, created_by, last_activity_at, call_attempts, won_proof, won_proof_at, verify_status, verified_by, verified_at, verify_note';
 
 /** Every lead the person may see (the database decides which). */
 export async function listLeads() {
@@ -250,7 +250,12 @@ export async function saveSetting(key, value) {
   const { error } = await supabase.from('sales_settings').upsert({ key, value }, { onConflict: 'key' });
   if (error) fail(error);
 }
-/** Manager: give these unassigned leads out by the auto-assign rules. */
+/** Ads & leads (or a manager): check a lead. status: verified | spam | duplicate | wrong_number | not_business. */
+export async function verifyLead(leadId, status, note, fix) {
+  const { error } = await supabase.rpc('sales_verify_lead', { p_lead: leadId, p_status: status, p_note: note || null, p_fix: fix || null });
+  if (error) fail(error);
+}
+/** Manager (or Ads & leads, for leads they checked): give these unassigned leads out by the auto-assign rules. */
 export async function autoAssign(ids) {
   const { data, error } = await supabase.rpc('sales_auto_assign', { p_leads: ids });
   if (error) fail(error);
@@ -361,8 +366,16 @@ export async function listIncentives() {
   const { data, error } = await supabase.from('sales_incentives').select('*, sales_leads(shop_name)').order('won_at', { ascending: false }).limit(1000);
   return error ? [] : data || [];
 }
-export async function setIncentive(leadId, status, note) {
-  const { error } = await supabase.rpc('sales_incentive_set', { p_lead: leadId, p_status: status, p_note: note ?? null });
+/** One person's incentive on a lead (staffId), or every row on it (no staffId). */
+export async function setIncentive(leadId, status, note, staffId) {
+  const args = { p_lead: leadId, p_status: status, p_note: note ?? null };
+  if (staffId) args.p_staff = staffId;
+  const { error } = await supabase.rpc('sales_incentive_set', args);
+  if (error) fail(error);
+}
+/** Manager: sign a person off after their exam (or undo it). */
+export async function signOff(userId, on) {
+  const { error } = await supabase.rpc('sales_signoff', { p_staff: userId, p_on: on });
   if (error) fail(error);
 }
 

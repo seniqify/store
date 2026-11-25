@@ -48,5 +48,5 @@ export const POLICY_LABELS = Object.freeze({
 });
 export const POLICY_HINTS = Object.freeze({
   discount: `Never promise a price that is not on pocketlink.store/plans (${inr(PRICE.monthly)} a month, ${inr(PRICE.yearly)} a year).`,
-  cash: 'The safest is the Razorpay payment link, which gives them a GST invoice.',
+  cash: 'Never take cash. The shop pays at pocketlink.store/plans by UPI, card or net banking, and gets a GST invoice.',
 });

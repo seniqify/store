@@ -13,7 +13,7 @@ import IncentiveExplainer from './CrmIncentiveExplainer.jsx';
 import { btn, card } from './crmStyles.js';
 
 const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
-const BASIS = { link: 'Your link', worked: 'Your calls or visits', approved: 'Approved by the manager' };
+const BASIS = { link: 'Your link', worked: 'Your calls or visits', approved: 'Approved by the manager', verified: 'Lead you checked' };
 const dayOf = (v) => (v ? shortDay(istDate(Date.parse(v))) : '');
 
 function Totals({ rows }) {
@@ -34,13 +34,15 @@ function Totals({ rows }) {
 export default function CrmIncentives() {
   const { me, staff, settings, nameOf, path } = useCrm();
   const isManager = me.role === 'manager';
+  const isAds = me.role === 'ads';
   const [rows, setRows] = useState(null);
   const [who, setWho] = useState('all');
   const [err, setErr] = useState('');
   const load = useCallback(async () => setRows(await listIncentives()), []);
   useEffect(() => { load(); }, [load]);
 
-  const act = async (leadId, status) => { setErr(''); try { await setIncentive(leadId, status); await load(); } catch (e) { setErr(e.message); } };
+  // One person's row on a lead (a paid lead can have two: the seller's and the lead checker's).
+  const act = async (r, status) => { setErr(''); try { await setIncentive(r.lead_id, status, null, r.staff_id); await load(); } catch (e) { setErr(e.message); } };
   const shown = useMemo(() => (rows || []).filter((r) => who === 'all' || r.staff_id === who), [rows, who]);
   const people = useMemo(() => {
     const m = new Map();
@@ -66,10 +68,12 @@ export default function CrmIncentives() {
 
       <section className={`${card} p-4`}>
         <h2 className="font-extrabold">The rule</h2>
-        <ul className="mt-1.5 space-y-1 text-[14px] text-gray-800 list-disc pl-5">{incentiveRuleLines(settings?.incentive).map((x) => <li key={x}>{x}</li>)}</ul>
+        <ul className="mt-1.5 space-y-1 text-[14px] text-gray-800 list-disc pl-5">{incentiveRuleLines(settings?.incentive, isAds ? 'ads' : undefined).map((x) => <li key={x}>{x}</li>)}</ul>
+        {isManager && <><p className="mt-3 text-[13px] font-extrabold text-gray-700">Ads &amp; leads team</p>
+          <ul className="mt-1 space-y-1 text-[14px] text-gray-800 list-disc pl-5">{incentiveRuleLines(settings?.incentive, 'ads').slice(0, 1).map((x) => <li key={x}>{x}</li>)}</ul></>}
       </section>
 
-      <IncentiveExplainer cfg={settings?.incentive} compact={isManager} />
+      <IncentiveExplainer cfg={settings?.incentive} compact={isManager} role={isAds ? 'ads' : undefined} />
 
       <Totals rows={shown} />
 
@@ -91,7 +95,7 @@ export default function CrmIncentives() {
                     <td className="px-4 py-3 text-right">{p.earned > 0 && (
                       <button type="button" className={btn.smallGreen} onClick={async () => {
                         if (!window.confirm(`Mark ${inr(p.earned)} as paid to ${nameOf(uid)}?`)) return;
-                        for (const r of rows.filter((x) => x.staff_id === uid && x.status === 'earned')) await act(r.lead_id, 'paid');
+                        for (const r of rows.filter((x) => x.staff_id === uid && x.status === 'earned')) await act(r, 'paid');
                       }}>Mark {inr(p.earned)} paid</button>)}</td>
                   </tr>
                 ))}
@@ -110,23 +114,24 @@ export default function CrmIncentives() {
             </select>
           )}
         </div>
-        {!shown.length ? <Empty>No paid shops yet. Share your own sign-up link with every shop you talk to: when a shop pays, it shows here.</Empty> : (
+        {!shown.length ? <Empty>{isAds ? 'No paid shops from your checked leads yet. When a shop from a lead you verified pays, it shows here.' : 'No paid shops yet. Share your own sign-up link with every shop you talk to: when a shop pays, it shows here.'}</Empty> : (
           <ul className="divide-y divide-gray-100">
             {shown.map((r) => {
               const st = INCENTIVE_STATUS[r.status] || INCENTIVE_STATUS.waiting;
               return (
-                <li key={r.lead_id} className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <li key={`${r.lead_id}:${r.staff_id}`} className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="flex-1 min-w-[200px]">
-                    <Link to={path(`leads/${r.lead_id}`)} className="font-bold text-gray-900">{r.sales_leads?.shop_name || 'Paid shop'}</Link>
+                    {isAds ? <span className="font-bold text-gray-900">{r.sales_leads?.shop_name || 'Paid shop'}</span>
+                      : <Link to={path(`leads/${r.lead_id}`)} className="font-bold text-gray-900">{r.sales_leads?.shop_name || 'Paid shop'}</Link>}
                     <span className="block text-[12.5px] text-gray-500">Paid {inr(r.paid_amount)} · {r.plan} plan · {dayOf(r.won_at)}{isManager ? ` · ${nameOf(r.staff_id)}` : ''} · {BASIS[r.basis]}</span>
                   </span>
                   <span className="font-extrabold">{inr(r.incentive)}</span>
                   <span className={`text-[12px] font-bold rounded-full px-2.5 py-0.5 ${st.cls}`}>{r.status === 'waiting' ? `Check on ${dayOf(r.due_at)}` : st.label}</span>
                   {isManager && r.status === 'check' && (
-                    <span className="flex gap-2"><button type="button" className={btn.smallGreen} onClick={() => act(r.lead_id, 'earned')}>Still paying: earned</button>
-                      <button type="button" className={btn.small} onClick={() => act(r.lead_id, 'cancelled')}>Stopped: cancel</button></span>
+                    <span className="flex gap-2"><button type="button" className={btn.smallGreen} onClick={() => act(r, 'earned')}>Still paying: earned</button>
+                      <button type="button" className={btn.small} onClick={() => act(r, 'cancelled')}>Stopped: cancel</button></span>
                   )}
-                  {isManager && r.status === 'earned' && <button type="button" className={btn.small} onClick={() => act(r.lead_id, 'paid')}>Mark paid</button>}
+                  {isManager && r.status === 'earned' && <button type="button" className={btn.small} onClick={() => act(r, 'paid')}>Mark paid</button>}
                 </li>
               );
             })}

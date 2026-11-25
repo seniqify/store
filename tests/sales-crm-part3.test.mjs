@@ -77,15 +77,15 @@ test('call timer and talk time', () => {
   assert.deepEqual([...AD_SOURCES].sort(), ['facebook', 'google', 'instagram', 'website', 'whatsapp']);
 });
 
-test('wiring: Lead sources for managers only, alerts, timer, proof, landing form', () => {
+test('wiring: Lead sources for managers (and, from part 5, Ads & leads) only, alerts, timer, proof, landing form', () => {
   assert.ok(MENUS.manager.some(([p]) => p === 'sources'));
   assert.ok(!MENUS.caller.some(([p]) => p === 'sources') && !MENUS.field.some(([p]) => p === 'sources'));
   const app = read('src/crm/CrmApp.jsx');
-  assert.match(app, /path="sources" element=\{isManager \? <CrmSources \/> : <Navigate/);
+  assert.match(app, /path="sources" element=\{isManager \|\| isAds \? <CrmSources \/> : home\}/);
   assert.match(app, /<NewLeadAlert \/>/);
   assert.match(read('src/crm/CrmQueue.jsx'), /onClick=\{\(\) => startCallTimer\(current\.id\)\}/);
   assert.match(read('src/crm/CrmQueue.jsx'), /duration: r\.duration/);
-  assert.match(read('src/crm/crmService.js'), /won_proof, won_proof_at'/);
+  assert.match(read('src/crm/crmService.js'), /won_proof, won_proof_at[,']/);
   const landing = read('src/pages/Landing.jsx');
   assert.match(landing, /<CallBackForm \/>/);
   assert.match(read('src/components/CallBackForm.jsx'), /sales-lead-in\?src=web/);
