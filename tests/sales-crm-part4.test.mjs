@@ -83,9 +83,9 @@ test('WhatsApp reports: periods and safe values', () => {
   assert.ok(!/^\{\{|\}\}$/.test(DAILY_TEMPLATE) && !/^\{\{|\}\}$/.test(WEEKLY_TEMPLATE), 'WhatsApp: a template cannot start or end with a value');
 });
 
-test('training: nine modules, accurate prices, exam size', () => {
-  assert.equal(MODULES.length, 9);
-  assert.equal(new Set(MODULES.map((m) => m.key)).size, 9);
+test('training: ten modules, accurate prices, exam size', () => {
+  assert.equal(MODULES.length, 10);
+  assert.equal(new Set(MODULES.map((m) => m.key)).size, 10);
   for (const m of MODULES) assert.ok(/^[a-z0-9_]{2,40}$/.test(m.key) && m.sections.length && m.points.length, m.key);
   const all = JSON.stringify(MODULES);
   assert.ok(all.includes(`₹${PRICE.monthly.toLocaleString('en-IN')}`) && all.includes(`₹${PRICE.yearly.toLocaleString('en-IN')}`));

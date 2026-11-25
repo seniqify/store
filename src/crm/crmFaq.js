@@ -32,7 +32,7 @@ export const TEAM_FAQ = Object.freeze([
   ['crm', 'How do I log a call?', 'In Call queue, call the lead, then tap how it went and save. Every call needs an outcome, or it does not count.'],
   ['crm', 'My location is not found at check-in.', 'Turn on Location (GPS) on the phone and allow it for crm.pocketlink.store when the browser asks. Step outside the shop and press Try again; wait until it says “accurate to” under 50 m. A visit cannot be saved without a location, so if it still fails, tell your manager.'],
   ['crm', 'The shop I met belongs to another person’s list.', 'Do not call them yourself. Ask your manager (below) to move the lead to you.'],
-  ['crm', 'Where are example shops to show customers?', 'Scripts → By type of business. Each type has a live example shop to send on WhatsApp.'],
+  ['crm', 'Where are example shops to show customers?', 'Scripts → By type of business: live examples for clothing (pocketlink.store/demo/aanyaboutique) and salons and services (pocketlink.store/demo/glowup). For other types, show the clothing example, or make their shop together during the demo.'],
   ['crm', 'How do I change my password?', 'Tap your name (top right on the phone, bottom left on a computer) → My account → Change my password.'],
   ['score', 'How is my score calculated?', '5 areas: Activity 20%, Reach 15%, Conversion 30%, Revenue 25%, Discipline 10%. Each KPI is your actual against your target, up to 100%; monthly targets are counted by today. See My score for your numbers.'],
   ['score', 'When is my incentive paid?', null, 'incentive'],

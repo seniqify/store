@@ -9,6 +9,7 @@ import { useCrm, initials } from './crmContext.js';
 import { listIncentives, setIncentive } from './crmService.js';
 import { istDate, shortDay, incentiveRuleLines, INCENTIVE_STATUS } from './crmLogic.js';
 import { Spinner, Notice, Empty } from './ui.jsx';
+import IncentiveExplainer from './CrmIncentiveExplainer.jsx';
 import { btn, card } from './crmStyles.js';
 
 const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
@@ -68,10 +69,12 @@ export default function CrmIncentives() {
         <ul className="mt-1.5 space-y-1 text-[14px] text-gray-800 list-disc pl-5">{incentiveRuleLines(settings?.incentive).map((x) => <li key={x}>{x}</li>)}</ul>
       </section>
 
+      <IncentiveExplainer cfg={settings?.incentive} compact={isManager} />
+
       <Totals rows={shown} />
 
       {isManager && people.length > 0 && (
-        <section className={`${card} overflow-hidden`}>
+        <section aria-label="By person" className={`${card} overflow-hidden`}>
           <h2 className="px-4 pt-3 pb-2 font-extrabold">By person</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[620px]">
@@ -98,7 +101,7 @@ export default function CrmIncentives() {
         </section>
       )}
 
-      <section className={`${card} overflow-hidden`}>
+      <section aria-label="Paid shops" className={`${card} overflow-hidden`}>
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2">
           <h2 className="font-extrabold flex-1">Paid shops</h2>
           {isManager && (
