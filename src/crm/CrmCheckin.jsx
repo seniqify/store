@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
-import { listLeads, addLead, lookupPhone, getLocation, uploadVisitPhoto, logActivity, updateLead } from './crmService.js';
+import { listLeads, addLead, lookupPhone, getLocation, locationPermission, uploadVisitPhoto, logActivity, updateLead } from './crmService.js';
 import { phone10, BUSINESS_TYPES, whenPresets, forwardStage, LOST_REASONS } from './crmLogic.js';
 import { Icon, Field, Notice, Spinner } from './ui.jsx';
 import { btn, input, card } from './crmStyles.js';
@@ -42,6 +42,8 @@ export default function CrmCheckin() {
   const [dupe, setDupe] = useState([]);
   const [loc, setLoc] = useState(null);
   const [locErr, setLocErr] = useState('');
+  const [finding, setFinding] = useState(true);
+  const [perm, setPerm] = useState('');
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
   const [met, setMet] = useState('owner');
@@ -54,7 +56,11 @@ export default function CrmCheckin() {
   const [done, setDone] = useState(false);
 
   useEffect(() => { listLeads().then((ls) => setLeads(ls.filter((l) => l.assigned_to === me.user_id || me.role === 'manager'))); }, [me]);
-  const findLoc = () => { setLocErr(''); setLoc(null); getLocation().then(setLoc).catch((e) => setLocErr(e.message)); };
+  const findLoc = () => {
+    setLocErr(''); setLoc(null); setFinding(true);
+    locationPermission().then(setPerm);
+    getLocation().then(setLoc).catch((e) => setLocErr(e.message)).finally(() => setFinding(false));
+  };
   useEffect(findLoc, []);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
@@ -131,9 +137,11 @@ export default function CrmCheckin() {
       <div className={`${card} p-4 flex gap-3 items-center ${loc ? 'bg-green-50 border-green-200' : ''}`}>
         <Icon name="pin" className={loc ? 'text-green-700' : 'text-gray-500'} />
         <div className="flex-1 text-sm">
-          {loc ? <><b>Location saved</b> · accurate to {loc.acc} m</> : locErr ? <span className="text-red-700">{locErr}</span> : 'Finding your location…'}
+          {loc ? <><b>Location saved</b> · accurate to {loc.acc} m{loc.acc > 150 ? ' (weak: step outside and press Again for a better fix)' : ''}</>
+            : locErr ? <span className="text-red-700">{locErr}</span>
+            : <>Finding your location…{perm !== 'granted' && <span className="block text-[12.5px] text-gray-600">If the browser asks to use your location, press <b>Allow</b>.</span>}</>}
         </div>
-        {!loc && <button type="button" className={btn.small} onClick={findLoc}>Try again</button>}
+        {(locErr || (loc && loc.acc > 150)) && <button type="button" className={btn.small} onClick={findLoc}>{loc ? 'Again' : 'Try again'}</button>}
       </div>
 
       <section className={`${card} p-4 space-y-3`}>
@@ -201,9 +209,14 @@ export default function CrmCheckin() {
         {!(met !== 'closed' && (result === 'won' || result === 'lost')) && <Chips label="Next step" items={NEXT} value={next} onPick={setNext} />}
         <Field label="Note" htmlFor="vn"><textarea id="vn" rows={2} className={`${input} h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What did they say?" /></Field>
         {err && <Notice>{err}</Notice>}
-        <button type="button" className={`${btn.primary} w-full h-12`} disabled={!canSave || busy} onClick={save}>
-          {busy ? 'Saving…' : !loc ? 'Waiting for your location' : !photo ? 'Take the shop photo to save' : 'Save visit'}
-        </button>
+        {!loc && !finding ? (
+          <button type="button" className={`${btn.dark} w-full h-12`} onClick={findLoc}><Icon name="pin" size={16} />Try the location again</button>
+        ) : (
+          <button type="button" className={`${btn.primary} w-full h-12`} disabled={!canSave || busy} onClick={save}>
+            {busy ? 'Saving…' : !loc ? 'Finding your location…' : !photo ? 'Take the shop photo to save' : 'Save visit'}
+          </button>
+        )}
+        {!loc && !finding && <p className="text-[12.5px] text-gray-500 text-center">A visit is saved with the place, so the location is needed. Check-ins are meant for the phone, at the shop.</p>}
       </section>
     </div>
   );

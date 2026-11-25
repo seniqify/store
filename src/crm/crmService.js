@@ -139,9 +139,18 @@ export async function shrinkPhoto(file, max = 1280) {
     URL.revokeObjectURL(url);
   }
 }
+/** First 16 hex of the photo's SHA-256: the same picture used twice is flagged for the manager. */
+async function photoFingerprint(file) {
+  try {
+    const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(hash)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
 export async function uploadVisitPhoto(userId, file) {
-  const blob = await shrinkPhoto(file);
-  const path = `${userId}/${istDate()}/${crypto.randomUUID()}.jpg`;
+  const [blob, print] = await Promise.all([shrinkPhoto(file), photoFingerprint(file)]);
+  const path = `${userId}/${istDate()}/${print ? `${print}-` : ''}${crypto.randomUUID()}.jpg`;
   const { error } = await supabase.storage.from('sales-visits').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
   if (error) fail(error);
   return path;
@@ -151,16 +160,37 @@ export async function photoUrl(path) {
   return data?.signedUrl || '';
 }
 
-/** The phone's location: { lat, lng, acc } or an Error with a plain reason. */
-export function getLocation({ timeout = 15000 } = {}) {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject(new Error('This phone cannot share its location.')); return; }
+/**
+ * The phone's location: { lat, lng, acc }, or an Error with a plain reason.
+ * The browser's own timeout only starts once location is allowed, so a missed
+ * permission prompt would wait forever: this gives up after `timeout` ms and
+ * says why. A precise fix is tried first, then a quicker rough one.
+ */
+export function getLocation({ timeout = 20000 } = {}) {
+  const once = (high, ms) => new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
-      (e) => reject(new Error(e.code === 1 ? 'Allow location for this site in the browser, then try again.' : 'Location not found yet. Step outside and try again.')),
-      { enableHighAccuracy: true, timeout, maximumAge: 30000 },
+      (e) => reject(e),
+      { enableHighAccuracy: high, timeout: ms, maximumAge: 30000 },
     );
   });
+  const reason = (e) => new Error(e?.code === 1
+    ? 'Location is blocked for this site. Allow it (the lock or location icon in the address bar, or the phone’s Settings → Location), then press Try again.'
+    : 'Location not found. Turn on Location (GPS), step outside if you can, then press Try again.');
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('This browser cannot share its location. Use Chrome on your phone.')); return; }
+    let done = false;
+    const finish = (fn, v) => { if (!done) { done = true; clearTimeout(timer); fn(v); } };
+    const timer = setTimeout(() => finish(reject, new Error('No answer from the location. If the browser asked to share your location, press Allow. Then press Try again.')), timeout);
+    once(true, Math.round(timeout * 0.6))
+      .catch((e) => (e?.code === 1 ? Promise.reject(e) : once(false, Math.round(timeout * 0.35))))
+      .then((v) => finish(resolve, v), (e) => finish(reject, reason(e)));
+  });
+}
+
+/** 'granted' | 'denied' | 'prompt' | '' (unknown): to explain before asking. */
+export async function locationPermission() {
+  try { return (await navigator.permissions?.query({ name: 'geolocation' }))?.state || ''; } catch { return ''; }
 }
 
 // ── Attendance ──────────────────────────────────────────────────────────────
@@ -200,4 +230,97 @@ export async function askLeave(staffId, from, to, reason) {
 export async function decideLeave(id, status, managerId) {
   const { error } = await supabase.from('sales_leave').update({ status, decided_by: managerId, decided_at: new Date().toISOString() }).eq('id', id);
   if (error) fail(error);
+}
+
+// ── Performance ─────────────────────────────────────────────────────────────
+/** Counts per caller / field executive for a period (India dates, inclusive). */
+export async function fetchScoreboard(from, to) {
+  const { data, error } = await supabase.rpc('sales_scoreboard', { p_from: from, p_to: to });
+  if (error) fail(error);
+  return data || [];
+}
+
+// ── Team settings (auto-assign rules, policies, incentive) ─────────────────
+export async function fetchSettings() {
+  const { data, error } = await supabase.from('sales_settings').select('key, value, updated_at');
+  if (error) return {};
+  return Object.fromEntries((data || []).map((r) => [r.key, r.value || {}]));
+}
+export async function saveSetting(key, value) {
+  const { error } = await supabase.from('sales_settings').upsert({ key, value }, { onConflict: 'key' });
+  if (error) fail(error);
+}
+/** Manager: give these unassigned leads out by the auto-assign rules. */
+export async function autoAssign(ids) {
+  const { data, error } = await supabase.rpc('sales_auto_assign', { p_leads: ids });
+  if (error) fail(error);
+  return data || 0;
+}
+
+// ── Import a list ───────────────────────────────────────────────────────────
+/** Insert leads in batches; numbers that are already leads are skipped by the database. */
+export async function importLeads(rows, onProgress) {
+  const ids = [];
+  for (let i = 0; i < rows.length; i += 200) {
+    const part = rows.slice(i, i + 200);
+    const { data, error } = await supabase.from('sales_leads')
+      .upsert(part, { onConflict: 'phone', ignoreDuplicates: true }).select('id');
+    if (error) fail(error);
+    ids.push(...(data || []).map((r) => r.id));
+    onProgress?.(Math.min(rows.length, i + part.length));
+  }
+  return ids;
+}
+
+// ── Questions for the manager ───────────────────────────────────────────────
+export async function listQuestions() {
+  const { data, error } = await supabase.from('sales_questions').select('*').order('created_at', { ascending: false }).limit(300);
+  return error ? [] : data || [];
+}
+export async function askQuestion(userId, question) {
+  const { error } = await supabase.from('sales_questions').insert({ asked_by: userId, question });
+  if (error) fail(error);
+}
+export async function answerQuestion(id, managerId, answer, inFaq) {
+  const { error } = await supabase.from('sales_questions')
+    .update({ answer: answer || null, answered_by: answer ? managerId : null, answered_at: answer ? new Date().toISOString() : null, in_faq: !!inFaq })
+    .eq('id', id);
+  if (error) fail(error);
+}
+export async function deleteQuestion(id) {
+  const { error } = await supabase.from('sales_questions').delete().eq('id', id);
+  if (error) fail(error);
+}
+
+// ── Field visits (manager checks) ───────────────────────────────────────────
+const VISIT_COLS = 'id, lead_id, staff_id, outcome, note, lat, lng, accuracy_m, photo_path, created_at, review, sales_leads(shop_name, city, area)';
+/** Visits made between two instants. */
+export async function visitsBetween(fromIso, toIso) {
+  return readAllRowsOrEmpty((c) => supabase.from('sales_activities').select(VISIT_COLS, c ? { count: 'exact' } : undefined)
+    .eq('kind', 'visit').gte('created_at', fromIso).lt('created_at', toIso),
+  { order: [['created_at', true], ['id', true]], key: 'id' });
+}
+/** Every visit to these shops (to compare places). */
+export async function visitsForLeads(leadIds) {
+  if (!leadIds.length) return [];
+  const out = [];
+  for (let i = 0; i < leadIds.length; i += 100) {
+    const { data } = await supabase.from('sales_activities').select(VISIT_COLS)
+      .eq('kind', 'visit').in('lead_id', leadIds.slice(i, i + 100)).order('created_at').limit(1000);
+    out.push(...(data || []));
+  }
+  return out;
+}
+export async function reviewVisit(id, review) {
+  const { error } = await supabase.rpc('sales_review', { p_activity: id, p_review: review });
+  if (error) fail(error);
+}
+
+/** Save rows as a CSV that Excel opens (UTF-8 with BOM so ₹ and Marathi show). */
+export function downloadCsv(name, rows) {
+  const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

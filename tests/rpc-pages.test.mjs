@@ -241,11 +241,11 @@ test('the Console reads every row: no .limit(), every list paged, newest first w
   assert.equal((con.match(storeOpts) || []).length, 1, 'Console stores');
 });
 
-test('the Sales CRM pages its long lists (leads, activity, attendance): never stops at 1,000', () => {
+test('the Sales CRM pages its long lists (leads, activity, attendance, visits): never stops at 1,000', () => {
   const crm = code('src/crm/crmService.js');
   assert.match(crm, /import \{ readAllRowsOrEmpty \} from '\.\.\/utils\/rpcPages\.js';/);
-  for (const fn of ['listLeads', 'activitiesSince', 'attendanceBetween']) {
+  for (const fn of ['listLeads', 'activitiesSince', 'attendanceBetween', 'visitsBetween']) {
     assert.match(crm, new RegExp(String.raw`export async function ${fn}\([^)]*\) \{\s+return readAllRowsOrEmpty\(\(c\) => supabase`), fn);
   }
-  assert.equal(crm.match(/c \? \{ count: 'exact' \} : undefined/g).length, 3, 'each long list asks for its total');
+  assert.equal(crm.match(/c \? \{ count: 'exact' \} : undefined/g).length, 4, 'each long list asks for its total');
 });

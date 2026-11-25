@@ -1,9 +1,11 @@
-// Manager: who works in the CRM, their role, area, targets, shift and weekly
-// off. Adding a person creates their login (sales-staff edge function); someone
+// Manager: who works in the CRM, their role, area, score targets, shift and
+// weekly off; the incentive per paid shop. Adding a person creates their login (sales-staff edge function); someone
 // who leaves is switched off and their leads can be moved in Assign.
 import { useState } from 'react';
 import { useCrm, initials, ROLE_LABEL } from './crmContext.js';
-import { addStaff, updateStaff, resetStaffPassword } from './crmService.js';
+import { addStaff, updateStaff, resetStaffPassword, saveSetting } from './crmService.js';
+import { KPI_DEFS, kpiTarget, kpiValue } from './crmLogic.js';
+import { PRICE } from '../utils/planLimits.js';
 import { Field, Notice } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
 
@@ -13,6 +15,7 @@ function Person({ s, me, onSaved }) {
   const [f, setF] = useState({
     role: s.role, area: s.area || '', daily_target: s.daily_target ?? '', monthly_target: s.monthly_target ?? '',
     shift_start: String(s.shift_start).slice(0, 5), shift_end: String(s.shift_end).slice(0, 5), weekly_off: s.weekly_off, active: s.active,
+    targets: Object.fromEntries(Object.entries(s.targets || {}).map(([k, v]) => [k, String(v)])),
   });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -26,6 +29,7 @@ function Person({ s, me, onSaved }) {
         role: f.role, area: f.area.trim() || null,
         daily_target: f.daily_target === '' ? null : Number(f.daily_target), monthly_target: f.monthly_target === '' ? null : Number(f.monthly_target),
         shift_start: f.shift_start, shift_end: f.shift_end, weekly_off: Number(f.weekly_off), active: f.active,
+        targets: Object.fromEntries(Object.entries(f.targets).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])),
       });
       setMsg({ kind: 'ok', text: 'Saved.' });
       await onSaved();
@@ -54,8 +58,8 @@ function Person({ s, me, onSaved }) {
           </select>
         </Field>
         <Field label="Area or list" htmlFor={`a-${s.user_id}`}><input id={`a-${s.user_id}`} className={input} value={f.area} onChange={set('area')} placeholder="e.g. Solapur east" /></Field>
-        <Field label={f.role === 'field' ? 'Visits a day' : 'Calls a day'} htmlFor={`d-${s.user_id}`}><input id={`d-${s.user_id}`} type="number" min="0" className={input} value={f.daily_target} onChange={set('daily_target')} /></Field>
-        <Field label="Paid shops a month" htmlFor={`m-${s.user_id}`}><input id={`m-${s.user_id}`} type="number" min="0" className={input} value={f.monthly_target} onChange={set('monthly_target')} /></Field>
+        <Field label={f.role === 'field' ? 'Visits a day' : 'Calls a day'} htmlFor={`d-${s.user_id}`}><input id={`d-${s.user_id}`} type="number" min="0" className={input} value={f.daily_target} onChange={set('daily_target')} placeholder={f.role === 'field' ? '8' : '80'} /></Field>
+        <Field label="Paid shops a month" htmlFor={`m-${s.user_id}`}><input id={`m-${s.user_id}`} type="number" min="0" className={input} value={f.monthly_target} onChange={set('monthly_target')} placeholder={f.role === 'field' ? '8' : '10'} /></Field>
         <Field label="Shift starts" htmlFor={`ss-${s.user_id}`}><input id={`ss-${s.user_id}`} type="time" className={input} value={f.shift_start} onChange={set('shift_start')} /></Field>
         <Field label="Shift ends" htmlFor={`se-${s.user_id}`}><input id={`se-${s.user_id}`} type="time" className={input} value={f.shift_end} onChange={set('shift_end')} /></Field>
         <Field label="Weekly off" htmlFor={`w-${s.user_id}`}>
@@ -67,6 +71,20 @@ function Person({ s, me, onSaved }) {
           </select>
         </Field>
       </div>
+      {f.role !== 'manager' && (
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <p className="text-[13px] font-extrabold text-gray-700">Score targets <span className="font-semibold text-gray-500">· a month unless it says a day or %. Empty = the usual target (shown in grey).</span></p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+            {(KPI_DEFS[f.role] || []).filter((d) => !d.column).map((d) => (
+              <Field key={d.key} label={`${d.label}${d.kind === 'pct' ? ' (%)' : d.kind === 'money' ? ' (₹)' : ''}`} htmlFor={`t-${d.key}-${s.user_id}`}>
+                <input id={`t-${d.key}-${s.user_id}`} type="number" min="0" className={input} value={f.targets[d.key] ?? ''}
+                  placeholder={kpiValue(d.kind, kpiTarget(d, { ...s, role: f.role, targets: {}, daily_target: Number(f.daily_target) || null, monthly_target: Number(f.monthly_target) || null }, PRICE.monthly)).replace(/[₹,%]/g, '')}
+                  onChange={(e) => setF({ ...f, targets: { ...f.targets, [d.key]: e.target.value } })} />
+              </Field>
+            ))}
+          </div>
+        </div>
+      )}
       {msg && <div className="mt-3"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
       <div className="flex flex-wrap gap-2 mt-3">
         <button type="button" className={btn.primary} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
@@ -76,8 +94,36 @@ function Person({ s, me, onSaved }) {
   );
 }
 
+function Incentive() {
+  const { settings, refreshSettings } = useCrm();
+  const cur = settings?.incentive || {};
+  const [f, setF] = useState({ per_paid: cur.per_paid ? String(cur.per_paid) : '', pay_day: cur.pay_day || '' });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      await saveSetting('incentive', { ...cur, per_paid: Number(f.per_paid) > 0 ? Math.round(Number(f.per_paid)) : 0, pay_day: f.pay_day.trim().slice(0, 80) });
+      await refreshSettings();
+      setMsg({ kind: 'ok', text: 'Saved. It shows on Performance and on each person’s score.' });
+    } catch (e) { setMsg({ kind: 'error', text: e.message }); } finally { setBusy(false); }
+  };
+  return (
+    <section className={`${card} p-5 space-y-3`}>
+      <h2 className="font-extrabold text-lg">Incentive</h2>
+      <p className="text-sm text-gray-600">Shown to the team on their score. Leave the amount empty if there is no incentive. Write the full rule in FAQ &amp; help.</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="For each paid shop (₹)" htmlFor="inc-a"><input id="inc-a" type="number" min="0" className={input} value={f.per_paid} onChange={(e) => setF({ ...f, per_paid: e.target.value })} placeholder="e.g. 300" /></Field>
+        <Field label="When it is paid" htmlFor="inc-d"><input id="inc-d" className={input} value={f.pay_day} onChange={(e) => setF({ ...f, pay_day: e.target.value })} placeholder="e.g. on the 5th of next month" /></Field>
+      </div>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <button type="button" className={btn.primary} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save incentive'}</button>
+    </section>
+  );
+}
+
 export default function CrmTeam() {
-  const { me, staff, refreshStaff } = useCrm();
+  const { me, staff, refreshStaff, settings } = useCrm();
   const [f, setF] = useState({ name: '', email: '', password: '', role: 'caller', phone: '', area: '' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -96,9 +142,10 @@ export default function CrmTeam() {
 
   return (
     <div className="px-4 lg:px-7 py-5 max-w-5xl space-y-4">
-      <h1 className="text-2xl font-extrabold">Team</h1>
+      <h1 className="text-2xl font-extrabold">Team &amp; targets</h1>
       <p className="text-sm text-gray-600">Callers and field executives see only their own leads. Managers see everything. Nobody in the CRM can see shops, orders or the Console.</p>
       <div className="space-y-3">{staff.map((s) => <Person key={s.user_id} s={s} me={me} onSaved={refreshStaff} />)}</div>
+      {settings && <Incentive />}
       <form onSubmit={add} className={`${card} p-5 space-y-3`}>
         <h2 className="font-extrabold text-lg">Add a person</h2>
         <div className="grid sm:grid-cols-2 gap-3">
