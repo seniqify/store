@@ -647,6 +647,9 @@ export function incentiveRule(cfg) {
     if (Number.isFinite(v) && v >= 0) r[k] = v;
   }
   if (cfg?.pay_day) r.pay_day = String(cfg.pay_day);
+  // The higher rate is never below the normal one (the database does the same).
+  r.slab_monthly = Math.max(r.slab_monthly, r.monthly);
+  r.slab_yearly = Math.max(r.slab_yearly, r.yearly);
   return r;
 }
 const rs = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;

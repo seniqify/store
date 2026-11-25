@@ -247,15 +247,15 @@ begin
   select count(*) into v_count from public.sales_incentives i
    where i.staff_id = p_staff and i.status <> 'cancelled'
      and date_trunc('month', i.won_at at time zone 'Asia/Kolkata')::date = v_month;
+  -- The normal amount; from the (slab_after + 1)th shop the higher one, never lower than normal.
+  v_num := case when p_plan = 'yearly'
+                then case when jsonb_typeof(v_cfg->'yearly') = 'number' then (v_cfg->>'yearly')::numeric else 1500 end
+                else case when jsonb_typeof(v_cfg->'monthly') = 'number' then (v_cfg->>'monthly')::numeric
+                          when jsonb_typeof(v_cfg->'per_paid') = 'number' then (v_cfg->>'per_paid')::numeric else 300 end end;
   if v_after > 0 and v_count >= v_after then
-    v_num := case when p_plan = 'yearly'
-                  then case when jsonb_typeof(v_cfg->'slab_yearly') = 'number' then (v_cfg->>'slab_yearly')::numeric else 2000 end
-                  else case when jsonb_typeof(v_cfg->'slab_monthly') = 'number' then (v_cfg->>'slab_monthly')::numeric else 400 end end;
-  else
-    v_num := case when p_plan = 'yearly'
-                  then case when jsonb_typeof(v_cfg->'yearly') = 'number' then (v_cfg->>'yearly')::numeric else 1500 end
-                  else case when jsonb_typeof(v_cfg->'monthly') = 'number' then (v_cfg->>'monthly')::numeric
-                            when jsonb_typeof(v_cfg->'per_paid') = 'number' then (v_cfg->>'per_paid')::numeric else 300 end end;
+    v_num := greatest(v_num, case when p_plan = 'yearly'
+                                  then case when jsonb_typeof(v_cfg->'slab_yearly') = 'number' then (v_cfg->>'slab_yearly')::numeric else 2000 end
+                                  else case when jsonb_typeof(v_cfg->'slab_monthly') = 'number' then (v_cfg->>'slab_monthly')::numeric else 400 end end);
   end if;
   return greatest(0, least(v_num, 1000000))::integer;
 end;
