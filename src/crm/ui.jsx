@@ -1,7 +1,7 @@
 // Small shared pieces for the Sales CRM. PocketLink look: Inter, green-700
 // actions, white cards with gray-200 borders, rounded-2xl.
 import { useState } from 'react';
-import { stageOf, CALL_OUTCOMES, WHEN_LABELS, whenPresets, LOST_REASONS, callResult } from './crmLogic.js';
+import { stageOf, CALL_OUTCOMES, WHEN_LABELS, whenPresets, LOST_REASONS, callResult, secondsLabel } from './crmLogic.js';
 import { btn, input } from './crmStyles.js';
 
 const PATHS = {
@@ -28,6 +28,7 @@ const PATHS = {
   copy: <><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
   x: <path d="M18 6L6 18M6 6l12 12" />,
   upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v4h16v-4" /></>,
+  bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7z" />,
 };
 
 export function Icon({ name, size = 18, className = '' }) {
@@ -75,7 +76,7 @@ export function Notice({ kind = 'error', children }) {
  * How did the call go? One tap per outcome, the follow-up it needs, a note,
  * Save. Calls onSave({ outcome, stage, nextAt, next, lost, note, wonPlan, wonAmount }).
  */
-export function OutcomePanel({ lead, onSave, busy, saveLabel = 'Save' }) {
+export function OutcomePanel({ lead, onSave, busy, saveLabel = 'Save', callSecs = null, onClearCall }) {
   const [out, setOut] = useState(null);
   const [whenKey, setWhenKey] = useState('tomorrow');
   const [custom, setCustom] = useState('');
@@ -94,7 +95,7 @@ export function OutcomePanel({ lead, onSave, busy, saveLabel = 'Save' }) {
       const when = whenKey === 'custom' ? (custom ? Date.parse(custom) : null) : presets[whenKey];
       if (o?.ask === 'when' && !when) { setErr('Pick when to call again.'); return; }
       const r = callResult(lead, out, { when, demoAt: demoAt ? Date.parse(demoAt) : null, demoHow, lostReason: lost });
-      onSave({ ...r, note, wonPlan: out === 'won' ? wonPlan : null, wonAmount: out === 'won' ? (wonPlan === 'yearly' ? 14999 : 1499) : null });
+      onSave({ ...r, note, duration: out === 'no_answer' ? null : callSecs, wonPlan: out === 'won' ? wonPlan : null, wonAmount: out === 'won' ? (wonPlan === 'yearly' ? 14999 : 1499) : null });
     } catch (e) {
       setErr(e.message === 'pick the demo time' ? 'Pick the demo day and time.' : e.message);
     }
@@ -157,6 +158,11 @@ export function OutcomePanel({ lead, onSave, busy, saveLabel = 'Save' }) {
       <Field label="Note (optional)" htmlFor="outnote">
         <textarea id="outnote" rows={2} className={`${input} h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything the next person should know" />
       </Field>
+      {callSecs != null && out !== 'no_answer' && (
+        <p className="text-[13px] text-gray-600">Call time about <b>{secondsLabel(callSecs)}</b> (from tapping Call to coming back).{' '}
+          {onClearCall && <button type="button" className="font-bold text-gray-700 underline" onClick={onClearCall}>Not right? Clear it</button>}</p>
+      )}
+      {out === 'won' && <p className="text-[12.5px] text-gray-500">It counts in your score once PocketLink sees their payment, or your manager approves it.</p>}
       {err && <Notice>{err}</Notice>}
       <button type="button" className={btn.primary} disabled={!out || busy} onClick={save}>{busy ? 'Saving…' : saveLabel}</button>
     </div>

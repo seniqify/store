@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
 import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions } from './crmService.js';
+import { pendingWins } from './crmService.js';
 import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS } from './crmLogic.js';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -56,6 +57,8 @@ export default function CrmToday() {
   const [leave, setLeave] = useState([]);
   const [qs, setQs] = useState([]);
   const [loadedAt, setLoadedAt] = useState(0);
+  const [wins, setWins] = useState([]);
+  const [notify, setNotify] = useState(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission));
   const today = istDate();
   const isManager = me.role === 'manager';
 
@@ -65,7 +68,8 @@ export default function CrmToday() {
       listLeads(), activitiesSince(new Date(istInstant(monthStart)).toISOString()), attendanceBetween(today, today), listLeave(), listQuestions(),
     ]);
     setLeads(ls); setActs(as); setAtt(at); setLeave(lv); setQs(q); setLoadedAt(Date.now());
-  }, [today]);
+    if (me.role === 'manager') setWins(await pendingWins());
+  }, [today, me.role]);
   useEffect(() => { load(); }, [load]);
 
   const dayStart = istInstant(today);
@@ -98,6 +102,11 @@ export default function CrmToday() {
       <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
         <DayCard me={me} row={row} onChanged={load} />
+        {notify === 'default' && (
+          <button type="button" className={`${btn.ghost} w-full`} onClick={async () => { try { setNotify(await Notification.requestPermission()); } catch { setNotify('denied'); } }}>
+            <Icon name="bolt" size={16} />Turn on new-lead alerts
+          </button>
+        )}
         {leave.filter((l) => l.staff_id === me.user_id && l.status !== 'pending' && l.decided_at && loadedAt - Date.parse(l.decided_at) < 7 * 86400000).slice(0, 2).map((l) => (
           <Notice key={l.id} kind={l.status === 'approved' ? 'ok' : 'warn'}>Your leave for {shortDay(l.from_day)}{l.to_day !== l.from_day ? ` – ${shortDay(l.to_day)}` : ''} was {l.status === 'approved' ? 'approved' : 'not approved'}.</Notice>
         ))}
@@ -187,6 +196,12 @@ export default function CrmToday() {
               <Link to={path('assign')} className={btn.dark + ' h-9'}>Assign</Link>
             </div>
           )}
+          {wins.length > 0 && (
+            <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 flex items-center gap-3">
+              <div className="flex-1"><div className="font-bold text-sm">{wins.length} win{wins.length === 1 ? '' : 's'} waiting for proof</div><div className="text-[12.5px] text-amber-800">No payment seen yet</div></div>
+              <Link to={path('performance')} className={btn.small}>Check</Link>
+            </div>
+          )}
           {pendingLeave.length > 0 && (
             <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 flex items-center gap-3">
               <div className="flex-1"><div className="font-bold text-sm">{pendingLeave.length} leave request{pendingLeave.length === 1 ? '' : 's'}</div>
@@ -215,7 +230,7 @@ export default function CrmToday() {
           {perPerson.filter((p) => p.status === 'today' && p.s.role !== 'manager').map((p) => (
             <div key={`in-${p.s.user_id}`} className="border border-gray-200 rounded-xl p-3 text-sm"><b>{p.s.name}</b> has not logged in today.</div>
           ))}
-          {!unassigned && !pendingLeave.length && !waitingQs.length && !notCalled && !perPerson.some((p) => p.late >= 3) && <p className="text-sm text-gray-500">All clear.</p>}
+          {!unassigned && !wins.length && !pendingLeave.length && !waitingQs.length && !notCalled && !perPerson.some((p) => p.late >= 3) && <p className="text-sm text-gray-500">All clear.</p>}
         </section>
       </div>
     </div>

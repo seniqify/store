@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials, ROLE_LABEL } from './crmContext.js';
-import { fetchScoreboard, downloadCsv } from './crmService.js';
+import { fetchScoreboard, downloadCsv, pendingWins, reviewWin } from './crmService.js';
 import { istDate, addDays, KPA, band, rankBoard, periodShare, kpiValue } from './crmLogic.js';
 import { PRICE } from '../utils/planLimits.js';
 import { Spinner, Notice, Empty } from './ui.jsx';
@@ -99,12 +99,14 @@ function Advice({ p }) {
 }
 
 export default function CrmPerformance() {
-  const { me, settings, path } = useCrm();
+  const { me, settings, path, nameOf } = useCrm();
   const today = istDate();
   const [back, setBack] = useState(0);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [sel, setSel] = useState(null);
+  const [pending, setPending] = useState([]);
+  const [reload, setReload] = useState(0);
   const isManager = me.role === 'manager';
   const perPaid = Number(settings?.incentive?.per_paid) || 0;
 
@@ -116,8 +118,9 @@ export default function CrmPerformance() {
     Promise.all([fetchScoreboard(cur.from, cur.to), fetchScoreboard(prev.from, prev.to)])
       .then(([a, b]) => { if (alive) setData({ now: a, before: b }); })
       .catch((e) => { if (alive) { setErr(e.message); setData({ now: [], before: [] }); } });
+    if (isManager) pendingWins().then((p) => { if (alive) setPending(p); });
     return () => { alive = false; };
-  }, [cur.from, cur.to, prev.from, prev.to]);
+  }, [cur.from, cur.to, prev.from, prev.to, isManager, reload]);
 
   const board = useMemo(() => (data ? rankBoard(data.now, { share: periodShare(cur.from, cur.to, today), price: PRICE.monthly }) : []), [data, cur.from, cur.to, today]);
   const lastScore = useMemo(() => {
@@ -159,6 +162,7 @@ export default function CrmPerformance() {
               <div className="flex justify-between text-[11.5px] text-green-100"><span>0</span><span>60</span><span>75</span><span>90 Excellent</span></div>
               {back === 0 && <p className="text-[12.5px] text-green-100">{daysLeft} days left this month. Monthly targets are counted by today, so the score is fair on any day.</p>}
             </section>
+            {p.row.pending_wins > 0 && <Notice kind="warn">{p.row.pending_wins} win{p.row.pending_wins === 1 ? '' : 's'} waiting for proof. {p.row.pending_wins === 1 ? 'It counts' : 'They count'} once PocketLink sees the payment, or your manager approves.</Notice>}
             <Advice p={p} />
             <section className={`${card} overflow-hidden`}><h2 className="px-4 pt-3 pb-1 font-extrabold">My 5 areas</h2><KpiTable p={p} /></section>
             {perPaid > 0 && (
@@ -234,7 +238,7 @@ export default function CrmPerformance() {
                           <span><span className="block font-bold">{p.row.name}</span><span className="block text-[12px] text-gray-500">{ROLE_LABEL[p.row.role]}</span></span></button></td>
                         <td className="px-2 py-3"><span className="font-extrabold text-base mr-2">{p.score ?? '—'}</span><BandPill score={p.score} /></td>
                         <td className="px-2 py-3"><Trend now={p.score} before={lastScore.get(p.row.user_id)} /></td>
-                        <td className="px-2 py-3 font-bold">{p.row.won}</td>
+                        <td className="px-2 py-3 font-bold">{p.row.won}{p.row.pending_wins > 0 && <span className="block text-[11.5px] font-semibold text-amber-700">+{p.row.pending_wins} waiting</span>}</td>
                         <td className="px-2 py-3">{inr(p.row.money)}</td>
                         {perPaid > 0 && <td className="px-4 py-3 font-bold">{inr(p.row.won * perPaid)}</td>}
                       </tr>
@@ -265,6 +269,23 @@ export default function CrmPerformance() {
               </div>
             </section>
           </div>
+
+          {pending.length > 0 && (
+            <section aria-label="Wins waiting for proof" className={`${card} border-amber-300 overflow-hidden`}>
+              <h2 className="px-4 pt-3 pb-1 font-extrabold">Wins waiting for proof · {pending.length}</h2>
+              <p className="px-4 pb-2 text-[12.5px] text-gray-500">Marked won, but PocketLink has not seen a payment for the shop. Approve if they paid another way; they count in the score once approved.</p>
+              <ul className="divide-y divide-gray-100">
+                {pending.map((w) => (
+                  <li key={w.lead_id} className="px-4 py-2.5 flex flex-wrap items-center gap-2">
+                    <span className="flex-1 min-w-[200px]"><Link to={path(`leads/${w.lead_id}`)} className="font-bold text-gray-900">{w.shop_name}</Link>
+                      <span className="block text-[12.5px] text-gray-500">{nameOf(w.staff_id)} · {w.won_plan === 'yearly' ? 'yearly' : 'monthly'} · {w.signed_up ? 'has a shop' : 'no shop made yet'}</span></span>
+                    <button type="button" className={btn.smallGreen} onClick={async () => { try { await reviewWin(w.lead_id, true); setReload((n) => n + 1); } catch (e) { setErr(e.message); } }}>Approve</button>
+                    <button type="button" className={btn.small} onClick={async () => { try { await reviewWin(w.lead_id, false); setReload((n) => n + 1); } catch (e) { setErr(e.message); } }}>Not paid yet</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {chosen && (
             <section aria-label="Person" className={`${card} overflow-hidden`}>

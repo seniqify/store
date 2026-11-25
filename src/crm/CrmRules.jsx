@@ -17,6 +17,7 @@ export default function CrmRules({ unassignedIds, onAssigned }) {
   const [how, setHow] = useState(cur.how === 'fewest' ? 'fewest' : 'turns');
   const [pool, setPool] = useState(() => (Array.isArray(cur.pool) ? cur.pool.filter((u) => staff.some((s) => s.user_id === u)) : []));
   const [places, setPlaces] = useState(() => (Array.isArray(cur.places) ? cur.places.map((p) => ({ match: p.match || '', to: p.to || '' })) : []));
+  const [rotate, setRotate] = useState(String(Number(cur.rotate_min) || 0));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -26,7 +27,7 @@ export default function CrmRules({ unassignedIds, onAssigned }) {
     try {
       const clean = places.map((p) => ({ match: p.match.trim().slice(0, 60), to: p.to })).filter((p) => p.match.length >= 2 && p.to);
       if (on && !pool.length && !clean.length) throw new Error('Tick at least one person, or add a place rule.');
-      await saveSetting('auto_assign', { ...cur, on, how, pool, places: clean });
+      await saveSetting('auto_assign', { ...cur, on, how, pool, places: clean, rotate_min: Number(rotate) || 0 });
       await refreshSettings();
       setPlaces(clean);
       setMsg({ kind: 'ok', text: on ? 'Saved. New leads are given out by these rules from now on.' : 'Saved. Auto-assign is off; new leads wait in “Not assigned”.' });
@@ -89,6 +90,14 @@ export default function CrmRules({ unassignedIds, onAssigned }) {
           </li>
         </ol>
         <button type="button" className={`${btn.small} mt-2`} onClick={() => setPlaces([...places, { match: '', to: '' }])}><Icon name="plus" size={14} />Add a place rule</button>
+        <div className="mt-3 max-w-md">
+          <Field label="An ad or website lead nobody called" htmlFor="rot" hint="Checked every 5 minutes, 9:30 am to 8 pm. A lead moves only once.">
+            <select id="rot" className={input} value={rotate} onChange={(e) => setRotate(e.target.value)}>
+              <option value="0">Stays with the same person</option>
+              {[10, 15, 30, 60].map((m) => <option key={m} value={m}>Moves to the next person after {m} minutes</option>)}
+            </select>
+          </Field>
+        </div>
       </div>
 
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}

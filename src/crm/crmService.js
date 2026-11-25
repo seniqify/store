@@ -63,7 +63,7 @@ export async function resetStaffPassword(userId, password) {
 }
 
 // ── Leads ───────────────────────────────────────────────────────────────────
-const LEAD_COLS = 'id, created_at, updated_at, shop_name, owner_name, phone, business_type, city, area, source, source_detail, stage, heat, won_plan, won_amount, lost_reason, signed_up, next_action_at, next_action, assigned_to, created_by, last_activity_at, call_attempts';
+const LEAD_COLS = 'id, created_at, updated_at, shop_name, owner_name, phone, business_type, city, area, source, source_detail, stage, heat, won_plan, won_amount, lost_reason, signed_up, next_action_at, next_action, assigned_to, created_by, last_activity_at, call_attempts, won_proof, won_proof_at';
 
 /** Every lead the person may see (the database decides which). */
 export async function listLeads() {
@@ -323,4 +323,30 @@ export function downloadCsv(name, rows) {
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ── Leads that arrive by themselves (part 3) ────────────────────────────────
+export const LEAD_IN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sales-lead-in`;
+/** Manager: arrivals since an instant, with when each was first called. */
+export async function leadFeed(sinceIso) {
+  const { data, error } = await supabase.rpc('sales_lead_feed', { p_since: sinceIso });
+  if (error) fail(error);
+  return data || [];
+}
+/** My open leads nobody has called yet (for the new-lead alert). */
+export async function myFreshLeads(userId) {
+  const { data, error } = await supabase.from('sales_leads').select('id, shop_name, phone, source, created_at, next_action')
+    .eq('assigned_to', userId).eq('stage', 'new').is('last_activity_at', null)
+    .order('created_at', { ascending: false }).limit(20);
+  return error ? null : data || [];
+}
+
+// ── Win proof (part 3) ──────────────────────────────────────────────────────
+export async function pendingWins() {
+  const { data, error } = await supabase.rpc('sales_pending_wins');
+  return error ? [] : data || [];
+}
+export async function reviewWin(leadId, ok) {
+  const { error } = await supabase.rpc('sales_win_review', { p_lead: leadId, p_ok: ok });
+  if (error) fail(error);
 }

@@ -347,6 +347,7 @@ const onTime = (r) => (r.open_followups > 0 ? 100 - ratio(r.late_followups, r.op
 export const KPI_DEFS = Object.freeze({
   caller: [
     { key: 'calls_per_day', kpa: 'activity', label: 'Calls a day (average)', kind: 'perday', def: 80, column: 'daily_target', actual: (r) => perDay(r.calls, r) },
+    { key: 'talk_min_per_day', kpa: 'activity', label: 'Talk time a day', kind: 'minutes', def: 150, actual: (r) => (Number(r.talk_sec) > 0 ? Number(r.talk_sec) / 60 / Math.max(1, r.days_present) : null) },
     { key: 'pickup_pct', kpa: 'reach', label: 'Pick-up rate', kind: 'pct', def: 45, actual: (r) => ratio(r.answered, r.calls) },
     { key: 'demos', kpa: 'conversion', label: 'Demos booked', kind: 'count', def: 20, actual: (r) => r.demos },
     { key: 'demo_to_won_pct', kpa: 'conversion', label: 'Demo to won', kind: 'pct', def: 30, actual: (r) => (r.demos > 0 ? ratio(r.won, r.demos) : r.won > 0 ? 100 : null) },
@@ -431,6 +432,7 @@ export function kpiValue(kind, v) {
   if (v == null) return '—';
   if (kind === 'pct') return `${Math.round(v)}%`;
   if (kind === 'money') return `₹${Math.round(v).toLocaleString('en-IN')}`;
+  if (kind === 'minutes') { const m = Math.round(v); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m} m`; }
   if (kind === 'perday') return v >= 10 ? String(Math.round(v)) : String(Math.round(v * 10) / 10);
   return String(Math.round(v * 10) / 10);
 }
@@ -599,3 +601,15 @@ export function fewestFirst(n, people, openCounts) {
   }
   return out;
 }
+
+// ── Call timer ──────────────────────────────────────────────────────────────
+/** Seconds from tapping Call to coming back to the CRM: null under 5 s, at most 2 hours. */
+export function callSeconds(startMs, nowMs) {
+  const s = Math.round((Number(nowMs) - Number(startMs)) / 1000);
+  if (!Number.isFinite(s) || s < 5) return null;
+  return Math.min(s, 7200);
+}
+export const secondsLabel = (s) => (s == null ? '' : s >= 60 ? `${Math.floor(s / 60)} m ${String(s % 60).padStart(2, '0')} s` : `${s} s`);
+
+/** Ad and website leads (part 3 lead sources). */
+export const AD_SOURCES = Object.freeze(['facebook', 'instagram', 'google', 'whatsapp', 'website']);

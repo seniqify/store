@@ -24,6 +24,8 @@ import CrmScripts from './CrmScripts.jsx';
 import CrmHelp from './CrmHelp.jsx';
 import CrmVisits from './CrmVisits.jsx';
 import CrmAccount from './CrmAccount.jsx';
+import CrmSources from './CrmSources.jsx';
+import NewLeadAlert from './CrmNewLeadAlert.jsx';
 import { CrmCtx, useCrm, initials, ROLE_LABEL } from './crmContext.js';
 
 
@@ -145,7 +147,7 @@ function Shell({ children }) {
         <span className="font-extrabold flex-1">PocketLink CRM</span>
         <NavLink to={to('account')} aria-label="My account" className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 grid place-items-center font-extrabold text-[12px] no-underline">{initials(me.name)}</NavLink>
       </header>
-      <main className="min-w-0 pb-24 lg:pb-10 lg:ml-60">{children}</main>
+      <main className="min-w-0 pb-24 lg:pb-10 lg:ml-60"><NewLeadAlert />{children}</main>
       {more && (
         <div className="lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMore(false)} role="presentation">
           <div role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}
@@ -252,6 +254,7 @@ export default function CrmApp({ base = '' }) {
           <Route path="assign" element={isManager ? <CrmAssign /> : <Navigate to={value.path()} replace />} />
           <Route path="team" element={isManager ? <CrmTeam /> : <Navigate to={value.path()} replace />} />
           <Route path="visits" element={isManager ? <CrmVisits /> : <Navigate to={value.path()} replace />} />
+          <Route path="sources" element={isManager ? <CrmSources /> : <Navigate to={value.path()} replace />} />
           <Route path="performance" element={<CrmPerformance />} />
           <Route path="scripts" element={<CrmScripts />} />
           <Route path="help" element={<CrmHelp />} />

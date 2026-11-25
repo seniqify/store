@@ -24,7 +24,7 @@ export function toInstantLocal(value) {
 /** The menu for each role: [path, label, icon]. The phone shows the first four, then More. */
 export const MENUS = {
   manager: [['', 'Today', 'home'], ['leads', 'Leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['performance', 'Performance', 'chart'],
-    ['assign', 'Assign', 'assign'], ['queue', 'Call queue', 'phone'], ['checkin', 'Check in', 'pin'], ['visits', 'Field visits', 'map'],
+    ['assign', 'Assign', 'assign'], ['sources', 'Lead sources', 'bolt'], ['queue', 'Call queue', 'phone'], ['checkin', 'Check in', 'pin'], ['visits', 'Field visits', 'map'],
     ['attendance', 'Attendance', 'clock'], ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help'], ['team', 'Team & targets', 'team']],
   caller: [['', 'Today', 'home'], ['queue', 'Call queue', 'phone'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
     ['performance', 'My score', 'chart'], ['attendance', 'Attendance', 'clock'], ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
