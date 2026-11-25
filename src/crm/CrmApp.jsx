@@ -146,7 +146,7 @@ function TrainingFirst() {
     <div className="px-4 lg:px-7 py-10 max-w-md mx-auto text-center space-y-3">
       <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 grid place-items-center mx-auto"><Icon name="book" size={26} /></div>
       <h1 className="text-xl font-extrabold">Finish your training first</h1>
-      <p className="text-sm text-gray-600">Read the nine short modules and pass the exam. Then the call queue and check-ins open for you.</p>
+      <p className="text-sm text-gray-600">Read the ten short modules and pass the exam. Then the call queue and check-ins open for you.</p>
       <NavLink to={path('training')} className={btn.primary}>Go to training</NavLink>
     </div>
   );

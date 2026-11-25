@@ -104,7 +104,7 @@ export default function CrmToday() {
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
         <DayCard me={me} row={row} onChanged={load} />
         {me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
-          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Nine short modules and a short exam. The call queue and check-ins open when you pass.</Notice></Link>
+          <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Ten short modules with screenshots and a short exam. The call queue and check-ins open when you pass.</Notice></Link>
         )}
         {notify === 'default' && (
           <button type="button" className={`${btn.ghost} w-full`} onClick={async () => { try { setNotify(await Notification.requestPermission()); } catch { setNotify('denied'); } }}>

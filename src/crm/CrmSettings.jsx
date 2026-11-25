@@ -10,6 +10,7 @@ import {
 } from './crmLogic.js';
 import { DAILY_TEMPLATE, WEEKLY_TEMPLATE } from '../../shared/sales-report-text.mjs';
 import { Field, Notice, Icon, Spinner } from './ui.jsx';
+import IncentiveExplainer from './CrmIncentiveExplainer.jsx';
 import { btn, card, input } from './crmStyles.js';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -131,6 +132,8 @@ function SettingsForm() {
           <p className="text-[12px] font-extrabold uppercase tracking-wide text-gray-500">What the team sees</p>
           <ul className="mt-1 space-y-0.5 text-[13.5px] list-disc pl-5">{incentiveRuleLines(inc).map((x) => <li key={x}>{x}</li>)}</ul>
         </div>
+        <details className="rounded-xl border border-gray-200 p-3"><summary className="text-[13px] font-bold text-green-700 cursor-pointer">See the pictures the team sees</summary>
+          <div className="mt-3"><IncentiveExplainer cfg={Object.fromEntries(Object.entries(inc).map(([k, v]) => [k, k === 'pay_day' ? v : num(v)]))} /></div></details>
         {msg.incentive && <Notice kind={msg.incentive.kind}>{msg.incentive.text}</Notice>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btn.primary} onClick={() => save('incentive', () => {
@@ -214,7 +217,7 @@ function SettingsForm() {
         {msg.holidays && <Notice kind={msg.holidays.kind}>{msg.holidays.text}</Notice>}
       </Section>
 
-      <Section id="training" title="Training" sub="New people read nine modules and pass a 15-question exam.">
+      <Section id="training" title="Training" sub="New people read ten modules (with screenshots) and pass a 15-question exam.">
         <div className="grid sm:grid-cols-2 gap-3 items-end">
           <Field label="Pass mark (%)" htmlFor="tr-p"><input id="tr-p" type="number" min="50" max="100" className={input} value={tr.pass_pct} onChange={(e) => setTr({ ...tr, pass_pct: e.target.value })} /></Field>
           <label className="flex items-center gap-2 text-[14px] font-semibold text-gray-800 h-11">

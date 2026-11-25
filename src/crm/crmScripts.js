@@ -122,14 +122,16 @@ export const OBJECTIONS = {
 export const OBJ_TITLE = { en: 'When they say…', mr: 'ग्राहक म्हणतो…', hi: 'ग्राहक कहता है…' };
 
 // A hook per type of business, with a live example shop where there is one.
+// A hook per type of business, with a live example page where there is one
+// (pocketlink.store/demo/...; the old showcase shops are no longer live).
 export const BUSINESS_HOOKS = Object.freeze([
-  { t: 'Clothing and sarees', hook: 'Every design with sizes and colours on one link. No more "price?" on every photo.', shop: 'rupasi-sarees' },
-  { t: 'Food, spices, sweets', hook: 'Send parcels across India with Delhivery or Shadowfax; buyers track them on a page with the shop’s name.', shop: 'maharaja-sweets' },
-  { t: 'Restaurants and cafés', hook: 'A menu link for WhatsApp and Instagram. Orders come straight to the shop, with no app commission.', shop: 'annapurna-khanaval' },
+  { t: 'Clothing and sarees', hook: 'Every design with sizes and colours on one link. No more "price?" on every photo.', shop: 'demo/aanyaboutique' },
+  { t: 'Food, spices, sweets', hook: 'Send parcels across India with Delhivery or Shadowfax; buyers track them on a page with the shop’s name.', shop: '' },
+  { t: 'Restaurants and cafés', hook: 'A menu link for WhatsApp and Instagram. Orders come straight to the shop, with no app commission.', shop: '' },
   { t: 'Kirana and grocery', hook: 'Regular customers reorder from the link. Cash on delivery with a "Confirm my order" message.', shop: '' },
-  { t: 'Textiles and towels', hook: 'Wholesale and retail prices on one page; bulk buyers order without calling.', shop: 'solapur-chaddar' },
-  { t: 'Services (salon, tailor, classes)', hook: 'A price list customers can open and book from on WhatsApp.', shop: 'glow-grace-salon' },
-  { t: 'Lodges and hotels', hook: 'Rooms with photos and prices; guests book on WhatsApp before they arrive.', shop: 'vitthal-lodge' },
+  { t: 'Textiles and towels', hook: 'Wholesale and retail prices on one page; bulk buyers order without calling.', shop: '' },
+  { t: 'Services (salon, tailor, classes)', hook: 'A price list customers can open and book from on WhatsApp.', shop: 'demo/glowup' },
+  { t: 'Lodges and hotels', hook: 'Rooms with photos and prices; guests book on WhatsApp before they arrive.', shop: '' },
 ]);
 export const shopLink = (slug) => `https://www.pocketlink.store/${slug}`;
 

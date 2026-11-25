@@ -1,4 +1,4 @@
-// Training: nine modules to read, then a 15-question exam graded on the
+// Training: ten modules with screenshots of the real CRM to read, then a 15-question exam graded on the
 // server (sales_exam_submit). New people must pass before they start calling
 // or checking in. A manager sees everyone's progress and results.
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -7,28 +7,112 @@ import { useCrm, initials } from './crmContext.js';
 import { trainingDone, markModuleDone, examStart, examSubmit, examAttempts } from './crmService.js';
 import { istTime, shortDay, istDate } from './crmLogic.js';
 import { MODULES, EXAM_SIZE } from './crmTraining.js';
+import SHOTS from './trainingShots.json';
+import IncentiveExplainer from './CrmIncentiveExplainer.jsx';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
 
-function ModuleView({ m, done, onDone, onBack }) {
+/** A real CRM screen with numbered markers, and what each number means. */
+function Shot({ name, h, caption, steps = [] }) {
+  const s = SHOTS[name];
+  if (!s) return null;
+  return (
+    <figure className="space-y-2">
+      {h && <h3 className="font-extrabold">{h}</h3>}
+      <div className="flex flex-col md:flex-row gap-4 items-start">
+        <div className="relative w-full max-w-[320px] mx-auto md:mx-0 shrink-0 rounded-2xl border border-gray-200 overflow-hidden shadow-sm bg-white">
+          <img src={`/crm-training/${name}.webp`} alt={caption || h || ''} width={s.w} height={s.h} loading="lazy" className="block w-full h-auto" />
+          {s.marks.map((mk) => (
+            <span key={mk.n} aria-hidden="true" style={{ left: `${mk.x}%`, top: `${mk.y}%` }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-amber-400 text-amber-950 text-[12px] font-extrabold grid place-items-center ring-2 ring-white shadow">{mk.n}</span>
+          ))}
+        </div>
+        <figcaption className="flex-1 min-w-0 space-y-2">
+          {caption && <p className="text-[14px] text-gray-700">{caption}</p>}
+          {steps.length > 0 && (
+            <ol className="space-y-2">
+              {steps.map((t, i) => (
+                <li key={t} className="flex gap-2.5 text-[14px] leading-relaxed text-gray-800">
+                  <span aria-hidden="true" className="w-6 h-6 shrink-0 rounded-full bg-amber-400 text-amber-950 text-[12px] font-extrabold grid place-items-center">{i + 1}</span>
+                  <span><span className="sr-only">Marker {i + 1}: </span>{t}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </figcaption>
+      </div>
+    </figure>
+  );
+}
+
+function SelfCheck({ c }) {
+  const [pick, setPick] = useState(null);
+  if (!c) return null;
+  const right = pick === c.answer;
+  return (
+    <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2" aria-label="Check yourself">
+      <h3 className="font-extrabold text-blue-950">Check yourself</h3>
+      <p className="font-bold text-[14.5px]">{c.q}</p>
+      <div className="space-y-1.5">
+        {c.options.map((o, i) => (
+          <button key={o} type="button" onClick={() => setPick(i)} aria-pressed={pick === i}
+            className={`w-full text-left rounded-xl border-2 px-3 py-2.5 text-[14px] bg-white ${pick === i ? (right ? 'border-green-700' : 'border-red-500') : 'border-gray-200'}`}>{o}</button>
+        ))}
+      </div>
+      {pick != null && <p role="status" className={`text-[13.5px] font-bold ${right ? 'text-green-800' : 'text-red-700'}`}>{right ? 'Right. ' : 'Not quite. '}<span className="font-normal text-gray-800">{c.why}</span></p>}
+    </section>
+  );
+}
+
+function ModuleView({ m, done, onDone, onBack, next }) {
+  const { settings } = useCrm();
   const [busy, setBusy] = useState(false);
   return (
-    <article className={`${card} p-5 space-y-4 max-w-3xl`}>
+    <article className={`${card} p-5 space-y-6 max-w-4xl`}>
       <button type="button" className="text-sm font-bold text-green-700" onClick={onBack}>← All modules</button>
-      <header><h2 className="text-xl font-extrabold">{m.title}</h2><p className="text-[13px] text-gray-500">About {m.minutes} minutes</p></header>
-      <p className="text-[15px] text-gray-800">{m.intro}</p>
-      {m.sections.map((s) => (
-        <section key={s.h} className="space-y-1.5">
-          <h3 className="font-extrabold">{s.h}</h3>
-          {s.p && <p className="text-[14.5px] leading-relaxed text-gray-800">{s.p}</p>}
-          {s.list && <ul className="list-disc pl-5 space-y-1 text-[14.5px] leading-relaxed text-gray-800">{s.list.map((x) => <li key={x}>{x}</li>)}</ul>}
+      <header><h2 className="text-2xl font-extrabold">{m.title}</h2><p className="text-[13px] text-gray-500">About {m.minutes} minutes</p></header>
+      <p className="text-[15.5px] leading-relaxed text-gray-800">{m.intro}</p>
+      {m.sections.map((s, i) => {
+        if (s.widget === 'incentive') {
+          return (
+            <section key={`w${i}`} className="space-y-2">
+              <h3 className="font-extrabold">How the incentive works</h3>
+              <IncentiveExplainer cfg={settings?.incentive} />
+            </section>
+          );
+        }
+        if (s.shot) return <Shot key={s.shot} name={s.shot} h={s.h} caption={s.caption} steps={s.steps} />;
+        return (
+          <section key={s.h} className="space-y-1.5">
+            <h3 className="font-extrabold">{s.h}</h3>
+            {s.p && <p className="text-[14.5px] leading-relaxed text-gray-800">{s.p}</p>}
+            {s.list && <ul className="list-disc pl-5 space-y-1 text-[14.5px] leading-relaxed text-gray-800">{s.list.map((x) => <li key={x}>{x}</li>)}</ul>}
+            {s.how && (
+              <ol className="space-y-2">
+                {s.how.map((x, k) => (
+                  <li key={x} className="flex gap-2.5 text-[14.5px] leading-relaxed text-gray-800">
+                    <span aria-hidden="true" className="w-6 h-6 shrink-0 rounded-full bg-green-700 text-white text-[12px] font-extrabold grid place-items-center">{k + 1}</span>{x}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      })}
+      {m.mistakes?.length > 0 && (
+        <section className="rounded-xl bg-red-50 border border-red-200 p-4">
+          <h3 className="font-extrabold text-red-900">Common mistakes</h3>
+          <ul className="mt-1 space-y-1 text-[14px] text-red-900">{m.mistakes.map((x) => <li key={x} className="flex gap-2"><Icon name="x" size={16} className="mt-0.5 shrink-0" />{x}</li>)}</ul>
         </section>
-      ))}
+      )}
+      <SelfCheck c={m.check} />
       <section className="rounded-xl bg-green-50 border border-green-200 p-4">
         <h3 className="font-extrabold text-green-900">Remember</h3>
         <ul className="mt-1 space-y-1 text-[14px] text-green-900">{m.points.map((x) => <li key={x} className="flex gap-2"><Icon name="check" size={16} className="mt-0.5 shrink-0" />{x}</li>)}</ul>
       </section>
-      {done ? <Notice kind="ok">You finished this module.</Notice> : (
+      {done ? (
+        <div className="flex flex-wrap gap-2 items-center"><Notice kind="ok">You finished this module.</Notice>{next && <button type="button" className={btn.primary} onClick={next}>Next module</button>}</div>
+      ) : (
         <button type="button" className={btn.primary} disabled={busy} onClick={async () => { setBusy(true); try { await onDone(m.key); } finally { setBusy(false); } }}>{busy ? 'Saving…' : 'I have read this'}</button>
       )}
     </article>
@@ -122,6 +206,7 @@ export default function CrmTraining() {
     return (
       <div className="px-4 lg:px-7 py-5">
         <ModuleView m={open} done={mine.has(open.key)} onBack={() => go(null)}
+          next={MODULES[MODULES.findIndex((x) => x.key === open.key) + 1] ? () => go(MODULES[MODULES.findIndex((x) => x.key === open.key) + 1].key) : null}
           onDone={async (k) => { await markModuleDone(me.user_id, k); await load(); const i = MODULES.findIndex((x) => x.key === k); go(MODULES[i + 1]?.key || null); }} />
       </div>
     );
@@ -138,11 +223,11 @@ export default function CrmTraining() {
   return (
     <div className="px-4 lg:px-7 py-5 space-y-4">
       <header><h1 className="text-2xl font-extrabold">Training</h1>
-        <p className="text-sm text-gray-500">Nine short modules, then a {EXAM_SIZE}-question exam. New team members pass it before they start calling or visiting.</p></header>
+        <p className="text-sm text-gray-500">Ten short modules with screenshots, then a {EXAM_SIZE}-question exam. New team members pass it before they start calling or visiting.</p></header>
 
       {!isManager && (
         qualified ? <Notice kind="ok"><b>You are qualified.</b> Read the modules again whenever you like.</Notice>
-          : me.must_train ? <Notice kind="warn"><b>Finish the training and pass the exam to start.</b> Read all nine modules, then take the exam.</Notice> : null
+          : me.must_train ? <Notice kind="warn"><b>Finish the training and pass the exam to start.</b> Read all ten modules, then take the exam.</Notice> : null
       )}
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
