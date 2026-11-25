@@ -220,6 +220,9 @@ test('crm.pocketlink.store is the CRM and nothing else', async () => {
   for (const p of ['/api/render?path=/x', '/api/og?slug=x', '/api/sitemap', '/sitemap.xml']) {
     assert.equal((await mw(new Request(`https://crm.pocketlink.store${p}`))).status, 404, p);
   }
+  for (const p of ['/pocketlink-logo.svg', '/favicon.svg', '/crm-training/queue.webp', '/og-image.jpg']) {
+    assert.equal(await mw(new Request(`https://crm.pocketlink.store${p}`)), undefined, `${p} is served as a file, not the app`);
+  }
   const robots = await mw(new Request('https://crm.pocketlink.store/robots.txt'));
   assert.equal(await robots.text(), 'User-agent: *\nDisallow: /\n');
 });

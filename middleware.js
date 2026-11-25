@@ -120,6 +120,9 @@ function crmHost(req) {
     return new Response('User-agent: *\nDisallow: /\n', { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
   }
   if (pathname === '/sitemap.xml') return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  // Real files (the logo, favicon, training screenshots) are served as they are;
+  // every page path is the single-page app.
+  if (/\.(svg|png|jpe?g|webp|gif|ico|txt|json|webmanifest|woff2?)$/i.test(pathname)) return undefined;
   return rewrite(new URL('/index.html', req.url));
 }
 
