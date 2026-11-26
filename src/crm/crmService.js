@@ -203,6 +203,18 @@ export async function attendanceBetween(from, to) {
   return readAllRowsOrEmpty((c) => supabase.from('sales_attendance').select('*', c ? { count: 'exact' } : undefined)
     .gte('day', from).lte('day', to), { order: [['day', true], ['staff_id', true]] });
 }
+/**
+ * Work per person per India day (sales_work_days): calls, visits, checks,
+ * active and quiet minutes, longest gaps and the day's level. A manager gets
+ * everyone; anyone else only themselves. At most 62 days at a time. If the
+ * database does not have it yet (part 6 not run), an empty list: attendance
+ * then works exactly as before.
+ */
+export async function workDays(from, to) {
+  const { data, error } = await supabase.rpc('sales_work_days', { p_from: from, p_to: to });
+  if (error) return [];
+  return data || [];
+}
 export async function setAttendanceOverride(staffId, day, status, note) {
   const { error } = await supabase.from('sales_attendance').upsert({ staff_id: staffId, day, status_override: status || null, note: note || null }, { onConflict: 'staff_id,day' });
   if (error) fail(error);

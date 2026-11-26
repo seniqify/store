@@ -1,21 +1,22 @@
 // Attendance. Login time = the first time someone opens the CRM that day;
 // field executives also start and end the day with their location. Monthly
 // calendar with working days, weekly offs, holidays, late, half day, absent and
-// leave. A manager sees everyone, approves leave, sets holidays and can mark a
+// leave. From the work rule start date (Settings) a day needs real work, not
+// just a login (sales_work_days; "Logged in, no work"). A manager sees everyone, approves leave, sets holidays and can mark a
 // day by hand; others see their own month and ask for leave.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCrm, initials } from './crmContext.js';
 import {
-  attendanceBetween, listHolidays, addHoliday, removeHoliday, listLeave, askLeave, decideLeave, setAttendanceOverride,
+  attendanceBetween, listHolidays, addHoliday, removeHoliday, listLeave, askLeave, decideLeave, setAttendanceOverride, workDays,
 } from './crmService.js';
-import { istDate, istTime, monthCalendar, attendancePercent, DAY_STATUS, shortDay, hoursLabel, dayStatus, leaveDaySet } from './crmLogic.js';
+import { istDate, istTime, monthCalendar, attendancePercent, DAY_STATUS, shortDay, hoursLabel, dayStatus, leaveDaySet, workRule, workLine, minutesLabel, fieldGapLine } from './crmLogic.js';
 import { DayCard } from './CrmToday.jsx';
 import { Field, Spinner, Notice, Empty } from './ui.jsx';
 import { btn, card, input } from './crmStyles.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const SUMMARY = [['present', 'Present'], ['late', 'Late'], ['half', 'Half day'], ['absent', 'Absent'], ['leave', 'Leave'], ['holiday', 'Holidays'], ['off', 'Weekly offs']];
+const SUMMARY = [['present', 'Present'], ['late', 'Late'], ['half', 'Half day'], ['nowork', 'No work'], ['absent', 'Absent'], ['leave', 'Leave'], ['holiday', 'Holidays'], ['off', 'Weekly offs']];
 
 function Calendar({ cal, onPickDay, today }) {
   return (
@@ -29,11 +30,12 @@ function Calendar({ cal, onPickDay, today }) {
             <span className="text-[13px] font-extrabold">{c.n}</span>
             <span className="text-[10.5px] font-bold leading-tight hidden sm:block">{DAY_STATUS[c.status]?.label}</span>
             {c.inAt && <span className="text-[10.5px] leading-tight">in {istTime(c.inAt)}</span>}
+            {c.active != null && c.inAt && <span className="text-[10.5px] leading-tight">{minutesLabel(c.active)} work</span>}
           </button>
         ) : <span key={`b${i}`} />))}
       </div>
       <div className="flex flex-wrap gap-3 mt-3 text-[12px] text-gray-700">
-        {['present', 'late', 'half', 'absent', 'leave', 'holiday', 'off'].map((k) => (
+        {['present', 'late', 'half', 'nowork', 'absent', 'leave', 'holiday', 'off'].map((k) => (
           <span key={k} className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`w-3.5 h-3.5 rounded ${DAY_STATUS[k].cls}`} />{DAY_STATUS[k].label}</span>
         ))}
       </div>
@@ -55,6 +57,7 @@ export default function CrmAttendance() {
   const today = istDate();
   const [ym, setYm] = useState({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) });
   const [rows, setRows] = useState(null);
+  const [works, setWorks] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [leave, setLeave] = useState([]);
   const [who, setWho] = useState(me.user_id);
@@ -69,15 +72,18 @@ export default function CrmAttendance() {
 
   const load = useCallback(async () => {
     const lo = first < today ? first : today;
-    const [r, h, l] = await Promise.all([attendanceBetween(lo, last > today ? last : today), listHolidays(), listLeave()]);
-    setRows(r); setHolidays(h); setLeave(l);
+    const hi = last > today ? last : today;
+    const [r, h, l, w] = await Promise.all([attendanceBetween(lo, hi), listHolidays(), listLeave(), workDays(lo, hi)]);
+    setRows(r); setHolidays(h); setLeave(l); setWorks(w);
   }, [first, last, today]);
   useEffect(() => { load(); }, [load]);
 
   const run = async (fn) => { setErr(''); try { await fn(); await load(); } catch (e) { setErr(e.message); } };
   const person = staff.find((s) => s.user_id === who) || me;
-  const cal = useMemo(() => (rows ? monthCalendar({ year: ym.y, month: ym.m, today, staff: person, rows, holidays, leaves: leave, rules }) : null),
-    [rows, ym, today, person, holidays, leave, rules]);
+  const cal = useMemo(() => (rows ? monthCalendar({ year: ym.y, month: ym.m, today, staff: person, rows, holidays, leaves: leave, rules, works }) : null),
+    [rows, ym, today, person, holidays, leave, rules, works]);
+  const rule = useMemo(() => workRule(rules), [rules]);
+  const workOf = (id, day) => works.find((w) => w.staff_id === id && w.day === day) || null;
   const holidaySet = useMemo(() => new Set(holidays.map((h) => h.day)), [holidays]);
   const shiftMonth = (d) => setYm(({ y, m }) => { const n = m + d; return n < 1 ? { y: y - 1, m: 12 } : n > 12 ? { y: y + 1, m: 1 } : { y, m: n }; });
 
@@ -86,11 +92,11 @@ export default function CrmAttendance() {
   const myRow = rows.find((r) => r.staff_id === me.user_id && r.day === today);
 
   const exportMonth = () => {
-    const header = ['Name', 'Role', ...cal.cells.filter(Boolean).map((c) => c.day), 'Working days', 'Present', 'Late', 'Half day', 'Absent', 'Leave'];
+    const header = ['Name', 'Role', ...cal.cells.filter(Boolean).map((c) => c.day), 'Working days', 'Present', 'Late', 'Half day', 'No work', 'Absent', 'Leave'];
     const lines = staff.filter((s) => s.active).map((s) => {
-      const c = monthCalendar({ year: ym.y, month: ym.m, today, staff: s, rows, holidays, leaves: leave, rules });
-      return [s.name, s.role, ...c.cells.filter(Boolean).map((x) => `${DAY_STATUS[x.status]?.label || ''}${x.inAt ? ` ${istTime(x.inAt)}` : ''}`),
-        c.workingDays, c.counts.present, c.counts.late, c.counts.half, c.counts.absent, c.counts.leave];
+      const c = monthCalendar({ year: ym.y, month: ym.m, today, staff: s, rows, holidays, leaves: leave, rules, works });
+      return [s.name, s.role, ...c.cells.filter(Boolean).map((x) => `${DAY_STATUS[x.status]?.label || ''}${x.inAt ? ` ${istTime(x.inAt)}` : ''}${x.active != null && x.inAt ? ` (${minutesLabel(x.active)} work)` : ''}`),
+        c.workingDays, c.counts.present, c.counts.late, c.counts.half, c.counts.nowork, c.counts.absent, c.counts.leave];
     });
     downloadCsv(`attendance-${first.slice(0, 7)}.csv`, [header, ...lines]);
   };
@@ -99,21 +105,21 @@ export default function CrmAttendance() {
     <div className="px-4 lg:px-7 py-5 space-y-4">
       <header className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[220px]"><h1 className="text-2xl font-extrabold">{isManager ? 'Attendance' : 'My attendance'}</h1>
-          <p className="text-sm text-gray-500">Login time is the first time you open the CRM that day.</p></div>
+          <p className="text-sm text-gray-500">Login time is the first time you open the CRM that day.{rule.on !== false && rule.from ? ` From ${shortDay(rule.from)}, a day counts when real work is done (calls, visits or leads checked), not just a login.` : ''}</p></div>
         {isManager && <button type="button" className={btn.ghost} onClick={exportMonth}>Download month (Excel)</button>}
       </header>
       {err && <Notice>{err}</Notice>}
 
-      {!isManager && <DayCard me={me} row={myRow} onChanged={load} />}
+      {!isManager && <DayCard me={me} row={myRow} onChanged={load} work={workOf(me.user_id, today)} rule={rule} />}
 
       {isManager && (
         <section aria-label="Today" className={`${card} overflow-hidden`}>
           <h2 className="px-4 pt-3 pb-2 font-extrabold">Today · {shortDay(today)}</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[760px]">
+            <table className="w-full text-sm min-w-[900px]">
               <thead><tr className="text-left text-[12px] uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-2 font-bold">Person</th><th className="px-2 py-2 font-bold">Today</th><th className="px-2 py-2 font-bold">Logged in</th>
-                <th className="px-2 py-2 font-bold">Day started / ended</th><th className="px-2 py-2 font-bold">Last active</th><th className="px-4 py-2 font-bold">Shift · weekly off</th>
+                <th className="px-2 py-2 font-bold">Day started / ended</th><th className="px-2 py-2 font-bold">Last active</th><th className="px-2 py-2 font-bold">Work today</th><th className="px-4 py-2 font-bold">Shift · weekly off</th>
               </tr></thead>
               <tbody>
                 {staff.filter((s) => s.active).map((s) => {
@@ -128,6 +134,8 @@ export default function CrmAttendance() {
                       <td className="px-2 py-3">{r?.day_start_at ? `${istTime(r.day_start_at)}${r.day_end_at ? ` – ${istTime(r.day_end_at)}` : ''}` : '—'}
                         {r?.day_start_at && <div className="text-[12px] text-gray-500">{hoursLabel(r.day_start_at, r.day_end_at || new Date().toISOString())}</div>}</td>
                       <td className="px-2 py-3 text-gray-700">{istTime(r?.last_seen_at) || '—'}</td>
+                      <td className="px-2 py-3 text-[13px]">{workOf(s.user_id, today) ? workLine(s.role, workOf(s.user_id, today), rule) : '—'}
+                        {s.role === 'field' && fieldGapLine(workOf(s.user_id, today), rule) && <div className="text-[12px] text-amber-800">{fieldGapLine(workOf(s.user_id, today), rule)}</div>}</td>
                       <td className="px-4 py-3 text-[13px] text-gray-700">{String(s.shift_start).slice(0, 5)} – {String(s.shift_end).slice(0, 5)} · {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][s.weekly_off]}</td>
                     </tr>
                   );
@@ -158,6 +166,7 @@ export default function CrmAttendance() {
           {isManager && pickDay && (
             <div className="border border-gray-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
               <span className="text-sm font-bold">{person.name} · {shortDay(pickDay.day)}:</span>
+              {pickDay.work && <span className="w-full text-[13px] text-gray-700">{workLine(person.role, pickDay.work, rule)}{pickDay.work.quiet_min ? ` · quiet ${minutesLabel(pickDay.work.quiet_min)}` : ''}{pickDay.work.longest_gap_min > rule.gap_min ? ` · longest gap ${istTime(pickDay.work.gap_from)} – ${istTime(pickDay.work.gap_to)}` : ''}{person.role === 'field' && fieldGapLine(pickDay.work, rule) ? ` · ${fieldGapLine(pickDay.work, rule)}` : ''}</span>}
               {['present', 'late', 'half', 'absent', 'leave'].map((k) => (
                 <button key={k} type="button" className={btn.small} onClick={() => run(async () => { await setAttendanceOverride(person.user_id, pickDay.day, k); setPickDay(null); })}>{DAY_STATUS[k].label}</button>
               ))}

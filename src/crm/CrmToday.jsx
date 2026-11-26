@@ -4,11 +4,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm, initials } from './crmContext.js';
-import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions } from './crmService.js';
+import { listLeads, activitiesSince, attendanceBetween, getLocation, startOrEndDay, listLeave, listQuestions, workDays } from './crmService.js';
 import { pendingWins } from './crmService.js';
 import MyLinkCard from './CrmMyLink.jsx';
 import { AdsToday } from './CrmCheckLeads.jsx';
-import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS } from './crmLogic.js';
+import { istDate, istInstant, istTime, buildQueue, dueLabel, followupColumns, shortDay, hoursLabel, dayStatus, DAY_STATUS, workRule, workLine, quietNow, minutesLabel, fieldGapLine, roleNeed } from './crmLogic.js';
 import { Icon, Spinner, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
 
@@ -22,7 +22,7 @@ function Stat({ label, value, sub }) {
   );
 }
 
-export function DayCard({ me, row, onChanged }) {
+export function DayCard({ me, row, onChanged, work, rule }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const act = async (action) => {
@@ -39,6 +39,8 @@ export function DayCard({ me, row, onChanged }) {
           : started ? `Day started ${istTime(started)} · ${hoursLabel(started, new Date().toISOString())}`
           : row?.first_seen_at ? `Logged in ${istTime(row.first_seen_at)}` : 'Not in yet'}
       </div>
+      {work && <div className="text-[13px] font-semibold text-green-100">Today: {workLine(me.role, work, rule)}</div>}
+      {rule?.on !== false && rule?.from && rule.from <= istDate() && me.role !== 'manager' && (() => { const n = roleNeed(me.role, rule); return n.key && <p className="text-[12.5px] text-gray-300">A day counts when you reach {n.need} {n.word}{n.hours ? ` and ${n.hours} h active` : ''}. Logging in alone does not.</p>; })()}
       {me.role === 'field' && (
         <button type="button" disabled={busy} onClick={() => act(started && !ended ? 'end' : 'start')}
           className={`inline-flex items-center justify-center w-full h-11 rounded-xl text-sm font-bold disabled:opacity-60 ${started && !ended ? 'bg-white text-gray-900' : 'bg-green-500 text-green-950'}`}>
@@ -60,19 +62,27 @@ export default function CrmToday() {
   const [qs, setQs] = useState([]);
   const [loadedAt, setLoadedAt] = useState(0);
   const [wins, setWins] = useState([]);
+  const [works, setWorks] = useState([]);
   const [notify, setNotify] = useState(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission));
   const today = istDate();
   const isManager = me.role === 'manager';
 
   const load = useCallback(async () => {
     const monthStart = `${today.slice(0, 8)}01`;
-    const [ls, as, at, lv, q] = await Promise.all([
-      listLeads(), activitiesSince(new Date(istInstant(monthStart)).toISOString()), attendanceBetween(today, today), listLeave(), listQuestions(),
+    const [ls, as, at, lv, q, wk] = await Promise.all([
+      listLeads(), activitiesSince(new Date(istInstant(monthStart)).toISOString()), attendanceBetween(today, today), listLeave(), listQuestions(), workDays(today, today),
     ]);
-    setLeads(ls); setActs(as); setAtt(at); setLeave(lv); setQs(q); setLoadedAt(Date.now());
+    setLeads(ls); setActs(as); setAtt(at); setLeave(lv); setQs(q); setWorks(wk); setLoadedAt(Date.now());
     if (me.role === 'manager') setWins(await pendingWins());
   }, [today, me.role]);
   useEffect(() => { load(); }, [load]);
+  // A manager's Today stays fresh (who is quiet changes by the minute).
+  useEffect(() => {
+    if (!isManager) return undefined;
+    const t = setInterval(load, 5 * 60000);
+    return () => clearInterval(t);
+  }, [isManager, load]);
+  const rule = useMemo(() => workRule(settings?.work), [settings]);
 
   const dayStart = istInstant(today);
   const todayActs = useMemo(() => acts.filter((a) => Date.parse(a.created_at) >= dayStart), [acts, dayStart]);
@@ -84,21 +94,23 @@ export default function CrmToday() {
     const late = (leads || []).filter((l) => l.assigned_to === s.user_id && l.stage !== 'won' && l.stage !== 'lost' && l.next_action_at && Date.parse(l.next_action_at) < dayStart).length;
     const won = acts.filter((a) => a.staff_id === s.user_id && a.kind === 'stage' && a.outcome === 'won').length;
     const status = dayStatus({ day: today, today, staff: s, row, holidays: new Set(), leaveDays: new Set(), rules: settings?.work });
+    const work = works.find((w) => w.staff_id === s.user_id && w.day === today) || null;
+    const quiet = quietNow({ staff: s, row, work, rule, today, now: loadedAt });
     return {
-      s, row, late, won, status,
+      s, row, late, won, status, work, quiet,
       calls: count(mine, (a) => a.kind === 'call'),
       picked: count(mine, (a) => a.kind === 'call' && !['no_answer', 'wrong_number'].includes(a.outcome)),
       visits: count(mine, (a) => a.kind === 'visit'),
       checked: count(mine, (a) => a.kind === 'system' && String(a.outcome || '').startsWith('checked_')),
     };
-  }), [staff, todayActs, att, leads, acts, dayStart, today, settings]);
+  }), [staff, todayActs, att, leads, acts, dayStart, today, settings, works, rule, loadedAt]);
 
   if (!leads) return <Spinner />;
 
   if (me.role === 'ads') {
     const row = att.find((r) => r.staff_id === me.user_id && r.day === today);
     return (
-      <AdsToday dayCard={<DayCard me={me} row={row} onChanged={load} />} todayActs={todayActs}
+      <AdsToday dayCard={<DayCard me={me} row={row} onChanged={load} work={works.find((w) => w.staff_id === me.user_id) || null} rule={rule} />} todayActs={todayActs}
         trainingNotice={me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
           <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Short modules for your role, with screenshots, and a short exam. Check leads opens when you pass.</Notice></Link>
         )} />
@@ -114,7 +126,7 @@ export default function CrmToday() {
     return (
       <div className="px-4 lg:px-7 py-5 max-w-3xl space-y-4">
         <h1 className="text-2xl font-extrabold">Hi {me.name.split(' ')[0]}</h1>
-        <DayCard me={me} row={row} onChanged={load} />
+        <DayCard me={me} row={row} onChanged={load} work={works.find((w) => w.staff_id === me.user_id) || null} rule={rule} />
         {me.must_train && !me.qualified_at && settings?.training?.gate !== false && (
           <Link to={path('training')} className="block no-underline"><Notice kind="warn"><b>Start here: your training.</b> Short modules for your role, with screenshots, and a short exam. {me.role === 'field' ? 'Check-ins open' : 'The call queue opens'} when you pass.</Notice></Link>
         )}
@@ -187,7 +199,7 @@ export default function CrmToday() {
                 <th className="px-2 py-2 font-bold">Calls / visits / checks</th><th className="px-2 py-2 font-bold">Late follow-ups</th><th className="px-4 py-2 font-bold">Won this month</th>
               </tr></thead>
               <tbody>
-                {perPerson.map(({ s, row, late: lt, won, calls, picked, visits, checked, status }) => (
+                {perPerson.map(({ s, row, late: lt, won, calls, picked, visits, checked, status, work, quiet }) => (
                   <tr key={s.user_id} className="border-t border-gray-100">
                     <td className="px-4 py-3"><div className="flex items-center gap-2.5">
                       <span aria-hidden="true" className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 grid place-items-center text-[11px] font-extrabold">{initials(s.name)}</span>
@@ -195,6 +207,9 @@ export default function CrmToday() {
                     <td className="px-2 py-3">
                       <span className={`text-[12px] font-bold rounded-full px-2 py-0.5 ${DAY_STATUS[status]?.cls || ''}`}>{DAY_STATUS[status]?.label || status}</span>
                       <div className="text-[12.5px] text-gray-600 mt-1">{row ? `In ${istTime(row.day_start_at || row.first_seen_at)} · last ${istTime(row.last_seen_at)}` : '—'}</div>
+                      {work && <div className="text-[12.5px] text-gray-800 font-semibold mt-0.5">Active {minutesLabel(work.active_min)}{work.last_work_at ? ` · last work ${istTime(work.last_work_at)}` : ''}</div>}
+                      {quiet && <div className="text-[12.5px] text-amber-800 font-bold mt-0.5">{quiet.what === 'no visit' ? 'No visit' : 'Quiet'} for {minutesLabel(quiet.min)}</div>}
+                      {s.role === 'field' && fieldGapLine(work, rule) && <div className="text-[12.5px] text-amber-800 mt-0.5">{fieldGapLine(work, rule)}</div>}
                     </td>
                     <td className="px-2 py-3 font-semibold">{s.role === 'field' ? `${visits} visits` : s.role === 'ads' ? `${checked} leads checked` : `${calls} calls · ${picked} picked up`}</td>
                     <td className="px-2 py-3"><span className={`font-bold rounded-lg px-2 py-0.5 ${lt ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{lt ? `${lt} late` : 'None'}</span></td>
@@ -244,10 +259,15 @@ export default function CrmToday() {
               <Link to={path('followups')} className={btn.small}>See</Link>
             </div>
           ))}
+          {perPerson.filter((p) => p.quiet).map((p) => (
+            <div key={`q-${p.s.user_id}`} className="border border-amber-200 bg-amber-50 rounded-xl p-3 text-sm">
+              <b>{p.s.name}</b>: {p.quiet.what} for {minutesLabel(p.quiet.min)} <span className="text-amber-800">(since {istTime(new Date(p.quiet.since).toISOString())})</span>
+            </div>
+          ))}
           {perPerson.filter((p) => p.status === 'today' && p.s.role !== 'manager').map((p) => (
             <div key={`in-${p.s.user_id}`} className="border border-gray-200 rounded-xl p-3 text-sm"><b>{p.s.name}</b> has not logged in today.</div>
           ))}
-          {!unassigned && !wins.length && !pendingLeave.length && !waitingQs.length && !notCalled && !perPerson.some((p) => p.late >= 3) && <p className="text-sm text-gray-500">All clear.</p>}
+          {!unassigned && !wins.length && !pendingLeave.length && !waitingQs.length && !notCalled && !perPerson.some((p) => p.late >= 3 || p.quiet) && <p className="text-sm text-gray-500">All clear.</p>}
         </section>
       </div>
     </div>
