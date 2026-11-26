@@ -3247,6 +3247,21 @@ export default function ManageStore() {
     );
   }
 
+  // Deleted in PocketLink Admin: the dashboard is closed too.
+  if (config?.adminStatus === 'deleted') {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-white">
+        <div className="text-center space-y-3 max-w-sm">
+          <p className="text-xl font-extrabold text-gray-900">This shop was removed</p>
+          <p className="text-sm text-gray-500">PocketLink has closed this shop. If you think this is a mistake, please contact PocketLink.</p>
+          <Link to="/" className="inline-flex items-center gap-1.5 mt-3 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+            <ArrowLeft size={14} /> Back to home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // ── PIN Gate ───────────────────────────────────────────────────────────────
   if (!pinVerified) {
     return <PinGate slug={businessSlug} config={config} onVerified={(pin) => { setStorePin(pin); setPinVerified(true); }} />;

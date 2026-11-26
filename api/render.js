@@ -20,7 +20,7 @@ export { PL_ORIGIN, normalizeHost };
 
 const RESERVED = new Set([
   'start', 'plans', 'register', 'onboarding', 'checkout', 'terms', 'privacy',
-  'sell', 'marketplace', 'explore', 'hub', 'crm',
+  'sell', 'marketplace', 'explore', 'hub', 'crm', 'admin', 'console',
   'demo', 'sitemap.xml', 'robots.txt', 'llms.txt', 'favicon.svg', 'og-image.jpg',
   'icons.svg', 'pocketlink-logo.svg', 'assets', 'api', 'manage',
 ]);
@@ -236,10 +236,12 @@ export default async function handler(req, res, deps = {}) {
       let config = null;
       try {
         const r = await fetchImpl(
-          `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config&limit=1`,
+          `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config,admin_status&limit=1`,
           { headers: dbHeaders },
         );
-        if (r.ok) { const rows = await r.json(); if (rows[0]) config = rows[0].config; }
+        // A shop paused or deleted in PocketLink Admin is not pre-rendered:
+        // the page shows it closed (or not found) itself.
+        if (r.ok) { const rows = await r.json(); if (rows[0] && !rows[0].admin_status) config = rows[0].config; }
       } catch { /* fall through to SPA */ }
 
       if (config && config.businessName) {
@@ -361,12 +363,13 @@ async function renderMerchantDomain(req, res, { env, fetchImpl, host, deps, mode
   let config;
   try {
     const resp = await fetchImpl(
-      `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config&limit=1`,
+      `${SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(slug)}&select=slug,config:public_config,admin_status&limit=1`,
       { headers: dbHeaders },
     );
     if (!resp.ok) throw new Error('store ' + resp.status);
     const rows = await resp.json();
-    config = Array.isArray(rows) && rows[0] && rows[0].slug === slug ? rows[0].config : null;
+    // Paused or deleted in PocketLink Admin: not served on its own domain.
+    config = Array.isArray(rows) && rows[0] && rows[0].slug === slug && !rows[0].admin_status ? rows[0].config : null;
   } catch {
     sendUnavailable(res, robots);   // never an unrendered shell on a merchant's domain
     return;

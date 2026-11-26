@@ -36,6 +36,7 @@
 // temporary (a domain's store and primary name can change).
 import { normalizeHost, routingMode } from './api/_hosts.js';
 import { isCrmHost } from './src/crm/crmHost.js';
+import { isAdminHost } from './src/admin/adminHost.js';
 import { resolverFromEnv } from './api/_resolve.js';
 import { responses, TEST_ROBOTS } from './api/_pages.js';
 import {
@@ -107,11 +108,12 @@ async function routeMerchantDomain(req, resolver, mode) {
 }
 
 /**
- * crm.pocketlink.store is the Sales CRM and nothing else: every page is the SPA
- * (which renders only the CRM there), robots are told to stay out, and the four
+ * crm.pocketlink.store (the Sales CRM) and admin.pocketlink.store (PocketLink
+ * Admin) are one app each and nothing else: every page is the SPA (which
+ * renders only that app there), robots are told to stay out, and the four
  * store endpoints the matcher sends here (render, sitemap, og, qr) are 404 --
- * no shop is ever served on the CRM's host. Checked before custom-domain routing,
- * so turning that on can never treat this host as a merchant's domain.
+ * no shop is ever served on these hosts. Checked before custom-domain routing,
+ * so turning that on can never treat them as a merchant's domain.
  */
 function crmHost(req) {
   const { pathname } = new URL(req.url);
@@ -135,7 +137,7 @@ export function createMiddleware({ env = process.env, resolverFor = (e) => resol
   let resolver = null;
   return async function middleware(req) {
     const host = normalizeHost(new URL(req.url).hostname);
-    if (isCrmHost(host)) return crmHost(req);
+    if (isCrmHost(host) || isAdminHost(host)) return crmHost(req);
     const mode = routingMode(host, env);
     if (mode === 'off') return legacy(req);
     return routeMerchantDomain(req, (resolver ??= resolverFor(env)), mode);

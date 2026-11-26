@@ -53,7 +53,7 @@ export default async function handler(req, res, deps = {}) {
   let stores = [];
   try {
     if (SUPABASE_URL && SUPABASE_ANON) {
-      const r = await fetchImpl(`${SUPABASE_URL}/rest/v1/stores?select=slug,updated_at`, {
+      const r = await fetchImpl(`${SUPABASE_URL}/rest/v1/stores?select=slug,updated_at&admin_status=is.null`, {
         headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
       });
       if (r.ok) stores = await r.json();
@@ -125,7 +125,7 @@ async function merchantSitemap(res, { env, fetchImpl, host, resolver }) {
   let row;
   try {
     const resp = await fetchImpl(
-      `${env.VITE_SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(r.slug)}&select=slug,config:public_config,updated_at&limit=1`,
+      `${env.VITE_SUPABASE_URL}/rest/v1/stores?slug=eq.${encodeURIComponent(r.slug)}&select=slug,config:public_config,updated_at,admin_status&limit=1`,
       { headers: { apikey: env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}` } },
     );
     if (!resp.ok) throw new Error('store ' + resp.status);
@@ -135,7 +135,7 @@ async function merchantSitemap(res, { env, fetchImpl, host, resolver }) {
     sendUnavailable(res);
     return;
   }
-  if (!row || !row.config || !row.config.businessName) { sendNotFound(res); return; }
+  if (!row || row.admin_status || !row.config || !row.config.businessName) { sendNotFound(res); return; }
 
   const base = `https://${host}`;
   const cats = Array.isArray(row.config.categories) ? row.config.categories : [];
