@@ -16,8 +16,8 @@
 --      deleted (Owner only, type the shop link): its content is erased (the
 --      row stays as a "Removed shop" placeholder so billing records and old
 --      links keep pointing at nothing), its PIN can never match again, and
---      its connected accounts (payment, courier, Meta, WhatsApp keys) and
---      marketing data are deleted. Orders, reviews, parcel records, Coins
+--      its connected accounts (payment, courier, Meta, WhatsApp keys),
+--      marketing data and buyers' assistant questions are deleted. Orders, reviews, parcel records, Coins
 --      and plan payments are KEPT: those tables refuse deletes on purpose.
 --      Photos are removed by the admin-system edge function afterwards.
 --    * admin_set_status: a shop removed for good cannot be opened again.
@@ -309,9 +309,9 @@ declare
   -- plan payments are deliberately NOT here: they are kept.
   c_tables constant text[] := array[
     'store_payment_accounts', 'store_shipping_accounts', 'store_meta_accounts', 'store_whatsapp',
-    'meta_capi_config', 'meta_capi_events', 'cart_reminders', 'offer_sends', 'message_templates',
-    'review_ask_skips', 'store_views', 'marketplace_listing', 'store_message_settings',
-    'store_expenses', 'store_sales_goals', 'ads_testers', 'pin_attempts'];
+    'meta_capi_events', 'cart_reminders', 'offer_sends', 'message_templates', 'review_ask_skips',
+    'ai_searches', 'store_views', 'store_message_settings', 'store_expenses', 'store_sales_goals',
+    'ads_testers', 'pin_attempts'];
 begin
   perform public.admin_require('delete');
   if length(btrim(coalesce(p_reason, ''))) < 3 then
@@ -346,7 +346,8 @@ begin
 
   foreach v_t in array c_tables loop
     v_col := null;
-    if to_regclass('public.' || v_t) is null then
+    -- Plain tables only: a view (marketplace_listing reads stores) is never deleted through.
+    if (select c.relkind from pg_class c where c.oid = to_regclass('public.' || v_t)) is distinct from 'r' then
       continue;
     end if;
     select a.attname into v_col

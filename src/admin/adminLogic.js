@@ -184,6 +184,7 @@ export const JOB_INFO = Object.freeze({
   'sales-incentive-check': ['Incentive 30-day check', 'Confirms incentives for shops still paying after 30 days'],
   'sales-report-daily': ['Daily sales report', 'WhatsApp summary to sales managers'],
   'sales-report-weekly': ['Weekly sales report', 'Monday WhatsApp summary to sales managers'],
+  'meta-insights-daily': ['Facebook ad numbers', 'Saves each shop’s daily ad results from Facebook'],
 });
 export const jobLabel = (name) => JOB_INFO[name]?.[0] || name;
 export const jobWhat = (name) => JOB_INFO[name]?.[1] || '';

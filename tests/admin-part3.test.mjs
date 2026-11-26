@@ -82,6 +82,8 @@ test('remove for good: 30 days, Owner, typed link; orders, reviews, parcels and 
     assert.doesNotMatch(list, new RegExp(`'${kept}'`), `${kept} is kept`);
   }
   assert.doesNotMatch(p, /delete from public\.stores/, 'the row stays as a placeholder');
+  assert.doesNotMatch(list, /'marketplace_listing'|'mobile_products'/, 'views that read stores are never on the list');
+  assert.match(p, /if \(select c\.relkind from pg_class c where c\.oid = to_regclass\('public\.' \|\| v_t\)\) is distinct from 'r' then\s+continue;/, 'plain tables only');
   assert.match(body(sql, 'admin_set_status'), /removed for good and cannot be opened again/);
   assert.match(body(sql, 'admin_note'), /'purge_photos'/);
   assert.equal(purgeState({ purged_at: '2026-11-01T00:00:00Z' }).key, 'purged');
