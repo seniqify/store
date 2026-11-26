@@ -27,6 +27,7 @@ import { loadBusiness }                               from '../utils/BusinessLoa
 import { updateStore, verifyPin, deleteStore }        from '../utils/storeService';
 import { categoryLinkId }                                from '../../api/_categoryLink.js';
 import { cacheStore, clearCachedStore }               from '../utils/businessStorage';
+import { fetchPlatformFlags, DEFAULT_FLAGS }          from '../utils/platformFlags';
 import { THEME_PRESETS, FEATURE_SUGGESTIONS, customTheme } from '../utils/buildConfig';
 import { uploadConfigImages, uploadSingleImage }      from '../utils/imageStorage';
 import { compressImageFile, PRODUCT_MAX_DIM, LOGO_MAX_DIM } from '../utils/imageCompress';
@@ -3090,6 +3091,13 @@ export default function ManageStore() {
   const [offerSeed,   setOfferSeed]   = useState(null);
   const [shared,      setShared]      = useState(false);    // "Link copied" after Share page
   const [arrivals,    setArrivals]    = useState([]);       // orders that landed while open (the bell)
+  // PocketLink Admin switches: a banner for every dashboard, maintenance mode.
+  const [flags,       setFlags]       = useState(DEFAULT_FLAGS);
+  useEffect(() => {
+    let live = true;
+    fetchPlatformFlags().then((f) => { if (live) setFlags(f); });
+    return () => { live = false; };
+  }, []);
   const isDesktop = useIsDesktop();
   const [saveStatus,  setSaveStatus]  = useState('idle');  // idle | saving | saved | error
   const [saveError,   setSaveError]   = useState('');
@@ -3262,6 +3270,28 @@ export default function ManageStore() {
     );
   }
 
+  // Maintenance switched on in PocketLink Admin: the dashboard waits a few
+  // minutes; the shop page itself stays open and keeps taking orders.
+  if (flags.maintenance) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-white">
+        <div className="text-center space-y-3 max-w-sm">
+          <p className="text-5xl">🛠️</p>
+          <p className="text-xl font-extrabold text-gray-900">Back in a few minutes</p>
+          <p className="text-sm text-gray-500">{flags.maintenanceText || 'PocketLink is being updated. Your shop page is still open and taking orders.'}</p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+            <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-1.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+              Try again
+            </button>
+            <Link to={`/${businessSlug}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-700 hover:text-gray-900 px-4 py-2.5 rounded-xl border border-gray-200 transition-colors">
+              View my shop page
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── PIN Gate ───────────────────────────────────────────────────────────────
   if (!pinVerified) {
     return <PinGate slug={businessSlug} config={config} onVerified={(pin) => { setStorePin(pin); setPinVerified(true); }} />;
@@ -3383,6 +3413,13 @@ export default function ManageStore() {
           onSearch={() => setPhoneSearch(true)} bell={bell('phone')} />
       )}
       {phoneSearch && <GlobalSearch {...searchProps} variant="page" onClose={() => setPhoneSearch(false)} />}
+
+      {/* ── A message from PocketLink to every shop (Admin → System and switches) ── */}
+      {flags.banner && (
+        <div role="note" className="bg-emerald-600 text-white text-center text-xs font-semibold px-4 py-2">
+          {flags.banner}
+        </div>
+      )}
 
       {/* ── Plan warnings (a running trial shows on the plan card, not here) ── */}
       {trialEnded && (

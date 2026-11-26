@@ -20,6 +20,7 @@ import AdminLog from './AdminLog.jsx';
 import AdminOrders from './AdminOrders.jsx';
 import AdminPeople from './AdminPeople.jsx';
 import AdminCoins from './AdminCoins.jsx';
+import AdminSystem from './AdminSystem.jsx';
 
 const BG = 'bg-[#0a0f0c] text-[#e7efe9]';
 
@@ -124,9 +125,8 @@ function NotAdmin() {
 
 const MENU = [
   ['', 'Home', 'home'], ['stores', 'Stores', 'store'], ['orders', 'Orders and delivery', 'box'], ['billing', 'Billing and plans', 'card'],
-  ['coins', 'Coins and WhatsApp', 'coin'], ['people', 'People and access', 'people'], ['log', 'Audit log', 'list'],
+  ['coins', 'Coins and WhatsApp', 'coin'], ['people', 'People and access', 'people'], ['system', 'System and switches', 'server'], ['log', 'Audit log', 'list'],
 ];
-const NEXT = [['System and switches', 'server']];
 
 function Shell({ children }) {
   const { me, path } = useAdmin();
@@ -144,12 +144,6 @@ function Shell({ children }) {
       <div className="flex flex-col gap-0.5">
         {MENU.map(([p, t, icon]) => <NavLink key={p || 'home'} to={path(p)} end={!p} className={link}><Icon name={icon} />{t}</NavLink>)}
         <a href="https://crm.pocketlink.store" target="_blank" rel="noreferrer" className={link({ isActive: false })}><Icon name="phone" />Sales CRM<Icon name="ext" size={14} className="ml-auto opacity-60" /></a>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <div className="px-3 pb-1 text-[11px] font-bold tracking-[0.08em] text-[#73897d]">COMING NEXT</div>
-        {NEXT.map(([t, icon]) => (
-          <div key={t} className="flex items-center gap-2.5 min-h-10 px-3 rounded-xl text-[14px] text-[#73897d]"><Icon name={icon} />{t}</div>
-        ))}
       </div>
     </nav>
   );
@@ -232,6 +226,7 @@ export default function AdminApp({ base = '' }) {
           <Route path="orders" element={<AdminOrders />} />
           <Route path="people" element={<AdminPeople />} />
           <Route path="coins" element={<AdminCoins />} />
+          <Route path="system" element={<AdminSystem />} />
           <Route path="*" element={<Navigate to={value.path()} replace />} />
         </Routes>
       </Shell>

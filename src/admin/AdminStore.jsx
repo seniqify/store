@@ -3,11 +3,11 @@
 // Every change asks for a reason (where it matters) and is written to the
 // audit log by the database.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAdmin } from './adminContext.js';
-import { adminStore, storeUpdate, setPlan, setStatus, razorpayStatus, razorpayStop, razorpayRefund, storeCoins, coinsAdjust, resetPin } from './adminService.js';
+import { adminStore, storeUpdate, setPlan, setStatus, razorpayStatus, razorpayStop, razorpayRefund, storeCoins, coinsAdjust, resetPin, purgeStore } from './adminService.js';
 import {
-  stateOf, planLabel, paysBy, inr, num, dayLabel, whenLabel, daysLeft, extendedEnd, extendedByYears, dateInputEnd, changedKeys, actionLabel, diffLine, isPaid,
+  stateOf, planLabel, paysBy, inr, num, dayLabel, whenLabel, daysLeft, extendedEnd, extendedByYears, dateInputEnd, changedKeys, actionLabel, diffLine, isPaid, purgeState,
 } from './adminLogic.js';
 import { Icon, Chip, Kpi, Panel, Spinner, Notice, Empty } from './ui.jsx';
 import { btn, card, input, label, th, td } from './adminStyles.js';
@@ -147,6 +147,48 @@ function PinTab({ s }) {
   );
 }
 const SHOP = 'https://www.pocketlink.store';
+
+// 30 days after delete the Owner can erase a shop for good. The database
+// does the checks and the erasing; the admin-system function removes photos.
+function RemoveForGood({ s, reason, onDone }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const purgedAt = s.config?.purgedAt || null;
+  const readyAt = Number.isFinite(Date.parse(s.admin_status_at || '')) ? new Date(Date.parse(s.admin_status_at) + 30 * 86400000).toISOString() : null;
+  const p = purgeState({ purged_at: purgedAt, ready_at: readyAt });
+  const okReason = reason.trim().length >= 3;
+  const go = async () => {
+    if (!window.confirm(purgedAt ? 'Look for leftover photos of this shop and remove them?' : `Remove ${s.slug} for good? Its content, photos and connected accounts are erased. This cannot be undone.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await purgeStore(s.slug, typed, reason);
+      const n = Object.values(r.removed || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+      const text = r.already ? `Leftover photos removed: ${num(r.photos)}.` : `Removed for good: ${num(r.photos)} photos and ${num(n)} saved records (keys, courier logins, carts, settings).`;
+      setMsg(r.photoError ? { kind: 'warn', text: `${text} ${r.photoError}` } : { kind: 'ok', text });
+      setTyped('');
+      await onDone();
+    } catch (x) { setMsg({ kind: 'error', text: x.message }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="border-t border-[#4c1d1d] pt-4">
+      <div className="font-bold text-[14px]">{purgedAt ? 'Removed for good' : 'Remove for good'}</div>
+      <p className="m-0 mt-1 mb-2.5 text-[13px] text-[#8fa69a]">{purgedAt
+        ? `On ${whenLabel(purgedAt)}. Its products, photos, details, PIN and connected accounts are gone and it cannot be opened again. Orders, reviews, parcel records, Coins and plan payments are kept.`
+        : 'Erases the shop: products, photos, details, PIN, connected payment, courier and Facebook accounts, cart reminders and settings. Kept: orders, reviews, parcel records, Coins and plan payments. The shop link stays taken. This cannot be undone.'}</p>
+      {!s.can.delete ? <p className="m-0 text-[13px] text-amber-200">Only the Owner can remove a shop for good.</p>
+        : !purgedAt && p.key === 'waiting' ? <Notice kind="warn">{p.label}. A deleted shop is kept 30 days in case it needs to come back.</Notice>
+          : (
+            <div className="flex flex-wrap gap-2.5 items-end max-w-xl">
+              <div className="flex-1 min-w-[200px]"><label className={label} htmlFor="rg-type">Type <b className="text-red-200">{s.slug}</b> to confirm</label><input id="rg-type" className={`${input} border-red-900`} value={typed} onChange={(e) => setTyped(e.target.value.trim())} placeholder={s.slug} /></div>
+              <button type="button" className={purgedAt ? btn.danger : btn.red} disabled={!okReason || typed !== s.slug || busy} onClick={go}>{busy ? 'Removing…' : purgedAt ? 'Remove leftover photos' : 'Remove for good'}</button>
+            </div>
+          )}
+      {s.can.delete && !okReason && !(!purgedAt && p.key === 'waiting') && <p className="m-0 mt-2 text-[12.5px] text-[#8fa69a]">Write a reason at the top first.</p>}
+      {msg && <div className="mt-2.5"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
+    </div>
+  );
+}
 
 function Row({ k, children }) {
   return <div className="flex flex-wrap gap-x-4 gap-y-0.5 py-2 border-b border-[#18231d] text-[14px]"><span className="w-44 text-[#8fa69a]">{k}</span><span className="flex-1 min-w-[160px] break-words">{children || '—'}</span></div>;
@@ -306,6 +348,7 @@ function Danger({ s, onSaved }) {
   const sub = s.config?.razorpaySubscriptionId;
   const autopay = Boolean(sub) && s.config?.autopayStopped?.sub !== sub && daysLeft(s.config?.planExpiresAt) > 0;
   const okReason = reason.trim().length >= 3;
+  const purged = Boolean(s.config?.purgedAt);
   return (
     <section aria-label="Pause or delete" className="rounded-2xl border border-red-900 bg-[#1a0f0f]">
       <div className="px-4 py-3.5 border-b border-[#4c1d1d]"><h2 className="m-0 text-[15px] font-bold text-red-200">Pause or delete</h2></div>
@@ -324,10 +367,10 @@ function Danger({ s, onSaved }) {
         <div>
           <div className="font-bold text-[14px]">{st === 'deleted' ? 'The shop is deleted' : 'Delete the shop'}</div>
           <p className="m-0 mt-1 mb-2.5 text-[13px] text-[#8fa69a]">{st === 'deleted'
-            ? `Deleted ${whenLabel(s.admin_status_at)}. Its page and dashboard are closed and it is hidden everywhere. Its data is kept, so you can restore it.`
+            ? (purged ? `Deleted ${whenLabel(s.admin_status_at)}, then removed for good.` : `Deleted ${whenLabel(s.admin_status_at)}. Its page and dashboard are closed and it is hidden everywhere. Its data is kept, so you can restore it.`)
             : 'Closes the shop page and the owner’s dashboard and hides it everywhere. Its data is kept, so you can restore it.'}</p>
           {!s.can.delete ? <p className="m-0 text-[13px] text-amber-200">Only the Owner can delete or restore shops.</p>
-            : st === 'deleted' ? <button type="button" className={btn.primary} disabled={!okReason || !!busy} onClick={() => run('open', 'The shop is restored.')}>{busy === 'open' ? 'Restoring…' : 'Restore the shop'}</button>
+            : st === 'deleted' ? (purged ? null : <button type="button" className={btn.primary} disabled={!okReason || !!busy} onClick={() => run('open', 'The shop is restored.')}>{busy === 'open' ? 'Restoring…' : 'Restore the shop'}</button>)
               : autopay ? <Notice kind="warn">This shop still pays by Razorpay auto-pay. Stop it first (Plan and payments → Razorpay auto-pay), then delete.</Notice>
                 : (
                   <div className="flex flex-wrap gap-2.5 items-end max-w-xl">
@@ -337,6 +380,7 @@ function Danger({ s, onSaved }) {
                 )}
         </div>
         {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+        {st === 'deleted' && <RemoveForGood s={s} reason={reason} onDone={onSaved} />}
       </div>
     </section>
   );
@@ -347,7 +391,8 @@ export default function AdminStore() {
   const { path } = useAdmin();
   const [s, setS] = useState(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState('overview');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (TABS.some(([k]) => k === params.get('tab')) ? params.get('tab') : 'overview'));
   const load = useCallback(async () => {
     try { setS(await adminStore(slug)); setErr(''); } catch (x) { setErr(x.message); }
   }, [slug]);
