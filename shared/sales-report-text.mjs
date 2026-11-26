@@ -44,12 +44,28 @@ function best(people) {
   return `${first(p.name)} (${parts.join(', ')})`;
 }
 
+/** 100 → '1h40m' (short, for the one-line WhatsApp value). */
+const hm = (min) => { const m = Math.round(Number(min) || 0); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ''}`; };
+
+/** Who logged in without work, and who was quiet long, for the Present value. */
+export function presentLine(d) {
+  const people = d.people || [];
+  const present = people.filter((p) => p.days_in > 0).length;
+  const idle = Number(d.idle_min) || 60;
+  const noWork = people.filter((p) => p.level === 'none').map((p) => first(p.name));
+  const quiet = people.filter((p) => p.level !== 'none' && Number(p.quiet_min) >= idle)
+    .sort((a, b) => b.quiet_min - a.quiet_min).slice(0, 3).map((p) => `${first(p.name)} ${hm(p.quiet_min)}`);
+  let s = `${present} of ${n(d.staff)}`;
+  if (noWork.length) s += `; logged in, no work: ${noWork.join(', ')}`;
+  if (quiet.length) s += `; quiet: ${quiet.join(', ')}`;
+  return s;
+}
+
 export function dailyValues(d) {
-  const present = (d.people || []).filter((p) => p.days_in > 0).length;
   return {
     1: tv(day(d.to)), 2: n(d.calls), 3: n(d.answered), 4: n(d.visits), 5: n(d.demos),
     6: n(d.paid), 7: inr(d.collected), 8: n(d.new_leads), 9: n(d.not_called), 10: n(d.late),
-    11: tv(`${present} of ${n(d.staff)}`), 12: tv(best(d.people)),
+    11: tv(presentLine(d)), 12: tv(best(d.people)),
   };
 }
 

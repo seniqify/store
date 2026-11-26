@@ -243,8 +243,8 @@ export const MODULES = Object.freeze([
       { shot: 'help', h: 'FAQ & help', caption: 'Answers for customers and for you.', steps: [
         'Customer questions, with the right answers.', 'Your own doubts: score, incentive, rules.', 'Not there? Ask the manager; the answer comes back here.',
       ] },
-      { shot: 'attendance', h: 'Attendance', caption: 'Your login times, the month and leave.', steps: [
-        'Today: login time, start and end of day.', 'Your month: present, late, half day, leave, holidays, weekly offs.', 'Ask for leave; your manager approves it here.',
+      { shot: 'attendance', h: 'Attendance', caption: 'Your login times, your work, the month and leave.', steps: [
+        'Today: login time, start and end of day, and your active time.', 'Your month: present, late, half day, leave, holidays, weekly offs. A day counts for real work (calls, visits or leads checked); logging in alone shows as “Logged in, no work”.', 'Ask for leave; your manager approves it here.',
       ] },
     ],
     mistakes: ['Keeping leads in your head instead of in the CRM.', 'Calling a lead that belongs to someone else.'],
@@ -382,8 +382,8 @@ export const MODULES = Object.freeze([
     sections: [
       { shot: 'mgr_today', h: 'Today', caption: 'Open it every morning and after lunch.', steps: [
         'The team’s numbers so far today.',
-        'Each person: logged in, calls, visits or leads checked, late follow-ups.',
-        'What needs you: wins to approve, leave to decide, questions to answer.',
+        'Each person: logged in, active time, calls, visits or leads checked, late follow-ups.',
+        'What needs you: wins to approve, leave to decide, questions to answer, and anyone quiet for over an hour.',
       ] },
       { shot: 'mgr_performance', h: 'Performance', caption: 'Each person’s score from their own targets, and the team’s.', steps: [
         'The team score and paid shops against the target.',

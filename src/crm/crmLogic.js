@@ -232,6 +232,7 @@ export const DAY_STATUS = Object.freeze({
   present: { label: 'Present', cls: 'bg-green-100 text-green-900' },
   late: { label: 'Late', cls: 'bg-amber-100 text-amber-900' },
   half: { label: 'Half day', cls: 'bg-orange-100 text-orange-900' },
+  nowork: { label: 'Logged in, no work', cls: 'bg-amber-200 text-amber-950' },
   absent: { label: 'Absent', cls: 'bg-red-100 text-red-900' },
   leave: { label: 'Leave', cls: 'bg-blue-100 text-blue-900' },
   holiday: { label: 'Holiday', cls: 'bg-violet-100 text-violet-900' },
@@ -252,8 +253,11 @@ const minutesOf = (time) => {
  * Days before the person was added to the CRM are 'before' and never count.
  * Order: manager's override > before they started > weekly off > holiday > approved leave >
  * future > no login (today: not in yet; earlier: absent) > late > half day > present.
+ * work: their sales_work_days row for that day. Once the work rule applies to
+ * the day (work.level set), a past day is judged by work: 'none' = logged in,
+ * no work; 'half' = half day; 'full' = present or late.
  */
-export function dayStatus({ day, today, staff, row, holidays, leaveDays, rules }) {
+export function dayStatus({ day, today, staff, row, holidays, leaveDays, rules, work }) {
   if (row?.status_override) return row.status_override;
   const start = staff?.created_at ? istDate(Date.parse(staff.created_at)) : '';
   if (start && day < start) return 'before';
@@ -269,6 +273,11 @@ export function dayStatus({ day, today, staff, row, holidays, leaveDays, rules }
   const late = loginMin > minutesOf(staff?.shift_start) + grace;
   const outAt = row?.day_end_at || row?.last_seen_at;
   const hours = outAt ? (Date.parse(outAt) - Date.parse(inAt)) / 3600000 : 0;
+  if (day < today && work?.level) {
+    if (work.level === 'none') return 'nowork';
+    if (work.level === 'half') return 'half';
+    return late ? 'late' : 'present';
+  }
   if (day < today && hours < halfH) return 'half';
   return late ? 'late' : 'present';
 }
@@ -287,26 +296,28 @@ export function leaveDaySet(leaves, staffId) {
  * A month's calendar for one person, Monday first.
  * Returns { cells: [{ day, n, status, inAt }|null], counts, workingDays, workedSoFar }.
  */
-export function monthCalendar({ year, month, today, staff, rows, holidays, leaves, rules }) {
+export function monthCalendar({ year, month, today, staff, rows, holidays, leaves, rules, works }) {
   const first = `${year}-${String(month).padStart(2, '0')}-01`;
   const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const byDay = new Map((rows || []).filter((r) => r.staff_id === staff?.user_id).map((r) => [r.day, r]));
+  const workByDay = new Map((works || []).filter((w) => w.staff_id === staff?.user_id).map((w) => [w.day, w]));
   const holidaySet = holidays instanceof Set ? holidays : new Set((holidays || []).map((h) => h.day || h));
   const leaveDays = leaveDaySet(leaves, staff?.user_id);
   const lead = (weekday(first) + 6) % 7;
   const cells = Array.from({ length: lead }, () => null);
-  const counts = { present: 0, late: 0, half: 0, absent: 0, leave: 0, holiday: 0, off: 0 };
+  const counts = { present: 0, late: 0, half: 0, nowork: 0, absent: 0, leave: 0, holiday: 0, off: 0 };
   let workingDays = 0, workedSoFar = 0, leaveSoFar = 0;
   for (let n = 1; n <= days; n++) {
     const day = `${year}-${String(month).padStart(2, '0')}-${String(n).padStart(2, '0')}`;
     const row = byDay.get(day) || null;
-    const status = dayStatus({ day, today, staff, row, holidays: holidaySet, leaveDays, rules });
+    const work = workByDay.get(day) || null;
+    const status = dayStatus({ day, today, staff, row, holidays: holidaySet, leaveDays, rules, work });
     if (counts[status] !== undefined) counts[status]++;
     const isWorking = status !== 'off' && status !== 'holiday' && status !== 'before';
     if (isWorking) workingDays++;
     if (isWorking && day <= today && status !== 'today') workedSoFar++;
     if (status === 'leave' && day <= today) leaveSoFar++;
-    cells.push({ day, n, status, inAt: row?.day_start_at || row?.first_seen_at || null });
+    cells.push({ day, n, status, inAt: row?.day_start_at || row?.first_seen_at || null, active: work ? work.active_min : null, work });
   }
   return { cells, counts, workingDays, workedSoFar, leaveSoFar };
 }
@@ -717,3 +728,102 @@ export function waitedLabel(fromIso, now = Date.now()) {
 
 /** Own sign-up link. */
 export const signupLink = (code) => `https://www.pocketlink.store/start?ref=${encodeURIComponent(code || '')}`;
+
+// ── Attendance counts work (CRM part 6) ─────────────────────────────────────
+// The numbers come from sales_work_days() in the database; these only label
+// them and spot someone quiet right now. Same defaults as sales_work_rule().
+export const WORK_DEFAULTS = Object.freeze({
+  on: true, from: null, gap_min: 30, idle_alert_min: 60, field_gap_min: 180,
+  min: Object.freeze({
+    caller: Object.freeze({ calls: 20, hours: 4.5 }),
+    ads: Object.freeze({ checks: 15, hours: 4.5 }),
+    field: Object.freeze({ visits: 3, hours: 0 }),
+    manager: Object.freeze({ hours: 0 }),
+  }),
+});
+
+/** The rule in Settings (work.work_rule) over the defaults. */
+export function workRule(work) {
+  const r = work?.work_rule && typeof work.work_rule === 'object' ? work.work_rule : {};
+  return { ...WORK_DEFAULTS, ...r, min: { ...WORK_DEFAULTS.min, ...(r.min || {}) } };
+}
+
+/** 340 → '5 h 40 m'; 25 → '25 m'; nothing → ''. */
+export function minutesLabel(min) {
+  const m = Math.round(Number(min));
+  if (!Number.isFinite(m) || m < 0) return '';
+  return m < 60 ? `${m} m` : `${Math.floor(m / 60)} h ${m % 60} m`;
+}
+
+/** What a role's day needs: { key, word, need, hours }. key null = no count needed. */
+export function roleNeed(role, rule) {
+  const m = rule?.min?.[role] || WORK_DEFAULTS.min[role] || WORK_DEFAULTS.min.caller;
+  const key = role === 'field' ? 'visits' : role === 'ads' ? 'checks' : role === 'manager' ? null : 'calls';
+  const word = { visits: 'visits', checks: 'leads checked', calls: 'calls' }[key] || '';
+  const need = key ? Math.max(0, Number(m[key]) || 0) : 0;
+  const hours = Math.max(0, Number(m.hours) || 0);
+  return { key, word, need, hours };
+}
+
+/** A day's work in one line: 'Active 5 h 40 m · 24 of 20 calls'. */
+export function workLine(role, work, rule) {
+  if (!work) return '';
+  const n = roleNeed(role, rule);
+  const got = n.key === 'checks' ? (work.checks || 0) + (work.added || 0) : n.key ? work[n.key] || 0 : null;
+  const parts = [`Active ${minutesLabel(work.active_min || 0)}`];
+  if (n.key) parts.push(`${got} of ${n.need} ${n.word}`);
+  return parts.join(' · ');
+}
+
+const hm = (time) => String(time || '').split(':').map(Number);
+
+/**
+ * Someone quiet right now: in today, day not ended, inside their shift, and
+ * nothing done for idle_alert_min (field: no visit for field_gap_min).
+ * Returns { min, what, since } or null. Managers are never flagged.
+ */
+export function quietNow({ staff, row, work, rule, today, now = Date.now() }) {
+  if (!staff?.active || staff.role === 'manager') return null;
+  const inAt = Date.parse(row?.day_start_at || row?.first_seen_at || '');
+  if (!Number.isFinite(inAt) || row?.day_end_at) return null;
+  const [sh, sm] = hm(staff.shift_start || '09:30');
+  const [eh, em] = hm(staff.shift_end || '18:30');
+  const from = istInstant(today, sh || 0, sm || 0);
+  const to = istInstant(today, eh || 0, em || 0);
+  if (now < from || now > to) return null;
+  const field = staff.role === 'field';
+  const last = Date.parse((field ? work?.last_visit_at : work?.last_work_at) || '') || 0;
+  const since = Math.max(inAt, from, last);
+  const min = Math.floor((now - since) / 60000);
+  const limit = Number(field ? rule?.field_gap_min : rule?.idle_alert_min) || (field ? 180 : 60);
+  if (min < limit) return null;
+  return { min, since, what: field ? 'no visit' : staff.role === 'ads' ? 'no lead checked' : 'nothing done' };
+}
+
+/** A field day's longest stretch without a visit, if over the limit: 'No visit 11:05 am – 3:10 pm (4 h 5 m)'. */
+export function fieldGapLine(work, rule) {
+  const g = Number(work?.visit_gap_min);
+  const limit = Number(rule?.field_gap_min) || 180;
+  if (!Number.isFinite(g) || g < limit || !work.visit_gap_from) return '';
+  return `No visit ${istTime(work.visit_gap_from)} – ${istTime(work.visit_gap_to)} (${minutesLabel(g)})`;
+}
+
+/** Settings form (strings) → the work_rule saved in sales_settings 'work', numbers clamped. */
+export function workRuleFromForm(f) {
+  const n = (v, lo, hi, def) => { const x = Number(v); return Number.isFinite(x) && String(v).trim() !== '' ? Math.min(hi, Math.max(lo, x)) : def; };
+  const half = (x) => Math.round(x * 2) / 2;
+  const d = WORK_DEFAULTS;
+  return {
+    on: f?.on !== false,
+    from: /^\d{4}-\d{2}-\d{2}$/.test(f?.from || '') ? f.from : null,
+    gap_min: Math.round(n(f?.gap_min, 5, 240, d.gap_min)),
+    idle_alert_min: Math.round(n(f?.idle_alert_min, 15, 480, d.idle_alert_min)),
+    field_gap_min: Math.round(n(f?.field_gap_min, 30, 600, d.field_gap_min)),
+    min: {
+      caller: { calls: Math.round(n(f?.caller_calls, 0, 500, 20)), hours: half(n(f?.caller_hours, 0, 12, 4.5)) },
+      ads: { checks: Math.round(n(f?.ads_checks, 0, 500, 15)), hours: half(n(f?.ads_hours, 0, 12, 4.5)) },
+      field: { visits: Math.round(n(f?.field_visits, 0, 100, 3)), hours: 0 },
+      manager: { hours: 0 },
+    },
+  };
+}

@@ -36,6 +36,7 @@ export const TEAM_FAQ = Object.freeze([
   ['crm', 'How do I change my password?', 'Tap your name (top right on the phone, bottom left on a computer) → My account → Change my password.'],
   ['score', 'How is my score calculated?', '5 areas: Activity 20%, Reach 15%, Conversion 30%, Revenue 25%, Discipline 10%. Each KPI is your actual against your target, up to 100%; monthly targets are counted by today. See My score for your numbers.'],
   ['score', 'When is my incentive paid?', null, 'incentive'],
+  ['rules', 'When does a day count as present?', 'When you do real work, not just log in. Each role has a daily minimum: calls for callers, shop visits for field, leads checked (or added by hand) for Ads & leads, plus active time. Active time is your work with no gap over 30 minutes; longer gaps are quiet time. Under half the minimum shows as “Logged in, no work”; at least half is a half day. Your Today card shows your active time as you go. Your manager can still mark a day by hand.'],
   ['rules', 'A customer asks for a discount.', null, 'discount'],
   ['rules', 'A customer wants to pay me in cash.', null, 'cash'],
 ]);

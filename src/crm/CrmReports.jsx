@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCrm } from './crmContext.js';
 import { listReports, reportData } from './crmService.js';
-import { istDate, istTime, shortDay } from './crmLogic.js';
+import { istDate, istTime, shortDay, minutesLabel } from './crmLogic.js';
 import { DAILY_TEMPLATE, WEEKLY_TEMPLATE, dailyValues, weeklyValues, fillTemplate } from '../../shared/sales-report-text.mjs';
 import { Spinner, Empty, Notice } from './ui.jsx';
 import { btn, card } from './crmStyles.js';
@@ -15,17 +15,19 @@ function People({ d }) {
   if (!d?.people?.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[620px]">
+      <table className="w-full text-sm min-w-[760px]">
         <thead><tr className="text-left text-[12px] uppercase tracking-wide text-gray-500">
           <th className="py-2 font-bold">Person</th><th className="py-2 font-bold">Calls (picked up)</th><th className="py-2 font-bold">Visits</th>
-          <th className="py-2 font-bold">Demos</th><th className="py-2 font-bold">Paid shops</th><th className="py-2 font-bold">Late follow-ups</th><th className="py-2 font-bold">Days in</th>
+          <th className="py-2 font-bold">Demos</th><th className="py-2 font-bold">Paid shops</th><th className="py-2 font-bold">Late follow-ups</th><th className="py-2 font-bold">Days in</th><th className="py-2 font-bold">Active</th><th className="py-2 font-bold">Quiet</th>
         </tr></thead>
         <tbody>
           {d.people.map((p) => (
             <tr key={p.name} className="border-t border-gray-100">
               <td className="py-2 font-bold">{p.name}</td><td className="py-2">{p.calls} ({p.answered})</td><td className="py-2">{p.visits}</td>
               <td className="py-2">{p.demos}</td><td className="py-2 font-bold">{p.paid}</td><td className="py-2">{p.late}</td>
-              <td className="py-2">{p.days_in}{d.days === 1 && p.first_login ? ` · in ${istTime(p.first_login)}` : ''}</td>
+              <td className="py-2">{p.days_in}{d.days === 1 && p.first_login ? ` · in ${istTime(p.first_login)}` : ''}{d.days === 1 && p.level === 'none' ? <span className="block text-[12px] font-bold text-amber-800">Logged in, no work</span> : null}</td>
+              <td className="py-2">{p.active_min == null ? '—' : minutesLabel(p.active_min)}</td>
+              <td className={`py-2 ${Number(p.quiet_min) >= (Number(d.idle_min) || 60) ? 'font-bold text-amber-800' : ''}`}>{p.quiet_min == null ? '—' : minutesLabel(p.quiet_min)}</td>
             </tr>
           ))}
         </tbody>

@@ -6,7 +6,7 @@ import { useCrm } from './crmContext.js';
 import { saveSetting, updateStaff, listHolidays, addHoliday, removeHoliday, sendTestReport } from './crmService.js';
 import {
   KPA, KPI_DEFS, weightsFrom, DEFAULT_WEIGHTS, incentiveRule, incentiveRuleLines, RECOMMENDED_INCENTIVE,
-  LATE_GRACE_MIN, HALF_DAY_HOURS, shortDay,
+  LATE_GRACE_MIN, HALF_DAY_HOURS, shortDay, workRule, workRuleFromForm, istDate, addDays,
 } from './crmLogic.js';
 import { DAILY_TEMPLATE, WEEKLY_TEMPLATE } from '../../shared/sales-report-text.mjs';
 import { Field, Notice, Icon, Spinner } from './ui.jsx';
@@ -69,6 +69,15 @@ function SettingsForm() {
     caller_start: work.shift?.caller?.start || '09:30', caller_end: work.shift?.caller?.end || '18:30',
     field_start: work.shift?.field?.start || '10:00', field_end: work.shift?.field?.end || '19:00', weekly_off: String(work.weekly_off ?? 0),
   }));
+  // Attendance counts work (part 6)
+  const [wr, setWr] = useState(() => {
+    const r = workRule(work);
+    return {
+      on: r.on !== false, from: r.from || addDays(istDate(), 1), gap_min: String(r.gap_min), idle_alert_min: String(r.idle_alert_min), field_gap_min: String(r.field_gap_min),
+      caller_calls: String(r.min.caller?.calls ?? 20), caller_hours: String(r.min.caller?.hours ?? 4.5),
+      ads_checks: String(r.min.ads?.checks ?? 15), ads_hours: String(r.min.ads?.hours ?? 4.5), field_visits: String(r.min.field?.visits ?? 3),
+    };
+  });
   // People
   const [people, setPeople] = useState(() => Object.fromEntries(staff.map((s) => [s.user_id, { shift_start: String(s.shift_start).slice(0, 5), shift_end: String(s.shift_end).slice(0, 5), weekly_off: String(s.weekly_off) }])));
   // Holidays
@@ -161,9 +170,28 @@ function SettingsForm() {
           <Field label="Field starts" htmlFor="wk-fs"><input id="wk-fs" type="time" className={input} value={wk.field_start} onChange={(e) => setWk({ ...wk, field_start: e.target.value })} /></Field>
           <Field label="Field ends" htmlFor="wk-fe"><input id="wk-fe" type="time" className={input} value={wk.field_end} onChange={(e) => setWk({ ...wk, field_end: e.target.value })} /></Field>
         </div>
+        <div className="border-t border-gray-100 pt-3 space-y-2">
+          <h3 className="font-extrabold text-[15px]">Present needs real work</h3>
+          <p className="text-[13px] text-gray-600">A day counts when the person reaches their role’s minimum: calls, visits or leads checked, plus active time. Active time is the time between actions when the next one comes within the gap below; a longer gap is quiet time. Logged in but under half the minimum shows as “Logged in, no work”; at least half is a half day. Your mark by hand on the calendar always wins.</p>
+          <label className="flex items-center gap-2 text-[14px] font-semibold"><input type="checkbox" checked={wr.on} onChange={(e) => setWr({ ...wr, on: e.target.checked })} className="w-4 h-4 accent-green-700" />Count work, not logins</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Field label="Starting from" htmlFor="wr-from" hint="Earlier days keep the old rule"><input id="wr-from" type="date" className={input} value={wr.from} onChange={(e) => setWr({ ...wr, from: e.target.value })} /></Field>
+            <Field label="Callers: calls a day" htmlFor="wr-cc"><input id="wr-cc" type="number" min="0" max="500" className={input} value={wr.caller_calls} onChange={(e) => setWr({ ...wr, caller_calls: e.target.value })} /></Field>
+            <Field label="Callers: active hours" htmlFor="wr-ch"><input id="wr-ch" type="number" min="0" max="12" step="0.5" className={input} value={wr.caller_hours} onChange={(e) => setWr({ ...wr, caller_hours: e.target.value })} /></Field>
+            <Field label="Field: visits a day" htmlFor="wr-fv"><input id="wr-fv" type="number" min="0" max="100" className={input} value={wr.field_visits} onChange={(e) => setWr({ ...wr, field_visits: e.target.value })} /></Field>
+            <Field label="Ads & leads: leads checked" htmlFor="wr-ac" hint="Leads added by hand count too"><input id="wr-ac" type="number" min="0" max="500" className={input} value={wr.ads_checks} onChange={(e) => setWr({ ...wr, ads_checks: e.target.value })} /></Field>
+            <Field label="Ads & leads: active hours" htmlFor="wr-ah"><input id="wr-ah" type="number" min="0" max="12" step="0.5" className={input} value={wr.ads_hours} onChange={(e) => setWr({ ...wr, ads_hours: e.target.value })} /></Field>
+            <Field label="Quiet after a gap of (min)" htmlFor="wr-gap"><input id="wr-gap" type="number" min="5" max="240" className={input} value={wr.gap_min} onChange={(e) => setWr({ ...wr, gap_min: e.target.value })} /></Field>
+            <Field label="Tell me when quiet for (min)" htmlFor="wr-idle" hint="On your Today screen"><input id="wr-idle" type="number" min="15" max="480" className={input} value={wr.idle_alert_min} onChange={(e) => setWr({ ...wr, idle_alert_min: e.target.value })} /></Field>
+            <Field label="Field: no visit for (min)" htmlFor="wr-fg" hint="Flag a gap this long"><input id="wr-fg" type="number" min="30" max="600" className={input} value={wr.field_gap_min} onChange={(e) => setWr({ ...wr, field_gap_min: e.target.value })} /></Field>
+          </div>
+          <p className="text-[12.5px] text-gray-500">Managers have no minimum. “Half day under (hours)” above applies only to days before the start date.</p>
+        </div>
         {msg.work && <Notice kind={msg.work.kind}>{msg.work.text}</Notice>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btn.primary} onClick={() => save('work', () => saveSetting('work', {
+            ...(settings?.work || {}),
+            work_rule: workRuleFromForm(wr),
             grace_min: Math.max(0, Math.min(120, Number(wk.grace_min) || 0)), half_day_hours: Math.max(1, Math.min(12, Number(wk.half_day_hours) || HALF_DAY_HOURS)),
             weekly_off: Number(wk.weekly_off), shift: { caller: { start: wk.caller_start, end: wk.caller_end }, field: { start: wk.field_start, end: wk.field_end } },
           }))}>Save work rules</button>
