@@ -126,3 +126,26 @@ export const purgeList = async () => (await rpc('admin_purge_list')) || [];
 export const purgeStore = (slug, confirm, reason) => fn('admin-system', { action: 'purge', slug, confirm, reason });
 export const systemKeys = () => fn('admin-system', { action: 'keys' });
 export const systemPing = () => fn('admin-system', { action: 'ping' });
+
+// ── Salary: worked out in the browser (utils/payroll.js), checked and kept by
+//    the database (supabase/salary-forward.sql). Nothing here moves money. ──
+export const payrollInputs = (month) => rpc('admin_payroll_inputs', { p_month: month });
+export const payrollSaveDrafts = (month, slips, reason) => rpc('admin_payroll_save_drafts', { p_month: month, p_slips: slips, p_reason: reason || null });
+export const payrollDraftRemove = (id, reason) => rpc('admin_payroll_draft_remove', { p_slip: id, p_reason: reason });
+export const payrollLineAdd = (id, kind, amount, reason) => rpc('admin_payroll_line_add', { p_slip: id, p_kind: kind, p_amount: amount, p_reason: reason });
+export const payrollLineRemove = (id, index, reason) => rpc('admin_payroll_line_remove', { p_slip: id, p_index: index, p_reason: reason || null });
+export const payrollApprove = (month, ids, reason) => rpc('admin_payroll_approve', { p_month: month, p_ids: ids || null, p_reason: reason || null });
+export const payrollUnapprove = (id, reason) => rpc('admin_payroll_unapprove', { p_slip: id, p_reason: reason });
+export const payrollMarkPaid = (id, method, ref, paidOn, reason) => rpc('admin_payroll_mark_paid', { p_slip: id, p_method: method, p_ref: ref || null, p_paid_on: paidOn, p_reason: reason || null });
+export const payrollUndoPaid = (id, reason) => rpc('admin_payroll_undo_paid', { p_slip: id, p_reason: reason });
+export const payrollSettingsSave = (value, reason) => rpc('admin_payroll_settings_save', { p_value: value, p_reason: reason || null });
+export const payrollPersonSave = (userId, f, reason) => rpc('admin_payroll_person_save', {
+  p_user: userId, p_base: f.base, p_joined: f.joined, p_employee_no: f.employeeNo || null, p_pay_to: f.payTo || null,
+  p_prof_tax: f.profTax, p_active: f.active, p_reason: reason || null,
+});
+export const payrollAdvanceAdd = (userId, amount, givenOn, perMonth, note) => rpc('admin_payroll_advance_add', {
+  p_user: userId, p_amount: amount, p_given_on: givenOn, p_per_month: perMonth || null, p_note: note,
+});
+export const payrollAdvanceRemove = (id, reason) => rpc('admin_payroll_advance_remove', { p_id: id, p_reason: reason });
+/** The WhatsApp "salary paid" message (sent only when its template is set). */
+export const payrollNotify = (slipId) => fn('admin-salary', { action: 'notify', slipId });

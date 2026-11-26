@@ -28,7 +28,7 @@ const json = (body: unknown, status = 200) =>
 
 // Every server function in supabase/functions (this one excluded).
 export const FUNCTIONS = [
-  'admin-billing', 'admin-people', 'cart-reminders', 'cart-reminders-now', 'console-assistant', 'console-team',
+  'admin-billing', 'admin-people', 'admin-salary', 'cart-reminders', 'cart-reminders-now', 'console-assistant', 'console-team',
   'create-razorpay-subscription', 'meta-capi', 'meta-insights-snapshot', 'order-create', 'payments-connect',
   'payments-create-order', 'payments-link', 'payments-verify', 'plan-activate', 'razorpay-webhook', 'review-asks',
   'review-asks-now', 'sales-lead-in', 'sales-report', 'sales-staff', 'send-campaign', 'send-offer', 'send-otp',
@@ -59,6 +59,7 @@ export const KEYS: [string, string][] = [
   ['SENIQIFY_SHIP_FAILED_TEMPLATE_URL', 'Parcel update: delivery failed'],
   ['SENIQIFY_SALES_DAILY_TEMPLATE_URL', 'The 7 pm sales report to managers'],
   ['SENIQIFY_SALES_WEEKLY_TEMPLATE_URL', 'The Monday sales report to managers'],
+  ['SENIQIFY_SALARY_PAID_TEMPLATE_URL', '"Salary paid" message to the sales team'],
   ['SHADOWFAX_WEBHOOK_SECRET', 'Parcel messages from Shadowfax'],
   ['META_APP_SECRET', 'Facebook lead forms (sales leads)'],
   ['META_CAPI_SECRET', 'Facebook purchase tracking for shops'],

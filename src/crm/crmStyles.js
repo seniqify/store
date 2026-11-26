@@ -25,16 +25,16 @@ export function toInstantLocal(value) {
 export const MENUS = {
   manager: [['', 'Today', 'home'], ['leads', 'Leads', 'leads'], ['followups', 'Follow-ups', 'calendar'], ['performance', 'Performance', 'chart'],
     ['assign', 'Assign', 'assign'], ['sources', 'Lead sources', 'bolt'], ['queue', 'Call queue', 'phone'], ['checkin', 'Check in', 'pin'],
-    ['visits', 'Field visits', 'map'], ['incentives', 'Incentives', 'coin'], ['attendance', 'Attendance', 'clock'], ['reports', 'Reports', 'report'],
+    ['visits', 'Field visits', 'map'], ['incentives', 'Incentives', 'coin'], ['pay', 'My pay', 'wallet'], ['attendance', 'Attendance', 'clock'], ['reports', 'Reports', 'report'],
     ['scripts', 'Scripts', 'script'], ['training', 'Training', 'book'], ['help', 'FAQ & help', 'help'], ['team', 'Team', 'team'], ['settings', 'Settings', 'gear']],
   caller: [['', 'Today', 'home'], ['queue', 'Call queue', 'phone'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
-    ['performance', 'My score', 'chart'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
+    ['performance', 'My score', 'chart'], ['pay', 'My pay', 'wallet'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
     ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
   field: [['', 'Today', 'home'], ['checkin', 'Check in', 'pin'], ['leads', 'My leads', 'leads'], ['followups', 'Follow-ups', 'calendar'],
-    ['performance', 'My score', 'chart'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
+    ['performance', 'My score', 'chart'], ['pay', 'My pay', 'wallet'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
     ['scripts', 'Scripts', 'script'], ['help', 'FAQ & help', 'help']],
   ads: [['', 'Today', 'home'], ['check', 'Check leads', 'shield'], ['add', 'Add leads', 'plus'], ['sources', 'Lead sources', 'bolt'],
-    ['performance', 'My score', 'chart'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
+    ['performance', 'My score', 'chart'], ['pay', 'My pay', 'wallet'], ['incentives', 'My incentive', 'coin'], ['attendance', 'Attendance', 'clock'], ['training', 'Training', 'book'],
     ['help', 'FAQ & help', 'help']],
 };
 export const PHONE_TABS = 4;

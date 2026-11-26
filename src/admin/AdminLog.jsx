@@ -37,7 +37,7 @@ export default function AdminLog() {
           <p className="m-0 mt-1 text-[14px] text-[#8fa69a]">Every change made in Admin. Nobody can edit or delete it, not even the Owner.</p>
         </div>
         <select aria-label="Kind" className={`${input} w-auto`} value={kind} onChange={(e) => { setRows(null); setKind(e.target.value); }}>
-          <option value="">All changes</option><option value="plan">Plans</option><option value="edit">Shop details</option><option value="paused">Pauses</option><option value="deleted">Deletes</option><option value="open">Opened again</option><option value="switch">Switches</option><option value="job">Jobs</option><option value="purged">Removed for good</option>
+          <option value="">All changes</option><option value="plan">Plans</option><option value="edit">Shop details</option><option value="paused">Pauses</option><option value="deleted">Deletes</option><option value="open">Opened again</option><option value="switch">Switches</option><option value="job">Jobs</option><option value="purged">Removed for good</option><option value="salary">Salary</option>
         </select>
         <button type="button" className={btn.ghost} onClick={exportCsv} disabled={!rows?.length}><Icon name="download" size={16} />Export</button>
       </header>

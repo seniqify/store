@@ -21,6 +21,8 @@ const PATHS = {
   download: 'M12 3v12M7 10l5 5 5-5M4 21h16',
   back: 'M15 18l-6-6 6-6',
   alert: 'M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  wallet: 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zM3 7l12-4v4M16 13.5h2',
+  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4',
 };
 
 export function Icon({ name, size = 18, className = '' }) {

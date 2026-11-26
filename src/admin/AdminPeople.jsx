@@ -15,6 +15,7 @@ const ACTIONS = [
   ['see', 'See stores, orders, billing and people'], ['see_private', 'See owners’ phone numbers'], ['edit_store', 'Change shop details, reset a shop PIN, decide reported reviews'],
   ['plan', 'Change plans, give Coins, stop auto-pay, refunds'], ['pause', 'Pause a shop'], ['delete', 'Delete or restore a shop, reset someone’s 2-step'],
   ['people', 'Add, change and remove people'], ['money', 'See billing and Coins'],
+  ['salary', 'See the sales team’s salaries, add a bonus, note advances, mark paid'], ['salary_approve', 'Approve salaries, set salaries and salary rules'],
 ];
 
 function Secret({ title, value, onClose }) {

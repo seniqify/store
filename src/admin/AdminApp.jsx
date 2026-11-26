@@ -8,7 +8,7 @@ import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'reac
 import {
   adminSession, onAdminAuthChange, adminSignIn, adminSignOut, adminMe, twoStepState, twoStepEnroll, twoStepVerify,
 } from './adminService.js';
-import { ROLE_LABEL } from './adminLogic.js';
+import { ROLE_LABEL, canDo } from './adminLogic.js';
 import { AdminCtx, useAdmin } from './adminContext.js';
 import { Icon, Notice, Spinner } from './ui.jsx';
 import { btn, input, label } from './adminStyles.js';
@@ -21,6 +21,8 @@ import AdminOrders from './AdminOrders.jsx';
 import AdminPeople from './AdminPeople.jsx';
 import AdminCoins from './AdminCoins.jsx';
 import AdminSystem from './AdminSystem.jsx';
+import AdminSalary, { AdminSalaryPerson } from './AdminSalary.jsx';
+import AdminSalarySetup from './AdminSalarySetup.jsx';
 
 const BG = 'bg-[#0a0f0c] text-[#e7efe9]';
 
@@ -125,7 +127,7 @@ function NotAdmin() {
 
 const MENU = [
   ['', 'Home', 'home'], ['stores', 'Stores', 'store'], ['orders', 'Orders and delivery', 'box'], ['billing', 'Billing and plans', 'card'],
-  ['coins', 'Coins and WhatsApp', 'coin'], ['people', 'People and access', 'people'], ['system', 'System and switches', 'server'], ['log', 'Audit log', 'list'],
+  ['coins', 'Coins and WhatsApp', 'coin'], ['people', 'People and access', 'people'], ['salary', 'Salary', 'wallet'], ['system', 'System and switches', 'server'], ['log', 'Audit log', 'list'],
 ];
 
 function Shell({ children }) {
@@ -142,7 +144,7 @@ function Shell({ children }) {
         <div><div className="font-extrabold text-[15px]">PocketLink Admin</div><div className="text-[12px] text-[#8fa69a]">admin.pocketlink.store</div></div>
       </div>
       <div className="flex flex-col gap-0.5">
-        {MENU.map(([p, t, icon]) => <NavLink key={p || 'home'} to={path(p)} end={!p} className={link}><Icon name={icon} />{t}</NavLink>)}
+        {MENU.filter(([p]) => p !== 'salary' || canDo(me.role, 'salary')).map(([p, t, icon]) => <NavLink key={p || 'home'} to={path(p)} end={!p} className={link}><Icon name={icon} />{t}</NavLink>)}
         <a href="https://crm.pocketlink.store" target="_blank" rel="noreferrer" className={link({ isActive: false })}><Icon name="phone" />Sales CRM<Icon name="ext" size={14} className="ml-auto opacity-60" /></a>
       </div>
     </nav>
@@ -227,6 +229,10 @@ export default function AdminApp({ base = '' }) {
           <Route path="people" element={<AdminPeople />} />
           <Route path="coins" element={<AdminCoins />} />
           <Route path="system" element={<AdminSystem />} />
+          <Route path="salary" element={<AdminSalary />} />
+          <Route path="salary/setup" element={<AdminSalarySetup />} />
+          <Route path="salary/:month" element={<AdminSalary />} />
+          <Route path="salary/:month/:userId" element={<AdminSalaryPerson />} />
           <Route path="*" element={<Navigate to={value.path()} replace />} />
         </Routes>
       </Shell>
