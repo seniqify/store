@@ -99,7 +99,7 @@ test('App.jsx: a merchant domain renders ONLY the server-named store at /, /p/:p
   assert.match(block, /<BusinessShell slug=\{slug\} \/>/, 'the store is the server-named one, never a URL param');
   assert.match(src, /const businessSlug = slug \?\? params\.businessSlug;/);
   assert.match(src, /HOST\.mode === 'merchant' \? \(\s*<MerchantRoutes slug=\{HOST\.slug\} \/>/, 'checked before every PocketLink route');
-  assert.match(src, /if \(notFound\) return slug \? <StoreNotFound \/> : <NotFound slug=\{businessSlug\} \/>;/);
+  assert.match(src, /if \(notFound \|\| config\?\.adminStatus === 'deleted'\) return slug \? <StoreNotFound \/> : <NotFound slug=\{businessSlug\} \/>;/);
 });
 
 test('merchant-domain pages show no other shop: StoreNotFound, Footer and the search\'s marketplace link', () => {

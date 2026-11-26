@@ -16,6 +16,7 @@ import { I18nProvider } from './i18n/I18nContext';
 import { hostMode }     from './utils/hostMode';
 import { pocketlinkTarget } from './utils/customDomainRoutes';
 import { isCrmHost, CRM_ORIGIN } from './crm/crmHost.js';
+import { isAdminHost } from './admin/adminHost.js';
 
 // ── Code-split heavy pages — loaded only when first visited ──────────────────
 const Landing    = lazy(() => import('./pages/Landing'));
@@ -26,6 +27,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const ManageStore = lazy(() => import('./pages/ManageStore'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
 const CrmApp     = lazy(() => import('./crm/CrmApp'));
+const AdminApp   = lazy(() => import('./admin/AdminApp'));
 const Console    = lazy(() => import('./pages/Console'));
 const Terms      = lazy(() => import('./pages/Terms'));
 const Privacy    = lazy(() => import('./pages/Privacy'));
@@ -174,7 +176,8 @@ function BusinessShell({ slug } = {}) {
   }, [businessSlug]);
 
   if (loading)  return <LoadingScreen />;
-  if (notFound) return slug ? <StoreNotFound /> : <NotFound slug={businessSlug} />;
+  if (notFound || config?.adminStatus === 'deleted') return slug ? <StoreNotFound /> : <NotFound slug={businessSlug} />;
+  if (config?.adminStatus === 'paused') return <ShopClosed name={config.businessName} />;
 
   return (
     <BusinessProvider config={config}>
@@ -193,6 +196,16 @@ function BusinessShell({ slug } = {}) {
         <Footer />
       </div>
     </BusinessProvider>
+  );
+}
+
+// A shop paused in PocketLink Admin: no products, no ordering, just a note.
+function ShopClosed({ name }) {
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-16 text-center">
+      <h1 className="text-2xl font-extrabold text-gray-900 mb-2 tracking-tight">{name || 'This shop'} is closed for now</h1>
+      <p className="text-gray-500 text-sm leading-relaxed max-w-sm">Ordering is paused. Please check again later.</p>
+    </div>
   );
 }
 
@@ -219,6 +232,8 @@ const isMarketHost  = typeof window !== 'undefined' && window.location.hostname.
 // crm.pocketlink.store renders ONLY the CRM (the edge middleware sends every
 // page there to the SPA). The retired Hub at /hub now opens the CRM.
 const isCrm = typeof window !== 'undefined' && isCrmHost(window.location.hostname);
+// admin.pocketlink.store renders ONLY PocketLink Admin (same edge handling as the CRM).
+const isAdmin = typeof window !== 'undefined' && isAdminHost(window.location.hostname);
 
 function HubMoved() {
   useEffect(() => {
@@ -290,6 +305,10 @@ export default function App() {
             <Routes>
               <Route path="/*" element={<CrmApp base="" />} />
             </Routes>
+          ) : isAdmin ? (
+            <Routes>
+              <Route path="/*" element={<AdminApp base="" />} />
+            </Routes>
           ) : isMarketHost ? (
             <Routes>
               <Route path="*" element={<ToMainSite />} />
@@ -319,6 +338,7 @@ export default function App() {
             {/* The Sales CRM (crm.pocketlink.store). /crm/* on the main site
                 serves it too, for preview builds; the old Hub sends people there. */}
             <Route path="/crm/*"                 element={<CrmApp base="/crm" />} />
+            <Route path="/admin/*"              element={<AdminApp base="/admin" />} />
             <Route path="/hub"                   element={<HubMoved />} />
             <Route path="/console"               element={<Console />} />
             <Route path="/demo/:demoSlug"        element={<ErrorBoundary><DemoShell /></ErrorBoundary>} />

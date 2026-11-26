@@ -9,13 +9,16 @@ import { planTermEnded } from './planLimits';
 export async function fetchStore(slug) {
   const { data, error } = await supabase
     .from('stores')
-    .select('config:public_config')
+    .select('config:public_config, admin_status')
     .eq('slug', slug)
     .single();
 
   if (error || !data) return null;
-  // plan is stored inside config JSONB; default to 'free' if absent
-  return { ...data.config, plan: data.config?.plan ?? 'free' };
+  // plan is stored inside config JSONB; default to 'free' if absent.
+  // adminStatus ('paused' | 'deleted', set in PocketLink Admin) lives in its own
+  // column; it rides along for the page to show "closed", and updateStore
+  // never writes it back into config.
+  return { ...data.config, plan: data.config?.plan ?? 'free', adminStatus: data.admin_status || null };
 }
 
 /** Save a brand-new store to DB. Hashes PIN before storing. Throws on error. */
@@ -62,8 +65,10 @@ export async function createStore(config, pin, ownerPhone = null) {
  */
 export async function updateStore(slug, config, pin) {
   const hashed = await hashPin(pin);
+  // eslint-disable-next-line no-unused-vars
+  const { adminStatus: _adminStatus, ...clean } = config || {};
   const { data, error } = await supabase.rpc('update_store_config', {
-    p_slug: slug, p_hashed_pin: hashed, p_config: config,
+    p_slug: slug, p_hashed_pin: hashed, p_config: clean,
   });
   if (error) throw new Error(error.message);
   if (data === false) throw new Error('Could not save — please re-enter your PIN and try again.');
@@ -166,9 +171,14 @@ export async function listStores() {
   const viewCols =
     'slug, created_at, businessName, tagline, category, businessType, city, state, area, ' +
     'address, logo, logoEmoji, coverImage, whatsappNumber, theme, hours, search_text';
-  const viaView = await supabase.from('marketplace_listing').select(viewCols).limit(500);
+  const [viaView, closed] = await Promise.all([
+    supabase.from('marketplace_listing').select(viewCols).limit(500),
+    // Shops paused or deleted in PocketLink Admin are not listed.
+    supabase.from('stores').select('slug').not('admin_status', 'is', null).limit(1000),
+  ]);
+  const hidden = new Set((closed.error ? [] : closed.data || []).map((r) => r.slug));
   if (!viaView.error && viaView.data) {
-    return viaView.data.filter((c) => c && c.businessName);
+    return viaView.data.filter((c) => c && c.businessName && !hidden.has(c.slug));
   }
 
   const { data, error } = await supabase
@@ -183,7 +193,7 @@ export async function listStores() {
     .limit(500);
 
   if (error || !data) return [];
-  return data.filter((c) => c && c.businessName);
+  return data.filter((c) => c && c.businessName && !hidden.has(c.slug));
 }
 
 // ── Pending signups ────────────────────────────────────────────────────────

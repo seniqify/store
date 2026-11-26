@@ -243,7 +243,7 @@ test('the site: every public read asks for public_config; only server-key code r
   }
   assert.deepEqual(offenders, [], offenders.join('\n'));
   // And the reads that matter most use the alias, so every caller still gets `config`.
-  assert.match(read('api/render.js'), /select=slug,config:public_config&limit=1/);
-  assert.match(read('src/utils/storeService.js'), /\.select\('config:public_config'\)/);
+  assert.match(read('api/render.js'), /select=slug,config:public_config,admin_status&limit=1/);
+  assert.match(read('src/utils/storeService.js'), /\.select\('config:public_config, admin_status'\)/);
   assert.match(read('src/utils/storeService.js'), /\.filter\('public_config->>whatsappNumber', 'ilike'/);
 });

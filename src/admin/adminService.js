@@ -1,0 +1,77 @@
+// PocketLink Admin data layer. Every read and change is a database function
+// that checks the caller's admin role AND that this session passed 2-step
+// sign-in (supabase/admin-part1-forward.sql); nothing here is trusted.
+import { supabase } from '../lib/supabase';
+
+const fail = (error) => { throw new Error(error?.message || 'Something went wrong'); };
+
+export async function adminSession() {
+  const { data } = await supabase.auth.getSession();
+  return data?.session ?? null;
+}
+export function onAdminAuthChange(cb) {
+  const { data } = supabase.auth.onAuthStateChange((_e, session) => cb(session));
+  return () => data?.subscription?.unsubscribe();
+}
+export async function adminSignIn(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message);
+}
+export async function adminSignOut() { await supabase.auth.signOut(); }
+
+// ── 2-step sign-in (an authenticator app code) ────────────────────────────
+/** { verified: [factor], level: 'aal1'|'aal2' } */
+export async function twoStepState() {
+  const [{ data: aal }, { data: f }] = await Promise.all([
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+    supabase.auth.mfa.listFactors(),
+  ]);
+  return { level: aal?.currentLevel || 'aal1', verified: (f?.totp || []).filter((x) => x.status === 'verified') };
+}
+/** Start adding an authenticator app: { factorId, qr (an SVG data URL), secret }. */
+export async function twoStepEnroll() {
+  const { data: f } = await supabase.auth.mfa.listFactors();
+  for (const x of f?.all || []) if (x.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: x.id });
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'PocketLink Admin' });
+  if (error) fail(error);
+  return { factorId: data.id, qr: safeSvgUrl(data.totp?.qr_code), secret: data.totp?.secret };
+}
+/** An SVG data URL with its markup encoded, so a '#' colour cannot cut the picture short. */
+export function safeSvgUrl(url) {
+  const m = /^data:image\/svg\+xml;(?:charset=)?utf-?8,(<[\s\S]*)$/i.exec(String(url || ''));
+  return m ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(m[1])}` : url;
+}
+export async function twoStepVerify(factorId, code) {
+  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: String(code).replace(/\D/g, '') });
+  if (error) throw new Error(/invalid|expired/i.test(error.message) ? 'That code is not right. Use the newest code in your app.' : error.message);
+}
+
+// ── Reads ─────────────────────────────────────────────────────────────────
+const rpc = async (name, args) => {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) fail(error);
+  return data;
+};
+export const adminMe = () => rpc('admin_me');
+export const adminHome = () => rpc('admin_home');
+export const adminStores = async () => (await rpc('admin_stores')) || [];
+export const adminStore = (slug) => rpc('admin_store', { p_slug: slug });
+export const adminBilling = () => rpc('admin_billing');
+export const adminLog = async (kind = null, before = null) => (await rpc('admin_audit_list', { p_kind: kind, p_before: before })) || [];
+
+// ── Changes (each one is written to the audit log by the database) ─────────
+export const storeUpdate = (slug, patch, reason) => rpc('admin_store_update', { p_slug: slug, p_patch: patch, p_reason: reason || null });
+export const setPlan = (slug, { plan, expiresAt, paidBy, amount, reason }) => rpc('admin_set_plan', {
+  p_slug: slug, p_plan: plan, p_expires_at: expiresAt, p_paid_by: paidBy, p_amount: amount ?? 0, p_reason: reason,
+});
+export const setStatus = (slug, status, reason, confirm = null) => rpc('admin_set_status', { p_slug: slug, p_status: status, p_reason: reason, p_confirm: confirm });
+
+/** Save rows as a CSV file. */
+export function downloadCsv(name, text) {
+  const blob = new Blob([String.fromCharCode(0xfeff) + text], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
