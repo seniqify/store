@@ -15,8 +15,13 @@ export const CAN = Object.freeze({
   money: ['owner', 'admin', 'finance', 'viewer'],
   people: ['owner', 'admin'],
   system: ['owner'],
+  salary: ['owner', 'finance'],
+  salary_approve: ['owner'],
 });
 export const canDo = (role, what) => Boolean(CAN[what]?.includes(role));
+
+/** Sales CRM roles in words. */
+export const SALES_ROLE = Object.freeze({ manager: 'Sales manager', caller: 'Calling executive', field: 'Field executive', ads: 'Ads & leads executive' });
 
 export const STATE = Object.freeze({
   active: { label: 'Active', tone: 'ok' },
@@ -153,6 +158,10 @@ export const ACTION_LABEL = Object.freeze({
   switch_on: 'Turned a switch on', switch_off: 'Turned a switch off', switch_text: 'Changed a switch’s text',
   job_run: 'Ran a job now', job_paused: 'Paused a job', job_resumed: 'Resumed a job',
   purged: 'Removed a shop for good', purge_photos: 'Removed a shop’s photos',
+  salary_drafts: 'Made the salary drafts', salary_draft_removed: 'Removed a salary draft', salary_line_added: 'Added a bonus or deduction',
+  salary_line_removed: 'Removed a bonus or deduction', salary_approved: 'Approved salaries', salary_unapproved: 'Sent a salary back to draft',
+  salary_paid: 'Marked a salary paid', salary_unpaid: 'Undid a salary payment', salary_rules: 'Changed the salary rules',
+  salary_person: 'Set a salary', salary_advance: 'Noted a salary advance', salary_advance_removed: 'Removed a salary advance',
 });
 export const actionLabel = (a) => ACTION_LABEL[a] || a;
 

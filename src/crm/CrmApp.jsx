@@ -28,6 +28,7 @@ import CrmSources from './CrmSources.jsx';
 import NewLeadAlert from './CrmNewLeadAlert.jsx';
 import CrmSettings from './CrmSettings.jsx';
 import CrmIncentives from './CrmIncentives.jsx';
+import CrmMyPay from './CrmMyPay.jsx';
 import CrmTraining from './CrmTraining.jsx';
 import CrmReports from './CrmReports.jsx';
 import CrmCheckLeads from './CrmCheckLeads.jsx';
@@ -343,6 +344,8 @@ export default function CrmApp({ base = '' }) {
           <Route path="settings" element={isManager ? <CrmSettings /> : <Navigate to={value.path()} replace />} />
           <Route path="reports" element={isManager ? <CrmReports /> : <Navigate to={value.path()} replace />} />
           <Route path="incentives" element={<CrmIncentives />} />
+          <Route path="pay" element={<CrmMyPay />} />
+          <Route path="pay/:month" element={<CrmMyPay />} />
           <Route path="training" element={<CrmTraining />} />
           <Route path="*" element={<Navigate to={value.path()} replace />} />
         </Routes>

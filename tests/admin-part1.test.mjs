@@ -27,7 +27,8 @@ test('the admin host', () => {
 });
 
 test('roles: the same table as the database', () => {
-  const sql = code(read('supabase/admin-part1-forward.sql'));
+  // salary-forward.sql redefines admin_can last (part 1 + the two salary rows).
+  const sql = code(read('supabase/salary-forward.sql'));
   const can = body(sql, 'admin_can');
   for (const [what, roles] of Object.entries(CAN)) {
     const m = can.match(new RegExp(`when '${what}'\\s+then (.+)`));

@@ -374,6 +374,12 @@ export async function myLinkStats() {
   return error ? null : (data || [])[0] || null;
 }
 /** My incentives (the database shows a manager everyone's). */
+/** My own salary, payslips and advances (the database gives only mine). */
+export async function myPay() {
+  const { data, error } = await supabase.rpc('sales_my_pay');
+  if (error) fail(error);
+  return data;
+}
 export async function listIncentives() {
   const { data, error } = await supabase.from('sales_incentives').select('*, sales_leads(shop_name)').order('won_at', { ascending: false }).limit(1000);
   return error ? [] : data || [];
