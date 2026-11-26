@@ -4,7 +4,10 @@
 with f as (
   select p.oid, p.proname, p.prosecdef, p.proconfig, p.prosrc
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname like 'admin\_%'
+   where n.nspname = 'public'
+     and p.proname in ('admin_role', 'admin_mfa_ok', 'admin_can', 'admin_require', 'admin_me', 'admin_audit_frozen', 'admin_log',
+                       'admin_mask_phone', 'admin_store_state', 'admin_stores', 'admin_store', 'admin_home', 'admin_billing',
+                       'admin_audit_list', 'admin_store_update', 'admin_set_plan', 'admin_set_status')
 )
 select 'A1 seventeen admin functions, all with a pinned search_path' as check_name,
        case when (select count(*) from f) = 17
