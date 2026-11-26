@@ -75,3 +75,42 @@ export function downloadCsv(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+
+// ── Part 2 ────────────────────────────────────────────────────────────────
+/** Call an Admin edge function; its { error } becomes a thrown message. */
+async function fn(name, body) {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) {
+    let msg = error.message || 'Something went wrong';
+    try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep msg */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+export const peopleList = () => rpc('admin_people');
+export const teamSave = (userId, name, role, active, reason) => rpc('admin_team_save', { p_user: userId, p_name: name, p_role: role, p_active: active, p_reason: reason || null });
+export const teamRemove = (userId, reason) => rpc('admin_team_remove', { p_user: userId, p_reason: reason });
+export const hubRemove = (userId, reason) => rpc('admin_hub_remove', { p_user: userId, p_reason: reason });
+export const personAdd = (email, name, role, reason) => fn('admin-people', { action: 'add', email, name, role, reason });
+export const personPassword = (userId, reason) => fn('admin-people', { action: 'password', userId, reason });
+export const personReset2Step = (userId, reason) => fn('admin-people', { action: 'reset_2step', userId, reason });
+
+export const ordersList = async (days, status, slug) => (await rpc('admin_orders', { p_days: days, p_status: status || null, p_slug: slug || null })) || [];
+export const ordersSummary = () => rpc('admin_orders_summary');
+export const reviewReports = async () => (await rpc('admin_review_reports')) || [];
+export const reviewDecide = (reportId, decision, note) => rpc('admin_review_decide', { p_report: reportId, p_decision: decision, p_note: note || null });
+
+export const coinsSummary = () => rpc('admin_coins_summary');
+export const coinsAdjust = (slug, coins, reason) => rpc('admin_coins', { p_slug: slug, p_coins: coins, p_reason: reason });
+export const storeCoins = async (slug) => (await rpc('admin_store_coins', { p_slug: slug })) || [];
+
+/** A new shop PIN, hashed in the browser exactly like the owner's own PIN. */
+export async function resetPin(slug, pin, reason) {
+  const { hashPin } = await import('../utils/pinHash.js');
+  return rpc('admin_reset_pin', { p_slug: slug, p_new_hashed_pin: await hashPin(pin), p_reason: reason });
+}
+
+export const razorpayStatus = (slug) => fn('admin-billing', { action: 'status', slug });
+export const razorpayStop = (slug, atEnd, reason) => fn('admin-billing', { action: 'cancel', slug, atEnd, reason });
+export const razorpayRefund = (slug, paymentId, amountPaise, reason) => fn('admin-billing', { action: 'refund', slug, paymentId, amountPaise, reason });

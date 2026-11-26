@@ -70,6 +70,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/sales-crm-part5-ROLLBACK.sql',
   'supabase/admin-part1-forward.sql',
   'supabase/admin-part1-ROLLBACK.sql',
+  'supabase/admin-part2-forward.sql',
+  'supabase/admin-part2-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {

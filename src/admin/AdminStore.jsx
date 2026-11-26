@@ -5,14 +5,147 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAdmin } from './adminContext.js';
-import { adminStore, storeUpdate, setPlan, setStatus } from './adminService.js';
+import { adminStore, storeUpdate, setPlan, setStatus, razorpayStatus, razorpayStop, razorpayRefund, storeCoins, coinsAdjust, resetPin } from './adminService.js';
 import {
   stateOf, planLabel, paysBy, inr, num, dayLabel, whenLabel, daysLeft, extendedEnd, extendedByYears, dateInputEnd, changedKeys, actionLabel, diffLine, isPaid,
 } from './adminLogic.js';
 import { Icon, Chip, Kpi, Panel, Spinner, Notice, Empty } from './ui.jsx';
 import { btn, card, input, label, th, td } from './adminStyles.js';
 
-const TABS = [['overview', 'Overview'], ['settings', 'Shop settings'], ['plan', 'Plan and payments'], ['danger', 'Pause or delete'], ['log', 'Activity log']];
+const TABS = [['overview', 'Overview'], ['settings', 'Shop settings'], ['plan', 'Plan and payments'], ['coins', 'Coins'], ['pin', 'Dashboard PIN'], ['danger', 'Pause or delete'], ['log', 'Activity log']];
+const unix = (t) => (t ? new Date(Number(t) * 1000).toISOString() : null);
+
+// Razorpay auto-pay: what Razorpay says now, its payments, stop it, refund.
+function RazorpayPanel({ s, onSaved }) {
+  const c = s.config || {};
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState(null);
+  const load = useCallback(async () => { try { setD(await razorpayStatus(s.slug)); setErr(''); } catch (x) { setErr(x.message); } }, [s.slug]);
+  useEffect(() => { load(); }, [load]);
+  const stopped = c.autopayStopped && c.autopayStopped.sub === c.razorpaySubscriptionId;
+  const sub = d?.subscription;
+  const live = sub && ['created', 'authenticated', 'active', 'pending', 'halted'].includes(sub.status);
+  const why = reason.trim().length >= 3;
+  const stop = async (atEnd) => {
+    if (!window.confirm(atEnd ? 'Stop auto-pay at the end of the paid term? The shop keeps its plan until then.' : 'Stop auto-pay now? No more charges; the plan stays until its end date.')) return;
+    setBusy(atEnd ? 'end' : 'now'); setMsg(null);
+    try { await razorpayStop(s.slug, atEnd, reason); setMsg({ kind: 'ok', text: 'Auto-pay stopped in Razorpay. It is in the activity log.' }); setReason(''); await onSaved(); await load(); }
+    catch (x) { setMsg({ kind: 'error', text: x.message }); } finally { setBusy(''); }
+  };
+  const refund = async (inv) => {
+    const left = (inv.amount_paid || inv.amount || 0) / 100;
+    const ans = window.prompt(`Refund how much in rupees? (up to ${left})`, String(left));
+    if (ans == null) return;
+    const rupees = Number(String(ans).replace(/[^0-9.]/g, ''));
+    if (!(rupees > 0)) return;
+    setBusy(inv.id); setMsg(null);
+    try { const r = await razorpayRefund(s.slug, inv.payment_id, Math.round(rupees * 100), reason); setMsg({ kind: 'ok', text: `Refund of ${inr(r.amount / 100)} started (${r.refund}). Razorpay returns it to the shop in 5 to 7 days.` }); setReason(''); await load(); }
+    catch (x) { setMsg({ kind: 'error', text: x.message }); } finally { setBusy(''); }
+  };
+  return (
+    <Panel title="Razorpay auto-pay" className="overflow-hidden">
+      <div className="p-4 space-y-3">
+        {err ? <Notice>{err}</Notice> : !d ? <Spinner label="Asking Razorpay…" /> : !sub ? <p className="m-0 text-[13.5px] text-[#8fa69a]">No Razorpay subscription for this shop.</p> : (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-[13.5px]">
+            <span>Razorpay says: <b>{sub.status}</b></span>
+            {sub.charge_at && live && !stopped && <span>Next charge {dayLabel(unix(sub.charge_at))}</span>}
+            <span>{sub.paid_count || 0} payments so far</span>
+            {stopped && <span className="text-amber-200">Stopped here {whenLabel(c.autopayStopped.at)}{c.autopayStopped.at_cycle_end ? ' (at the end of the term)' : ''}</span>}
+          </div>
+        )}
+        {s.can.plan && sub && (
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="flex-[1_1_260px]"><label className={label} htmlFor="rz-why">Reason (needed to stop or refund, goes in the log)</label><input id="rz-why" className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Owner asked to stop" /></div>
+            {live && !stopped && <button type="button" className={btn.ghost} disabled={!why || !!busy} onClick={() => stop(true)}>{busy === 'end' ? 'Stopping…' : 'Stop at the end of the term'}</button>}
+            {live && !stopped && <button type="button" className={btn.danger} disabled={!why || !!busy} onClick={() => stop(false)}>{busy === 'now' ? 'Stopping…' : 'Stop now'}</button>}
+          </div>
+        )}
+        {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      </div>
+      {d?.invoices?.length > 0 && (
+        <div className="overflow-x-auto"><table className="w-full border-collapse text-[13.5px]">
+          <thead><tr><th scope="col" className={th}>Date</th><th scope="col" className={th}>For</th><th scope="col" className={th}>Amount</th><th scope="col" className={th}>Status</th><th scope="col" className={th}><span className="sr-only">Refund</span></th></tr></thead>
+          <tbody>{d.invoices.map((i) => (
+            <tr key={i.id}><td className={td}>{dayLabel(unix(i.date))}</td><td className={td}>{i.billing_start ? `${dayLabel(unix(i.billing_start))} → ${dayLabel(unix(i.billing_end))}` : ''}</td>
+              <td className={`${td} font-bold`}>{inr((i.amount_paid || i.amount || 0) / 100)}</td><td className={td}><Chip tone={i.status === 'paid' ? 'ok' : 'off'}>{i.status}</Chip></td>
+              <td className={td}>{s.can.plan && i.status === 'paid' && i.payment_id && <button type="button" className={btn.small} disabled={!why || !!busy} onClick={() => refund(i)}>{busy === i.id ? 'Refunding…' : 'Refund'}</button>}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {s.can.plan && d?.invoices?.length > 0 && <p className="m-0 px-4 py-2.5 text-[12px] text-[#8fa69a]">Refunds over ₹5,000 are for the Owner only. Write the reason above first.</p>}
+    </Panel>
+  );
+}
+
+function CoinsTab({ s, onSaved }) {
+  const [moves, setMoves] = useState(null);
+  const [coins, setCoins] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const load = useCallback(async () => { try { setMoves(await storeCoins(s.slug)); } catch (x) { setMsg({ kind: 'error', text: x.message }); } }, [s.slug]);
+  useEffect(() => { load(); }, [load]);
+  const n = Number(coins);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try { const left = await coinsAdjust(s.slug, n, reason); setMsg({ kind: 'ok', text: `Done. ${num(left)} Coins now.` }); setCoins(''); setReason(''); await onSaved(); await load(); }
+    catch (x) { setMsg({ kind: 'error', text: x.message }); } finally { setBusy(false); }
+  };
+  const KIND = { topup: 'Bought', debit: 'Message', refund: 'Message refunded', adjust: 'Given or taken by PocketLink' };
+  return (
+    <div className="space-y-5">
+      {s.can.plan && (
+        <Panel title={`Give or take back Coins · ${num(s.coins)} now`}>
+          <div className="p-4 flex flex-wrap gap-3 items-end">
+            <div className="w-40"><label className={label} htmlFor="sc-n">Coins (minus takes back)</label><input id="sc-n" inputMode="numeric" className={input} value={coins} onChange={(e) => setCoins(e.target.value.replace(/[^0-9-]/g, ''))} placeholder="200" /></div>
+            <div className="flex-[1_1_260px]"><label className={label} htmlFor="sc-w">Reason (the shop sees it)</label><input id="sc-w" className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Courier delay on 3 orders" /></div>
+            <button type="button" className={btn.primary} disabled={busy || !n || reason.trim().length < 3} onClick={save}>{busy ? 'Saving…' : n < 0 ? 'Take back' : 'Give'}</button>
+          </div>
+          {msg && <div className="px-4 pb-4"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
+        </Panel>
+      )}
+      <Panel title="Coin history" className="overflow-hidden">
+        {!moves ? <Spinner /> : !moves.length ? <Empty>No Coin movements yet.</Empty> : (
+          <div className="overflow-x-auto"><table className="w-full border-collapse text-[13.5px]">
+            <thead><tr><th scope="col" className={th}>When</th><th scope="col" className={th}>What</th><th scope="col" className={th}>Coins</th><th scope="col" className={th}>After</th><th scope="col" className={th}>Note</th></tr></thead>
+            <tbody>{moves.map((m, i) => (
+              <tr key={i}><td className={`${td} text-[#8fa69a]`}>{whenLabel(m.at)}</td><td className={td}>{KIND[m.kind] || m.kind}</td>
+                <td className={`${td} font-bold ${m.coins < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{m.coins > 0 ? '+' : ''}{num(m.coins)}</td><td className={td}>{num(m.after)}</td><td className={`${td} whitespace-normal text-[#8fa69a]`}>{m.note || ''}</td></tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function PinTab({ s }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+  if (!s.can.edit) return <Notice kind="warn">Your role cannot reset a shop's PIN.</Notice>;
+  const make = async () => {
+    if (!window.confirm('Give this shop a new dashboard PIN? The old PIN stops working.')) return;
+    setBusy(true); setErr(''); setPin('');
+    const fresh = String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000));
+    try { await resetPin(s.slug, fresh, reason); setPin(fresh); setReason(''); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  return (
+    <Panel title="Dashboard PIN">
+      <div className="p-4 space-y-3 max-w-xl">
+        <p className="m-0 text-[13.5px] text-[#c8d6ce]">Only when the owner has lost their PIN and cannot use "Forgot PIN" (WhatsApp code). Check it is really the owner first: call the shop's own number.</p>
+        <div><label className={label} htmlFor="pin-why">Reason (goes in the log)</label><input id="pin-why" className={input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Owner called from the shop number, lost phone" /></div>
+        <button type="button" className={btn.primary} disabled={busy || reason.trim().length < 3} onClick={make}>{busy ? 'Making…' : 'Make a new PIN'}</button>
+        {pin && <Notice kind="ok">New PIN: <b className="text-[18px] tracking-[0.3em]">{pin}</b>. Shown once. Tell the owner on a call; wrong-PIN lockouts are cleared.</Notice>}
+        {err && <Notice>{err}</Notice>}
+      </div>
+    </Panel>
+  );
+}
 const SHOP = 'https://www.pocketlink.store';
 
 function Row({ k, children }) {
@@ -91,13 +224,15 @@ function PlanBox({ s, onSaved }) {
             <div className="text-[22px] font-extrabold">{planLabel(c.plan)}</div>
             <div className="text-[13.5px] text-[#8fa69a] mt-1">
               {paid ? (c.planExpiresAt ? `${left >= 0 ? 'Ends' : 'Ended'} ${dayLabel(c.planExpiresAt)}${left >= 0 ? ` · ${left} days left` : ''}` : 'No end date') : 'No paid plan'}
-              {c.razorpaySubscriptionId ? ' · auto-pay with Razorpay' : ''}
+              {c.razorpaySubscriptionId ? (c.autopayStopped?.sub === c.razorpaySubscriptionId ? ' · auto-pay stopped' : ' · auto-pay with Razorpay') : ''}
               {c.billingNote?.amount ? ` · last cash/bank ${inr(c.billingNote.amount)} on ${c.billingNote.startedAt || ''}` : ''}
             </div>
           </div>
           <Chip tone={stateOf(s.state).tone}>{stateOf(s.state).label}</Chip>
         </div>
       </Panel>
+
+      {c.razorpaySubscriptionId && <RazorpayPanel s={s} onSaved={onSaved} />}
 
       {s.can.plan ? (
         <Panel title="Change the plan">
@@ -130,7 +265,7 @@ function PlanBox({ s, onSaved }) {
             <span className="flex-1 text-[13.5px] text-[#c8d6ce]">{what === 'free' ? 'The shop goes to Free now.' : end ? `New end date: ${dayLabel(end)}` : 'Pick a date'}</span>
             <button type="button" className={btn.primary} disabled={busy || reason.trim().length < 3 || (what !== 'free' && !end)} onClick={save}>{busy ? 'Saving…' : 'Save plan'}</button>
           </div>
-          {c.razorpaySubscriptionId && <div className="px-4 pb-4"><Notice kind="warn">This shop pays by Razorpay auto-pay. Changing the plan here does not stop or change the auto-pay; the daily check only ever moves the end date later.</Notice></div>}
+          {c.razorpaySubscriptionId && c.autopayStopped?.sub !== c.razorpaySubscriptionId && <div className="px-4 pb-4"><Notice kind="warn">This shop pays by Razorpay auto-pay. Changing the plan here does not stop or change the auto-pay; the daily check only ever moves the end date later.</Notice></div>}
           {msg && <div className="px-4 pb-4"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
         </Panel>
       ) : <Notice kind="warn">Your role cannot change plans.</Notice>}
@@ -168,7 +303,8 @@ function Danger({ s, onSaved }) {
     catch (x) { setMsg({ kind: 'error', text: x.message }); } finally { setBusy(''); }
   };
   const st = s.admin_status;
-  const autopay = Boolean(s.config?.razorpaySubscriptionId) && daysLeft(s.config?.planExpiresAt) > 0;
+  const sub = s.config?.razorpaySubscriptionId;
+  const autopay = Boolean(sub) && s.config?.autopayStopped?.sub !== sub && daysLeft(s.config?.planExpiresAt) > 0;
   const okReason = reason.trim().length >= 3;
   return (
     <section aria-label="Pause or delete" className="rounded-2xl border border-red-900 bg-[#1a0f0f]">
@@ -192,7 +328,7 @@ function Danger({ s, onSaved }) {
             : 'Closes the shop page and the owner’s dashboard and hides it everywhere. Its data is kept, so you can restore it.'}</p>
           {!s.can.delete ? <p className="m-0 text-[13px] text-amber-200">Only the Owner can delete or restore shops.</p>
             : st === 'deleted' ? <button type="button" className={btn.primary} disabled={!okReason || !!busy} onClick={() => run('open', 'The shop is restored.')}>{busy === 'open' ? 'Restoring…' : 'Restore the shop'}</button>
-              : autopay ? <Notice kind="warn">This shop still pays by Razorpay auto-pay. Stop the subscription in Razorpay first, then delete.</Notice>
+              : autopay ? <Notice kind="warn">This shop still pays by Razorpay auto-pay. Stop it first (Plan and payments → Razorpay auto-pay), then delete.</Notice>
                 : (
                   <div className="flex flex-wrap gap-2.5 items-end max-w-xl">
                     <div className="flex-1 min-w-[200px]"><label className={label} htmlFor="d-type">Type <b className="text-red-200">{s.slug}</b> to confirm</label><input id="d-type" className={`${input} border-red-900`} value={typed} onChange={(e) => setTyped(e.target.value.trim())} placeholder={s.slug} /></div>
@@ -231,7 +367,7 @@ export default function AdminStore() {
         <div className="flex-1 min-w-[260px] space-y-1.5">
           <h1 className="m-0 text-[24px] font-extrabold">{c.businessName || s.slug}</h1>
           <div className="text-[13.5px]"><a href={`${SHOP}/${s.slug}`} target="_blank" rel="noreferrer">pocketlink.store/{s.slug}</a> <span className="text-[#8fa69a]">· {[c.businessType, c.city].filter(Boolean).join(' · ')} · made {dayLabel(s.created_at)}</span></div>
-          <div className="flex flex-wrap gap-1.5"><Chip tone={st.tone}>{st.label}</Chip><Chip tone={isPaid(c.plan) ? 'ok' : 'info'}>{planLabel(c.plan)}</Chip>{c.razorpaySubscriptionId && <Chip tone="ok">Auto-pay</Chip>}<Chip>{c.theme?.mode === 'dark' ? 'Premium Dark' : 'Light'}</Chip></div>
+          <div className="flex flex-wrap gap-1.5"><Chip tone={st.tone}>{st.label}</Chip><Chip tone={isPaid(c.plan) ? 'ok' : 'info'}>{planLabel(c.plan)}</Chip>{c.razorpaySubscriptionId && (c.autopayStopped?.sub === c.razorpaySubscriptionId ? <Chip tone="warn">Auto-pay stopped</Chip> : <Chip tone="ok">Auto-pay</Chip>)}<Chip>{c.theme?.mode === 'dark' ? 'Premium Dark' : 'Light'}</Chip></div>
         </div>
         <div className="flex flex-wrap gap-2">
           <a href={`${SHOP}/${s.slug}`} target="_blank" rel="noreferrer" className={btn.ghost}><Icon name="ext" size={16} />Open shop page</a>
@@ -271,6 +407,8 @@ export default function AdminStore() {
       )}
       {tab === 'settings' && <Settings key={s.updated_at} s={s} onSaved={load} />}
       {tab === 'plan' && <PlanBox key={`${s.updated_at}-p`} s={s} onSaved={load} />}
+      {tab === 'coins' && <CoinsTab s={s} onSaved={load} />}
+      {tab === 'pin' && <PinTab s={s} />}
       {tab === 'danger' && <Danger s={s} onSaved={load} />}
       {tab === 'log' && (
         <Panel title="Changes made in Admin" className="overflow-hidden">
