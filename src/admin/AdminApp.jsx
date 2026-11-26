@@ -17,6 +17,9 @@ import AdminStores from './AdminStores.jsx';
 import AdminStore from './AdminStore.jsx';
 import AdminBilling from './AdminBilling.jsx';
 import AdminLog from './AdminLog.jsx';
+import AdminOrders from './AdminOrders.jsx';
+import AdminPeople from './AdminPeople.jsx';
+import AdminCoins from './AdminCoins.jsx';
 
 const BG = 'bg-[#0a0f0c] text-[#e7efe9]';
 
@@ -120,9 +123,10 @@ function NotAdmin() {
 }
 
 const MENU = [
-  ['', 'Home', 'home'], ['stores', 'Stores', 'store'], ['billing', 'Billing and plans', 'card'], ['log', 'Audit log', 'list'],
+  ['', 'Home', 'home'], ['stores', 'Stores', 'store'], ['orders', 'Orders and delivery', 'box'], ['billing', 'Billing and plans', 'card'],
+  ['coins', 'Coins and WhatsApp', 'coin'], ['people', 'People and access', 'people'], ['log', 'Audit log', 'list'],
 ];
-const NEXT = [['Orders and delivery', 'box'], ['People and access', 'people'], ['Coins and WhatsApp', 'coin'], ['System and switches', 'server']];
+const NEXT = [['System and switches', 'server']];
 
 function Shell({ children }) {
   const { me, path } = useAdmin();
@@ -225,6 +229,9 @@ export default function AdminApp({ base = '' }) {
           <Route path="stores/:slug" element={<AdminStore />} />
           <Route path="billing" element={<AdminBilling />} />
           <Route path="log" element={<AdminLog />} />
+          <Route path="orders" element={<AdminOrders />} />
+          <Route path="people" element={<AdminPeople />} />
+          <Route path="coins" element={<AdminCoins />} />
           <Route path="*" element={<Navigate to={value.path()} replace />} />
         </Routes>
       </Shell>
