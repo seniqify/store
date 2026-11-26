@@ -114,3 +114,15 @@ export async function resetPin(slug, pin, reason) {
 export const razorpayStatus = (slug) => fn('admin-billing', { action: 'status', slug });
 export const razorpayStop = (slug, atEnd, reason) => fn('admin-billing', { action: 'cancel', slug, atEnd, reason });
 export const razorpayRefund = (slug, paymentId, amountPaise, reason) => fn('admin-billing', { action: 'refund', slug, paymentId, amountPaise, reason });
+
+// ── Part 3: System and switches ───────────────────────────────────────────
+export const switchesList = async () => (await rpc('admin_switches')) || [];
+export const switchSet = (key, on, note, reason) => rpc('admin_switch_set', { p_key: key, p_on: on, p_note: note ?? null, p_reason: reason });
+export const jobsList = async () => (await rpc('admin_jobs')) || [];
+export const jobRun = (id, reason) => rpc('admin_job_run', { p_job: id, p_reason: reason });
+export const jobPause = (id, active, reason) => rpc('admin_job_pause', { p_job: id, p_active: active, p_reason: reason });
+export const purgeList = async () => (await rpc('admin_purge_list')) || [];
+/** Remove a deleted shop for good: the database checks and erases, then its photos go. */
+export const purgeStore = (slug, confirm, reason) => fn('admin-system', { action: 'purge', slug, confirm, reason });
+export const systemKeys = () => fn('admin-system', { action: 'keys' });
+export const systemPing = () => fn('admin-system', { action: 'ping' });

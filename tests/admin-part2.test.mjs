@@ -11,13 +11,12 @@ const code = (s) => s.replace(/--.*$/gm, '');
 const body = (f, name) => { const i = f.indexOf(`function public.${name}(`); assert.ok(i >= 0, name); return f.slice(i, f.indexOf('$fn$;', i)); };
 const sql = code(read('supabase/admin-part2-forward.sql'));
 
-test('menu and routes: the part 2 screens are live, System is next', () => {
+test('menu and routes: the part 2 screens are live', () => {
   const app = read('src/admin/AdminApp.jsx');
   for (const [p, t] of [['orders', 'Orders and delivery'], ['coins', 'Coins and WhatsApp'], ['people', 'People and access']]) {
     assert.match(app, new RegExp(`\\['${p}', '${t}'`), p);
     assert.match(app, new RegExp(`<Route path="${p}" element=\\{<Admin`), `${p} route`);
   }
-  assert.match(app, /const NEXT = \[\['System and switches', 'server'\]\];/);
 });
 
 test('people: the team rules live in the database', () => {

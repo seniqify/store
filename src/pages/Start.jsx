@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, MessageCircle, Check } from 'lucide-react';
 import { sendOtp, verifyOtp } from '../utils/otpService';
 import { findStoreByPhone, getPendingSignup } from '../utils/storeService';
+import { fetchPlatformFlags } from '../utils/platformFlags';
 
 // Longer resend window: each send REPLACES the stored code, so resending before
 // a slow WhatsApp message lands would invalidate the code the user is waiting on.
@@ -26,7 +27,7 @@ export default function Start() {
   const [refOpen, setRefOpen] = useState(false);
   useEffect(() => { const r = cleanRef(params.get('ref')); if (r) saveSalesRef(r); }, [params]);
 
-  const [step,       setStep]       = useState('phone'); // 'phone' | 'otp' | 'exists'
+  const [step,       setStep]       = useState('phone'); // 'phone' | 'otp' | 'exists' | 'paused'
   const [digits,     setDigits]     = useState('');
   const [otp,        setOtp]        = useState('');
   const [sending,    setSending]    = useState(false);
@@ -75,6 +76,13 @@ export default function Start() {
         if (existingSlug) {
           setExistSlug(existingSlug);
           setStep('exists');
+          return;
+        }
+        // New sign-ups paused in PocketLink Admin: only a number that already
+        // paid goes on (existing shops and renewals never reach this line).
+        const flags = await fetchPlatformFlags();
+        if (!flags.signupsOpen && !(await getPendingSignup(phone).catch(() => null))) {
+          setStep('paused');
           return;
         }
       }
@@ -169,6 +177,20 @@ export default function Start() {
                   Go to my page →
                 </a>
                 <button onClick={() => { setStep('phone'); setDigits(''); setExistSlug(''); }}
+                  className="text-xs text-white/45 hover:text-white/80 transition-colors">
+                  Use a different number
+                </button>
+              </div>
+            )}
+
+            {step === 'paused' && (
+              <div className="text-center space-y-4 py-2">
+                <div className="text-4xl">⏳</div>
+                <div>
+                  <p className="text-base font-extrabold text-white">New sign-ups are paused</p>
+                  <p className="text-xs text-white/55 mt-1.5 leading-snug">We are not taking new shops for a short while. Please try again in a little while.</p>
+                </div>
+                <button onClick={() => { setStep('phone'); setDigits(''); }}
                   className="text-xs text-white/45 hover:text-white/80 transition-colors">
                   Use a different number
                 </button>
