@@ -207,6 +207,11 @@ export default function IndiaPostSheet({ slug, pin, config, themeColor = '#0d948
                       <div><label className="block text-[11.5px] font-bold text-gray-600 mb-1" htmlFor={`ip-m-${id}`}>Mobile</label><input id={`ip-m-${id}`} inputMode="numeric" className={inputCls(p.mobile)} value={r.mobile} onChange={(e) => setRow(i, { mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} /></div>
                       <div><label className="block text-[11.5px] font-bold text-gray-600 mb-1" htmlFor={`ip-b-${id}`}>Barcode</label><input id={`ip-b-${id}`} className={`${inputCls(p.barcode)} font-mono`} value={r.barcode} placeholder="EM123456789IN" onChange={(e) => setRow(i, { barcode: e.target.value.toUpperCase() })} /></div>
                       <div><label className="block text-[11.5px] font-bold text-gray-600 mb-1" htmlFor={`ip-w-${id}`}>Weight (g)</label><input id={`ip-w-${id}`} inputMode="numeric" className={inputCls(p.weight)} value={r.weight} onChange={(e) => setRow(i, { weight: e.target.value.replace(/\D/g, '') })} /></div>
+                      <div className="col-span-2 grid grid-cols-3 gap-2">
+                        {[['l', 'Length (cm)'], ['b', 'Breadth (cm)'], ['h', 'Height (cm)']].map(([k, t]) => (
+                          <div key={k}><label className="block text-[11.5px] font-bold text-gray-600 mb-1" htmlFor={`ip-d${k}-${id}`}>{t}</label><input id={`ip-d${k}-${id}`} inputMode="numeric" className={inputCls(p.size && !(Number(r[k]) > 0))} value={r[k]} onChange={(e) => setRow(i, { [k]: e.target.value.replace(/\D/g, '').slice(0, 3) })} /></div>
+                        ))}
+                      </div>
                     </div>
                     {bad && <ul className="m-0 pl-4 text-[12px] text-red-700 font-semibold space-y-0.5">{Object.values(p).map((t) => <li key={t}>{t}</li>)}</ul>}
                   </div>
@@ -252,7 +257,7 @@ export default function IndiaPostSheet({ slug, pin, config, themeColor = '#0d948
           {step === 'check' && (
             <>
               <p className={`text-[12px] font-bold text-center ${problemCount || setupMissing.length ? 'text-red-600' : 'text-emerald-700'}`}>
-                {setupMissing.length ? 'Finish the India Post setup first.' : problemCount ? `Fix ${problemCount} ${problemCount === 1 ? 'thing' : 'things'} in red, then download.` : `All 48 columns filled for ${rows.length} ${rows.length === 1 ? 'parcel' : 'parcels'}.`}
+                {setupMissing.length ? `Finish the India Post setup first: ${setupMissing.join(', ')}.` : problemCount ? `Fix ${problemCount} ${problemCount === 1 ? 'thing' : 'things'} in red, then download.` : `All 48 columns filled for ${rows.length} ${rows.length === 1 ? 'parcel' : 'parcels'}.`}
               </p>
               <button type="button" disabled={!!problemCount || setupMissing.length > 0 || !rows.length || busy === 'download'} onClick={download}
                 className="w-full h-12 rounded-xl text-white text-[15px] font-extrabold inline-flex items-center justify-center gap-2 disabled:opacity-50" style={btnStyle}>

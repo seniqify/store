@@ -52,7 +52,8 @@ test('settings: sender from the shop; what is missing is named', () => {
   const ip = ipSettings({ businessName: 'Kulkarni Sweets', address: 'Shop 4, Navi Peth, Solapur', whatsappNumber: '919822000011', shipping: { pickupPincode: '413002' } });
   assert.deepEqual([ip.sender.name, ip.sender.line1, ip.sender.city, ip.sender.state, ip.sender.pin, ip.sender.mobile], ['Kulkarni Sweets', 'Shop 4, Navi Peth', 'Solapur', 'Maharashtra', '413002', '9822000011']);
   assert.deepEqual([ip.priority, ip.registration, ip.otp, ip.ack, ip.handover, ip.box.l], [true, true, true, false, 'drop', 23]);
-  assert.deepEqual(settingsProblems(ip), ['next barcode']);
+  assert.deepEqual(settingsProblems(ip), [], 'no next barcode yet: type each one on the sheet');
+  assert.deepEqual(settingsProblems({ ...ip, nextBarcode: 'EM100000018IN' }), ['next barcode (it does not look right)']);
   assert.deepEqual(settingsProblems({ ...ip, barcodeMode: 'stickers' }), []);
 });
 
@@ -75,13 +76,16 @@ test('rows: everything from the order; barcodes in sequence; problems in words',
   const noCod = sheetRows(ORDERS, IP, { codAllowed: false });
   assert.equal(rowProblems(noCod[0]).cod, 'COD needs an India Post contract (Settings)');
   const stickers = sheetRows(ORDERS, { ...IP, barcodeMode: 'stickers' });
-  assert.equal(rowProblems(stickers[0]).barcode, 'Type the barcode from the sticker');
+  assert.equal(rowProblems(stickers[0]).barcode, 'Type the barcode for this parcel');
+  assert.deepEqual([rows[0].l, rows[0].b, rows[0].h], ['23', '10', '5'], 'each parcel starts with the usual box');
+  assert.equal(rowProblems({ ...rows[0], h: '' }).size, 'Length, breadth and height in cm');
 });
 
 test('the file: 48 columns in India Post order, numbers and TRUE/FALSE typed, opens as Excel', async () => {
   assert.equal(IP_COLUMNS.length, 48);
   assert.equal(IP_COLUMNS.filter(([, red]) => red).length, 19);
   const rows = sheetRows(ORDERS.slice(0, 2), IP, { grams: () => 500 });
+  rows[0] = { ...rows[0], l: '30', b: '20', h: '12' };
   const cells = sheetCells(rows, IP, { refBase: '261127' });
   assert.equal(cells.length, 3);
   assert.ok(cells.every((r) => r.length === 48));
@@ -89,6 +93,8 @@ test('the file: 48 columns in India Post order, numbers and TRUE/FALSE typed, op
   const r1 = cells[1];
   assert.deepEqual(r1[col('BARCODE NO')], { t: 's', v: 'EM100000017IN' });
   assert.deepEqual(r1[col('PHYSICAL WEIGHT')], { t: 'n', v: 500 });
+  assert.deepEqual([r1[col('LENGTH')].v, r1[col('BREADTH/DIAMETER')].v, r1[col('HEIGHT')].v], [30, 20, 12], 'the size typed for this parcel');
+  assert.deepEqual([cells[2][col('LENGTH')].v, cells[2][col('HEIGHT')].v], [23, 5], 'others keep the usual box');
   assert.deepEqual(r1[col('SENDER NAME')], { t: 's', v: 'KULKARNI SWEETS' });
   assert.deepEqual(r1[col('RECEIVER PINCODE')], { t: 'n', v: 413512 });
   assert.deepEqual(r1[col('DROP OFF PINCODE')], { t: 'n', v: 413002 });
