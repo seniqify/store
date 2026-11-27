@@ -3,7 +3,7 @@ import {
   RefreshCw, Phone, MessageCircle, MapPin, Clock, ShoppingBag, Printer, Check, Truck, CalendarDays, MoreHorizontal, Search, X, Star,
   Bike, Link2, RotateCcw, AlertTriangle, CheckCircle2, ShieldAlert,
 } from 'lucide-react';
-import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
+import { fetchOrders, setOrderStatus, setOrderPaid, markSelfDelivered } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
 import { IndiaPostParcel } from './IndiaPostSheet';
@@ -622,6 +622,54 @@ const OrderRow = memo(function OrderRow({ o, active, themeColor, leads, STATUS, 
 // The couriers this store has connected (Settings → Shipping), offered in Book courier.
 const connectedCouriers = (store) => ['shadowfax', 'delhivery'].filter((c) => store?.shipping?.[c]);
 
+// "Deliver it yourself" (founder, 2026-11-27: opening WhatsApp was annoying):
+// mark it delivered right here and note what the delivery cost (delivery boy,
+// petrol), so profit counts it like a courier charge. The last amount is
+// remembered on this device. Sending the address to the delivery boy on
+// WhatsApp stays one tap away for orders that are not delivered yet.
+const OWN_COST_KEY = (slug) => `pl_own_delivery_cost_${slug}`;
+function OwnDeliveryPanel({ o, slug, pin, themeColor, isCod, totalStr, riderHref, onDispatched, onDone, onClose, title = 'Delivered it yourself?' }) {
+  const [cost, setCost] = useState(() => { try { return localStorage.getItem(OWN_COST_KEY(slug)) || ''; } catch { return ''; } });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const unpaidCod = isCod && !o.paid;
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      await markSelfDelivered(slug, pin, o.id, cost === '' ? null : Number(cost));
+      try { if (cost !== '') localStorage.setItem(OWN_COST_KEY(slug), String(cost)); } catch { /* private mode */ }
+      onDone?.();
+    } catch (e) {
+      setErr(e.message || 'Could not mark it delivered.');
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2.5">
+      <p className="text-[14px] font-extrabold text-gray-900">{title}</p>
+      <div>
+        <label htmlFor={`own-cost-${o.id}`} className="block text-[12px] font-bold text-gray-700 mb-1">Delivery cost (₹) <span className="font-normal text-gray-400">optional</span></label>
+        <input id={`own-cost-${o.id}`} inputMode="decimal" value={cost} placeholder="e.g. 40"
+          onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))}
+          className="w-full h-11 rounded-xl border border-gray-200 bg-white px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-gray-200" />
+        <p className="text-[11px] text-gray-500 mt-1">What this delivery cost you: delivery boy, petrol. Counted in your profit.</p>
+      </div>
+      {unpaidCod && <p className="text-[12px] font-semibold text-amber-800">{totalStr} cash collected: it is marked received too.</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy} onClick={save}
+          className="flex-1 h-11 rounded-xl text-white text-[14px] font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50" style={{ backgroundColor: themeColor }}>
+          <Check size={16} /> {busy ? 'Saving…' : unpaidCod ? `Delivered · ${totalStr} collected` : 'Mark delivered'}
+        </button>
+        <button type="button" disabled={busy} onClick={onClose} className="h-11 px-3 rounded-xl border border-gray-200 bg-white text-[13px] font-semibold text-gray-600">Cancel</button>
+      </div>
+      {riderHref && (
+        <a href={riderHref} target="_blank" rel="noopener noreferrer" onClick={onDispatched}
+          className="block text-[12px] font-semibold text-gray-600 underline underline-offset-2">Not delivered yet? Send the address to your delivery boy on WhatsApp</a>
+      )}
+      {err && <p className="text-[12px] text-red-600 font-semibold">{err}</p>}
+    </div>
+  );
+}
+
 // One-tap dispatch: prefilled WhatsApp to the store's delivery boy (set in
 // Settings). Without a saved number it opens WhatsApp's chat picker instead.
 function riderLink(o, storeName, phone, riderPhone) {
@@ -1173,6 +1221,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMsg, setLinkMsg]   = useState('');
 
+  const [ownOpen, setOwnOpen] = useState(false);   // "Deliver it yourself": delivered + delivery cost
   const ship = useShipment(o, slug, pin, o.courier || store.shipping?.courier);
   const live = { ...o, awb: ship.awb, shipment_status: ship.status, courier: ship.bookedWith || o.courier };
   const stage = orderStage(live);
@@ -1274,12 +1323,12 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
       case 'book':
         return <button type="button" onClick={openBook} className={cls} style={style}><Truck size={icon} /> Book courier</button>;
       case 'rider':
+        if (ownOpen) return null;
         return (
-          <a href={riderWa(dispatchRiders.length === 1 ? dispatchRiders[0].phone : null)} target="_blank" rel="noopener noreferrer"
-             onClick={() => onStatus(o.id, 'dispatched')} className={cls} style={style}
-             title="Opens WhatsApp to your delivery boy with the address, and moves the order to On the way">
-            <Bike size={icon} /> {main ? 'Send to delivery boy' : 'Deliver it yourself'}
-          </a>
+          <button type="button" onClick={() => setOwnOpen(true)} className={cls} style={style}
+             title="Mark it delivered and note what the delivery cost">
+            <Bike size={icon} /> Deliver it yourself
+          </button>
         );
       case 'picked_up':
         return <button type="button" disabled={busy} onClick={() => onStatus(o.id, 'delivered')} className={cls} style={style}><Check size={icon} /> Mark picked up</button>;
@@ -1288,8 +1337,9 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
       case 'request_pay':
         return <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(payMsg)}`} target="_blank" rel="noopener noreferrer" className={cls} style={style}><MessageCircle size={icon} /> Request payment · {totalStr}</a>;
       case 'delivered':
+        if (ownOpen) return null;
         return (
-          <button type="button" disabled={busy} onClick={() => onStatus(o.id, 'delivered')} className={cls} style={style}
+          <button type="button" disabled={busy} onClick={() => setOwnOpen(true)} className={cls} style={style}
             title={isCod && !o.paid ? 'Marks it delivered — the cash your delivery boy collected is marked received too' : undefined}>
             <Check size={icon} /> {isCod && !o.paid ? `Delivered · ${totalStr} collected` : 'Mark delivered'}
           </button>
@@ -1335,6 +1385,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
           couriers={connectedCouriers(store)} riders={dispatchRiders} riderHref={riderWa}
           products={store.products} boxG={store.boxWeightG}
           onRider={() => { ship.setModal(false); onStatus(o.id, 'dispatched'); }}
+          onSelfDelivered={async (cost) => { await markSelfDelivered(slug, pin, o.id, cost); ship.setModal(false); onChanged?.(); }}
           onClose={() => ship.setModal(false)} onBooked={ship.booked} />
       )}
 
@@ -1513,6 +1564,15 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
         </div>
       )}
       {step.alt && action(step.alt, false) && <div className="px-4 pt-2">{action(step.alt, false)}</div>}
+      {ownOpen && (
+        <div className="px-4 pt-3">
+          <OwnDeliveryPanel o={o} slug={slug} pin={pin} themeColor={themeColor} isCod={isCod} totalStr={totalStr}
+            title={stage === 'with_rider' ? 'Delivered?' : 'Delivered it yourself?'}
+            riderHref={stage === 'to_ship' ? riderWa(dispatchRiders.length === 1 ? dispatchRiders[0].phone : null) : null}
+            onDispatched={() => { setOwnOpen(false); onStatus(o.id, 'dispatched'); }}
+            onDone={() => { setOwnOpen(false); onChanged?.(); }} onClose={() => setOwnOpen(false)} />
+        </div>
+      )}
 
       {(linkBusy || linkMsg) && (
         <p className="px-4 pt-2 text-[11px] font-semibold text-gray-600" role="status">{linkBusy ? 'Creating payment link…' : linkMsg}</p>

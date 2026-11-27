@@ -80,6 +80,8 @@ const CHANGES_THE_DATABASE = [
   'supabase/salary-ROLLBACK.sql',
   'supabase/indiapost-sheet-forward.sql',
   'supabase/indiapost-sheet-ROLLBACK.sql',
+  'supabase/self-delivered-forward.sql',
+  'supabase/self-delivered-ROLLBACK.sql',
 ];
 
 for (const file of CHANGES_THE_DATABASE) {
