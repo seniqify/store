@@ -170,7 +170,7 @@ export function settingsProblems(ip) {
   if (!s.state) out.push('sender state');
   if (!/^\d{6}$/.test(s.pin || '')) out.push('sender PIN');
   if (!mobileOk(s.mobile)) out.push('sender mobile');
-  if (ip?.barcodeMode === 'series' && barcodeState(ip?.nextBarcode) !== 'ok') out.push('next barcode');
+  if (ip?.barcodeMode === 'series' && !['ok', 'empty'].includes(barcodeState(ip?.nextBarcode))) out.push('next barcode (it does not look right)');
   return out;
 }
 
@@ -204,6 +204,9 @@ export function sheetRows(orders, ip, { grams = () => 500, place = {}, codAllowe
       mobile: mobile10(o.customer_phone),
       barcode,
       weight: String(Math.max(1, Math.round(Number(grams(o)) || 0))),
+      l: String(ip?.box?.l ?? ''),
+      b: String(ip?.box?.b ?? ''),
+      h: String(ip?.box?.h ?? ''),
       cod: isCod && codAllowed,
       codValue: isCod ? Math.round(Number(o.total) || 0) : 0,
       codBlocked: isCod && !codAllowed,
@@ -216,10 +219,11 @@ export function sheetRows(orders, ip, { grams = () => 500, place = {}, codAllowe
 export function rowProblems(r) {
   const p = {};
   const bs = barcodeState(r.barcode);
-  if (bs === 'empty') p.barcode = 'Type the barcode from the sticker';
+  if (bs === 'empty') p.barcode = 'Type the barcode for this parcel';
   else if (bs === 'format') p.barcode = 'Looks like EM123456789IN: 2 letters, 9 digits, IN';
   else if (bs === 'digit') p.barcode = 'The last digit does not match: check the barcode';
   if (!(Number(r.weight) > 0)) p.weight = 'Weight in grams';
+  if (!(Number(r.l) > 0) || !(Number(r.b) > 0) || !(Number(r.h) > 0)) p.size = 'Length, breadth and height in cm';
   if (!mobileOk(r.mobile)) p.mobile = '10 digits, starting 6, 7, 8 or 9';
   if (!r.name) p.name = 'Receiver name';
   if (!r.line1) p.line1 = 'Address';
@@ -253,7 +257,7 @@ export function sheetCells(rows, ip, { refBase = '' } = {}) {
   const head = IP_COLUMNS.map(([h, red]) => ({ t: 's', v: h, red }));
   const body = rows.map((r, i) => [
     N(i + 1), S(String(r.barcode).toUpperCase().replace(/\s/g, '')), N(r.weight), S(''),
-    N(ip.box.l), N(ip.box.b), N(ip.box.h), B(ip.priority),
+    N(r.l ?? ip.box.l), N(r.b ?? ip.box.b), N(r.h ?? ip.box.h), B(ip.priority),
     S(''), S(''), S(s.name.toUpperCase()), S(s.company.toUpperCase()),
     S(s.line1.toUpperCase()), S(s.line2.toUpperCase()), S(s.city.toUpperCase()), S(s.state.toUpperCase()),
     N(s.pin), S(s.email), S(''), S(''),
