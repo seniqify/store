@@ -50,7 +50,7 @@ export function openDeliverySlip(order = {}, store = {}) {
   const isCOD   = pay === 'cod';
   const total   = Number(order.total) || 0;
   const awb     = order.awb || '';
-  const courierName = order.courier === 'shadowfax' ? 'Shadowfax' : order.courier === 'delhivery' ? 'Delhivery' : 'Courier';
+  const courierName = order.courier === 'shadowfax' ? 'Shadowfax' : order.courier === 'delhivery' ? 'Delhivery' : order.courier === 'indiapost' ? 'India Post' : 'Courier';
 
   const items = Array.isArray(order.items) ? order.items : [];
   const rows = items.map((it, i) => {

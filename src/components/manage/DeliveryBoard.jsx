@@ -12,6 +12,7 @@ import { formatINR } from '../../utils/currency';
 import { classifyBucket, BUCKET_META, BUCKETS, prettyStatus, courierInfo, matchesShipmentSearch, shipmentRef } from '../../utils/deliveryStatus';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { DELIVERY_CHOICE_LABEL } from '../../utils/deliveryTools';
+import { IndiaPostParcel } from './IndiaPostSheet';
 
 const BUCKET_ICON = {
   attention: AlertTriangle, ofd: Bike, transit: Truck, pickup: Package, delivered: Check, cancelled: Ban,
@@ -530,14 +531,17 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
     }
   }
 
+  const isIp = c.key === 'indiapost';
   useEffect(() => {
     let alive = true;
     setData(null); setErr('');
+    // India Post is not linked: nothing to ask; the shop marks it by hand.
+    if (isIp) { setData({}); return () => { alive = false; }; }
     shipmentOp(slug, pin, o.id, 'track')
       .then((r) => { if (alive) setData(r || {}); })
       .catch((e) => { if (alive) setErr(e.message || 'Could not fetch tracking.'); });
     return () => { alive = false; };
-  }, [slug, pin, o.id]);
+  }, [slug, pin, o.id, isIp]);
 
   // Lock the board behind the drawer so scrolling the timeline doesn't move it.
   useScrollLock(true);
@@ -568,7 +572,7 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
           </div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.chip}`}>
-              {c.key === 'delhivery' ? <Truck size={10} /> : <Bike size={10} />}{c.name}
+              {c.key === 'local' || c.key === 'shadowfax' ? <Bike size={10} /> : <Truck size={10} />}{c.name}
             </span>
             <span className="text-[10.5px] font-mono text-gray-400">{o.awb}</span>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isCod ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700'}`}>
@@ -683,7 +687,9 @@ function TrackDrawer({ o, bucket, slug, pin, themeColor, storeName, onClose }) {
 
           {/* timeline */}
           <p className="text-[11px] font-extrabold tracking-wider uppercase text-gray-400 mb-3">Delivery journey</p>
-          {data === null ? (
+          {isIp ? (
+            <IndiaPostParcel o={o} slug={slug} pin={pin} themeColor={themeColor} />
+          ) : data === null ? (
             <div className="space-y-3">{[0, 1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-gray-100 animate-pulse" />)}</div>
           ) : err ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{err}</p>

@@ -83,6 +83,7 @@ export function courierInfo(courier) {
   const c = String(courier || 'delhivery').toLowerCase();
   if (c === 'shadowfax') return { key: 'shadowfax', name: 'Shadowfax', chip: 'bg-orange-100 text-orange-700' };
   if (c === 'local')     return { key: 'local',     name: 'Delivery boy', chip: 'bg-emerald-100 text-emerald-700' };
+  if (c === 'indiapost') return { key: 'indiapost', name: 'India Post', chip: 'bg-red-100 text-red-800' };
   return { key: 'delhivery', name: 'Delhivery', chip: 'bg-indigo-100 text-indigo-700' };
 }
 

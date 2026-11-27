@@ -301,6 +301,23 @@ export async function switchOrderToCod(slug, pin, orderId) {
   }
 }
 
+/** Owner-only (PIN-checked): mark parcels uploaded on the India Post portal as
+ *  shipped. items: [{ order_id, barcode }]. Resolves { shipped, skipped: [{ order_id, reason }] }. */
+export async function indiaPostMarkShipped(slug, pin, items) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('indiapost_mark_shipped', { p_slug: slug, p_hashed_pin: hashed, p_items: items });
+  if (error) throw new Error(error.message || 'Could not mark them shipped.');
+  return data;
+}
+
+/** Owner-only: an India Post parcel was delivered ('delivered') or came back ('returned'). */
+export async function indiaPostSetState(slug, pin, orderId, state) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('indiapost_set_state', { p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId, p_state: state });
+  if (error) throw new Error(error.message || 'Could not save it.');
+  return data;
+}
+
 /** Owner-only: mark an order paid / unpaid (PIN-checked server-side). */
 export async function setOrderPaid(slug, pin, orderId, paid) {
   try {

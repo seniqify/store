@@ -20,6 +20,7 @@ const courierName = (c) => {
   const k = String(c || '').toLowerCase();
   if (k.includes('delhivery')) return 'Delhivery';
   if (k.includes('shadowfax')) return 'Shadowfax';
+  if (k.includes('indiapost')) return 'India Post';
   return c ? c.charAt(0).toUpperCase() + c.slice(1) : '';
 };
 
