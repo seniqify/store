@@ -151,8 +151,13 @@ test('OrdersTab: orders use the new card, leads keep theirs; nothing advances an
   assert.ok(!/Accept order|Send confirmation to customer|Out for delivery"/.test(card), 'no manual Accept / Out for delivery / Send confirmation');
   assert.ok(!/<Advance /.test(card));
   for (const fn of ['nextStep(', 'orderSteps(', 'paymentChip(', 'orderStage(', 'needsCallFirst(']) assert.ok(card.includes(fn), fn);
-  // Handing it to the delivery boy moves it to On the way; the database does the rest.
-  assert.match(card, /onClick=\{\(\) => onStatus\(o\.id, 'dispatched'\)\}/);
+  // "Deliver it yourself" (founder, 2026-11-27): marks it delivered with the delivery
+  // cost (mark_self_delivered), no WhatsApp. Sending the address on WhatsApp stays a
+  // link that moves it to On the way; the database does the rest.
+  assert.match(card, /<OwnDeliveryPanel /);
+  assert.match(card, /onDispatched=\{\(\) => \{ setOwnOpen\(false\); onStatus\(o\.id, 'dispatched'\); \}\}/);
+  assert.match(tab, /await markSelfDelivered\(slug, pin, o\.id, cost === '' \? null : Number\(cost\)\)/);
+  assert.doesNotMatch(card, /case 'rider':\s*if \(ownOpen\) return null;\s*return \(\s*<a /, 'the button no longer opens WhatsApp');
   assert.match(tab, /if \(!leads\) refresh\(\);/, 'after a status change the row is read back (trigger-set paid / delivered_at)');
   // The paid chip still toggles by hand, and Unpaid still uses the shared predicate.
   assert.match(card, /onClick=\{\(\) => onPaid\(o\.id, !o\.paid\)\}/);

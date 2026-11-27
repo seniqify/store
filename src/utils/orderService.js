@@ -318,6 +318,16 @@ export async function indiaPostSetState(slug, pin, orderId, state) {
   return data;
 }
 
+/** Owner-only: the shop (or its delivery boy) delivered it. Marks it delivered
+ *  and saves what the delivery cost (null = leave as is), so profit counts it.
+ *  A COD order turns paid by the existing order triggers. */
+export async function markSelfDelivered(slug, pin, orderId, cost) {
+  const hashed = await hashPin(pin);
+  const { data, error } = await supabase.rpc('mark_self_delivered', { p_slug: slug, p_hashed_pin: hashed, p_order_id: orderId, p_cost: cost });
+  if (error) throw new Error(error.message || 'Could not mark it delivered.');
+  return data;
+}
+
 /** Owner-only: mark an order paid / unpaid (PIN-checked server-side). */
 export async function setOrderPaid(slug, pin, orderId, paid) {
   try {

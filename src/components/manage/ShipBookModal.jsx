@@ -19,7 +19,7 @@ import { orderWeight, weightBreakdown } from '../../utils/orderWeight';
  */
 export default function ShipBookModal({
   o, slug, pin, themeColor = '#0d9488', onClose, onBooked,
-  courier, couriers, riders = [], riderHref, onRider,
+  courier, couriers, riders = [], riderHref, onRider, onSelfDelivered,
   products = [], boxG = 0,
 }) {
   // The parcel's weight from the weights saved on its products (Products →
@@ -54,6 +54,19 @@ export default function ShipBookModal({
   const [rates, setRates] = useState({});     // courier → { loading } | shipping-rate's answer | { error }
   const [chosen, setChosen] = useState(null); // the shop's own pick: a courier key or 'rider'
   const [riderPhone, setRiderPhone] = useState(riders[0]?.phone || '');
+  // "Deliver yourself": marked delivered here with what it cost (no WhatsApp needed).
+  const ownKey = `pl_own_delivery_cost_${slug}`;
+  const [ownCost, setOwnCost] = useState(() => { try { return localStorage.getItem(ownKey) || ''; } catch { return ''; } });
+  const [ownBusy, setOwnBusy] = useState(false);
+  async function deliveredMyself() {
+    setErr(''); setOwnBusy(true);
+    try {
+      await onSelfDelivered(ownCost === '' ? null : Number(ownCost));
+      try { if (ownCost !== '') localStorage.setItem(ownKey, String(ownCost)); } catch { /* private mode */ }
+    } catch (e) {
+      setErr(e.message || 'Could not mark it delivered.');
+    } finally { setOwnBusy(false); }
+  }
   const [lowWallet, setLowWallet] = useState(() => readWalletLow(slug));
   useEffect(() => onWalletLowChange(() => setLowWallet(readWalletLow(slug))), [slug]);
 
@@ -289,11 +302,11 @@ export default function ShipBookModal({
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${courierInfo('local').chip}`}><Bike size={16} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-[13.5px] font-bold text-gray-900">Your delivery boy</span>
-                  <span className="block text-[11.5px] text-gray-500">{riders.length ? 'Opens WhatsApp with the address filled in' : 'Opens WhatsApp — pick your delivery boy'}</span>
+                  <span className="block text-[11.5px] text-gray-500">{onSelfDelivered ? 'Mark it delivered and note what it cost' : riders.length ? 'Opens WhatsApp with the address filled in' : 'Opens WhatsApp — pick your delivery boy'}</span>
                 </span>
                 <span className="text-right flex-shrink-0">
-                  <span className="block text-[15px] font-extrabold text-gray-900">₹0</span>
-                  <span className="block text-[10px] text-gray-400">no courier fee</span>
+                  <span className="block text-[15px] font-extrabold text-gray-900">{onSelfDelivered && ownCost !== '' ? `₹${ownCost}` : '₹0'}</span>
+                  <span className="block text-[10px] text-gray-400">{onSelfDelivered && ownCost !== '' ? 'your cost' : 'no courier fee'}</span>
                 </span>
               </button>
               {pick === 'rider' && riders.length > 1 && (
@@ -307,6 +320,17 @@ export default function ShipBookModal({
                   ))}
                 </div>
               )}
+              {pick === 'rider' && onSelfDelivered && (
+                <div className="pl-7 space-y-1">
+                  <label htmlFor="own-cost-modal" className="block text-[12px] font-bold text-gray-700">Delivery cost (₹) <span className="font-normal text-gray-400">optional</span></label>
+                  <input id="own-cost-modal" inputMode="decimal" value={ownCost} placeholder="e.g. 40"
+                    onChange={(e) => setOwnCost(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))}
+                    className="w-full h-10 rounded-xl border border-gray-200 bg-white px-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-gray-200" />
+                  <p className="text-[11px] text-gray-500">What this delivery cost you: delivery boy, petrol. Counted in your profit.</p>
+                  <a href={riderHref ? riderHref(riderPhone || null) : undefined} target="_blank" rel="noopener noreferrer" onClick={() => onRider?.()}
+                    className="block text-[12px] font-semibold text-gray-600 underline underline-offset-2">Not delivered yet? Send the address on WhatsApp</a>
+                </div>
+              )}
               <p className="text-[10.5px] text-gray-400">Picking here is for this order only — your default courier in Settings stays the same.</p>
             </div>
 
@@ -316,7 +340,13 @@ export default function ShipBookModal({
                 className="inline-flex items-center gap-1 text-sm font-semibold text-gray-500 px-3 py-2.5 rounded-xl border border-gray-200 disabled:opacity-50">
                 <ArrowLeft size={14} /> Back
               </button>
-              {pick === 'rider' ? (
+              {pick === 'rider' && onSelfDelivered ? (
+                <button type="button" onClick={deliveredMyself} disabled={ownBusy}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold active:scale-[0.98] transition disabled:opacity-50"
+                  style={{ backgroundColor: themeColor }}>
+                  {ownBusy ? 'Saving…' : String(o.payment_method).toLowerCase() === 'cod' && !o.paid ? `Mark delivered · ₹${Math.round(Number(o.total) || 0).toLocaleString('en-IN')} collected` : 'Mark delivered'}
+                </button>
+              ) : pick === 'rider' ? (
                 <a href={riderHref ? riderHref(riderPhone || null) : undefined} target="_blank" rel="noopener noreferrer"
                   onClick={() => onRider?.()}
                   className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold text-center active:scale-[0.98] transition"
