@@ -121,5 +121,6 @@ export function courierName(slug) {
   const k = String(slug || '').toLowerCase();
   if (k.includes('delhivery')) return 'Delhivery';
   if (k.includes('shadowfax')) return 'Shadowfax';
+  if (k.includes('indiapost')) return 'India Post Speed Post';
   return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : '';
 }

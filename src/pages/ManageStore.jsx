@@ -56,6 +56,8 @@ import ShippingConnect                                     from '../components/m
 import DomainConnect                                       from '../components/manage/DomainConnect';
 import DeliveryBoard                                        from '../components/manage/DeliveryBoard';
 import CodMoney                                             from '../components/manage/CodMoney';
+import IndiaPostSheet                                       from '../components/manage/IndiaPostSheet';
+import IndiaPostSettings                                    from '../components/manage/IndiaPostSettings';
 import WhatsAppTab                                          from '../components/manage/WhatsAppTab';
 import ShipUpdates                                          from '../components/manage/ShipUpdates';
 import PinGate                                              from '../components/manage/PinGate';
@@ -1946,8 +1948,12 @@ function CourierWalletBanner({ slug }) {
 const DELIVERY_VIEWS = [
   ['ship', 'Ship'], ['track', 'Track'], ['money', 'COD'], ['settings', 'Settings'],
 ];
-function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, saveStatus, saveError, wide = false }) {
+function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSave, onSaveWith, saveStatus, saveError, wide = false }) {
   const [view, setView] = useState('ship');
+  // India Post sheet (Speed Post by uploading India Post's Excel); a change refreshes Ship.
+  const [ipOpen, setIpOpen] = useState(false);
+  const [shipKey, setShipKey] = useState(0);
+  const saveIp = (patch) => onSaveWith?.({ delivery: { ...(config.delivery || {}), indiaPost: { ...(config.delivery?.indiaPost || {}), ...patch } } });
   const rtoRaw = config.delivery?.rto;
   const rto = useMemo(() => rtoSettings({ delivery: { rto: rtoRaw } }), [rtoRaw]);
   const orderStore = useMemo(() => orderStoreOf(config, slug), [config, slug]);
@@ -1964,7 +1970,23 @@ function DeliveryTab({ slug, pin, themeColor, storeName, config, onChange, onSav
       </div>
       {(view === 'ship' || view === 'track') && <CourierWalletBanner slug={slug} />}
       {view === 'ship' && (
-        <OrdersTab slug={slug} pin={pin} themeColor={themeColor} storeName={config.businessName} mode="ship"
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-[14.5px] font-extrabold text-gray-900">Sending by Speed Post?</p>
+            <p className="text-[12.5px] text-gray-500 mt-0.5">Tick the orders: PocketLink fills India Post&rsquo;s bulk-booking Excel. Upload it on the India Post portal.</p>
+          </div>
+          <button type="button" onClick={() => setIpOpen(true)} className="h-11 px-4 rounded-xl text-white text-[13.5px] font-extrabold" style={{ backgroundColor: themeColor }}>
+            Make an India Post sheet
+          </button>
+        </div>
+      )}
+      {ipOpen && (
+        <IndiaPostSheet slug={slug} pin={pin} config={config} themeColor={themeColor} onSaveIp={saveIp}
+          onOpenSettings={() => { setIpOpen(false); setView('settings'); }}
+          onClose={(changed) => { setIpOpen(false); if (changed) setShipKey((k) => k + 1); }} />
+      )}
+      {view === 'ship' && (
+        <OrdersTab key={shipKey} slug={slug} pin={pin} themeColor={themeColor} storeName={config.businessName} mode="ship"
                    riders={config.delivery?.riders || []} payInfo={{ upi: config.upi || '', bank: config.bank || null }}
                    store={orderStore} rto={rto} />
       )}
@@ -2073,6 +2095,9 @@ function ManageDelivery({ config, pin, onChange, onSave, saveStatus, saveError }
 
       {/* Couriers — moved here from Settings: connect, default, disconnect */}
       <ShippingConnect config={config} pin={pin} themeColor={themeColor} onConfig={onChange} />
+
+      {/* India Post (Speed Post): the bulk-booking sheet's sender and fixed choices */}
+      <IndiaPostSettings config={config} update={update} themeColor={themeColor} />
 
       {/* Parcel weight: products' packed weights + this box, for courier charges */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
@@ -3574,6 +3599,7 @@ export default function ManageStore() {
               config={config}
               onChange={handleChange}
               onSave={handleSave}
+              onSaveWith={saveWith}
               saveStatus={saveStatus}
               saveError={saveError}
               wide={isDesktop}

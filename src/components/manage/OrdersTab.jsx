@@ -6,6 +6,7 @@ import {
 import { fetchOrders, setOrderStatus, setOrderPaid } from '../../utils/orderService';
 import { shipmentOp } from '../../utils/shippingConnect';
 import ShipBookModal from './ShipBookModal';
+import { IndiaPostParcel } from './IndiaPostSheet';
 import { formatINR } from '../../utils/currency';
 import { openDeliverySlip } from '../../utils/deliverySlip';
 import { unitCostForItem } from '../../utils/variants';
@@ -1103,7 +1104,8 @@ const LeadCard = memo(function LeadCard({ o, busy, themeColor, slug, pin, storeN
 function useShipment(o, slug, pin, courier) {
   const [bookedWith, setBookedWith] = useState(null);   // the courier picked in Book courier
   const isSfx = String(bookedWith || courier || '').toLowerCase() === 'shadowfax';
-  const cName = isSfx ? 'Shadowfax' : 'Delhivery';
+  const isIp = String(bookedWith || courier || '').toLowerCase() === 'indiapost';
+  const cName = isSfx ? 'Shadowfax' : isIp ? 'India Post' : 'Delhivery';
   const [over, setOver]     = useState(null);    // { awb, status } set by this card
   const [busy, setBusy]     = useState('');
   const [err, setErr]       = useState('');
@@ -1450,7 +1452,10 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
 
       {stage === 'not_paid' && alert('red', `${firstName === 'the customer' ? 'The customer' : firstName} chose Pay Online but left before paying, so this is not a sale yet. Send a payment link — it turns Paid by itself when they pay.`)}
 
-      {stage === 'courier' && (
+      {stage === 'courier' && String(o.courier).toLowerCase() === 'indiapost' && (
+        <div className="mx-4 mt-3"><IndiaPostParcel o={o} slug={slug} pin={pin} themeColor={themeColor} /></div>
+      )}
+      {stage === 'courier' && String(o.courier).toLowerCase() !== 'indiapost' && (
         <div className="mx-4 mt-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gray-900"><Truck size={15} style={{ color: themeColor }} /> {ship.cName}</span>
@@ -1482,7 +1487,7 @@ const OrderCard = memo(function OrderCard({ o, busy, themeColor, slug, pin, stor
           {ship.err && <p className="text-[11px] text-red-600">{ship.err}</p>}
         </div>
       )}
-      {stage === 'courier' && (prog.bucket === 'cancelled'
+      {stage === 'courier' && String(o.courier).toLowerCase() !== 'indiapost' && (prog.bucket === 'cancelled'
         ? alert('gray', `${ship.cName} cancelled this booking at their end. Contact support to ship it again.`)
         : prog.problem
           ? alert('amber', `Delivery problem: ${prog.label}. Call ${firstName} to sort it out, or ${ship.cName} may send it back.`)
@@ -1602,7 +1607,9 @@ function ShipBlock({ o, slug, pin, themeColor, courier, couriers, riders, riderH
           onClose={() => setModal(false)}
           onBooked={booked} />
       )}
-      {!awb ? (
+      {awb && String(o.courier).toLowerCase() === 'indiapost' ? (
+        <IndiaPostParcel o={o} slug={slug} pin={pin} themeColor={themeColor} />
+      ) : !awb ? (
         <button onClick={() => setModal(true)}
           className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white py-2 rounded-lg active:scale-95"
           style={{ backgroundColor: themeColor }}>
